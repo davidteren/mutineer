@@ -883,6 +883,266 @@ class CoverageMapTest < Minitest::Test
                  "no source key: every test, as for an empty map"
   end
 
+  # --- #426: standalone load lines are not coverage of every test ---------
+
+  # The source, the test that calls it, and a test that does not. Line numbers
+  # come from the source text so the assertions follow the credit rule.
+  STANDALONE_PRICE = <<~RUBY
+    class StandalonePrice
+      def self.called(n)
+        n * 2
+      end
+
+      def self.only_at_load(n)
+        n + 9
+      end
+
+      def self.both(n)
+        n * 4
+      end
+
+      def self.endless(n) = n * 3
+
+      LOADED = only_at_load(1)
+      BOTH = both(1)
+    end
+  RUBY
+
+  def write_standalone_price(dir)
+    FileUtils.mkdir_p(File.join(dir, "lib"))
+    File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+    FileUtils.mkdir_p(File.join(dir, "test"))
+    note = 'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)}\n", mode: "a") if ENV["MUTINEER_SENTINEL"]'
+    File.write(File.join(dir, "test/price_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{note}
+      class StandalonePriceTest < Minitest::Test
+        def test_called; assert_equal 4, StandalonePrice.called(2); end
+        def test_endless; assert_equal 6, StandalonePrice.endless(2); end
+        def test_both; assert_equal 8, StandalonePrice.both(2); end
+        def test_loaded; assert_equal 10, StandalonePrice::LOADED; end
+      end
+    RUBY
+    # Not the conventional pair. It calls the endless method, so that `def`
+    # line is credited from the call, not from pairing.
+    File.write(File.join(dir, "test/caller_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{note}
+      class StandaloneCallerTest < Minitest::Test
+        def test_endless; assert_equal 9, StandalonePrice.endless(3); end
+      end
+    RUBY
+    File.write(File.join(dir, "test/mail_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      #{note}
+      class StandaloneMailTest < Minitest::Test
+        def test_ok; assert_equal 1, 1; end
+      end
+    RUBY
+  end
+
+  def standalone_price_map(dir, cache, framework: "minitest", tests: nil)
+    tests ||= if framework == "rspec"
+                %w[spec/caller_spec.rb spec/price_spec.rb spec/mail_spec.rb]
+              else
+                %w[test/caller_test.rb test/price_test.rb test/mail_test.rb]
+              end
+    Mutineer::CoverageMap.new(source_paths: ["lib/price.rb"], test_paths: tests, cache_dir: cache,
+                              project_root: dir, framework: framework).build_or_load
+  end
+
+  def price_line(snippet)
+    STANDALONE_PRICE[0...STANDALONE_PRICE.index(snippet)].count("\n") + 1
+  end
+
+  # Class and `def` lines, and a body that runs only while the source loads,
+  # belong to the paired test. A test that never calls the source does not
+  # cover them, so a cache hit does not check it. A body the paired test
+  # runs, including one that also ran at load, stays credited to that test.
+  # An endless method stays credited because the test called it: Ruby does
+  # not count that line on the call.
+  def test_standalone_capture_does_not_credit_an_unrelated_test_with_load_lines
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_standalone_price(dir)
+      src = File.join(dir, "lib/price.rb")
+      map = nil
+      err = nil
+      misses = sentinel_processes(dir) { _, err = capture_io { map = standalone_price_map(dir, cache) } }
+
+      assert map.phase_a_ran
+      assert_empty map.failed_test_files
+      assert_equal [%w[caller_test.rb], %w[caller_test.rb price_test.rb], %w[mail_test.rb], %w[price_test.rb]], misses,
+                   "a miss captures each test, then the two that cover price.rb together"
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("class StandalonePrice"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n * 2"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n * 4"))
+      assert_equal %w[test/caller_test.rb test/price_test.rb], map.tests_for(src, price_line("n * 3")).sort
+      assert map.ran_at_load?(src, price_line("class StandalonePrice"))
+      assert map.ran_at_load?(src, price_line("n + 9")), "only_at_load ran while the class loaded"
+      assert map.ran_at_load?(src, price_line("n * 4")), "both ran at load and in the test"
+      refute map.ran_at_load?(src, price_line("n * 2")), "called runs only in the test"
+      def_line = price_line("def self.only_at_load")
+      assert map.method_ran_at_load?(src, def_line, STANDALONE_PRICE.lines[def_line - 1].index("def"))
+      assert_includes err, "1 other test file ran alone only"
+
+      hit = nil
+      hits = sentinel_processes(dir) { _, err = capture_io { hit = standalone_price_map(dir, cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[caller_test.rb], %w[caller_test.rb price_test.rb], %w[price_test.rb]], hits,
+                   "mail_test.rb covers no line a mutant of price.rb runs"
+      assert_equal map.load_lines, hit.load_lines
+      assert_includes err, "1 other test file never runs with a mutant and was not checked"
+    end
+  end
+
+  # No conventional pair in the run: any test may be the one that checks a
+  # value built at load, so both keep the load-only line and a hit checks both.
+  def test_standalone_load_lines_stay_on_every_test_when_none_pairs
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/widget.rb"), "class StandaloneWidget\n  def self.n\n    1\n  end\nend\n")
+      FileUtils.mkdir_p(File.join(dir, "test"))
+      %w[a_check b_check].each do |name|
+        File.write(File.join(dir, "test/#{name}_test.rb"), <<~RUBY)
+          require "minitest/autorun"
+          File.write(ENV["MUTINEER_SENTINEL"], "\#{Process.pid} \#{File.basename(__FILE__)}\\n", mode: "a") if ENV["MUTINEER_SENTINEL"]
+          class #{name.capitalize}CheckTest < Minitest::Test
+            def test_ok; assert_equal 1, 1; end
+          end
+        RUBY
+      end
+      cache = File.join(dir, "cache")
+      tests = %w[test/a_check_test.rb test/b_check_test.rb]
+      map = nil
+      capture_io do
+        map = Mutineer::CoverageMap.new(source_paths: ["lib/widget.rb"], test_paths: tests,
+                                        cache_dir: cache, project_root: dir).build_or_load
+      end
+      src = File.join(dir, "lib/widget.rb")
+      assert_equal tests, map.tests_for(src, 1).sort
+      hits = sentinel_processes(dir) do
+        capture_io do
+          Mutineer::CoverageMap.new(source_paths: ["lib/widget.rb"], test_paths: tests,
+                                    cache_dir: cache, project_root: dir).build_or_load
+        end
+      end
+      assert_equal [%w[a_check_test.rb], %w[a_check_test.rb b_check_test.rb], %w[b_check_test.rb]], hits
+    end
+  end
+
+  # The RSpec capture script clears the load snapshot the same way.
+  def test_rspec_standalone_capture_does_not_credit_an_unrelated_spec_with_load_lines
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      note = 'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)}\n", mode: "a") if ENV["MUTINEER_SENTINEL"]'
+      File.write(File.join(dir, "spec/price_spec.rb"), <<~RUBY)
+        require_relative "../lib/price"
+        #{note}
+        RSpec.describe StandalonePrice do
+          it("calls") { expect(StandalonePrice.called(2)).to eq(4) }
+          it("endless") { expect(StandalonePrice.endless(2)).to eq(6) }
+        end
+      RUBY
+      File.write(File.join(dir, "spec/caller_spec.rb"), <<~RUBY)
+        require_relative "../lib/price"
+        #{note}
+        RSpec.describe "caller" do
+          it("endless") { expect(StandalonePrice.endless(3)).to eq(9) }
+        end
+      RUBY
+      File.write(File.join(dir, "spec/mail_spec.rb"), <<~RUBY)
+        #{note}
+        RSpec.describe "mail" do
+          it("passes") { expect(1).to eq(1) }
+        end
+      RUBY
+      cache = File.join(dir, "cache")
+      map = nil
+      capture_io { map = standalone_price_map(dir, cache, framework: "rspec") }
+      assert_empty map.failed_test_files, "the specs ran"
+      src = File.join(dir, "lib/price.rb")
+      assert_equal %w[spec/price_spec.rb], map.tests_for(src, price_line("n * 2"))
+      assert_equal %w[spec/price_spec.rb], map.tests_for(src, price_line("n + 9"))
+      assert_equal %w[spec/caller_spec.rb spec/price_spec.rb], map.tests_for(src, price_line("n * 3")).sort
+      assert map.ran_at_load?(src, price_line("n + 9"))
+      hits = sentinel_processes(dir) { capture_io { standalone_price_map(dir, cache, framework: "rspec") } }
+      assert_equal [%w[caller_spec.rb], %w[caller_spec.rb price_spec.rb], %w[price_spec.rb]], hits
+    end
+  end
+
+  # A map saved before #426 still lists every test on the load lines. The
+  # missing key rebuilds it, and the rebuilt map keeps the new rule.
+  def test_standalone_cache_without_narrow_load_lines_rebuilds
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_standalone_price(dir)
+      capture_io { standalone_price_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      assert_equal true, saved["narrow_load_lines"]
+      saved.delete("narrow_load_lines")
+      saved["map"]["lib/price.rb:1"] = %w[test/price_test.rb test/mail_test.rb]
+      File.write(path, JSON.generate(saved))
+
+      rebuilt = nil
+      capture_io { rebuilt = standalone_price_map(dir, cache) }
+      assert rebuilt.phase_a_ran, "a cache from before load lines were narrowed must rebuild"
+      assert_equal %w[test/price_test.rb], rebuilt.tests_for(File.join(dir, "lib/price.rb"), 1)
+      third = nil
+      capture_io { third = standalone_price_map(dir, cache) }
+      refute third.phase_a_ran
+    end
+  end
+
+  # infer_tests drops split tests when an exact spec exists, even if the run
+  # did not select that spec. The content digest does not see it, so the saved
+  # pairing has to. A hit would otherwise keep the split test as the only
+  # owner of a load-only line.
+  def test_an_unselected_exact_spec_rebuilds_the_load_line_map
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      FileUtils.mkdir_p(File.join(dir, "test"))
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      File.write(File.join(dir, "lib/price.rb"), "class SplitPrice\n  LOADED = 1\nend\n")
+      %w[price_unit mail].each do |name|
+        File.write(File.join(dir, "test/#{name}_test.rb"), <<~RUBY)
+          require "minitest/autorun"
+          class Split#{name.capitalize}Test < Minitest::Test
+            def test_ok; assert_equal 1, 1; end
+          end
+        RUBY
+      end
+      cache = File.join(dir, "cache")
+      tests = %w[test/price_unit_test.rb test/mail_test.rb]
+      src = File.join(dir, "lib/price.rb")
+      mk = lambda do
+        Mutineer::CoverageMap.new(source_paths: ["lib/price.rb"], test_paths: tests,
+                                  cache_dir: cache, project_root: dir).build_or_load
+      end
+
+      first = nil
+      capture_io { first = mk.call }
+      assert first.phase_a_ran
+      assert_equal %w[test/price_unit_test.rb], first.tests_for(src, 1)
+      second = nil
+      capture_io { second = mk.call }
+      refute second.phase_a_ran, "nothing on disk that pairing reads has changed"
+
+      File.write(File.join(dir, "spec/price_spec.rb"), "RSpec.describe(SplitPrice)\n")
+      rebuilt = nil
+      capture_io { rebuilt = mk.call }
+      assert rebuilt.phase_a_ran, "the spec replaces the split test, so the map must be captured again"
+      assert_equal tests.sort, rebuilt.tests_for(src, 1).sort,
+                   "no selected test pairs, so every test keeps the load-only line"
+    end
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
@@ -900,6 +1160,8 @@ class CoverageMapTest < Minitest::Test
     first = build_catalog(dir)
     assert first.phase_a_ran
     assert first.ran_at_load?(CATALOG, 7), "base * 2 ran at load"
+    assert_equal ["test/catalog_test.rb"], first.tests_for(CATALOG, 7),
+                 "the paired test keeps a line that ran only at load"
     refute first.ran_at_load?(File.join(LOAD_ROOT, "test/catalog_test.rb"), 8), "only source lines are kept"
 
     second = build_catalog(dir)
@@ -1045,6 +1307,8 @@ class CoverageMapTest < Minitest::Test
     data = { lines: [0, 0, nil], methods: { [Object, :a, 1, 0, 1, 18] => 0, [Object, :b, 1, 20, 1, 38] => 1,
                                            [Object, :c, 2, 0, 2, 18] => 2 } }
     assert_equal [0, 2, nil], map.send(:lines_with_called_defs, data)
+    rows = { "lines" => [0, 0, nil], "methods" => [[1, 0, 0], [1, 20, 1], [2, 0, 2]] }
+    assert_equal [0, 2, nil], map.send(:lines_with_called_defs, rows), "the capture JSON uses the same rule"
   end
 
   def test_from_data_takes_load_lines

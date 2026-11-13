@@ -45,6 +45,20 @@ module Mutineer
     # Cap for a failing clean-suite report on the SmokeCheckError line (#360).
     CLEAN_FAILURE_DETAIL_LIMIT = 800
 
+    # Key in coverage.json that marks a map built after #426. Standalone
+    # capture no longer credits every test with lines that ran only while the
+    # sources loaded. A standalone cache without this key was built the old
+    # way and is rebuilt once. Boot and daemon maps already omitted those
+    # lines; a hit there does not read the key.
+    NARROW_LOAD_LINES = "narrow_load_lines"
+
+    # Key for the paired tests that kept load-only lines when the map was
+    # saved. {Pairing.infer_tests} reads files that are not in this run. An
+    # exact spec replaces split tests, and the content digest does not see a
+    # file the run did not select. A standalone hit rebuilds when this list
+    # no longer matches.
+    LOAD_LINE_PAIRS = "load_line_pairs"
+
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
                 :phase_a_ran, :map
 
@@ -418,17 +432,17 @@ module Mutineer
       return reuse_capture(after_fork) if @coverage_from
 
       cached = read_cache
-      # A cache from before load methods (#209) or test timings (#203) were
-      # saved rebuilds once. A cache that does not record this process's
-      # PARALLEL_WORKERS value rebuilds too. Rails reads that value inside
-      # parallelize, so a map from another worker count selects the wrong
-      # tests. The daemon writes this same file. Boot mode reads its load
-      # lines and methods from the live boot instead (#build_via_fork), but
-      # its map from before #209 lacks the `def` lines of the methods each
-      # test called.
+      # A cache from before load methods (#209), test timings (#203), or the
+      # standalone load-line narrowing (#426) rebuilds once. A cache that does
+      # not record this process's PARALLEL_WORKERS value rebuilds too. Rails
+      # reads that value inside parallelize, so a map from another worker
+      # count selects the wrong tests. The daemon writes this same file. Boot
+      # mode reads its load lines and methods from the live boot instead
+      # (#build_via_fork), but its map from before #209 lacks the `def` lines
+      # of the methods each test called.
       if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
          cached.key?("load_methods") && cached.key?("timings") &&
-         parallel_workers_match?(cached)
+         parallel_workers_match?(cached) && standalone_load_lines_current?(cached)
         @map = cached["map"] || {}
         @timings = cached["timings"] || {}
         unless @boot_path
@@ -651,6 +665,7 @@ module Mutineer
       @failed_clean_tests = []
       @failed_clean_details = {}
       @loaded_dependencies = {}
+      @paired_in_run = nil
 
       @test_paths.each do |test_path|
         payload = timed(test_path) { capture(test_path) }
@@ -860,7 +875,15 @@ module Mutineer
       end
 
       coverage = payload["coverage"]
-      record(coverage, test_path) if coverage.is_a?(Hash)
+      return unless coverage.is_a?(Hash)
+
+      # Post-load counts only. Standalone capture clears the load snapshot
+      # before the test runs; a fork capture already discarded the boot delta.
+      record(map_coverage(coverage), test_path)
+      # Lines that ran only while the sources loaded. The paired test keeps
+      # them, so a reload mutant a test checks through a value built at load
+      # still runs (#348). An unrelated test does not.
+      record_paired_load_lines(payload["load_coverage"], coverage, test_path)
     end
 
     # Notes a red unmutated suite for {JobPlan.abort_if_unclean!} (issue #360).
@@ -1337,13 +1360,14 @@ module Mutineer
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
+          #{discard_load_counts_expression}
           Minitest::Runnable.reset
           load #{absolute(test_path).inspect}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
         _failure = _passed ? nil : #{redacted_expression("_report.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        #{test_coverage_assignment}
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1388,12 +1412,13 @@ module Mutineer
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
+          #{discard_load_counts_expression}
         #{load_failure_rescue}
         end
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        #{test_coverage_assignment}
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1403,11 +1428,156 @@ module Mutineer
     end
 
     # Records every source line with a non-zero execution count as covered by
-    # this test file. Coverage.result keys are absolute; relativize and drop any
-    # path outside the project (stdlib/gem files).
+    # this test file. The counts are lines that ran after the sources loaded.
+    # Coverage.result keys are absolute; relativize and drop any path outside
+    # the project (stdlib/gem files).
     def record(coverage, test_path)
       rel_test = relativize(test_path)
       each_covered_key(coverage) { |key| (@map[key] ||= []) << rel_test }
+    end
+
+    # Line counts for the map, with `def` lines of methods the test called
+    # filled in. A fork capture already did that and sends plain arrays.
+    #
+    # @api private
+    # @param coverage [Hash] counts per absolute file.
+    # @return [Hash] the same files, values reduced to line-count arrays.
+    def map_coverage(coverage)
+      coverage.to_h do |file, data|
+        lines = if data.is_a?(Hash) && (data.key?(:methods) || data.key?("methods"))
+                  lines_with_called_defs(data)
+                else
+                  data
+                end
+        [file, lines]
+      end
+    end
+
+    # Credits `test_path` with source lines that ran only while the sources
+    # loaded, when this test is one that should keep them (#426).
+    #
+    # Standalone capture preloads every source in every test's process, so
+    # those lines would otherwise put every `--test` file on the map and a
+    # cache hit would check them all. The lines stay in {#load_lines} either
+    # way. They stay on the map for a paired test in this run: under
+    # `--strategy reload` that test can kill a mutant on the line by checking
+    # a value the load built (#348, `Catalog.price`). When the run has no
+    # paired test, every test keeps the lines, so that kill is not dropped.
+    # A line the test also ran after load is already on the map.
+    #
+    # @api private
+    # @param load_coverage [Hash, nil] the load snapshot from the child.
+    # @param test_coverage [Hash] the post-load coverage from the child.
+    # @param test_path [String] test file path.
+    # @return [void]
+    def record_paired_load_lines(load_coverage, test_coverage, test_path)
+      return unless load_coverage.is_a?(Hash)
+
+      rel_test = relativize(test_path)
+      post = line_counts_by_rel(map_coverage(test_coverage))
+      @source_rels ||= @source_paths.to_set { |path| relativize(absolute(path)) }
+      load_coverage.each do |abs_file, data|
+        rel = relativize(abs_file)
+        next unless @source_rels.include?(rel)
+        next unless credit_load_only_line?(rel, rel_test)
+
+        counts = data.is_a?(Hash) ? data["lines"] : data
+        next unless counts.is_a?(Array)
+
+        post_counts = post[rel]
+        counts.each_with_index do |count, idx|
+          next unless count&.positive?
+          next if post_counts&.[](idx)&.positive?
+
+          key = "#{rel}:#{idx + 1}"
+          list = (@map[key] ||= [])
+          list << rel_test unless list.include?(rel_test)
+        end
+      end
+    end
+
+    # Line-count arrays from a coverage hash, keyed by project-relative path.
+    #
+    # @api private
+    # @param coverage [Hash] counts per absolute file.
+    # @return [Hash{String => Array}]
+    def line_counts_by_rel(coverage)
+      coverage.each_with_object({}) do |(abs_file, data), out|
+        counts = data.is_a?(Hash) ? (data["lines"] || data[:lines]) : data
+        next unless counts.is_a?(Array)
+
+        out[relativize(abs_file)] = counts
+      end
+    end
+
+    # Whether `rel_test` keeps lines of `rel_source` that ran only at load.
+    # A paired test in the run does. When none of the run's tests pair with
+    # the source, every test does.
+    #
+    # @api private
+    # @param rel_source [String] project-relative source path.
+    # @param rel_test [String] project-relative test path.
+    # @return [Boolean]
+    def credit_load_only_line?(rel_source, rel_test)
+      paired = paired_tests_in_run(rel_source)
+      paired.empty? || paired.include?(rel_test)
+    end
+
+    # Conventional tests for `rel_source` that this run actually captures.
+    #
+    # @api private
+    # @param rel_source [String] project-relative source path.
+    # @return [Array<String>] project-relative test paths.
+    def paired_tests_in_run(rel_source)
+      @paired_in_run ||= {}
+      @paired_in_run[rel_source] ||= begin
+        run = @test_paths.to_set { |path| relativize(path) }
+        Pairing.infer_tests(rel_source, project_root: @project_root, prefer: @framework || "minitest")
+               .select { |path| run.include?(path) }
+      end
+    end
+
+    # True when a standalone cache was built with the #426 load-line rule
+    # and the same paired tests would keep load-only lines now. Boot and
+    # daemon maps never credited those lines to tests.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def standalone_load_lines_current?(cached)
+      return true if @boot_path
+
+      cached[NARROW_LOAD_LINES] == true && load_line_pairs_match?(cached)
+    end
+
+    # The tests in this run that {#credit_load_only_line?} treats as paired,
+    # per source. An empty list means every test keeps the load-only lines.
+    #
+    # @api private
+    # @return [Hash{String => Array<String>}] project-relative source to sorted test paths.
+    def load_line_pairs
+      @source_paths.filter_map do |source|
+        rel = relativize(absolute(source))
+        next if rel.start_with?("/")
+
+        [rel, paired_tests_in_run(rel).sort]
+      end.to_h
+    end
+
+    # True when `cached` recorded the same {#load_line_pairs} this run has now.
+    # A missing key is a map saved before the pairing decision was stored.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def load_line_pairs_match?(cached)
+      saved = cached[LOAD_LINE_PAIRS]
+      return false unless saved.is_a?(Hash)
+
+      current = load_line_pairs
+      return false unless saved.keys.sort == current.keys.sort
+
+      current.all? { |rel, tests| Array(saved[rel]).sort == tests }
     end
 
     # Adds the configured source lines that ran at load to {#load_lines}, and
@@ -1433,26 +1603,49 @@ module Mutineer
 
     # One file's line counts, with the `def` line of each method the test
     # called counted too (#209). A forked capture does not see the `def` lines
-    # run, since the boot defined the methods before the test. Ruby counts no
-    # line when an endless method runs, so without this its mutants would be
-    # `no_coverage` even when a test calls it. A line where more than one
-    # method starts is not counted: the map keys tests by line, so the test
-    # would also be credited with the methods it did not call.
+    # run, since the boot defined the methods before the test. Standalone
+    # capture clears the load snapshot before the test, so it does not either.
+    # Ruby counts no line when an endless method runs, so without this its
+    # mutants would be `no_coverage` even when a test calls it. A line where
+    # more than one method starts is not counted: the map keys tests by line,
+    # so the test would also be credited with the methods it did not call.
     #
     # @api private
-    # @param data [Hash] `Coverage` result for one file, with `:lines` and `:methods`.
+    # @param data [Hash] `Coverage` result for one file, with `:lines` and
+    #   `:methods`, or the JSON shape from {#test_coverage_assignment}
+    #   (`"lines"` and `"methods"` as `[line, column, count]` rows).
     # @return [Array, nil] line counts.
     def lines_with_called_defs(data)
-      lines = data[:lines]
-      return lines unless lines && data[:methods]
+      lines = data[:lines] || data["lines"]
+      methods = data[:methods] || data["methods"]
+      return lines unless lines && methods
 
       lines = lines.dup
-      starts = data[:methods].keys.map { |key| key[2] }.tally
-      data[:methods].each do |key, count|
-        line = key[2]
+      entries = method_call_entries(methods)
+      starts = entries.map(&:first).tally
+      entries.each do |line, count|
         lines[line - 1] = [lines[line - 1].to_i, count].max if count.positive? && starts[line] == 1
       end
       lines
+    end
+
+    # Start line and call count for each method in a Coverage method table.
+    # A Hash is the live Coverage result. An Array is the JSON shape
+    # `[line, column, count]` from {#test_coverage_assignment}.
+    #
+    # @api private
+    # @param methods [Hash, Array] method counts.
+    # @return [Array<Array(Integer, Integer)>] `[start_line, count]` pairs.
+    def method_call_entries(methods)
+      if methods.is_a?(Hash)
+        methods.map { |key, count| [key[2], count.to_i] }
+      else
+        Array(methods).filter_map do |row|
+          next unless row.is_a?(Array) && row.size >= 3 && row[0].is_a?(Integer) && row[2].is_a?(Numeric)
+
+          [row[0], row[2].to_i]
+        end
+      end
     end
 
     # One file's load-time coverage in the shape {#record_load} reads: the line
@@ -1479,6 +1672,37 @@ module Mutineer
       "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }" \
         ".transform_values { |v| { \"lines\" => v[:lines], " \
         "\"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } } }"
+    end
+
+    # Ruby that drops the line and method counts recorded while the sources
+    # loaded, and leaves Coverage running for the test (#426). The same call
+    # the fork capture uses before a test. The load snapshot in `_load` is
+    # already a copy, so this does not erase {#load_lines}.
+    #
+    # @api private
+    # @return [String] one statement for a capture subprocess script.
+    def discard_load_counts_expression
+      "Coverage.result(clear: true, stop: false)"
+    end
+
+    # Ruby that stores the test's post-load coverage in `_coverage`.
+    # Each file keeps its line counts and every method as
+    # `[start_line, start_column, count]`, so {#lines_with_called_defs} can
+    # credit a `def` line the test called. A line that ran only while the
+    # sources loaded is absent, because {#discard_load_counts_expression} ran
+    # first.
+    #
+    # @api private
+    # @return [String] statements for a capture subprocess script.
+    def test_coverage_assignment
+      <<~RUBY.chomp
+        _raw = Coverage.result
+        _coverage = _raw.transform_values do |_v|
+          next _v unless _v.is_a?(Hash)
+
+          { "lines" => _v[:lines], "methods" => (_v[:methods] || {}).map { |_k, _n| [_k[2], _k[3], _n] } }
+        end
+      RUBY
     end
 
     # Yields a "file:line" key for every project line with a non-zero count.
@@ -1735,7 +1959,9 @@ module Mutineer
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
                "dependencies" => @loaded_dependencies, "map" => @map,
                "load_lines" => @load_lines.to_a.sort, "load_methods" => @load_methods.to_a.sort,
-               "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil) }
+               "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil),
+               NARROW_LOAD_LINES => true }
+      data[LOAD_LINE_PAIRS] = load_line_pairs unless @boot_path
       if @boot_path
         data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,
                     "owners" => ownership_paths)

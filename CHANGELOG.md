@@ -163,8 +163,8 @@ All notable changes to this project are documented here. The format is based on
   fresh capture and with `--coverage-from` also uses the covering files
   only. Mutineer prints one stderr line with the number of files it did not
   check. When no test covers any source line, every file is still checked.
-  In a standalone run, each test loads every source, so it covers the
-  sources' load-time lines and is still checked (#426).
+  A standalone run no longer treats a line that ran only while the sources
+  loaded as coverage of every test (#426).
 - **Behavior change.** On a cache hit, a red test that covers no source
   line no longer stops the run. A fresh capture still stops on it, because
   capture runs every test (#96). So the same red test can stop a cold run
@@ -178,6 +178,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A standalone cache hit no longer checks every test just because each
+  test loads the sources (#426).** Standalone capture loads every source
+  before each test. The class line, the `def` line, and any other line that
+  runs only then were credited to every test, so the clean check kept them
+  all. Those lines still count as `ran_at_load`. A test keeps such a line
+  when it is a convention-paired test for that source. A `tests:` map entry
+  does not count. When the run has no convention-paired test for the source,
+  every test keeps the line, so a reload kill is not dropped.
+  A line the test runs after the sources load stays credited to that test,
+  including the `def` line of a method the test calls. Boot and daemon runs
+  already omitted the load lines and do not change. A coverage cache saved
+  before this change rebuilds once. So does a cache whose paired tests no
+  longer match, including when an exact spec that the run did not select
+  appears or disappears and replaces a split test.
+  **Score effect.** The exact-survivor oracle does not change. A reload kill
+  of a line that runs only at load stays a kill when the convention-paired
+  test is in the run (`Catalog.price`, and a hook def the file calls while
+  it loads). `--strategy redefine` still reports `ran_at_load` for that line.
+  An unpaired test no longer runs that mutant when a convention-paired test
+  is in the run.
+  A kill that only the unpaired test would have caught can become
+  `ran_at_load` or a survivor. The checked fixtures do not hit that case.
 - **Direct stderr and stdout no longer print a database password (#341).**
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the
