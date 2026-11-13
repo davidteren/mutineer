@@ -81,6 +81,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
 | `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
 | `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
+| `unmatched_ignores` | array of string | `ignore:` ids that matched no mutant in this run's sources and operators, in file order, each id once. A dropped repeat of an edit counts as matched. An old-format id that still matches is not listed (`legacy_id_matches` counts it). Empty when every loaded entry matched, when `ignore:` is empty, or under `--only`. `--only` narrows methods before matching, so an empty list there does not mean every entry matched. `--since` does not add ids: matching happens before the diff narrows the run. A run of some files lists entries those files and operators do not match. A source that was passed and then skipped for lack of a paired test still counts, so `run` and `run --dry-run` agree. stderr says the list covers only that run. The exit code stays 0. `mutineer migrate --dry-run` over every source lists the same kind of entry and exits 1. Additive key (schema `1.10`, #377). |
 | `unpaired_sources` | int | How many sources had no paired test. `--only` and `--since` can leave a source at 0. The source stays in this count. Additive key (schema `1.10`, #381). |
 | `unpaired_mutants` | int | Non-ignored scheduled mutants in those sources. A failed count is left out of the sum. These mutants are excluded from the mutation score and are not in `no_verdict`, so they cannot fail `--threshold`. The human share is this count over `total - ignored + unpaired_mutants`. `--fail-fast` omits that percentage. `0` can mean no mutant, or no changed line under `--since`. Additive key (schema `1.10`, #381). |
 
@@ -363,6 +364,7 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
     "total": 0,
     "skipped_invalid": 0,
     "ignored": 0,
+    "unmatched_ignores": [],
     "declined": 0,
     "declined_by_operator": {},
     "by_operator": { /* operator name => valid candidate count */ }
@@ -375,3 +377,4 @@ report does. `--format html` under `--dry-run` stays human and warns that the fo
 (both paths use `JobPlan.collect_jobs`). `summary.id_format` is `2`, the same marker a completed
 report carries, so a consumer that joins by id does not treat a missing key as the old format.
 `summary.total` equals `mutants.length`.
+`summary.unmatched_ignores` is the same list a completed run records (#377): ids that matched no mutant in these sources and operators. `--only` leaves it empty.

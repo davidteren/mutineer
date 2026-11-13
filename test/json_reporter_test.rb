@@ -132,6 +132,16 @@ class JsonReporterTest < Minitest::Test
     doc = render([killed_mutant, survivor])
     assert_equal 2, doc["summary"]["id_format"]
     assert_equal({ "ignore" => 0, "baseline" => 0 }, doc["summary"]["legacy_id_matches"])
+    assert_equal [], doc["summary"]["unmatched_ignores"]
+  end
+
+  # #377: the ids stay in the order the caller passed. File order is the CLI's job.
+  def test_summary_keeps_unmatched_ignore_ids_in_order
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              unmatched_ignores: %w[bbbbbbbbbbbb aaaaaaaaaaaa])
+    assert_equal %w[bbbbbbbbbbbb aaaaaaaaaaaa], JSON.parse(out.string)["summary"]["unmatched_ignores"]
   end
 
   # Each count needs a different fix (edit the ignore list vs regenerate the

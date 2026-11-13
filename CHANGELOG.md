@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`run` says when an `ignore:` entry matches no mutant (#377).**
+  The warning names the id and says the list covers only that run's sources and operators.
+  The exit code stays 0.
+  `--format json` lists the ids in `summary.unmatched_ignores`, in file order, each id once.
+  `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+  `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
+  A run of some files warns about entries those files and operators do not match. The warning says so.
+  A source you passed that has no paired test still counts: its entries are not reported as unmatched, and `run` agrees with `run --dry-run` of the same files.
+  `--only` skips the check. The list is then empty, which does not mean every entry matched.
+  A dropped repeat of an edit counts as matched.
+  An old-format id that still matches is not in this list. The old-id warning still names it.
+  `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
+  That exit code is the CI check, in 1.x and after 2.0.
+  The key is part of schema `1.10`, which is not in a release yet, so `schema_version` stays `1.10`.
 - **A source that cannot load alone points at `boot:` (#376).**
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names

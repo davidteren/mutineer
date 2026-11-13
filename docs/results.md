@@ -107,6 +107,20 @@ Duplicate names can occur with two top-level `def index` definitions in separate
 
 The project root is the run directory, or the Action's `working-directory`. Use the same root for stable ids.
 
+A current-format `ignore:` entry stays in the file when its mutant's id changes. It then matches nothing. If the entry has a reason, that reason still reads as if it applied. An old-format entry that still matches a mutant is not one of these: the old-id warning names it.
+
+`run` warns once for each such entry and still exits 0:
+
+```text
+[mutineer] ignore entry 0123456789ab matched no mutant in this run's sources and operators. If those cover its code, the entry is stale: remove it.
+```
+
+The warning covers only that run's sources and operators. A run of some files warns about an entry whose mutant is in a file you did not pass. That entry may still match a full run. A source you did pass, and that pairing skipped because it has no test, still counts: its entries are not called unmatched, and `run` agrees with `run --dry-run` of the same files. `--since` does not add a warning: ignores are matched before the diff narrows the run, so an entry for a mutant outside the diff stays quiet. `--only` skips the warning, because it narrows methods before matching.
+
+The JSON report lists the ids in `summary.unmatched_ignores`, in file order, each id once. Under `--only` the list is empty. An empty list there does not mean every entry matched. `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+
+`mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1. It writes nothing. A CI job can rely on that exit code in 1.x and after 2.0. Use the same sources and `--operators` as a full `run`. A dropped repeat of an edit still counts as matched, so it is not listed.
+
 **Migrating from ids without the file path.** Before 1.3, ids omitted file paths, allowing collisions between files (issue #126). Old ids work until 2.0, with warnings.
 
 | Setting | Compatibility and action |
@@ -126,6 +140,7 @@ Generate a new baseline only after every reader uses 1.3 or later. Older version
 | `summary.id_format` | `2` identifies the new format |
 | `summary.legacy_id_matches.ignore` | Count of matched old-format ignore entries |
 | `summary.legacy_id_matches.baseline` | Count of survivors matched only through an old baseline id |
+| `summary.unmatched_ignores` | Ids of `ignore:` entries that matched no mutant in this run. Empty under `--only`, which does not mean every entry matched |
 
 Mutineer searches parent directories for `.mutineer.yml`. A config above the run directory triggers an ignore-id warning, except in your home directory. The warning names the correct run directory.
 
@@ -140,11 +155,11 @@ mutineer migrate <source...> [--dry-run] [--operators LIST]
 | Case | Result |
 | --- | --- |
 | Bare id matches several mutants | Writes every new id, preserving the 1.x match |
-| Id matches nothing | Keeps the entry; exits 1 |
+| Id matches nothing | Keeps the entry; exits 1. `run` warns about the same kind of entry and still exits 0 |
 | `{ id:, reason: }` matches one mutant | Updates the id; preserves the reason |
 | Mapping matches several mutants | Keeps the entry, lists new ids, exits 1; split it manually |
 | Block scalar under `ignore:` | Changes nothing; exits 2 |
-| `--dry-run` | Prints changes; writes nothing |
+| `--dry-run` | Prints changes and entries that match nothing; writes nothing. Exits 1 when any entry matches nothing. A CI job can use that exit code |
 
 Use the same sources and `--operators` as `run`. Migration runs no tests and changes no baseline. Generate a new baseline with `--format json`.
 

@@ -208,6 +208,8 @@ mutineer migrate <source...> [--dry-run] [--operators LIST]
 mutineer config cache_dir|baseline [run options]
 ```
 
+`migrate --dry-run` lists `ignore:` entries that match no mutant in the sources and operators you pass. It writes nothing and exits 1 when any entry matches nothing. Run it over every source. `run` warns once for each such entry in that run, lists the ids under `summary.unmatched_ignores`, and still exits 0. `--since` does not warn about an entry whose mutant sits outside the diff. A run of some files warns only about entries those files and operators do not match. A source you passed that has no paired test is skipped, but its mutants still count for ignore matching, so `run` and `run --dry-run` agree; they stay out of the score and cannot fail `--threshold` (see [unpaired counts](https://github.com/davidteren/mutineer/blob/main/docs/json-schema.md)). `--only` skips the check. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
+
 ### Options
 
 Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md).
