@@ -42,7 +42,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "killed":       [ /* mutants a test caught; lean ids for joining runs (#361) */ ],
-  "no_coverage":  [ /* mutants on lines no test exercises, or that the statement's tests may not reach (#254, #289) */ ],
+  "no_coverage":  [ /* mutants on lines no test exercises, or a continuation whose sentinel the tests did not write (#254, #289, #345) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
@@ -63,7 +63,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `total` | int | Classified results included in this report, across all statuses. With `--fail-fast`, unscheduled candidates are omitted, so this is not the full generated candidate count. Mutants in sources with no paired test are not in `total`. |
 | `killed` | int | Mutants a test caught (suite went red). |
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
-| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant in code that runs only sometimes on a later line of a multi-line statement, such as the right side of `a &&` on its own line, when the tests that ran the statement did not kill it: the run cannot tell whether they reached it. Also a mutant on a later line of a multi-line statement whose first or last line holds other code, such as a call inside a one-line block. Mutineer ran the tests that ran that first or last line (never the `def` line); they did not kill it, and they may not have run the mutant. |
+| `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant on a later line of a multi-line statement (#254, #289) — the right side of `a &&` on its own line, or a call inside a one-line block — when the tests of that statement did not kill it and the probe did not see the mutated expression return during a test (#345). The probe is a sentinel the child writes the first time that expression returns during a test; a load-time call and a raise inside the expression do not write it. Mutineer ran the tests that ran the statement's other lines (for a one-line block, the first or last line, never the `def` line). A survivor the probe saw return is `survived` and counts in the score. The probe covers a trailing operator, a method chain, a multi-line argument, a hash entry, and a heredoc interpolation. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
@@ -72,10 +72,10 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
 | `subjects` | int \| null | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. `--fail-fast` does not narrow it: it counts every method found, while `total` omits unscheduled mutants, so the two are not one denominator. `--since` keeps methods whose `def` intersects the diff, matching `unmutated_subjects` (#420). `null` only when a program calls the reporter without both method counts (one alone counts as none); the CLI always fills both. Additive key (schema `1.10`, #386). |
 | `unmutated_subjects` | int \| null | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Decided before the run, so `--fail-fast` does not narrow it. `--since` keeps methods whose `def` intersects the diff (#420). `null` when `subjects` is `null`. Additive key (schema `1.10`, #386). |
-| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test or RSpec example had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
-| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests). |
+| `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not return during a test). |
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
@@ -110,7 +110,7 @@ unscored category from a full id list.
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289) the tests that run a later line's statement may not reach the mutant and none killed it, so only a test that kills it clears the entry; `uncapturable` means the test that
+`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
@@ -162,7 +162,11 @@ line ran while the app booted or its class loaded (for example a class body that
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
-count at load is used instead.
+count at load is used instead. A block on that `def` line is not classified from the line (#389).
+A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
+stores (#435). Another block on that line stays scored. `each` with an empty array can count the line without running
+its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
+Code that runs only sometimes, such as the body of `x if c`, does not.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
@@ -182,15 +186,30 @@ Filter on `status` `"error"` for the errored mutants: their count equals `summar
 When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
 `Class: first non-blank line of the message`, or the class alone when the message is blank, at
 most 500 characters (a longer line is cut and ends in `...`). Example:
-`"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
-such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest database connection or
+lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
+examples gives
+`RSpec reported an error outside its examples, for example a spec file that raised while it loaded`.
+A `--matrix` early end after a serial database error gives
+`a test failed with a database error, then the child ended before the suite finished`
+(schema `1.10`, #417). Other errors keep their fixed text, such as
+`child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
 A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
-(schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
-errors outside examples, the `--matrix` early end, and `--test-command`.
+(schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
+(#417 items 5–6).
 
-`details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
-password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
-own, from another setting, stays visible (#341 tracks redaction gaps). An exception message can hold
+`details` is redacted. Redaction replaces the password of `DATABASE_URL` from the environment and from
+these dotenv files: `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`,
+and `.env.test.local`. A double-quoted value may span lines. A backslash before `$` is a literal
+dollar. An invalid byte does not stop that read. A Ruby process that `--test-command` starts
+hides a password that process assigns itself. It also replaces the password in any
+`scheme://user:password@host` URL.
+A one-character password, a password equal to the username, the host, or the database name, and a
+common word such as `password` or `test` stay visible outside a URL and outside a `password=` parameter.
+Any other form longer than one character is hidden only as a whole token, with no ASCII letter, digit,
+or underscore touching either edge, when it has at most three characters or is made only of ASCII
+letters, digits, and underscores. A longer form that contains another character is hidden wherever it
+appears. A password from another setting stays visible. An exception message can hold
 other secrets too, so treat the report like a log. A message
 can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
 between two runs with the same verdicts.
@@ -276,13 +295,14 @@ arrived out of order names no tests (`killed_by` and `ran` are empty).
 
 `status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
 later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
-`"killed"` for an ordinary test failure, or `"error"` for a Minitest database connection or lock failure.
+`"killed"` for an ordinary test failure, or `"error"` for a Minitest or RSpec database connection or lock failure.
 A database failure is not a killer and leaves the row incomplete, even when an earlier assertion
 already killed the mutant. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
 `after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
 keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
 too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
-still stops the run, even in a suite that also has a parallel class.
+still stops the run, even in a suite that also has a parallel class. The database-error choice among those
+queued tests follows the queue order, not the order the threads finish (#347).
 
 Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
 delete them one at a time and re-run after each. Every answer covers this run's mutants only.
