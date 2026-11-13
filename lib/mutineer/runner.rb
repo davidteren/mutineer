@@ -30,12 +30,20 @@ module Mutineer
     #   in the original `cause` chain, outermost first.
     attr_reader :causes
 
+    # @return [String, nil] an extra line when a source raises NameError
+    #   (including NoMethodError) and the run has no boot file. Nil for
+    #   every other load failure, including a NameError in the boot file
+    #   or a `require:` file.
+    attr_reader :hint
+
     # @param message [String] the redacted message.
     # @param causes [Array<String>] see {#causes}.
+    # @param hint [String, nil] see {#hint}.
     # @return [ProjectLoadError]
-    def initialize(message, causes: [])
+    def initialize(message, causes: [], hint: nil)
       super(message)
       @causes = causes
+      @hint = hint
     end
   end
 
@@ -89,23 +97,18 @@ module Mutineer
       end
 
       # Both strategies (whole-file reload and redefine, #279) write
-      # .mutineer_mutant*.rb into each source dir (so require_relative and
-      # __dir__ resolve). Redefine falls back to the system temp dir for a
-      # read-only source dir, which this sweep does not reach; the OS cleans
-      # it, as in 1.x. A SIGKILL'd child skips the tempfile's
-      # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
-      # PARENT sweeps each source dir before and after the run. Orphans are
-      # impossible after a normal run. The first sweep runs before the boot: a
-      # file an older version left without the dot would stop Zeitwerk (#253).
+      # .mutineer_mutant*.rb into each source dir. Redefine falls back to the
+      # system temp dir for a read-only source dir, which this sweep does not
+      # reach; the OS cleans it, as in 1.x. The snippet rewrites `__dir__`,
+      # `__FILE__`, and `require_relative` to the original file, so that
+      # fallback does not false-kill (#339). A SIGKILL'd child skips the
+      # tempfile's ensure-unlink, orphaning it. `ensure` is unreliable vs
+      # SIGKILL, so the PARENT sweeps each source dir before and after the run.
+      # Orphans are impossible after a normal run. The first sweep runs before
+      # the boot: a file an older version left without the dot would stop
+      # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
-      if config.strategy == "redefine"
-        dirs.reject { |d| File.writable?(d) }.each do |d|
-          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
-               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
-               "Make the directory writable to avoid this (#339)."
-        end
-      end
 
       # Before boot and `--require`, so a `config.seed=` in those files is
       # recorded and every forked child keeps it (#282).
@@ -136,7 +139,13 @@ module Mutineer
         end
         require_project_file(config.project_root, config.boot)
       else
-        config.sources.each { |f| require_project_file(config.project_root, f) }
+        # No boot file, so each source loads here, and require: files load
+        # after this loop (#217). A NameError means the source named
+        # something that is not loaded yet; the hint points at boot:, which
+        # loads first (#376).
+        config.sources.each do |f|
+          require_project_file(config.project_root, f, on_name_error: SOURCE_NEEDS_BOOT_HINT)
+        end
       end
       config.require_paths.each { |f| require_project_file(config.project_root, f) }
       preload_owners(config) if config.boot && config.strategy == "redefine"
@@ -530,6 +539,14 @@ module Mutineer
     end
     private_class_method :prepare_rspec_seed!
 
+    # Extra line when a source raises NameError and the run has no boot file.
+    # `require:` files load after the sources, so they cannot define names the
+    # source needs while it loads (#376, #217).
+    SOURCE_NEEDS_BOOT_HINT = "a source that needs other files loaded first takes them from " \
+                             "`boot:` (or `--boot`), which loads before the sources; " \
+                             "`require:` files load after them"
+    private_constant :SOURCE_NEEDS_BOOT_HINT
+
     # Require one project file in the tool process. A failure becomes a
     # {ProjectLoadError} whose message, and each cause in its list, is
     # redacted. The original backtrace is kept; the cause is not, because
@@ -538,10 +555,13 @@ module Mutineer
     # @api private
     # @param root [String] the project root.
     # @param path [String] the path as the user gave it.
+    # @param on_name_error [String, nil] {ProjectLoadError#hint} when the file
+    #   raises NameError. Sources pass {SOURCE_NEEDS_BOOT_HINT}. The boot
+    #   file and `require:` files pass nil: those errors are not this case.
     # @raise [Errno::ENOENT] when the requested file does not exist.
     # @raise [ProjectLoadError] when the file raises while it loads.
     # @return [void]
-    def self.require_project_file(root, path)
+    def self.require_project_file(root, path, on_name_error: nil)
       # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
       # stays a usage error (exit 2), not a load failure.
       file = project_file!(root, path)
@@ -557,7 +577,13 @@ module Mutineer
           causes << Redaction.describe(cause)
           cause = cause.cause
         end
-        error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}", causes: causes)
+        # The exception that escaped, not an exception it wrapped. A
+        # RuntimeError whose cause is a NameError is a different failure.
+        hint = on_name_error if e.is_a?(NameError)
+        error = ProjectLoadError.new(
+          "cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}",
+          causes: causes, hint: hint
+        )
         error.set_backtrace(e.backtrace)
         raise error, cause: nil
       end

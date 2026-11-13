@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "../child_cause"
 require_relative "../kill_channel"
 require_relative "rspec_seed"
 
@@ -69,7 +70,13 @@ module Mutineer
         # early, so `end` needs a reported outcome for every planned example.
         KillChannel.write_end(record_to) if record_to && KillFormatter.last&.saw_every_example?
 
-        status.zero? ? 0 : failure_code
+        return 0 if status.zero?
+
+        code = failure_code
+        # Fixed cause when RSpec failed outside examples (#417 / KTD5). Write
+        # here so failure_code stays a pure status helper.
+        ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES) if code == 2
+        code
       ensure
         FileOrder.rank = nil
       end

@@ -39,7 +39,9 @@ module Mutineer
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
-  #              (an "error" whose child raised adds "details":"Class: message", #388)
+  #              (an "error" adds "details" when the child sent a cause line:
+  #               a raise → "Class: message" (#388); an in-test database error →
+  #               "a test failed with a database error: Class: message" (#417))
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -354,6 +356,7 @@ module Mutineer
         pid = fork do
           child = Process.pid
           cause_rd.close
+          ChildCause.arm!(cause_wr, child)
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -380,6 +383,8 @@ module Mutineer
               @errio.puts("[daemon-child] #{describe_error(e)}")
               ChildCause.write(cause_wr, e, child)
               2
+            ensure
+              ChildCause.disarm!
             end
           exit!(code)
         end
