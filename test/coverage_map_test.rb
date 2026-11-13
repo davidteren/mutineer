@@ -652,7 +652,7 @@ class CoverageMapTest < Minitest::Test
     cases = {
       "an unchanged project" => [->(_root, _cache) {}, nil],
       "a changed test" => [->(root, _cache) { File.write(File.join(root, "beta_test.rb"), "\n", mode: "a") },
-                           /tests, --require files, boot file, load paths, framework or Minitest seed differ/],
+                           /tests, --require files, boot file, load paths, framework or test seed differ/],
       "a changed source" => [->(root, _cache) { File.write(File.join(root, "alpha.rb"), "\n", mode: "a") },
                              /alpha\.rb changed since the capture/],
       "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
@@ -980,21 +980,34 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
-  # The seed sets the Minitest test order, so a map captured under another
-  # seed is not reused (#282). RSpec does not use it.
+  # The seed sets the test order, so a map captured under another seed is not
+  # reused (#282). Minitest reads SEED. RSpec reads the pinned seed and SPEC_OPTS.
   def test_digest_is_minitest_seed_sensitive
     Dir.mktmpdir do |dir|
-      digest = lambda do |seed, framework|
+      digest = lambda do |seed, framework, spec_opts: nil|
         prior = ENV.fetch("SEED", nil)
+        prior_opts = ENV.fetch("SPEC_OPTS", nil)
         seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+        spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
         Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
                                   framework: framework).send(:compute_digest)
       ensure
         prior ? ENV["SEED"] = prior : ENV.delete("SEED")
+        prior_opts ? ENV["SPEC_OPTS"] = prior_opts : ENV.delete("SPEC_OPTS")
       end
       refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest")
       assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest")
       assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec")
+      refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2")
+      bare = digest.call(nil, "rspec")
+      File.write(File.join(dir, ".rspec"), "--seed 7\n")
+      with_file = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                            framework: "rspec").send(:compute_digest)
+      refute_equal bare, with_file
+      File.write(File.join(dir, ".rspec"), "--seed 8\n")
+      changed = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                          framework: "rspec").send(:compute_digest)
+      refute_equal with_file, changed
     end
   end
 
