@@ -7,7 +7,8 @@ module Mutineer
   # child and a subprocess inherit the pipe. The child starts its own copier
   # so a DATABASE_URL it sets is hidden (#341). Before a fork child execs, its
   # copier stops, so the program writes to the parent's pipe and the parent
-  # redacts it with the parent's environment.
+  # redacts it with the parent's environment. A program that would run with
+  # a DATABASE_URL the parent does not know writes to the null device.
   #
   # Stdlib only, so the app-side daemon can load this file. A chunk with no
   # password is copied unchanged, including its bytes.
@@ -42,8 +43,8 @@ module Mutineer
     # reads. Kernel#exec and Process.exec are separate, so both are wrapped.
     module ExecHook
       # @return [void] does not return when exec succeeds.
-      def exec(*)
-        OutputFilter.before_exec
+      def exec(*args)
+        OutputFilter.before_exec(args)
         super
       end
     end
@@ -158,6 +159,8 @@ module Mutineer
       names = @streams
       reads = (@readers || {}).keys.dup
       @fork_child = true
+      # The parent's copier redacts with this URL, read before child code runs.
+      @parent_url = ENV["DATABASE_URL"].to_s
       @installed = false
       @thread = nil
       @stopping = false
@@ -174,10 +177,21 @@ module Mutineer
     # In a fork child, put the parent's pipe back on stdout and stderr and
     # flush this copier. Does nothing in the process that started the filter:
     # its saved descriptors are the real terminal, which is not redacted.
+    # When the program would run with a DATABASE_URL the parent does not
+    # know, its output goes to the null device instead: the parent could not
+    # hide that password.
     #
+    # @param args [Array] the arguments given to exec; a leading Hash is its
+    #   environment.
     # @return [void]
-    def before_exec
-      uninstall if @fork_child
+    def before_exec(args = [])
+      return unless @fork_child
+
+      env = args.first.is_a?(Hash) ? args.first : {}
+      url = (env.key?("DATABASE_URL") ? env["DATABASE_URL"] : ENV.fetch("DATABASE_URL", nil)).to_s
+      known = url.empty? || url == @parent_url.to_s || Redaction.extra_urls.include?(url)
+      uninstall
+      silence_stdio unless known
     end
 
     # Point stdout and stderr at the null device. Used when this fork cannot

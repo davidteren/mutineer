@@ -130,6 +130,29 @@ class OutputFilterTest < Minitest::Test
     refute_includes err, "s3cret"
   end
 
+  # The parent's copier cannot hide a password only the child knows. A child
+  # that execs with its own DATABASE_URL, in ENV or in exec's env hash, writes
+  # nothing to the parent's pipe.
+  def test_a_fork_child_that_execs_with_its_own_url_prints_nothing
+    ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+    secret = ["child", "only", "pw"].join
+    child_url = "postgres://u:#{secret}@h/db"
+    script = "STDOUT.puts %(execd-out #{secret}); STDERR.puts %(execd-err #{secret})"
+    [
+      -> { ENV["DATABASE_URL"] = child_url; exec(RbConfig.ruby, "-e", script) },
+      -> { Process.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) }
+    ].each do |child|
+      out, err = captured do
+        Mutineer::OutputFilter.install
+        pid = fork { child.call }
+        Process.waitpid(pid)
+      end
+
+      refute_includes out + err, secret
+      refute_includes out + err, "execd"
+    end
+  end
+
   # The report is larger than a pipe buffer and the reader waits longer than
   # the old shutdown kill. Every byte still arrives.
   def test_uninstall_writes_a_report_a_slow_reader_has_not_taken
