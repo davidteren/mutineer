@@ -147,17 +147,20 @@ All notable changes to this project are documented here. The format is based on
   redacted in that process. A password that contains a newline stays
   together until a newline follows it or the stream ends, so neither half is
   printed. The daemon does not boot when stderr cannot be redirected. A fork
-  whose own copier cannot start writes nothing further. Shutdown writes every byte already
+  whose own copier cannot start writes nothing further. A fork that execs a
+  program hands it the parent's pipe, so that output is still shown and
+  redacted. Shutdown writes every byte already
   queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
   password the boot file assigns is hidden even when the tool's environment
   does not have it. `--test-command` output is redacted with the tool's
   `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project
   (`.env`, `.env.local`, `.env.development`, `.env.development.local`,
   `.env.test`, `.env.test.local`). A double-quoted value may span lines. A
+  quote that never closes is a plain value on its own line, as in dotenv. A
   backslash before `$` is a literal dollar. An invalid byte does not stop
   the read. A bare password set only inside the test
-  command, and not in those files or the environment, stays visible. A
-  password inside a URL is still hidden.
+  command, and not in those files or the environment, stays visible (#457).
+  A password inside a URL is still hidden.
 - **Redaction no longer blanks a host, a database name, one character, or a
   common word (#341).** A password that equals the host or the database name
   stays readable outside a URL, as a password that equals the username

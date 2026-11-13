@@ -79,27 +79,20 @@ class DaemonRedactionTest < Minitest::Test
     Mutineer::DaemonServer.instance_variable_set(:@output, out)
     Mutineer::DaemonServer.instance_variable_set(:@protocol, StringIO.new)
     status = nil
-    # Newest prepend wins, including over ExitHook, and later exit! calls
-    # still reach the real method when this flag is unset.
-    Kernel.prepend(Module.new do
-      def exit!(code = true)
-        throw :boot_exit, code if Thread.current[:catch_boot_exit]
-
-        super
-      end
-    end)
-    Thread.current[:catch_boot_exit] = true
+    # A singleton stub, removed after the block, so no later test sees it.
+    exit_stub = ->(code = true) { throw :boot_exit, code }
     Mutineer::OutputFilter.stub(:install, :failed) do
-      status = catch(:boot_exit) do
-        Mutineer::DaemonServer.send(:boot!, { "project_root" => dir, "framework" => "minitest" })
-        nil
+      Mutineer::DaemonServer.stub(:exit!, exit_stub) do
+        status = catch(:boot_exit) do
+          Mutineer::DaemonServer.send(:boot!, { "project_root" => dir, "framework" => "minitest" })
+          nil
+        end
       end
     end
 
     assert_equal 1, status
     assert_includes out.string, "password"
   ensure
-    Thread.current[:catch_boot_exit] = false
     Dir.chdir(dir) if dir
     Mutineer::DaemonServer.instance_variable_set(:@output, nil)
     Mutineer::DaemonServer.instance_variable_set(:@protocol, nil)
@@ -265,6 +258,22 @@ class DaemonRedactionTest < Minitest::Test
     assert_includes out, "postgres://u:[REDACTED]@ho st/db"
     assert_includes out, "second line"
     refute_includes out, "s3cret"
+  end
+
+  # A long line is scanned once its newline arrives, not on every 4 KiB read,
+  # so the drain stays linear in the line length. The line fits in one pipe
+  # buffer, because the helper writes before it reads.
+  def test_daemon_stderr_drain_scans_a_long_line_once
+    real = Mutineer::Redaction.method(:take_redactable)
+    calls = 0
+    counting = lambda do |buffer, flush:|
+      calls += 1
+      real.call(buffer, flush: flush)
+    end
+    out = Mutineer::Redaction.stub(:take_redactable, counting) { drain("#{"A" * 60_000}\n") }
+
+    assert_equal 60_001, out.bytesize
+    assert_operator calls, :<=, 2
   end
 
   def test_daemon_stderr_drain_survives_invalid_bytes

@@ -124,4 +124,29 @@ class DatabaseUrlsTest < Minitest::Test
       assert_equal [head], Mutineer::DatabaseUrls.from_file(path)
     end
   end
+
+  # The file is read in binary. A BOM and a non-ASCII comment must not raise.
+  def test_a_bom_and_a_non_ascii_comment_in_a_file
+    url = ["postgres://u:", "s3cret", "@h/db"].join
+    Dir.mktmpdir do |root|
+      path = File.join(root, ".env")
+      File.write(path, "\uFEFF# caf\u00E9 \u{1F600}\nDATABASE_URL=#{url}\n")
+
+      assert_equal [url], Mutineer::DatabaseUrls.from_file(path)
+    end
+  end
+
+  # A quote that never closes is a plain value on its line, as in dotenv. The
+  # DATABASE_URL on a later line is still read.
+  def test_an_unterminated_quote_does_not_swallow_later_lines
+    url = ["postgres://u:", "s3cret", "@h/db"].join
+    Dir.mktmpdir do |root|
+      ['TITLE="My app', "TITLE='My app", 'WIN="C:\\tmp\\"'].each do |bad|
+        path = File.join(root, ".env")
+        File.write(path, "#{bad}\nDATABASE_URL=#{url}\nOTHER=1\n")
+
+        assert_equal [url], Mutineer::DatabaseUrls.from_file(path), bad
+      end
+    end
+  end
 end

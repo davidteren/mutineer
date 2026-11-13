@@ -32,7 +32,8 @@ module Mutineer
     end
 
     # DATABASE_URL values in one file. Every line is read. A double-quoted
-    # value may continue on later lines until its closing quote. `${NAME}` and
+    # value may continue on later lines until its closing quote. A quote that
+    # never closes is a plain value on its own line, as in dotenv. `${NAME}` and
     # `$NAME` expand from an earlier assignment in the file, or from the
     # environment when that variable is already set. A backslash before `$`
     # is a literal dollar. A single-quoted value is not expanded. An invalid
@@ -47,24 +48,30 @@ module Mutineer
 
       vars = {}
       urls = []
-      pending = nil
-      File.open(path, "rb") do |io|
-        io.each_line do |line|
-          text = utf8_line(line)
-          chunk = pending ? pending + text : text
+      lines = File.open(path, "rb") { |io| io.each_line.map { |line| utf8_line(line) } }
+      index = 0
+      while index < lines.size
+        stop = index
+        chunk = lines[index]
+        parsed = parse_assignment(chunk)
+        while parsed == :open && stop + 1 < lines.size
+          stop += 1
+          chunk += lines[stop]
           parsed = parse_assignment(chunk)
-          if parsed == :open
-            pending = chunk
-            next
-          end
-          pending = nil
-          next unless parsed.is_a?(Array)
-
-          key, raw, expand_value = parsed
-          value = expand_value ? expand(raw, vars) : raw
-          vars[key] = value
-          urls << value if key == "DATABASE_URL" && !value.empty?
         end
+        if parsed == :open
+          # A quote that never closes: dotenv reads that line as a plain
+          # value, and the lines after it as their own assignments.
+          stop = index
+          parsed = parse_assignment(lines[index], plain: true)
+        end
+        index = stop + 1
+        next unless parsed.is_a?(Array)
+
+        key, raw, expand_value = parsed
+        value = expand_value ? expand(raw, vars) : raw
+        vars[key] = value
+        urls << value if key == "DATABASE_URL" && !value.empty?
       end
       urls
     rescue SystemCallError
@@ -85,11 +92,13 @@ module Mutineer
 
     # One `KEY=value` assignment. The third element is false for a
     # single-quoted value, which dotenv does not expand. `:open` means a
-    # quoted value has not reached its closing quote yet.
+    # quoted value has not reached its closing quote yet. `plain` reads a
+    # leading quote as part of an unquoted value.
     #
     # @param line [String]
+    # @param plain [Boolean]
     # @return [Array(String, String, Boolean), Symbol, nil]
-    def parse_assignment(line)
+    def parse_assignment(line, plain: false)
       text = utf8_line(line).sub(/\A\uFEFF/, "").strip
       return nil if text.empty? || text.start_with?("#")
 
@@ -99,12 +108,12 @@ module Mutineer
 
       key = match[1]
       raw = match[2]
-      if raw.start_with?("'")
+      if !plain && raw.start_with?("'")
         stop = closing_quote(raw, "'")
         return :open unless stop
 
         [key, raw[1...stop], false]
-      elsif raw.start_with?('"')
+      elsif !plain && raw.start_with?('"')
         stop = closing_quote(raw, '"')
         return :open unless stop
 

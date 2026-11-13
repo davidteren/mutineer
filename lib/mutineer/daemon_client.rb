@@ -473,6 +473,10 @@ module Mutineer
           next
         end
         pending << chunk.b
+        # Nothing new can be emitted before a newline, so a long line is not
+        # rescanned on every read.
+        next unless chunk.include?("\n")
+
         ready, pending = Redaction.take_redactable(pending, flush: false)
         writable &&= write_redacted(ready) if writable && !ready.empty?
       end

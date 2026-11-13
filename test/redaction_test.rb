@@ -313,6 +313,11 @@ class RedactionTest < Minitest::Test
     partial = +"leak foo\n"
     _ready, held = Mutineer::Redaction.take_redactable(partial, flush: false)
     assert_includes held, "foo\n"
+    # A read that ends after the whole form but before its line's newline.
+    straddle = +"leak foo\nbar e"
+    split_ready, split_rest = Mutineer::Redaction.take_redactable(straddle, flush: false)
+    assert_empty split_ready
+    assert_equal straddle, split_rest
   ensure
     previous ? ENV["DATABASE_URL"] = previous : ENV.delete("DATABASE_URL")
     Mutineer::Redaction.instance_variable_set(:@newline_forms, nil)

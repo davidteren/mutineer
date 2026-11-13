@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "minitest/mock"
 require "open3"
 require "rbconfig"
 require "stringio"
@@ -98,11 +99,12 @@ class OutputFilterTest < Minitest::Test
 
   def test_a_fork_child_that_cannot_start_its_copier_prints_nothing
     secret = ["s3", "cret"].join
-    _out, err = captured do
+    out, err = captured do
       Mutineer::OutputFilter.install(streams: [:stderr])
       Mutineer::OutputFilter.stub(:stream_io, ->(*) { raise IOError, "closed" }) do
         pid = fork do
           ENV["DATABASE_URL"] = "postgres://u:#{secret}@h/db"
+          STDOUT.puts "child-out #{secret} end"
           STDERR.puts "child #{secret} end"
           exit!(0)
         end
@@ -110,8 +112,22 @@ class OutputFilterTest < Minitest::Test
       end
     end
 
-    refute_includes err, secret
-    refute_includes err, "child"
+    refute_includes out + err, secret
+    refute_includes out + err, "child"
+  end
+
+  # A fork child's copier does not survive exec. The program writes to the
+  # parent's pipe, and the parent redacts it with the parent's environment.
+  def test_a_fork_child_that_execs_still_reaches_the_parent_pipe
+    ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+    _out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      pid = fork { exec(RbConfig.ruby, "-e", "STDERR.puts %(execd s3cret end)") }
+      Process.waitpid(pid)
+    end
+
+    assert_includes err, "execd [REDACTED] end"
+    refute_includes err, "s3cret"
   end
 
   # The report is larger than a pipe buffer and the reader waits longer than

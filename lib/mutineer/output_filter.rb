@@ -5,8 +5,9 @@ require_relative "redaction"
 module Mutineer
   # Copies the process's stdout and stderr through {Redaction.text}. A fork
   # child and a subprocess inherit the pipe. The child starts its own copier
-  # so a DATABASE_URL it sets is hidden (#341). A program it execs still
-  # writes to the pipe, and this process redacts with its own environment.
+  # so a DATABASE_URL it sets is hidden (#341). Before a fork child execs, its
+  # copier stops, so the program writes to the parent's pipe and the parent
+  # redacts it with the parent's environment.
   #
   # Stdlib only, so the app-side daemon can load this file. A chunk with no
   # password is copied unchanged, including its bytes.
@@ -33,6 +34,17 @@ module Mutineer
           OutputFilter.after_fork! if pid.nil?
           pid
         end
+      end
+    end
+
+    # Stops a fork child's copier before exec. The copier thread and its read
+    # end do not survive exec, so the program would write to a pipe nobody
+    # reads. Kernel#exec and Process.exec are separate, so both are wrapped.
+    module ExecHook
+      # @return [void] does not return when exec succeeds.
+      def exec(*)
+        OutputFilter.before_exec
+        super
       end
     end
 
@@ -145,6 +157,7 @@ module Mutineer
 
       names = @streams
       reads = (@readers || {}).keys.dup
+      @fork_child = true
       @installed = false
       @thread = nil
       @stopping = false
@@ -156,6 +169,15 @@ module Mutineer
       silence_stdio unless install(streams: names || [:stderr]) == :started
     rescue StandardError
       silence_stdio
+    end
+
+    # In a fork child, put the parent's pipe back on stdout and stderr and
+    # flush this copier. Does nothing in the process that started the filter:
+    # its saved descriptors are the real terminal, which is not redacted.
+    #
+    # @return [void]
+    def before_exec
+      uninstall if @fork_child
     end
 
     # Point stdout and stderr at the null device. Used when this fork cannot
@@ -191,7 +213,7 @@ module Mutineer
       at_exit { uninstall }
     end
 
-    # Wrap fork and exit! once per process.
+    # Wrap fork and exec once per process.
     #
     # @return [void]
     def hook_fork
@@ -200,6 +222,8 @@ module Mutineer
       @fork_hooked = true
       Kernel.prepend(ForkHook)
       Process.singleton_class.prepend(ForkHook)
+      Kernel.prepend(ExecHook)
+      Process.singleton_class.prepend(ExecHook)
     end
 
     # @return [void]
@@ -237,7 +261,9 @@ module Mutineer
           next if chunk == :wait_readable
 
           pending[io] << chunk.b
-          flush_pending(io, pending, flush: false)
+          # Nothing new can be emitted before a newline, so a long line is not
+          # rescanned on every read.
+          flush_pending(io, pending, flush: false) if chunk.include?("\n")
         end
       end
       open.each { |io| flush_pending(io, pending, flush: true) }
