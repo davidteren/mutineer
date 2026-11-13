@@ -76,6 +76,7 @@ mutineer run --dry-run lib/discount.rb
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
+| `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb` |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs (default: 10); raise it for a slow suite |
 | `--dry-run` | List candidate mutations without executing |

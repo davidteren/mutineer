@@ -85,6 +85,32 @@ class StatementLinesTest < Minitest::Test
     assert_equal (2..5).to_a, lines_at(source, "2")
   end
 
+  # #435: a one-line block shares the call's line. Strict mode drops that line,
+  # because other code on it can run without the block. The dropped line is
+  # what ran_at_load? uses so the block's mutants match the call's.
+  def test_a_one_line_block_shares_the_call_line_and_conditional_code_does_not
+    source = <<~'RUBY'
+      def greets(*names)
+        names.each { |name| define_method("greet_#{name}") { "Hello, #{name}" } }
+      end
+    RUBY
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    ["greet_", "Hello, "].each do |snippet|
+      offset = source.index(snippet)
+      assert_empty Mutineer::StatementLines.for(def_node, source, offset), snippet
+      assert_equal [2], Mutineer::StatementLines.shared_lines(def_node, source, offset), snippet
+    end
+    each = source.index("each")
+    assert_equal [2], Mutineer::StatementLines.for(def_node, source, each)
+    assert_empty Mutineer::StatementLines.shared_lines(def_node, source, each)
+
+    conditional = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    def_node = Mutineer::Parser.parse_string(conditional).value.statements.body.first
+    offset = conditional.index("7 * 6")
+    assert_empty Mutineer::StatementLines.for(def_node, conditional, offset)
+    assert_empty Mutineer::StatementLines.shared_lines(def_node, conditional, offset)
+  end
+
   def test_a_statement_inside_a_block_is_its_own_statement
     source = <<~'RUBY'
       def f(list)
