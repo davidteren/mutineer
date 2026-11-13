@@ -149,7 +149,9 @@ All notable changes to this project are documented here. The format is based on
   A line the test runs after the sources load stays credited to that test,
   including the `def` line of a method the test calls. Boot and daemon runs
   already omitted the load lines and do not change. A coverage cache saved
-  before this change rebuilds once.
+  before this change rebuilds once. So does a cache whose paired tests no
+  longer match, including when an exact spec that the run did not select
+  appears or disappears and replaces a split test.
   **Score effect.** The exact-survivor oracle does not change. A reload kill
   of a line that runs only at load stays a kill when the paired test is in
   the run (`Catalog.price`, and a hook def the file calls while it loads).

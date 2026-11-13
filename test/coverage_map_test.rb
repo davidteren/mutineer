@@ -1100,6 +1100,49 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # infer_tests drops split tests when an exact spec exists, even if the run
+  # did not select that spec. The content digest does not see it, so the saved
+  # pairing has to. A hit would otherwise keep the split test as the only
+  # owner of a load-only line.
+  def test_an_unselected_exact_spec_rebuilds_the_load_line_map
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      FileUtils.mkdir_p(File.join(dir, "test"))
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      File.write(File.join(dir, "lib/price.rb"), "class SplitPrice\n  LOADED = 1\nend\n")
+      %w[price_unit mail].each do |name|
+        File.write(File.join(dir, "test/#{name}_test.rb"), <<~RUBY)
+          require "minitest/autorun"
+          class Split#{name.capitalize}Test < Minitest::Test
+            def test_ok; assert_equal 1, 1; end
+          end
+        RUBY
+      end
+      cache = File.join(dir, "cache")
+      tests = %w[test/price_unit_test.rb test/mail_test.rb]
+      src = File.join(dir, "lib/price.rb")
+      mk = lambda do
+        Mutineer::CoverageMap.new(source_paths: ["lib/price.rb"], test_paths: tests,
+                                  cache_dir: cache, project_root: dir).build_or_load
+      end
+
+      first = nil
+      capture_io { first = mk.call }
+      assert first.phase_a_ran
+      assert_equal %w[test/price_unit_test.rb], first.tests_for(src, 1)
+      second = nil
+      capture_io { second = mk.call }
+      refute second.phase_a_ran, "nothing on disk that pairing reads has changed"
+
+      File.write(File.join(dir, "spec/price_spec.rb"), "RSpec.describe(SplitPrice)\n")
+      rebuilt = nil
+      capture_io { rebuilt = mk.call }
+      assert rebuilt.phase_a_ran, "the spec replaces the split test, so the map must be captured again"
+      assert_equal tests.sort, rebuilt.tests_for(src, 1).sort,
+                   "no selected test pairs, so every test keeps the load-only line"
+    end
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
