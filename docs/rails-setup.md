@@ -53,9 +53,9 @@ tests:
 See [Extra tests for a source](cli.md#extra-tests-for-a-source) for cost notes.
 
 Both strategies write a hidden `.mutineer_mutant*.rb` beside the source.
-Under `--strategy redefine`, a read-only directory falls back to a system temporary file; `reload` needs a writable source directory.
-Mutineer warns that `__dir__` or `require_relative` can then cause false kills and an inflated score.
-Make the source directory writable to avoid this problem, tracked in issue #339.
+Under `--strategy redefine`, a read-only directory falls back to a system temporary file.
+The method still resolves `__dir__`, `__FILE__`, and `require_relative` against the original source file, so those mutants are not false kills.
+`reload`, in process and on the daemon, does not fall back. It needs a writable source directory, and a read-only directory scores the mutant `error`, which stays out of the score.
 
 Code executed during boot or class loading runs before mutation. Forked tests do not repeat it.
 Examples include constant-building calls, `to_prepare` initializers, and source calls from `.mutineer.yml` `require:` files.

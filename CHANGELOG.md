@@ -157,6 +157,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--strategy redefine` no longer false-kills path anchors in a read-only
+  source directory (#339).** Redefine loads the mutated method from a hidden
+  file. When that directory is not writable, the file is in the system temp
+  directory. `__dir__`, `__FILE__`, and `require_relative` then pointed there,
+  so every mutant raised `ENOENT` or `LoadError` and scored `killed`. The
+  snippet now resolves those against the original source file, including
+  calls on `self` and `Kernel` and `send` with a literal name, whether the
+  directory is writable or not. A leading `~` stays a path segment, and the
+  load does not call an instance method named `require`. A symlinked source keeps the loaded path for
+  `__FILE__` and the real directory for `__dir__` and `require_relative`. A
+  test that checks `__FILE__` against the source path used to fail for every
+  redefined mutant. It now fails only when the mutation changes the result,
+  so a redefine score can go down. Reload, in process and on the daemon,
+  still needs a writable directory: the write fails and the mutant scores
+  `error`, which stays out of the score. The read-only warning is gone.
 - **A killed mutant stays killed when the failure message holds raw bytes (#434).**
   Rails' `assert_response` appends a short response body as raw bytes.
   The reporter prints that message on the silenced stdout.
