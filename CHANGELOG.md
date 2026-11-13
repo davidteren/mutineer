@@ -255,8 +255,8 @@ All notable changes to this project are documented here. The format is based on
   the second copy.
   **Score change:** a Rails model whose test counts those callbacks can
   now show survivors that were false kills, so its score can go down.
-- **An in-process `--since` run with no mutant on a changed line skips the coverage map (#396).**
-  It no longer boots the app or runs the unmutated suite to say there is nothing to test.
+- **Behavior change.** An in-process `--since` run with no mutant on a changed line
+  skips the coverage map (#396). It no longer boots the app or runs the unmutated suite to say there is nothing to test.
   A red suite or a boot file that fails no longer fails that run.
   A missing `--boot` or `--require` file is still a usage error.
   Thanks to @dannyward630.
