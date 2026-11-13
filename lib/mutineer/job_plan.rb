@@ -95,8 +95,8 @@ module Mutineer
       declined = Hash.new(0)
       # [id_path, def offset] => nil, or the method's entry when it got no mutation.
       subjects = {}
-      Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
+      Project.discover(config.sources, only: config.only, source_map: source_map).each do |subject|
+        source = source_map.fetch(subject.file)
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         # A repeated operator name runs once, so its declines count once.
         mutations = operator_classes.uniq.flat_map do |klass|

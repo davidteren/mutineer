@@ -43,6 +43,78 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :survived?, "expected survived, got #{result.status} (#{result.details})"
   end
 
+  def test_run_uses_the_declared_source_encoding_before_mutation
+    Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+      src = File.join(dir, "encoding_calc.rb")
+      File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+        # encoding: ISO-8859-1
+        class Latin1EncodingExample
+          def value
+            # caf\u00E9
+            'caf\u00E9'.upcase
+          end
+        end
+      RUBY
+
+      parsed_source = Mutineer::Parser.parse_file(src).source.source
+      subject = Mutineer::Project.discover([src]).first
+      mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+      result = nil
+      coverage_selection = lambda do |_file, _mutation, _subject, source, _coverage_map|
+        assert_equal Encoding::ISO_8859_1, source.encoding
+        assert_includes source.b, "# caf\u00E9".encode(Encoding::ISO_8859_1).b
+        [:verdict, Mutineer::Result.killed]
+      end
+
+      Mutineer::JobPlan.stub(:coverage_selection, coverage_selection) do
+        result = Mutineer::Runner.run(mutation, source_file: src, subject: subject)
+      end
+
+      assert_predicate result, :killed?
+    end
+  end
+
+  def test_latin1_source_mutation_runs_with_reload_and_redefine
+    skip "in-process mutation needs fork support" unless Process.respond_to?(:fork)
+
+    %w[reload redefine].each do |strategy|
+      Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+        src = File.join(dir, "encoding_calc.rb")
+        test = File.join(dir, "encoding_calc_test.rb")
+        File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+          # encoding: ISO-8859-1
+          class Latin1EncodingExample
+            def value
+              # caf\u00E9
+              'caf\u00E9'.upcase
+            end
+          end
+        RUBY
+        File.write(test, <<~RUBY)
+          require "minitest/autorun"
+          require_relative "encoding_calc"
+
+          class Latin1EncodingExampleTest < Minitest::Test
+            def test_value
+              assert_equal "CAF\u00C9", Latin1EncodingExample.new.value.encode(Encoding::UTF_8)
+            end
+          end
+        RUBY
+
+        parsed_source = Mutineer::Parser.parse_file(src).source.source
+        subject = Mutineer::Project.discover([src]).first
+        mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+        require src
+
+        Mutineer::JobPlan.stub(:coverage_selection, [:run, [test]]) do
+          result = Mutineer::Runner.run(mutation, source_file: src, subject: subject,
+                                        strategy: strategy)
+          assert_predicate result, :killed?, "#{strategy}: expected killed, got #{result.status} (#{result.details})"
+        end
+      end
+    end
+  end
+
   # The marker of the second test shows which path ran it. The first test
   # writes the seed, which the mutant run pins.
   def test_mutant_run_stops_at_first_failure_but_coverage_capture_does_not
@@ -483,6 +555,116 @@ class RunnerTest < Minitest::Test
 
     config.since = nil
     assert_equal [jobs, ignored, nil], Mutineer::JobPlan.scope_since(jobs, ignored, source_map, config)
+  end
+
+  # #396: an empty `--since` scope returns before the app boot and coverage
+  # capture, while preserving the pre-scope mutant count for the report.
+  def test_empty_since_returns_before_boot_and_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since") do |dir|
+      source = File.join(dir, "calculator.rb")
+      test = File.join(dir, "calculator_test.rb")
+      boot = File.join(dir, "boot.rb")
+      marker = File.join(dir, "booted")
+      File.binwrite(source, "class EmptySinceCalculator\r\n  def add(a, b)\r\n    a + b\r\n  end\r\nend\r\n")
+      File.write(test, "raise 'the unchanged test suite must not run'\n")
+      File.write(boot, "File.write(#{marker.dump}, 'booted')\n")
+      config = Mutineer::Config.new(sources: [source], tests: [test], boot: boot, since: "HEAD",
+                                    operators: ["arithmetic"], project_root: dir)
+
+      Mutineer::ChangedLines.stub(:for, {}) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          _aggregate, _source_map, extras = Mutineer::Runner.execute(config)
+          assert_operator extras[:unscoped_mutants], :>, 0
+        end
+      end
+
+      refute_path_exists marker, "an empty `--since` run must return before application boot"
+    end
+  end
+
+  def test_empty_since_with_only_ignored_mutants_skips_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since-ignored") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class EmptySinceCalculator\n  def add(a, b)\n    a + b # mutineer:disable-line -- unchanged\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"])
+      changed = { File.expand_path(source, dir) => Set[3] }
+
+      Mutineer::ChangedLines.stub(:for, changed) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          aggregate, = Mutineer::Runner.execute(config)
+          assert_equal 1, aggregate.ignored_count
+        end
+      end
+    end
+  end
+
+  def test_nonempty_since_scope_reuses_collected_jobs
+    Dir.mktmpdir("mutineer-since-reuse") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class SinceReuseCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"], jobs: 1)
+      collect_calls = 0
+      scope_calls = 0
+      scoped_jobs = nil
+      pool_jobs = nil
+      collect_jobs = Mutineer::JobPlan.method(:collect_jobs)
+      coverage_map = FakeCoverageMap.new({}, dir, [], false, [])
+      coverage_builder = Object.new
+      coverage_builder.define_singleton_method(:build_or_load) { coverage_map }
+      pool = Object.new
+      pool.define_singleton_method(:run) do |jobs, stop_when:, on_result:, &run_one|
+        pool_jobs = jobs
+        results = []
+        jobs.each do |job|
+          result = run_one.call(job.fetch(0), job.fetch(1))
+          on_result.call(result)
+          results << result
+          break if stop_when&.call(result)
+        end
+        results
+      end
+      collected =
+        lambda do |cfg, operators|
+          collect_calls += 1
+          collect_jobs.call(cfg, operators)
+        end
+      scoped =
+        lambda do |jobs, ignored, source_map, cfg, extras: nil|
+          scope_calls += 1
+          assert cfg.since
+          assert_kind_of Hash, source_map
+          assert_kind_of Hash, extras
+          scoped_jobs = jobs.take(1)
+          refute_same jobs, scoped_jobs
+          [scoped_jobs, ignored, jobs.size + ignored.size]
+        end
+
+      Mutineer::JobPlan.stub(:source_dirs, []) do
+        Mutineer::JobPlan.stub(:sweep_orphans, nil) do
+          Mutineer::JobPlan.stub(:collect_jobs, collected) do
+            Mutineer::JobPlan.stub(:scope_since, scoped) do
+              Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { coverage_builder }) do
+                Mutineer::JobPlan.stub(:abort_if_unclean!, nil) do
+                  Mutineer::WorkerPool.stub(:new, pool) do
+                    Mutineer::Runner.stub(:run, ->(*_args, **_kwargs) { Mutineer::Result.new(status: :killed) }) do
+                      aggregate, = Mutineer::Runner.execute(config)
+                      assert_equal 1, aggregate.killed_count
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+      assert_equal 1, collect_calls
+      assert_equal 1, scope_calls
+      assert_same scoped_jobs, pool_jobs
+      assert_equal 1, pool_jobs.size
+    end
   end
 
   def test_filter_since_file_absent_from_diff_yields_no_jobs

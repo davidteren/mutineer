@@ -12,8 +12,9 @@ threshold_action: >-
 exit_code_action: >-
   The exit code returned by mutineer: 0 for a pass; 1 for a below-threshold
   score, incomplete run, baseline regression or runtime error (including a
-  file load failure); 2 for a usage error, including a missing --boot or
-  require: file.
+  file load failure), except an in-process --since run with no mutant on a
+  changed line, which checks valid paths but does not load those files; 2 for
+  a usage error, including a missing --boot or require: file.
 exit_codes:
   - code: "0"
     meaning: Score ≥ threshold (or no gate) **and** no baseline regression.
@@ -22,7 +23,9 @@ exit_codes:
       Score below `--threshold`, OR nothing could be scored and something
       broke, or more than one mutant produced no verdict and they exceed 10%
       of those attempted, OR a `--baseline` regression, OR a runtime error,
-      including a boot, source or `require:` file that raises while loading.
+      including a boot, source or `require:` file that raises while loading
+      (except an in-process `--since` run with no mutant on a changed line,
+      which checks valid paths but does not load those files).
   - code: "2"
     meaning: >-
       Usage / invalid-flag error, including a mistyped flag, a bad path (such

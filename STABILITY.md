@@ -33,7 +33,7 @@ Each number moves on its own.
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks valid paths but does not load those files). |
 | `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 

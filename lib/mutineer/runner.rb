@@ -110,6 +110,34 @@ module Mutineer
       # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      # A `--since` run with no changed mutant has nothing to execute. Collect
+      # and scope once before loading the app or capturing coverage so an empty
+      # scope can return without paying for a full clean-suite run. Nonempty
+      # scopes reuse this work after coverage capture instead of repeating source
+      # discovery, parsing, and git diff.
+      since_scope = nil
+      if config.since
+        # The empty-scope return skips the later require calls, so keep missing
+        # boot and --require paths as usage errors on that path too.
+        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+
+        since_jobs, since_ignored, since_source_map, since_extras =
+          JobPlan.collect_jobs(config, operator_classes)
+        since_jobs, since_ignored, since_extras[:unscoped_mutants] =
+          JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
+        if since_jobs.empty?
+          return [AggregateResult.new(since_ignored), since_source_map, since_extras]
+        end
+        since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
+      end
+
+      if config.strategy == "redefine"
+        dirs.reject { |d| File.writable?(d) }.each do |d|
+          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
+               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
+               "Make the directory writable to avoid this (#339)."
+        end
+      end
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -188,10 +216,16 @@ module Mutineer
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      if since_scope
+        jobs, ignored_results, source_map, extras = since_scope
+      else
+        jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+      end
 
-      jobs, ignored_results, extras[:unscoped_mutants] =
-        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      unless since_scope
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      end
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -207,7 +241,8 @@ module Mutineer
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework,
-                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
+                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix,
+                source: source_map.fetch(subject.file))
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
@@ -309,7 +344,8 @@ module Mutineer
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
+                             source: source_map.fetch(subject.file))
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -329,9 +365,10 @@ module Mutineer
     # in-process path gives at the pre-fork check.
     #
     # @param check_summary [Boolean] passed to {ExternalBackend.run}.
+    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
-      source  = File.read(subject.file, encoding: "UTF-8")
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, source: nil)
+      source ||= Parser.parse_file(subject.file).source.source
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
@@ -387,10 +424,12 @@ module Mutineer
     # @param framework [String] test framework name.
     # @param matrix [Boolean] a `--matrix` run: run every covering test and
     #   attach the {Kills} row, with project-relative test files.
+    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
-      source  = File.read(source_file, encoding: "UTF-8")
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false,
+                 source: nil)
+      source ||= Parser.parse_file(source_file).source.source
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.

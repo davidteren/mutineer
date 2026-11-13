@@ -13,10 +13,13 @@ module Mutineer
     #
     # @param paths [Array<String>] source file paths.
     # @param only [String, nil] optional qualified-name filter.
+    # @param source_map [Hash, nil] optional map populated with the exact source
+    #   bytes Prism parsed, keyed by each path.
     # @return [Array<Mutineer::Subject>] discovered subjects.
-    def self.discover(paths, only: nil)
+    def self.discover(paths, only: nil, source_map: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
+        source_map[path] = result.source.source if source_map
         visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
