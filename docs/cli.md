@@ -139,8 +139,11 @@ Quote a pattern that starts with `*`.
 Quote a pattern with braces inside a `[...]` list.
 `--test` replaces pairing and the map.
 
-Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. Mutineer rebuilds it when a source, a test,
-or a project file the tests load changes. The run then captures every test again (#421 tracks a per-test rebuild).
+Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. A change inside a method body, with no
+added or removed line and no change to a method that ran while the file loaded, recaptures the tests that
+cover that source, plus any test file that was added or edited. The map matches a full capture. A class-body
+edit, a load-time method, a `--require` file, or another project file the tests load still recaptures every
+test (#421).
 
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 

@@ -130,8 +130,21 @@ All notable changes to this project are documented here. The format is based on
   line no longer stops the run. A fresh capture still stops on it, because
   capture runs every test (#96). So the same red test can stop a cold run
   and pass a warm one.
-- An edit to a source, a test or a loaded file still rebuilds the whole
-  map. #421 tracks per-test invalidation.
+- **A method-body edit recaptures only the tests that cover that source
+  (#421).** The cache stores a run-inputs digest, a skeleton of each
+  source, and a fingerprint of each test. When a source changes only
+  inside method bodies, and the edit does not move a line or change a
+  method that ran at load, the next run recaptures the tests in that
+  source's map entries, plus any test file that was added or edited.
+  The paired test keeps lines that ran only at load. Recapturing
+  another test does not give it those lines, or another source's
+  load-only lines. The map matches a full capture. A red covering test
+  still stops the run. A class-body edit, an added or removed line, a
+  load-time method, a `--require` file, a change to which test pairs
+  with a source, or a project file the tests load still recaptures
+  every test. A cache saved before this change rebuilds once.
+  #421 stays open for files outside the run's sources, and for the
+  Fizzy timing check.
 - **The test-file guard names three fixes (#380).**
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**

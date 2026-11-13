@@ -5,6 +5,7 @@ require "digest"
 require "fileutils"
 require "rbconfig"
 require "coverage"
+require "prism"
 require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
@@ -21,7 +22,10 @@ module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
   # the tests that actually exercise its line. Built once, then queried per
   # mutant via #tests_for. Persisted to .mutineer/coverage.json with a
-  # content-based digest that rebuilds the map whenever any tracked file changes.
+  # content-based digest. A later run recaptures every test when a run input,
+  # a loaded file, or the shape of a source changes. A change that stays inside
+  # method bodies, without moving a line or editing a method that ran at load,
+  # recaptures only the tests in that source's map entries (#421).
   #
   # Keys are "file:line" strings (relative to project_root) everywhere, in
   # memory and on disk, so load/save needs no key transformation.
@@ -51,6 +55,10 @@ module Mutineer
     # way and is rebuilt once. Boot and daemon maps already omitted those
     # lines; a hit there does not read the key.
     NARROW_LOAD_LINES = "narrow_load_lines"
+
+    # Keys a cache needs before a method-body edit can recapture part of the
+    # map (#421). A cache saved before these keys existed is rebuilt once.
+    PARTIAL_CACHE_KEYS = %w[run_inputs sources skeletons tests load_method_bodies].freeze
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
                 :phase_a_ran, :map
@@ -425,27 +433,17 @@ module Mutineer
       return reuse_capture(after_fork) if @coverage_from
 
       cached = read_cache
-      # A cache from before load methods (#209), test timings (#203), or the
-      # standalone load-line narrowing (#426) rebuilds once. A cache that does
-      # not record this process's PARALLEL_WORKERS value rebuilds too. Rails
-      # reads that value inside parallelize, so a map from another worker
-      # count selects the wrong tests. The daemon writes this same file. Boot
-      # mode reads its load lines and methods from the live boot instead
-      # (#build_via_fork), but its map from before #209 lacks the `def` lines
-      # of the methods each test called.
-      if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
-         cached.key?("load_methods") && cached.key?("timings") &&
-         parallel_workers_match?(cached) && standalone_load_lines_current?(cached)
-        @map = cached["map"] || {}
-        @timings = cached["timings"] || {}
-        unless @boot_path
-          @load_lines = Set.new(cached["load_lines"])
-          @load_methods = Set.new(cached["load_methods"])
-        end
-        @failed_test_files = cached["failed_test_files"] || []
-        @failed_clean_tests = []
-        @failed_clean_details = {}
-        @loaded_dependencies = cached["dependencies"] || {}
+      # A cache from before load methods (#209), test timings (#203), the
+      # standalone load-line narrowing (#426), or partial recapture (#421)
+      # rebuilds once. A cache that does not record this process's
+      # PARALLEL_WORKERS value rebuilds too. Rails reads that value inside
+      # parallelize, so a map from another worker count selects the wrong
+      # tests. The daemon writes this same file. Boot mode reads its load
+      # lines and methods from the live boot instead (#build_via_fork), but
+      # its map from before #209 lacks the `def` lines of the methods each
+      # test called.
+      if cache_hit?(cached)
+        apply_cache(cached)
         recaptured = retry_failed_captures(after_fork)
         warn_incomplete unless @failed_test_files.empty?
         checked = clean_check_test_paths
@@ -457,6 +455,9 @@ module Mutineer
         save
         return self
       end
+
+      plan = partial_plan(cached)
+      return self if plan && apply_partial(plan, cached, after_fork)
 
       yield
       verify_combined_clean(after_fork: after_fork)
@@ -952,17 +953,28 @@ module Mutineer
       return pending if pending.empty?
 
       @failed_test_files = []
-      abs_sources = abs_source_paths
       pending.each do |rel|
         test_path = @test_paths.find { |t| relativize(t) == rel } || rel
-        if @boot_path
-          accept_fork_payload(test_path, timed(test_path) { fork_capture(absolute(test_path), abs_sources, after_fork) })
-        else
-          payload = timed(test_path) { capture(test_path) }
-          accept_capture_payload(test_path, payload) if payload
-        end
+        capture_one(test_path, after_fork)
       end
       pending
+    end
+
+    # Captures one test file, standalone or by fork, and records the result.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [void]
+    def capture_one(test_path, after_fork)
+      if @boot_path
+        accept_fork_payload(test_path, timed(test_path) do
+          fork_capture(absolute(test_path), abs_source_paths, after_fork)
+        end)
+      else
+        payload = timed(test_path) { capture(test_path) }
+        accept_capture_payload(test_path, payload) if payload
+      end
     end
 
     # Runs every successfully captured test of {#clean_check_test_paths}
@@ -1426,7 +1438,32 @@ module Mutineer
     # the project (stdlib/gem files).
     def record(coverage, test_path)
       rel_test = relativize(test_path)
-      each_covered_key(coverage) { |key| (@map[key] ||= []) << rel_test }
+      each_covered_key(coverage) { |key| add_covering_test(key, rel_test) }
+    end
+
+    # Adds `rel_test` to the map entry for `key`, in `@test_paths` order.
+    # A partial recapture appends a test that a full capture would have
+    # recorded earlier. Sorting by the run's test order keeps the two maps
+    # equal (#421).
+    #
+    # @api private
+    # @param key [String] a "file:line" map key.
+    # @param rel_test [String] project-relative test path.
+    # @return [void]
+    def add_covering_test(key, rel_test)
+      list = (@map[key] ||= [])
+      list << rel_test unless list.include?(rel_test)
+      list.sort_by! { |test| test_index(test) }
+    end
+
+    # Position of `rel` in `@test_paths`. A path outside the run sorts last.
+    #
+    # @api private
+    # @param rel [String] project-relative test path.
+    # @return [Integer]
+    def test_index(rel)
+      @test_index ||= @test_paths.each_with_index.to_h { |path, index| [relativize(path), index] }
+      @test_index.fetch(rel, @test_index.length)
     end
 
     # Line counts for the map, with `def` lines of methods the test called
@@ -1482,9 +1519,7 @@ module Mutineer
           next unless count&.positive?
           next if post_counts&.[](idx)&.positive?
 
-          key = "#{rel}:#{idx + 1}"
-          list = (@map[key] ||= [])
-          list << rel_test unless list.include?(rel_test)
+          add_covering_test("#{rel}:#{idx + 1}", rel_test)
         end
       end
     end
@@ -1551,16 +1586,36 @@ module Mutineer
     #   them; a Hash entry can also hold "methods", as {#load_entry} builds it.
     # @return [void]
     def record_load(coverage)
-      return unless coverage.is_a?(Hash)
+      lines, methods = load_sets_from(coverage)
+      return if lines.nil?
 
-      @source_rels ||= @source_paths.to_set { |p| relativize(absolute(p)) }
-      ours = coverage.select { |abs_file, _| @source_rels.include?(relativize(abs_file)) }
-      each_covered_key(ours) { |key| @load_lines << key }
+      @load_lines.merge(lines)
+      @load_methods.merge(methods)
+      return unless @collect_load
+
+      @seen_load_lines = lines
+      @seen_load_methods = methods
+    end
+
+    # Line and method keys that ran at load in `coverage`, limited to this
+    # run's sources. `[nil, nil]` when `coverage` is not a snapshot.
+    #
+    # @api private
+    # @param coverage [Hash, nil] counts per absolute file, as {#record_load} reads them.
+    # @return [Array(Set, Set), Array(nil, nil)]
+    def load_sets_from(coverage)
+      return [nil, nil] unless coverage.is_a?(Hash)
+
+      lines = Set.new
+      methods = Set.new
+      ours = coverage.select { |abs_file, _| source_rels.include?(relativize(abs_file)) }
+      each_covered_key(ours) { |key| lines << key }
       ours.each do |abs_file, data|
         next unless data.is_a?(Hash) && data["methods"].is_a?(Array)
 
-        data["methods"].each { |line, column| @load_methods << "#{relativize(abs_file)}:#{line}:#{column}" }
+        data["methods"].each { |line, column| methods << "#{relativize(abs_file)}:#{line}:#{column}" }
       end
+      [lines, methods]
     end
 
     # One file's line counts, with the `def` line of each method the test
@@ -1765,15 +1820,485 @@ module Mutineer
     #
     # @api private
     # @param cached [Hash] parsed coverage.json.
+    # @param except [Array<String>] project-relative paths whose fingerprint
+    #   may differ. A method-body edit of a run source is checked by the
+    #   skeleton instead (#421). Any other loaded file still has to match.
     # @return [Boolean]
-    def dependencies_match?(cached)
+    def dependencies_match?(cached, except: [])
       deps = cached["dependencies"]
       return false unless deps.is_a?(Hash)
 
+      skip = except.to_set
       deps.all? do |rel, fingerprint|
+        next true if skip.include?(rel)
+
         abs = absolute(rel)
         File.file?(abs) && file_fingerprint(abs) == fingerprint
       end
+    end
+
+    # True when `cached` is a complete map for this exact run: same digest,
+    # same loaded files, and the keys a later partial recapture needs.
+    #
+    # @api private
+    # @param cached [Hash, nil] parsed coverage.json.
+    # @return [Boolean]
+    def cache_hit?(cached)
+      cached && cached["digest"] == @digest && dependencies_match?(cached) &&
+        cached.key?("load_methods") && cached.key?("timings") &&
+        parallel_workers_match?(cached) && standalone_load_lines_current?(cached) &&
+        partial_cache?(cached)
+    end
+
+    # True when `cached` has the keys {PARTIAL_CACHE_KEYS} names.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def partial_cache?(cached)
+      PARTIAL_CACHE_KEYS.all? { |key| cached.key?(key) }
+    end
+
+    # Copies a saved map into this object. Boot mode keeps the load lines it
+    # just read from the live boot.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [void]
+    def apply_cache(cached)
+      @map = cached["map"] || {}
+      @timings = cached["timings"] || {}
+      unless @boot_path
+        @load_lines = Set.new(cached["load_lines"])
+        @load_methods = Set.new(cached["load_methods"])
+      end
+      @failed_test_files = Array(cached["failed_test_files"])
+      @failed_clean_tests = []
+      @failed_clean_details = {}
+      @loaded_dependencies = cached["dependencies"] || {}
+    end
+
+    # How to recapture part of `cached`, or nil when the run must capture
+    # every test. Nil covers a class-body edit, a moved line, a load-time
+    # method whose body changed, a loaded file outside the run's sources, a
+    # run input, and a change to which tests pair with a source (#421).
+    #
+    # @api private
+    # @param cached [Hash, nil] parsed coverage.json.
+    # @return [Hash, nil] `"removed"`, `"recapture"`, and `"changed_sources"`.
+    def partial_plan(cached)
+      return nil unless cached.is_a?(Hash) && partial_cache?(cached)
+      return nil unless cached.key?("load_methods") && cached.key?("timings")
+      return nil unless parallel_workers_match?(cached) && standalone_load_lines_current?(cached)
+      return nil unless cached["run_inputs"] == run_inputs_digest
+      return nil unless dependencies_match?(cached, except: source_rels.to_a)
+
+      tests = cached["tests"]
+      sources = cached["sources"]
+      skeletons = cached["skeletons"]
+      return nil unless tests.is_a?(Hash) && sources.is_a?(Hash) && skeletons.is_a?(Hash)
+
+      current_tests = test_fingerprints
+      current_sources = source_fingerprints
+      current_skeletons = source_skeletons
+      return nil unless current_sources.keys.sort == sources.keys.sort
+
+      changed_sources = []
+      current_sources.each do |rel, fingerprint|
+        next if sources[rel] == fingerprint
+
+        skeleton = current_skeletons[rel]
+        return nil if skeleton.nil? || skeletons[rel] != skeleton
+
+        changed_sources << rel
+      end
+      return nil unless load_method_bodies_unchanged?(cached, changed_sources)
+      return nil if @boot_path && load_record_changed?(cached, changed_sources)
+
+      old_rels = tests.keys
+      new_rels = current_tests.keys
+      return nil if pairing_sets_changed?(old_rels, new_rels)
+
+      removed = old_rels - new_rels
+      added = new_rels - old_rels
+      edited = (new_rels & old_rels).select { |rel| tests[rel] != current_tests[rel] }
+      failed = Array(cached["failed_test_files"]) & new_rels
+      touching = tests_in_source_entries(cached["map"], changed_sources) & new_rels
+      recapture = (added + edited + failed + touching).uniq
+      # Keeping nothing is a full capture. It rebuilds load lines in one pass.
+      return nil if removed.empty? && recapture.size == new_rels.size
+
+      { "removed" => removed, "recapture" => recapture, "changed_sources" => changed_sources }
+    end
+
+    # Rebuilds the tests in `plan` and keeps the rest. Returns false when the
+    # recaptured load snapshot disagrees with the cache: the caller then
+    # captures every test. A kept test is not credited with another source's
+    # load-only lines, because those entries are left as the full capture
+    # stored them and {#record_paired_load_lines} does not add them back.
+    #
+    # @api private
+    # @param plan [Hash] the plan from {#partial_plan}.
+    # @param cached [Hash] parsed coverage.json.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [Boolean] true when the partial map was saved.
+    def apply_partial(plan, cached, after_fork)
+      apply_cache(cached)
+      removed = plan["removed"]
+      recapture = plan["recapture"]
+      (removed + recapture).each { |rel| drop_test(rel) }
+      @failed_test_files -= (removed + recapture)
+      @collect_load = true
+      @seen_load_lines = nil
+      @seen_load_methods = nil
+      @test_paths.each do |path|
+        capture_one(path, after_fork) if recapture.include?(relativize(path))
+      end
+      @collect_load = false
+      return false if !@boot_path && recapture.any? && partial_load_diverged?(cached)
+
+      refresh_dependency_fingerprints(plan["changed_sources"] + recapture)
+      removed.each { |rel| @loaded_dependencies.delete(rel) }
+      sort_map_entries
+      @phase_a_ran = true if recapture.any?
+      warn_recaptured(recapture.size, @test_paths.size)
+      checked = clean_check_test_paths
+      verify_cached_clean(after_fork: after_fork,
+                          test_paths: checked.reject { |test| recapture.include?(relativize(test)) })
+      verify_combined_clean(after_fork: after_fork)
+      warn_unchecked("coverage cache", checked.size)
+      save
+      true
+    end
+
+    # Removes `rel` from every map entry and forgets its timing.
+    #
+    # @api private
+    # @param rel [String] project-relative test path.
+    # @return [void]
+    def drop_test(rel)
+      @map.each_value { |tests| tests.delete(rel) if tests.is_a?(Array) }
+      @map.delete_if { |_key, tests| !tests.is_a?(Array) || tests.empty? }
+      @timings.delete(rel)
+    end
+
+    # Puts every map entry in `@test_paths` order, which is the order a full
+    # capture records tests.
+    #
+    # @api private
+    # @return [void]
+    def sort_map_entries
+      @map.each_value { |tests| tests.sort_by! { |test| test_index(test) } if tests.is_a?(Array) }
+    end
+
+    # True when this boot's load lines or load methods for `changed_sources`
+    # differ from the cache. The method body then changed what ran at boot,
+    # so a kept test's coverage is not trusted.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @param changed_sources [Array<String>] project-relative source paths.
+    # @return [Boolean]
+    def load_record_changed?(cached, changed_sources)
+      wanted = changed_sources.to_set
+      pick = lambda do |keys|
+        Array(keys).select { |key| wanted.include?(key_source(key)) }.to_set
+      end
+      pick.call(@load_lines) != pick.call(cached["load_lines"]) ||
+        pick.call(@load_methods) != pick.call(cached["load_methods"])
+    end
+
+    # True when a recaptured standalone test saw different load lines than
+    # the cache recorded. The body change reached load time.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def partial_load_diverged?(cached)
+      return false unless @seen_load_lines
+
+      @seen_load_lines != Set.new(Array(cached["load_lines"])) ||
+        @seen_load_methods != Set.new(Array(cached["load_methods"]))
+    end
+
+    # Writes the current fingerprint of each `rels` entry over the cached one.
+    #
+    # @api private
+    # @param rels [Array<String>] project-relative paths.
+    # @return [void]
+    def refresh_dependency_fingerprints(rels)
+      rels.each do |rel|
+        abs = absolute(rel)
+        next unless File.file?(abs)
+
+        @loaded_dependencies[rel] = file_fingerprint(abs)
+      end
+    end
+
+    # Tests in `map` entries whose source is one of `source_rels`.
+    #
+    # @api private
+    # @param map [Hash, nil] a "file:line" => [test files] map.
+    # @param source_rels [Array<String>] project-relative source paths.
+    # @return [Array<String>] project-relative test paths.
+    def tests_in_source_entries(map, source_rels)
+      return [] unless map.is_a?(Hash)
+
+      wanted = source_rels.to_set
+      map.each_with_object([]) do |(key, tests), list|
+        next unless wanted.include?(key_source(key))
+
+        Array(tests).each { |test| list << test if test.is_a?(String) && !list.include?(test) }
+      end
+    end
+
+    # True when the conventional pair for any run source is a different set
+    # of tests than the cache was built with. Load-only lines would move.
+    #
+    # @api private
+    # @param old_rels [Array<String>] project-relative tests in the cache.
+    # @param new_rels [Array<String>] project-relative tests in this run.
+    # @return [Boolean]
+    def pairing_sets_changed?(old_rels, new_rels)
+      old_set = old_rels.to_set
+      new_set = new_rels.to_set
+      source_rels.any? { |rel| paired_among(rel, old_set) != paired_among(rel, new_set) }
+    end
+
+    # Conventional tests for `source_rel` that are in `test_rels`.
+    #
+    # @api private
+    # @param source_rel [String] project-relative source path.
+    # @param test_rels [Set<String>] project-relative test paths.
+    # @return [Array<String>]
+    def paired_among(source_rel, test_rels)
+      Pairing.infer_tests(source_rel, project_root: @project_root, prefer: @framework || "minitest")
+             .select { |path| test_rels.include?(path) }
+             .sort
+    end
+
+    # Project-relative paths of this run's sources.
+    #
+    # @api private
+    # @return [Set<String>]
+    def source_rels
+      @source_rels ||= @source_paths.to_set { |path| relativize(absolute(path)) }
+    end
+
+    # Fingerprint of each test file, by project-relative path.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def test_fingerprints
+      @test_paths.to_h { |path| [relativize(absolute(path)), file_fingerprint(absolute(path))] }
+    end
+
+    # Digest of everything that forces a full capture except source and test
+    # contents (#421). The source list is included, so adding a source still
+    # captures every test: standalone capture loads every source.
+    #
+    # @api private
+    # @return [String] hex digest.
+    def run_inputs_digest
+      digest = Digest::SHA256.new
+      source_rels.to_a.sort.each do |rel|
+        digest.update("source\0")
+        digest.update(rel)
+        digest.update("\0")
+      end
+      @require_paths.each { |path| digest_group(digest, "require", [digest_path(path)]) }
+      digest_group(digest, "boot", [digest_path(@boot_path)]) if @boot_path
+      ownership_paths.each do |rel|
+        digest.update("owner\0")
+        digest.update(rel)
+        digest.update("\0")
+      end
+      @load_paths.sort.each { |load_path| digest.update("loadpath\0#{load_path}\0") }
+      digest.update("framework\0#{@framework}\0")
+      digest.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
+      digest.hexdigest
+    end
+
+    # Skeleton digest of each source, by project-relative path. Nil when the
+    # file does not parse: a partial recapture then does not run.
+    #
+    # @api private
+    # @return [Hash{String => String, nil}]
+    def source_skeletons
+      @source_paths.to_h { |path| [relativize(absolute(path)), source_skeleton_digest(absolute(path))] }
+    end
+
+    # Digest of `abs` with each method body blanked, plus the line of every
+    # `def`. Two files match when the edit is inside method bodies and no
+    # line moved. A comment outside a body, a class-body statement, and an
+    # added or removed line do not match.
+    #
+    # @api private
+    # @param abs [String] absolute source path.
+    # @return [String, nil] hex digest, or nil when the file cannot be parsed.
+    def source_skeleton_digest(abs)
+      source = File.binread(abs)
+      result = Prism.parse(source)
+      return nil unless result.errors.empty?
+
+      ranges = []
+      tuples = []
+      each_def(result.value) do |node|
+        loc = node.body&.location
+        ranges << [loc.start_offset, loc.end_offset] if loc && loc.end_offset > loc.start_offset
+        tuples << [node.location.start_line, node.location.start_column, loc&.start_line, loc&.end_line]
+      end
+      digest = Digest::SHA256.new
+      digest.update(blank_method_bodies(source, ranges))
+      tuples.sort.each do |tuple|
+        digest.update("\0")
+        digest.update(tuple.map { |part| part.nil? ? "-" : part.to_s }.join(":"))
+      end
+      digest.hexdigest
+    rescue SystemCallError
+      nil
+    end
+
+    # `source` with every method-body byte range replaced by one marker.
+    # Nested bodies are one marker: the outer range already covers them.
+    #
+    # @api private
+    # @param source [String] source bytes.
+    # @param ranges [Array<Array(Integer, Integer)>] half-open byte ranges.
+    # @return [String] binary skeleton text.
+    def blank_method_bodies(source, ranges)
+      return source if ranges.empty?
+
+      skip = Array.new(source.bytesize, false)
+      ranges.each do |start, finish|
+        next if start.negative? || finish > source.bytesize
+
+        (start...finish).each { |index| skip[index] = true }
+      end
+      out = +"".b
+      source.each_byte.with_index do |byte, index|
+        if skip[index]
+          out << 0 unless index.positive? && skip[index - 1]
+        else
+          out << byte
+        end
+      end
+      out
+    end
+
+    # Yields each `def` in `node`, including defs nested in another body.
+    #
+    # @api private
+    # @param node [Prism::Node, nil] syntax node.
+    # @yieldparam node [Prism::DefNode]
+    # @return [void]
+    def each_def(node, &block)
+      return unless node.is_a?(Prism::Node)
+
+      block.call(node) if node.is_a?(Prism::DefNode)
+      node.child_nodes.each { |child| each_def(child, &block) }
+    end
+
+    # True when every load-time method of `changed_sources` still has the
+    # body the cache recorded. A different body can change a value other
+    # tests read without those tests appearing in this source's map.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @param changed_sources [Array<String>] project-relative source paths.
+    # @return [Boolean]
+    def load_method_bodies_unchanged?(cached, changed_sources)
+      stored = cached["load_method_bodies"]
+      return false unless stored.is_a?(Hash)
+
+      wanted = changed_sources.to_set
+      stored.all? do |key, digest|
+        next true unless wanted.include?(key_source(key))
+        next false unless digest.is_a?(String)
+
+        body_digest_at(key) == digest
+      end
+    end
+
+    # Body digest of each method in {#load_methods}, keyed the same way.
+    # `"missing"` marks a `def` the file no longer has at that line.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def current_load_method_bodies
+      @load_methods.to_h { |key| [key, body_digest_at(key) || "missing"] }
+    end
+
+    # Digest of the method body at the `def` named by `key`, in the file as
+    # it is now. Nil when that `def` is gone or the file does not parse.
+    #
+    # @api private
+    # @param key [String] a "file:line:column" load-method key.
+    # @return [String, nil] hex digest.
+    def body_digest_at(key)
+      rel, line, column = split_method_key(key)
+      text = method_bodies(rel)&.[]([line, column])
+      return nil if text.nil?
+
+      Digest::SHA256.hexdigest(text)
+    end
+
+    # Method bodies in `rel`, keyed by the `def` line and column Coverage uses.
+    # Nil when the file does not parse.
+    #
+    # @api private
+    # @param rel [String] project-relative source path.
+    # @return [Hash{Array(Integer, Integer) => String}, nil]
+    def method_bodies(rel)
+      @method_bodies ||= {}
+      return @method_bodies[rel] if @method_bodies.key?(rel)
+
+      abs = absolute(rel)
+      return @method_bodies[rel] = nil unless File.file?(abs)
+
+      source = File.binread(abs)
+      result = Prism.parse(source)
+      return @method_bodies[rel] = nil unless result.errors.empty?
+
+      found = {}
+      each_def(result.value) do |node|
+        loc = node.body&.location
+        text = if loc && loc.end_offset > loc.start_offset
+                 source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
+               else
+                 +""
+               end
+        found[[node.location.start_line, node.location.start_column]] = text
+      end
+      @method_bodies[rel] = found
+    rescue SystemCallError
+      @method_bodies[rel] = nil
+    end
+
+    # Source path, `def` line, and `def` column of a load-method key.
+    #
+    # @api private
+    # @param key [String] a "file:line:column" key.
+    # @return [Array(String, Integer, Integer)]
+    def split_method_key(key)
+      rel = key_source(key)
+      line, column = key.delete_prefix("#{rel}:").split(":").map(&:to_i)
+      [rel, line, column]
+    end
+
+    # Tells the user how many test files a partial recapture ran again.
+    # Prints nothing when every file was recaptured or none was: the first
+    # is a full capture, and the second kept the whole map.
+    #
+    # @api private
+    # @param recaptured [Integer] test files captured again.
+    # @param total [Integer] test files in the run.
+    # @return [void]
+    def warn_recaptured(recaptured, total)
+      kept = total - recaptured
+      return unless recaptured.positive? && kept.positive?
+
+      warn "[mutineer] coverage cache: recaptured #{recaptured} of #{total} test files; kept #{kept}."
     end
 
     # True when `cached` records the same +PARALLEL_WORKERS+ value this process
@@ -1922,7 +2447,9 @@ module Mutineer
                "dependencies" => @loaded_dependencies, "map" => @map,
                "load_lines" => @load_lines.to_a.sort, "load_methods" => @load_methods.to_a.sort,
                "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil),
-               NARROW_LOAD_LINES => true }
+               NARROW_LOAD_LINES => true, "run_inputs" => run_inputs_digest,
+               "sources" => source_fingerprints, "skeletons" => source_skeletons,
+               "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies }
       if @boot_path
         data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,
                     "owners" => ownership_paths)
