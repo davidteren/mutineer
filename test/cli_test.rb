@@ -1911,6 +1911,51 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A namespace split file is the suite when the concerns path has no test.
+  # The named test in that file kills the mutant.
+  def test_concern_pairs_with_its_namespace_split_and_is_scored
+    Dir.mktmpdir("mutineer-concern-split") do |proj|
+      source = "app/models/concerns/storage/totaled.rb"
+      test_rel = "test/models/storage/totaled_bytes_test.rb"
+      [source, test_rel].each do |rel|
+        path = File.join(proj, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+      end
+      File.write(File.join(proj, source), <<~RUBY)
+        module Storage
+          module Totaled
+            def total(used, reserved)
+              used + reserved
+            end
+          end
+        end
+      RUBY
+      File.write(File.join(proj, test_rel), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../../../app/models/concerns/storage/totaled"
+        class TotaledBytesTest < Minitest::Test
+          include Storage::Totaled
+          def test_bytes
+            assert_equal 5, total(2, 3)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", source, "--matrix", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "no test found by convention"
+      doc = JSON.parse(out)
+      assert_equal [source], doc["per_source"].map { |h| h["file"] }
+      assert_equal 1, doc.dig("summary", "total")
+      assert_equal 1, doc.dig("summary", "killed")
+      assert_equal [{ "file" => test_rel,
+                      "name" => "TotaledBytesTest#test_bytes",
+                      "id" => "TotaledBytesTest#test_bytes",
+                      "kills" => 1 }], doc.dig("matrix", "tests")
+      row = doc.dig("matrix", "mutants").find { |item| item["status"] == "killed" }
+      assert_equal [0], row["killed_by"]
+    end
+  end
+
   # R3: when EVERY source lacks a test, it's a usage error (exit 2), not a crash.
   def test_all_sources_unpaired_exits_two
     Dir.mktmpdir("mutineer-notests") do |proj|

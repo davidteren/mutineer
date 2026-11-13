@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has a test that pairs, exact or split.
+  A split owned by a longer source does not count.
+  A longer source keeps its file when that source pairs with it.
+  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
+  The longer concern does not add that file.
+  A namespace spec stays the only file. A failed split beside it does not mark the concern.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
 - **A source that cannot load alone points at `boot:` (#376).**
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names
@@ -60,9 +77,8 @@ All notable changes to this project are documented here. The format is based on
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
   With `use-bundler: true`, the Gemfile picks the version.
-  A split name pairs only at the `concerns/` path.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
-  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+  A namespace split name pairs under #408.
 - **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now

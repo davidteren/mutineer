@@ -535,11 +535,145 @@ class PairingTest < Minitest::Test
     end
   end
 
-  # A split name at the namespace path does not pair. Issue #408 tracks that.
-  def test_split_file_at_the_namespace_path_does_not_pair_a_concern
-    source = "app/models/concerns/storage/totaled.rb"
-    with_tree(source, "test/models/storage/totaled_bytes_test.rb") do |root|
-      assert_empty infer_tests(source, root)
+  # Split names at the namespace path follow the same longer-source rule as
+  # a mirror split. The concerns/ path still wins. A model keeps its file.
+  def test_namespace_split_names_follow_the_longer_source_rule
+    concern = "app/models/concerns/storage/totaled.rb"
+    user = "app/models/concerns/user.rb"
+    session = "app/models/concerns/user_session.rb"
+    cases = [
+      {
+        label: "a split name pairs when no longer source owns it",
+        files: [concern, "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/storage/totaled_bytes_test.rb"] }
+      },
+      {
+        label: "the exact namespace name stays ahead of the split names",
+        files: [concern, "test/models/storage/totaled_test.rb",
+                "test/models/storage/totaled_zeta_test.rb",
+                "test/models/storage/totaled_alpha_test.rb"],
+        expect: { concern => ["test/models/storage/totaled_test.rb",
+                              "test/models/storage/totaled_alpha_test.rb",
+                              "test/models/storage/totaled_zeta_test.rb"] }
+      },
+      {
+        label: "a spec at the namespace path stays the only file",
+        files: [concern, "spec/models/storage/totaled_spec.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["spec/models/storage/totaled_spec.rb"] },
+        prefers: %w[minitest rspec]
+      },
+      {
+        label: "an exact test at the concerns path blocks the namespace split",
+        files: [concern, "test/models/concerns/storage/totaled_test.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/concerns/storage/totaled_test.rb"] }
+      },
+      {
+        label: "a split test at the concerns path blocks the namespace split",
+        files: [concern, "test/models/concerns/storage/totaled_sum_test.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/concerns/storage/totaled_sum_test.rb"] }
+      },
+      {
+        label: "a controller concern pairs a top-level namespace split",
+        files: ["app/controllers/concerns/authentication.rb",
+                "test/controllers/authentication_token_test.rb"],
+        expect: {
+          "app/controllers/concerns/authentication.rb" =>
+            ["test/controllers/authentication_token_test.rb"]
+        }
+      },
+      {
+        label: "a split outside the namespace mirror does not pair",
+        files: [concern, "test/other/totaled_bytes_test.rb"],
+        expect: { concern => [] }
+      },
+      {
+        label: "a longer model keeps the namespace split",
+        files: [user, "app/models/user_session.rb", "test/models/user_session_test.rb"],
+        expect: {
+          user => [],
+          "app/models/user_session.rb" => ["test/models/user_session_test.rb"]
+        }
+      },
+      {
+        label: "a longer lib source keeps the namespace split",
+        files: [user, "lib/models/user_session.rb", "test/models/user_session_test.rb"],
+        expect: {
+          user => [],
+          "lib/models/user_session.rb" => ["test/models/user_session_test.rb"]
+        }
+      },
+      {
+        label: "a longer concern keeps the namespace split",
+        files: [user, session, "test/models/user_session_guards_test.rb"],
+        expect: {
+          user => [],
+          session => ["test/models/user_session_guards_test.rb"]
+        }
+      },
+      {
+        label: "an intermediate concern owns the longer split name",
+        files: [user, session, "app/models/concerns/user_session_guards.rb",
+                "test/models/user_session_guards_test.rb"],
+        expect: {
+          user => [],
+          session => [],
+          "app/models/concerns/user_session_guards.rb" =>
+            ["test/models/user_session_guards_test.rb"]
+        }
+      }
+    ]
+    cases.each do |row|
+      with_tree(*row[:files]) do |root|
+        row[:expect].each do |source, tests|
+          (row[:prefers] || ["minitest"]).each do |prefer|
+            assert_equal tests, infer_tests(source, root, prefer: prefer), "#{row[:label]} (#{source}, #{prefer})"
+          end
+        end
+      end
+    end
+  end
+
+  # The longer concern keeps its concerns-path test and does not add the
+  # namespace split. The shorter concern keeps that split, because the longer
+  # concern does not run it.
+  def test_shorter_concern_keeps_a_namespace_split_the_longer_concern_does_not_run
+    shorter = "app/models/concerns/user.rb"
+    longer = "app/models/concerns/user_session.rb"
+    with_tree(shorter, longer,
+              "test/models/concerns/user_session_test.rb",
+              "test/models/user_session_extra_test.rb") do |root|
+      assert_equal ["test/models/concerns/user_session_test.rb"], infer_tests(longer, root)
+      assert_equal ["test/models/user_session_extra_test.rb"], infer_tests(shorter, root)
+    end
+  end
+
+  # A source path with `..` must not make the longer-concern lookup stat a file
+  # outside the project. The namespace base here climbs out of the root.
+  def test_longer_concern_lookup_stays_inside_the_project
+    Dir.mktmpdir do |parent|
+      root = File.join(parent, "project")
+      FileUtils.mkdir_p(File.join(root, "app/models/concerns"))
+      outside = File.join(parent, "outside")
+      FileUtils.mkdir_p(outside)
+      File.write(File.join(outside, "user_session.rb"), "")
+
+      climbing = "models/../../../../outside/user"
+      refute Mutineer::Pairing.send(:claimed_by_longer_concern?, root, climbing, "user_session_extra_test.rb")
+    end
+  end
+
+  # The model's only test is a split name a concern also uses. The concern
+  # must not take it away.
+  def test_model_keeps_its_only_split_file_when_a_concern_shares_the_name
+    with_tree("app/models/user.rb", "app/models/concerns/user_session.rb",
+              "test/models/user_session_extra_test.rb") do |root|
+      assert_equal ["test/models/user_session_extra_test.rb"],
+                   infer_tests("app/models/user.rb", root)
+      assert_equal ["test/models/user_session_extra_test.rb"],
+                   infer_tests("app/models/concerns/user_session.rb", root)
     end
   end
 

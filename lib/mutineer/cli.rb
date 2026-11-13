@@ -61,7 +61,10 @@ module Mutineer
         --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
                              and any tests: map in .mutineer.yml (not under
-                             --dry-run). --test replaces pairing and the map
+                             --dry-run). A source at app/<dir>/concerns/ with no
+                             test there also pairs with a split test at its
+                             namespace path.
+                             --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
