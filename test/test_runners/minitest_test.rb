@@ -512,6 +512,17 @@ class TestRunnersMinitestTest < Minitest::Test
       assert_equal :error, result.status, "matrix run"
       assert_empty result.kills.killed_by
       refute result.kills.complete
+      # #417 / KTD5: early end after a serial DB error gets the fixed text.
+      assert_equal Mutineer::ChildCause::MATRIX_EARLY_END, result.details
+    end
+  end
+
+  def test_database_error_names_its_cause
+    expected = "a test failed with a database error: ActiveRecord::ConnectionNotEstablished: the database is gone"
+    [false, true].each do |matrix|
+      result = db_error_verdict({ "FIRST" => "connection" }, matrix: matrix)
+      assert_equal :error, result.status, "matrix=#{matrix}"
+      assert_equal expected, result.details, "matrix=#{matrix}"
     end
   end
 

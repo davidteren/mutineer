@@ -162,7 +162,11 @@ line ran while the app booted or its class loaded (for example a class body that
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
-count at load is used instead.
+count at load is used instead. A block on that `def` line is not classified from the line (#389).
+A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
+stores (#435). Another block on that line stays scored. `each` with an empty array can count the line without running
+its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
+Code that runs only sometimes, such as the body of `x if c`, does not.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were
@@ -182,11 +186,17 @@ Filter on `status` `"error"` for the errored mutants: their count equals `summar
 When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
 `Class: first non-blank line of the message`, or the class alone when the message is blank, at
 most 500 characters (a longer line is cut and ends in `...`). Example:
-`"ArgumentError: enum declared twice"` (schema `1.10`, #388). Other errors keep their fixed text,
-such as `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest database connection or
+lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
+examples gives
+`RSpec reported an error outside its examples, for example a spec file that raised while it loaded`.
+A `--matrix` early end after a serial database error gives
+`a test failed with a database error, then the child ended before the suite finished`
+(schema `1.10`, #417). Other errors keep their fixed text, such as
+`child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
 A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
-(schema `1.10`, #388). Issue #417 tracks a cause for the rest: a database error inside a test, RSpec
-errors outside examples, the `--matrix` early end, and `--test-command`.
+(schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
+(#417 items 5–6).
 
 `details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
 password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
