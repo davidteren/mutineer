@@ -657,7 +657,9 @@ module Mutineer
 
       longer_owner_stems(File.basename(ns_base), entry).any? do |longer|
         rel = File.join(dir, "#{longer}.rb")
-        next false unless File.file?(File.join(root, rel))
+        abs = File.expand_path(rel, root)
+        # A source path with `..` must not make this look at a file outside the project.
+        next false unless inside_project?(abs, root) && File.file?(abs)
 
         base, lib = logical_path(rel)
         tests_at(base, lib, root, "minitest").empty?

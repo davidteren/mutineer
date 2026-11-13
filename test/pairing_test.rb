@@ -650,6 +650,21 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # A source path with `..` must not make the longer-concern lookup stat a file
+  # outside the project. The namespace base here climbs out of the root.
+  def test_longer_concern_lookup_stays_inside_the_project
+    Dir.mktmpdir do |parent|
+      root = File.join(parent, "project")
+      FileUtils.mkdir_p(File.join(root, "app/models/concerns"))
+      outside = File.join(parent, "outside")
+      FileUtils.mkdir_p(outside)
+      File.write(File.join(outside, "user_session.rb"), "")
+
+      climbing = "models/../../../../outside/user"
+      refute Mutineer::Pairing.send(:claimed_by_longer_concern?, root, climbing, "user_session_extra_test.rb")
+    end
+  end
+
   # The model's only test is a split name a concern also uses. The concern
   # must not take it away.
   def test_model_keeps_its_only_split_file_when_a_concern_shares_the_name
