@@ -91,10 +91,13 @@ All notable changes to this project are documented here. The format is based on
   characters, for example `ArgumentError: enum declared twice`. Before, it
   said only `child exited with status 2` or `daemon verdict: error`, and the
   cause was on stderr alone. The line is redacted in the child, and every
-  `details` value is redacted again when the report is written. Other
-  errors (a database error inside a test, RSpec errors outside examples, the
-  `--matrix` early end, `--test-command`) keep their fixed
-  text; #417 tracks them.
+  `details` value is redacted again when the report is written.
+- **Errored mutants without a raised exception name their cause (#417).** A
+  Minitest database connection or lock error puts
+  `a test failed with a database error: Class: message` in `details`. An
+  RSpec error outside examples uses a fixed line that names that case. A
+  `--matrix` early end after a serial database error uses its own fixed
+  line. `--test-command` and the human/HTML errored lists stay deferred.
 - **A daemon crash names itself in `details` (#388).** A mutant whose daemon
   died or did not reply in time now has `daemon crashed` or `daemon stopped
   answering`, not `daemon verdict: error`.
@@ -154,6 +157,30 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Reload pairs a repeated callback when the other entry is a different one (#413).**
+  After a class body ran again, the repeat was paired by kind and by a
+  filter identity that still put different callbacks in one bucket.
+  `&:name` procs have no source, so they shared one bucket. Blocks in
+  the reloaded file shared a bucket when Ruby gave them the same label,
+  with no comparison of their code. A validator shared a bucket with
+  another of its class and attributes, with no comparison of option
+  names. `if:` and `unless:` were not part of the bucket. The class
+  body's new copy then stayed beside the old one, and a test that
+  counts errors or callback runs killed every mutant of the file.
+  `&:name` now matches the symbol. A block matches its code, so a value
+  it captured that differs on each load (a new object, a time, a random
+  value) still pairs when no other entry has that code. A validator
+  matches its option names, not values a mutant method can change. An
+  `if:` or `unless:` is part of the match.
+  A concern entry that is the same symbol, the same code, or the same
+  option names still cannot be told apart, so both copies stay. A
+  callback the class body adds only on its first run (`@done ||=`) still
+  keeps every identical copy. Those cases remain #413. Full reload
+  (#389) would build the class once. Reload and the daemon share this
+  path. Redefine does not run the class body again, so it does not add
+  the second copy.
+  **Score change:** a Rails model whose test counts those callbacks can
+  now show survivors that were false kills, so its score can go down.
 - **`--since` narrows the No mutants method count (#420).**
   `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
   keep methods whose `def` range intersects a changed line. The human and
