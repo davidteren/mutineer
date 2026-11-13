@@ -72,7 +72,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
 | `subjects` | int \| null | Methods found in the run's sources, each counted once. Methods, not mutants, so not in `total`. `--fail-fast` does not narrow it: it counts every method found, while `total` omits unscheduled mutants, so the two are not one denominator. `--since` keeps methods whose `def` intersects the diff, matching `unmutated_subjects` (#420). `null` only when a program calls the reporter without both method counts (one alone counts as none); the CLI always fills both. Additive key (schema `1.10`, #386). |
 | `unmutated_subjects` | int \| null | Methods the selected operators gave no mutant, an empty method included. `unmutated_subjects[]` below lists them. Decided before the run, so `--fail-fast` does not narrow it. `--since` keeps methods whose `def` intersects the diff (#420). `null` when `subjects` is `null`. Additive key (schema `1.10`, #386). |
-| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
+| `errored` | int | Mutants whose run crashed, or whose first failed Minitest test or RSpec example had a database connection or lock error (excluded). Each one is in `no_verdict[]` with `status` `"error"`. |
 | `timeout` | int | Mutants whose run exceeded the per-mutant timeout (excluded). |
 | `ignored` | int | Mutants suppressed via `# mutineer:disable-line` or `.mutineer.yml` `ignore:` (excluded). Under `--since`, only those on changed lines. |
 | `attempted` | int | Mutants actually run: `killed + survived + no_verdict`. **Not** `total` — no-coverage, skipped and ignored mutants are not counted as attempted (a #254 or #289 no-coverage mutant did run its statement's tests; #345 keeps it no-coverage only when the mutated expression did not return during a test). |
@@ -286,13 +286,14 @@ arrived out of order names no tests (`killed_by` and `ran` are empty).
 
 `status` is the verdict a run without `--matrix` gives. After the first failing test, that run skips every
 later test, test class and example group, so an exit, a crash or the timeout in one of those leaves the status
-`"killed"` for an ordinary test failure, or `"error"` for a Minitest database connection or lock failure.
+`"killed"` for an ordinary test failure, or `"error"` for a Minitest or RSpec database connection or lock failure.
 A database failure is not a killer and leaves the row incomplete, even when an earlier assertion
 already killed the mutant. It still runs the code around the failing test (the rest of its Minitest class `run` wrapper, the
 `after(:all)` hooks of its RSpec groups) and the suite's own cleanup (RSpec `after(:suite)`), so an end there
 keeps the exit status (or `"timeout"`). A failure in the tests of a Minitest `parallelize_me!` class keeps it
 too: those run after every serial class and cannot be stopped once queued, while a failure in a serial class
-still stops the run, even in a suite that also has a parallel class.
+still stops the run, even in a suite that also has a parallel class. The database-error choice among those
+queued tests follows the queue order, not the order the threads finish (#347).
 
 Each redundant test is judged on its own. Two redundant tests can be the only killers of one mutant, so
 delete them one at a time and re-run after each. Every answer covers this run's mutants only.

@@ -178,6 +178,30 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **An RSpec example's database error scores `error`, and a parallel Minitest
+  class follows queue order (#347).** The first failed RSpec example now
+  follows the Minitest rule. An Active Record connection or lock error
+  (`ConnectionNotEstablished`, including pool timeouts, `ConnectionFailed`,
+  `Deadlocked`, `LockWaitTimeout`) scores `error`, on a full run, a stop, and
+  `--matrix`. A later example's connection error does not change an earlier
+  assertion. On Rails 8, `ConnectionNotDefined` is a code error and still scores
+  `killed`. Rails 7.2 raises a plain `ConnectionNotEstablished` for an undefined
+  connection, so that mutant scores `error`. Other statement errors, such as bad
+  SQL, still score `killed`. A `before` hook counts as the example's own exception. An `after`
+  hook does not replace it. The stderr line is the same one Minitest writes.
+  With `--matrix`, that example is not a killer and the row stays incomplete.
+  There is no `--daemon` for RSpec. Errors are out of the score, so a lost
+  connection during a run no longer raises it, and a run that used to count
+  the example as a kill can change its score or fail `--threshold`. Refresh
+  the baseline when that happens.
+  Under Minitest `parallelize_me!`, the first failure is the earliest test in
+  the queue, not the thread that finishes first. A serial failure still
+  decides, because those classes run first. A mutant that mixed a database
+  error and an assertion in one parallel class no longer flips between
+  `killed` and `error` across runs. The JSON report still does not name an
+  in-test database error; pull request #443 does that. Active Record 7.2
+  reports SQLite `database is locked` as `StatementInvalid`, so that mutant
+  still scores `killed` (#347).
 - **`--strategy redefine` no longer false-kills path anchors in a read-only
   source directory (#339).** Redefine loads the mutated method from a hidden
   file. When that directory is not writable, the file is in the system temp
