@@ -1118,7 +1118,7 @@ class RailsWorkerDbTest < Minitest::Test
           if opened.nil?
             assert_nil got, uri
           else
-            assert_equal File.expand_path(opened), File.expand_path(got), uri
+            assert_equal sqlite_real_path(opened), sqlite_real_path(got), uri
           end
         end
       end
@@ -1126,7 +1126,10 @@ class RailsWorkerDbTest < Minitest::Test
   end
 
   def test_sqlite_file_uri_and_plain_path_share_a_lock_in_the_app_root
-    Dir.mktmpdir do |dir|
+    Dir.mktmpdir do |tmp|
+      # Rails.root is a real path, and so is the working directory after chdir.
+      # The tmpdir is /var/... on macOS, which is a symlink to /private/var/...
+      dir = File.realpath(tmp)
       Dir.chdir(dir) do
         saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
         rails = Module.new
@@ -1135,8 +1138,7 @@ class RailsWorkerDbTest < Minitest::Test
         begin
           plain = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
           uri = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3?mode=rwc"))
-          # expand_path resolves /var to /private/var on macOS. Compare that path.
-          expected = "#{File.expand_path('storage/test.sqlite3', dir)}-mutineer.lock"
+          expected = "#{File.join(dir, 'storage', 'test.sqlite3')}-mutineer.lock"
           assert_equal expected, plain
           assert_equal plain, uri
         ensure
@@ -1393,6 +1395,17 @@ class RailsWorkerDbTest < Minitest::Test
       return bin if File.executable?(bin) && !File.directory?(bin)
     end
     nil
+  end
+
+  # `path` with symlinks in its directory resolved. SQLite reports the real
+  # path of a file it opened (/private/var/... for a /var/... tmpdir on macOS),
+  # and the working directory is the real path too, while an absolute path
+  # given as-is keeps its symlinks. The file, and its directory, may not exist
+  # yet, so resolve the nearest directory that does and keep the rest.
+  def sqlite_real_path(path)
+    existing = File.dirname(path)
+    existing = File.dirname(existing) until File.directory?(existing)
+    File.join(File.realpath(existing), path.delete_prefix(existing))
   end
 
   # The file SQLite opened for `uri`, or nil when it opened no shared file.
