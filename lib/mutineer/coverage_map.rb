@@ -363,7 +363,9 @@ module Mutineer
     # the longer-source check match {Pairing}, so a test outside the mirror, or
     # one owned by `user_session.rb`, does not taint `user.rb`. A concern with
     # no test at its `concerns/` path also accepts a split name at its
-    # namespace path (#408). A longer concern owns that name the same way.
+    # namespace path (#408). A longer concern owns that name only when it
+    # pairs with the file. A namespace spec leaves split names unpaired, so
+    # a failed split does not mark the concern.
     #
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
@@ -374,8 +376,18 @@ module Mutineer
       ns = Pairing.namespace_base(source_rel)
       return false unless ns
       return false if own_concern_test?(source_rel, ns)
+      return false if namespace_spec?(source_rel)
 
       failed_split_in?(ns, false, concern: true)
+    end
+
+    # True when the concern's namespace pairing is one spec file.
+    # Split names do not join a spec, so a failed split must not mark it.
+    #
+    # @param source_rel [String] project-relative concern path.
+    # @return [Boolean]
+    def namespace_spec?(source_rel)
+      Pairing.infer_tests(source_rel, project_root: @project_root).any? { |t| t.end_with?("_spec.rb") }
     end
 
     # True when one failed split file in the mirror of `base` pairs with it.

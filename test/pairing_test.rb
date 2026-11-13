@@ -637,16 +637,16 @@ class PairingTest < Minitest::Test
   end
 
   # The longer concern keeps its concerns-path test and does not add the
-  # namespace split. The shorter concern yields that split, so neither pairs
-  # with it.
-  def test_namespace_split_stays_unpaired_when_the_longer_concern_has_its_own_test
+  # namespace split. The shorter concern keeps that split, because the longer
+  # concern does not run it.
+  def test_shorter_concern_keeps_a_namespace_split_the_longer_concern_does_not_run
     shorter = "app/models/concerns/user.rb"
     longer = "app/models/concerns/user_session.rb"
     with_tree(shorter, longer,
               "test/models/concerns/user_session_test.rb",
               "test/models/user_session_extra_test.rb") do |root|
       assert_equal ["test/models/concerns/user_session_test.rb"], infer_tests(longer, root)
-      assert_empty infer_tests(shorter, root)
+      assert_equal ["test/models/user_session_extra_test.rb"], infer_tests(shorter, root)
     end
   end
 

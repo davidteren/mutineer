@@ -418,10 +418,9 @@ module Mutineer
     end
 
     # Namespace exact and split tests for a concern whose `concerns/` path
-    # has none. Split files a longer concern owns are left out. A longer model
-    # is already left out by {split_test_files}. A longer concern that already
-    # has a test at its `concerns/` path does not take the namespace split
-    # either, so that file pairs with neither concern.
+    # has none. A split is left out only when a longer concern has no test
+    # of its own and therefore pairs with that split. A longer model is
+    # already left out by {split_test_files}. A spec stays the only file.
     #
     # @param ns [String] namespace base from {namespace_base}.
     # @param root [String] expanded project root.
@@ -641,11 +640,12 @@ module Mutineer
       end
     end
 
-    # True when a longer concern file owns this split name.
+    # True when a longer concern pairs with this split name.
     # The file sits under `app/<dir>/concerns/`, a directory
     # {longer_source_exists?} does not search for a namespace base.
-    # Only the concern's namespace fallback asks this, so a model keeps a
-    # split file it already pairs with (#408).
+    # The longer concern claims the name only when its `concerns/` path has
+    # no test, because only then does it look at the namespace path.
+    # A model keeps a split file it already pairs with (#408).
     #
     # @param root [String] expanded project root.
     # @param ns_base [String] namespace base, such as `models/storage/totaled`.
@@ -656,7 +656,11 @@ module Mutineer
       return false unless dir
 
       longer_owner_stems(File.basename(ns_base), entry).any? do |longer|
-        File.file?(File.join(root, dir, "#{longer}.rb"))
+        rel = File.join(dir, "#{longer}.rb")
+        next false unless File.file?(File.join(root, rel))
+
+        base, lib = logical_path(rel)
+        tests_at(base, lib, root, "minitest").empty?
       end
     end
 

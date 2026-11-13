@@ -1838,9 +1838,22 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
-  # The longer concern already has a concerns-path test, so a failed namespace
-  # split marks neither concern. Pairing would not run that file for either.
-  def test_failing_namespace_split_marks_neither_concern_when_the_longer_one_has_its_own_test
+  # A namespace spec leaves split names unpaired. A failed split must not
+  # mark the concern when that spec is the paired file.
+  def test_failing_namespace_split_does_not_taint_a_concern_paired_with_a_spec
+    Dir.mktmpdir do |dir|
+      spec = File.join(dir, "spec/models/storage/totaled_spec.rb")
+      FileUtils.mkdir_p(File.dirname(spec))
+      File.write(spec, "# spec\n")
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # The longer concern already has a concerns-path test, so it does not run
+  # the namespace split. A failed copy marks the shorter concern, which does.
+  def test_failing_namespace_split_marks_the_shorter_concern_when_the_longer_one_has_its_own_test
     Dir.mktmpdir do |dir|
       shorter = "app/models/concerns/user.rb"
       longer_rel = "app/models/concerns/user_session.rb"
@@ -1862,7 +1875,7 @@ class CoverageMapTest < Minitest::Test
           cache_dir: File.join(dir, "cache"), project_root: dir
         ).build_or_load
       end
-      refute map.uncapturable_source?(File.join(dir, shorter))
+      assert map.uncapturable_source?(File.join(dir, shorter))
       refute map.uncapturable_source?(File.join(dir, longer_rel))
     end
   end
