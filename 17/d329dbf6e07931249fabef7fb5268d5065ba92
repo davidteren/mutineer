@@ -1,0 +1,23 @@
+test/output_filter_test.rb
+  s_e159a5aa666e47::t_4204f44fcc1baa 133-155
+CHANGELOG.md
+  s_e159a5aa666e47::t_9aa641f0a21135 152-153
+lib/mutineer/output_filter.rb
+  s_e159a5aa666e47::t_92a9b3f37baf88 10-11,46-47,162-163,180-182,184-185,187-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17d329dbf6e07931249fabef7fb5268d5065ba92",
+  "prompts": {},
+  "sessions": {
+    "s_e159a5aa666e47": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be2034ac-3609-455a-a8bf-2fa006e19b7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
