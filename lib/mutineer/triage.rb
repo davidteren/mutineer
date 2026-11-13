@@ -75,6 +75,7 @@ module Mutineer
       end
 
       seen_owners = {}
+      seen_entry_ids = {}
       entries = []
       chosen.uniq.each do |id|
         owner = by_id.key?(id) ? id : copy_owner[id]
@@ -82,8 +83,9 @@ module Mutineer
 
         seen_owners[owner] = true
         ([owner] + by_id[owner]).each do |entry_id|
-          next if entries.any? { |entry| entry["id"] == entry_id }
+          next if seen_entry_ids[entry_id]
 
+          seen_entry_ids[entry_id] = true
           entries << { "id" => entry_id, "reason" => text }
         end
       end

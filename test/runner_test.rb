@@ -949,10 +949,7 @@ class RunnerTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "g.rb")
       File.write(path, "class G\n  def changed\n    \"hi\"\n  end\n  def kept\n    \"yo\"\n  end\nend\n")
-      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
-       %w[add .], %w[commit -qm base]].each do |args|
-        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
-      end
+      git_commit_all(root)
       File.write(path, File.read(path).sub('"hi"', '"hi!"'))
       ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
       config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")

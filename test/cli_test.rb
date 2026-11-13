@@ -735,7 +735,12 @@ class CliTest < Minitest::Test
       listed = doc["mutants"].select { |row| row["copies"] }
       assert_equal 1, listed.size
       assert_equal "literal_mutation", listed.first["operator"]
-      assert_equal 1, listed.first["copies"].size
+      string_id = Mutineer::JobPlan.collect_jobs(
+        Mutineer::Config.new(sources: [File.join(dir, "g.rb")], project_root: dir),
+        Mutineer::MutatorRegistry.resolve(%w[string_literal])
+      ).first.first.last
+      assert_equal [string_id], listed.first["copies"]
+      assert_equal "fc98a5d59649", string_id
     end
   end
 

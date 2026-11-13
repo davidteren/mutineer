@@ -302,6 +302,9 @@ class JsonReporterTest < Minitest::Test
     doc = JSON.parse(out.string)
     assert_equal ["drop00000001"], doc["survivors"].first["copies"]
     assert_equal 1, doc["summary"]["dropped"]
+    assert_equal 1, doc["summary"]["total"]
+    assert_equal 1, doc["summary"]["survived"]
+    assert_equal 0.0, doc["summary"]["score"]
 
     plain = render([survivor.with(id: "kept00000002")])
     refute plain["survivors"].first.key?("copies")
@@ -331,9 +334,11 @@ class JsonReporterTest < Minitest::Test
     Mutineer::Reporter.new(Mutineer::AggregateResult.new([ignored]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json",
                               copies: { "ignr00000001" => ["drop00000003"] })
-    row = JSON.parse(out.string)["ignored"].first
+    doc = JSON.parse(out.string)
+    row = doc["ignored"].first
     assert_equal ["drop00000003"], row["copies"]
     assert_equal "same edit", row["reason"]
+    assert_equal 1, doc["summary"]["dropped"]
   end
 
   def test_survivor_entry_has_all_keys_and_diff
