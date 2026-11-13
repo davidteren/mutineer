@@ -64,6 +64,7 @@ module Mutineer
         child = Process.pid
         rd&.close
         cause_rd.close
+        ChildCause.arm!(cause_wr, child)
         # Own process group so a timeout kill can reap grandchildren (match
         # daemon/external backends). Best-effort: if setpgid fails, kill the pid.
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -81,6 +82,8 @@ module Mutineer
           STDERR.puts "[mutineer-child] #{Redaction.describe(e)}"
           ChildCause.write(cause_wr, e, child)
           code = 2
+        ensure
+          ChildCause.disarm!
         end
         STDERR.flush
         # exit! skips at_exit handlers — critical, since a child forked from
@@ -184,7 +187,11 @@ module Mutineer
       return result.with(kills: Kills.new(killed_by: [], ran: [], complete: false)) if report.invalid
 
       result = Result.killed if report.started && report.serial_kill && report.skipping.positive?
-      result = Result.error if report.started && report.serial_error && report.skipping.positive?
+      # Early end after a serial DB error: the child never reached the naming
+      # code that would write the exception class (#417 / KTD5).
+      if report.started && report.serial_error && report.skipping.positive?
+        result = Result.error(ChildCause::MATRIX_EARLY_END)
+      end
       agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
       complete = finished && report.started && report.finished && report.lost.zero? && agrees
       result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))

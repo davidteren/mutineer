@@ -62,10 +62,13 @@ Examples include constant-building calls, `to_prepare` initializers, and source 
 
 | Result | Treatment |
 | --- | --- |
-| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. |
+| A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. A mutant in a `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call stores (#435). Another block on that line, such as `each`, stays scored. An empty `each` that shares the line with `define_method` can still mark that call `ran_at_load` when the call did not run ([#286](https://github.com/davidteren/mutineer/issues/286)). |
 | A mutant is killed | The kill counts. |
 | Strategy is `reload` | Repeats the mutated file's class body, but not initializers or other files. Survivors on these lines remain untrusted. |
 | A verdict is needed | Use `--test-command` to boot a fresh process per mutant. |
+| The caller loaded before the mutant | `reload` updates the macro method and does not run the class that already called it. Those mutants stay `ran_at_load`. Re-running that class body is [#389](https://github.com/davidteren/mutineer/issues/389). |
+
+Mutineer does not read `CI`. In the Rails test environment, `config.eager_load` follows `CI`, so a run with `CI` set loads the class before the mutant and these mutants are `ran_at_load`. With eager load off, the class loads after the mutant and the same mutants are killed.
 
 Continue from the first report to a CI gate with the
 [Rails rollout guide](https://davidteren.github.io/mutineer/rails.html).
