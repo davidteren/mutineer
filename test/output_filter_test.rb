@@ -464,11 +464,15 @@ class OutputFilterTest < Minitest::Test
       File.write(File.join(proj, "a_test.rb"), "def test_a = 1\n")
       word = ["ex", "ecuted"].join
       code = 'ENV["DATABASE_URL"] = ["postgres://u:", "ex", "ecuted", "@h/db"].join; ' \
-             'exec("/bin/sh", "-c", "echo saw " + ["ex", "ecuted"].join + " tail >&2; exit 1")'
+             'exec("/bin/sh", "-c", "echo ran > $MARKER; echo saw " + ["ex", "ecuted"].join + " tail >&2; exit 1")'
       command = "#{Shellwords.escape(RbConfig.ruby)} -e #{Shellwords.escape(code)} %{files}"
-      _out, err, _status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
-                                    chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil })
+      marker = File.join(proj, "ran.txt")
+      _out, err, status = mutineer("run", "a.rb", "--test", "a_test.rb", "--test-command", command,
+                                   chdir: proj, env: { "DATABASE_URL" => nil, "RUBYOPT" => nil, "MARKER" => marker })
 
+      # The program ran (the marker is written before its output) and failed.
+      assert_path_exists marker
+      assert_equal 1, status.exitstatus, err
       refute_includes err, word
       refute_includes err, "saw"
     end
