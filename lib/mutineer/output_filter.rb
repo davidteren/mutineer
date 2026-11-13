@@ -50,6 +50,25 @@ module Mutineer
       end
     end
 
+    # Drops a spawned program's output when its env hash sets a DATABASE_URL
+    # this process's copier does not know. A URL set in ENV first is known:
+    # the copier reads ENV. Process has no `system`, so it gets {SpawnHook}
+    # only.
+    module SpawnHook
+      # @return [Integer] the child pid.
+      def spawn(*args)
+        super(*OutputFilter.spawn_args(args))
+      end
+    end
+
+    # The `system` form of {SpawnHook}, for Kernel#system and Kernel.system.
+    module SystemHook
+      # @return [Boolean, nil] as Kernel#system.
+      def system(*args)
+        super(*OutputFilter.spawn_args(args))
+      end
+    end
+
     # Flushes the copier before exit!. exit! skips at_exit, and a forked
     # test exits that way.
     module ExitHook
@@ -188,11 +207,41 @@ module Mutineer
     def before_exec(args = [])
       return unless @fork_child
 
-      env = args.first.is_a?(Hash) ? args.first : {}
-      url = (env.key?("DATABASE_URL") ? env["DATABASE_URL"] : ENV.fetch("DATABASE_URL", nil)).to_s
-      known = url.empty? || url == @parent_url.to_s || Redaction.extra_urls.include?(url)
+      known = known_url?(args, @parent_url)
       uninstall
       silence_stdio unless known
+    end
+
+    # `args` for spawn or system, with stdout and stderr sent to the null
+    # device when the program's env hash sets a DATABASE_URL this process
+    # does not know. A stream the caller already redirects is left alone.
+    #
+    # @param args [Array] the arguments given to spawn or system.
+    # @return [Array]
+    def spawn_args(args)
+      return args if !installed? || known_url?(args, ENV.fetch("DATABASE_URL", nil))
+
+      options = args.size > 1 && args.last.is_a?(Hash) ? args.last : {}
+      taken = options.keys.flat_map { |key| Array(key) }
+      extra = {}
+      extra[:out] = File::NULL unless taken.intersect?([:out, 1, STDOUT])
+      extra[:err] = File::NULL unless taken.intersect?([:err, 2, STDERR])
+      options.empty? ? args + [extra] : args[0...-1] + [options.merge(extra)]
+    end
+
+    # True when the program `args` start would run with no DATABASE_URL,
+    # with `current`, or with a dotenv URL redaction already knows. The env
+    # hash wins; ENV counts only when `unsetenv_others` does not clear it.
+    #
+    # @param args [Array] exec, spawn, or system arguments.
+    # @param current [String, nil] the URL the redacting copier knows.
+    # @return [Boolean]
+    def known_url?(args, current)
+      env = args.first.is_a?(Hash) ? args.first : {}
+      options = args.size > 1 && args.last.is_a?(Hash) ? args.last : {}
+      inherited = options[:unsetenv_others] ? nil : ENV.fetch("DATABASE_URL", nil)
+      url = (env.key?("DATABASE_URL") ? env["DATABASE_URL"] : inherited).to_s
+      url.empty? || url == current.to_s || Redaction.extra_urls.include?(url)
     end
 
     # Point stdout and stderr at the null device. Used when this fork cannot
@@ -228,7 +277,7 @@ module Mutineer
       at_exit { uninstall }
     end
 
-    # Wrap fork and exec once per process.
+    # Wrap fork, exec, spawn, and system once per process.
     #
     # @return [void]
     def hook_fork
@@ -238,7 +287,10 @@ module Mutineer
       [Kernel, Kernel.singleton_class, Process.singleton_class].each do |target|
         target.prepend(ForkHook)
         target.prepend(ExecHook)
+        target.prepend(SpawnHook)
       end
+      Kernel.prepend(SystemHook)
+      Kernel.singleton_class.prepend(SystemHook)
     end
 
     # @return [void]

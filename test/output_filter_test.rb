@@ -165,15 +165,62 @@ class OutputFilterTest < Minitest::Test
       -> { Process.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) },
       -> { Kernel.exec({ "DATABASE_URL" => child_url }, RbConfig.ruby, "-e", script) }
     ].each do |child|
+      status = nil
       out, err = captured do
         Mutineer::OutputFilter.install
         pid = fork { child.call }
-        Process.waitpid(pid)
+        _, status = Process.waitpid2(pid)
       end
 
+      # The program ran and exited cleanly; only its output was dropped.
+      assert_predicate status, :success?
       refute_includes out + err, secret
       refute_includes out + err, "execd"
     end
+  end
+
+  # `unsetenv_others` clears ENV for the program, so a URL only in this
+  # process's ENV does not reach it and its output is kept.
+  def test_exec_with_unsetenv_others_ignores_the_childs_env_url
+    ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+    status = nil
+    _out, err = captured do
+      Mutineer::OutputFilter.install(streams: [:stderr])
+      pid = fork do
+        ENV["DATABASE_URL"] = "postgres://u:#{["child", "only", "pw"].join}@h/db"
+        exec({}, RbConfig.ruby, "-e", "STDERR.puts %(clean line)", unsetenv_others: true)
+      end
+      _, status = Process.waitpid2(pid)
+    end
+
+    assert_predicate status, :success?
+    assert_includes err, "clean line"
+  end
+
+  # spawn and system read ENV through this process's copier, but an env hash
+  # URL is unknown to it. That program's output is dropped; a plain one is
+  # still shown and redacted.
+  def test_spawn_and_system_with_an_unknown_url_print_nothing
+    ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+    secret = ["child", "only", "pw"].join
+    env = { "DATABASE_URL" => "postgres://u:#{secret}@h/db" }
+    script = "STDOUT.puts %(spawned-out #{secret}); STDERR.puts %(spawned-err #{secret})"
+    results = []
+    out, err = captured do
+      Mutineer::OutputFilter.install
+      results << system(env, RbConfig.ruby, "-e", script)
+      results << Kernel.system(env, RbConfig.ruby, "-e", script)
+      results << Process.wait2(Process.spawn(env, RbConfig.ruby, "-e", script)).last.success?
+      results << Process.wait2(Kernel.spawn(env, RbConfig.ruby, "-e", script)).last.success?
+      pid = fork { exit!(system(env, RbConfig.ruby, "-e", script) ? 0 : 1) }
+      results << Process.waitpid2(pid).last.success?
+      results << system(RbConfig.ruby, "-e", "STDERR.puts %(plain s3cret end)")
+    end
+
+    assert_equal [true] * 6, results
+    refute_includes out + err, secret
+    refute_includes out + err, "spawned"
+    assert_includes err, "plain [REDACTED] end"
   end
 
   # The report is larger than a pipe buffer and the reader waits longer than
