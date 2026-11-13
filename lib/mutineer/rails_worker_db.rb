@@ -331,10 +331,10 @@ module Mutineer
     # @raise [SystemCallError] when the lock file cannot be opened.
     def self.provision_sqlite
       config = primary_db_config
-      lock = sqlite_lock_path(config)
-      return unless lock
+      base = sqlite_lock_base(config)
+      return unless base
 
-      base = sqlite_file(config)
+      lock = "#{base}#{SQLITE_LOCK_SUFFIX}"
       hold_sqlite_lock(lock, base, shared: false)
       hold_sqlite_lock(lock, base, shared: true)
     end
@@ -373,17 +373,17 @@ module Mutineer
     end
 
     # Take the shared SQLite run lock. A worker daemon calls this at boot.
-    # No file means there is nothing to lock (`:memory:`, blank, or `file:`).
+    # No file means there is nothing to lock (blank, `:memory:`, or a memory URI).
     #
     # @return [void]
     # @raise [RuntimeError] when another run holds the exclusive lock.
     # @raise [SystemCallError] when the lock file cannot be opened.
     def self.prepare_sqlite_worker!
       config = primary_db_config
-      lock = sqlite_lock_path(config)
-      return unless lock
+      base = sqlite_lock_base(config)
+      return unless base
 
-      hold_sqlite_lock(lock, sqlite_file(config), shared: true)
+      hold_sqlite_lock("#{base}#{SQLITE_LOCK_SUFFIX}", base, shared: true)
     end
 
     # Point this process at one worker database. Postgres and MySQL only connect.
@@ -663,8 +663,9 @@ module Mutineer
       adapter.start_with?("sqlite")
     end
 
-    # True for a SQLite config with a database file: not `:memory:`, not a
-    # `file:` URI, not blank.
+    # True for a SQLite config whose database name is a plain file path:
+    # not `:memory:`, not a `file:` URI, not blank.
+    # A `file:` URI is resolved by {sqlite_lock_base}, not by this predicate.
     #
     # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
     # @return [Boolean]
@@ -673,8 +674,10 @@ module Mutineer
       sqlite_adapter?(config.adapter.to_s) && !database.empty? && database != ":memory:" && !database.start_with?("file:")
     end
 
-    # Absolute path of a SQLite config's file, resolved as the Rails adapter
-    # does: against `Rails.root` when it is set.
+    # Absolute path of a plain SQLite config's file, resolved as the Rails
+    # adapter does: against `Rails.root` when it is set.
+    # Rails rewrites a plain name before SQLite opens it. A `file:` URI is
+    # not rewritten; {sqlite_uri_file} resolves that name the way SQLite does.
     #
     # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
     # @return [String]
@@ -683,15 +686,245 @@ module Mutineer
       root ? File.expand_path(config.database, root.to_s) : File.expand_path(config.database)
     end
 
-    # Absolute path of the SQLite run lock, or nil when the config has no file.
-    # Blank names, `:memory:`, and `file:` URIs have no lock.
+    # Absolute path of the SQLite file this config locks, or nil when the
+    # database is not a shared file. Blank names, `:memory:`, a memory URI,
+    # and a URI SQLite rejects before opening a file have no lock.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String, nil]
+    def self.sqlite_lock_base(config)
+      database = config.database.to_s
+      if database.start_with?("file:")
+        return unless sqlite_adapter?(config.adapter.to_s)
+
+        sqlite_uri_file(database)
+      else
+        return unless sqlite_file_config?(config)
+
+        sqlite_file(config)
+      end
+    end
+
+    # Absolute path of the SQLite run lock, or nil when {sqlite_lock_base}
+    # finds no shared file.
     #
     # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
     # @return [String, nil]
     def self.sqlite_lock_path(config)
-      return unless sqlite_file_config?(config)
+      base = sqlite_lock_base(config)
+      return unless base
 
-      "#{sqlite_file(config)}#{SQLITE_LOCK_SUFFIX}"
+      "#{base}#{SQLITE_LOCK_SUFFIX}"
+    end
+
+    # Absolute path of the file a `file:` URI opens, or nil when that URI
+    # does not open a shared file.
+    #
+    # SQLite opens a relative URI path from the working directory. Rails does
+    # not rewrite a `file:` name, so this does not use `Rails.root`. The
+    # daemon has already changed to the project root, which is `Rails.root`
+    # for a run started in the app. A plain name for that same file then
+    # locks the same path. Extra leading slashes are collapsed so
+    # `file:////tmp/db.sqlite3` locks `/tmp/db.sqlite3`. The filesystem root
+    # is not a database file, so a path of `/` has no lock.
+    #
+    # @param uri [String] a database name that starts with `file:`.
+    # @return [String, nil]
+    def self.sqlite_uri_file(uri)
+      parsed = sqlite_uri_parts(uri)
+      return unless parsed
+
+      path, memory = parsed
+      return if memory || path.empty? || path == ":memory:"
+
+      expanded = File.expand_path(path).sub(%r{\A/{2,}}, "/")
+      # `/` is not a database file. The lock name would be `/-mutineer.lock`.
+      return if expanded == "/"
+
+      expanded
+    end
+
+    # Path and memory flag of a `file:` URI, or nil when SQLite rejects it.
+    #
+    # The steps match SQLite's `file:` parser. The authority is empty or
+    # `localhost`. `%HH` is decoded. `%00` ends the part being read. A raw
+    # `?` starts the query and `#` starts a fragment, which is ignored.
+    # `mode=memory` is in-memory. Any other `mode` or `cache` value makes
+    # SQLite refuse the open, so there is no shared file to lock.
+    # `vfs` and the other query keys do not change the path.
+    #
+    # @param uri [String] a database name that starts with `file:`.
+    # @return [Array(String, Boolean), nil] the decoded path and whether
+    #   `mode=memory` won, or nil when the URI is rejected.
+    def self.sqlite_uri_parts(uri)
+      bytes = uri.b.bytes
+      index = 5
+      if bytes[index] == 0x2f && bytes[index + 1] == 0x2f
+        index += 2
+        auth_at = index
+        index += 1 while index < bytes.length && bytes[index] != 0x2f
+        authority = bytes[auth_at...index].pack("C*")
+        return if !authority.empty? && authority != "localhost"
+      end
+
+      path = []
+      name = []
+      value = []
+      state = :path
+      options = { mode: nil, cache: nil }
+      while index < bytes.length
+        byte = bytes[index]
+        break if byte == 0x23 # #
+
+        index += 1
+        if byte == 0x25 && sqlite_uri_hex?(bytes[index]) && sqlite_uri_hex?(bytes[index + 1]) # %
+          octet = bytes[index, 2].pack("C*").to_i(16)
+          index += 2
+          if octet.zero?
+            index = sqlite_uri_skip_null(bytes, index, state)
+            next
+          end
+          byte = octet
+        elsif state == :name && (byte == 0x26 || byte == 0x3d) # & or =
+          if name.empty?
+            index = sqlite_uri_skip_empty_option(bytes, index)
+            next
+          end
+          if byte == 0x26
+            return unless sqlite_uri_option(name, [], options)
+
+            name = []
+            next
+          end
+          state = :value
+          value = []
+          next
+        elsif (state == :path && byte == 0x3f) || (state == :value && byte == 0x26) # ? or &
+          if state == :value
+            return unless sqlite_uri_option(name, value, options)
+
+            name = []
+            value = []
+          end
+          state = :name
+          next
+        end
+        case state
+        when :path then path << byte
+        when :name then name << byte
+        when :value then value << byte
+        end
+      end
+      if state == :name && !name.empty?
+        return unless sqlite_uri_option(name, [], options)
+      elsif state == :value
+        return unless sqlite_uri_option(name, value, options)
+      end
+
+      memory = (options[:open_flags].to_i & 0x80) != 0
+      [sqlite_uri_text(path), memory]
+    end
+
+    # Advance to the delimiter that ends the part a `%00` truncated.
+    # The delimiter itself stays, so the caller can parse it.
+    #
+    # @param bytes [Array<Integer>]
+    # @param index [Integer]
+    # @param state [Symbol] `:path`, `:name`, or `:value`.
+    # @return [Integer]
+    def self.sqlite_uri_skip_null(bytes, index, state)
+      while index < bytes.length
+        byte = bytes[index]
+        break if byte == 0x23 # #
+        break if state == :path && byte == 0x3f # ?
+        break if state == :name && (byte == 0x3d || byte == 0x26) # = or &
+        break if state == :value && byte == 0x26 # &
+
+        index += 1
+      end
+      index
+    end
+
+    # Advance past the value of a query parameter whose name was empty.
+    # SQLite ignores that parameter. `index` already points at the next byte.
+    #
+    # @param bytes [Array<Integer>]
+    # @param index [Integer]
+    # @return [Integer]
+    def self.sqlite_uri_skip_empty_option(bytes, index)
+      index += 1 while index < bytes.length && bytes[index] != 0x23 && bytes[index - 1] != 0x26
+      index
+    end
+
+    # Record one query parameter. `mode` and `cache` are the keys that decide
+    # whether a file opens. An unknown value is a URI SQLite rejects.
+    # A later `mode` replaces the earlier one only when SQLite allows it.
+    # Adding write or create after a narrower mode is refused.
+    #
+    # @param name [Array<Integer>] parameter name bytes.
+    # @param value [Array<Integer>] parameter value bytes.
+    # @param options [Hash] `:open_flags` and `:cache`, updated in place.
+    # @return [Boolean] false when SQLite would reject this parameter.
+    def self.sqlite_uri_option(name, value, options)
+      key = sqlite_uri_text(name)
+      text = sqlite_uri_text(value)
+      case key
+      when "mode"
+        return false unless sqlite_uri_mode(text, options)
+      when "cache"
+        return false unless %w[shared private].include?(text)
+
+        options[:cache] = text
+      end
+      true
+    end
+
+    # Apply one `mode` value to the open flags SQLite starts with.
+    # The default is read-write and create, as in `sqlite3_open`.
+    # SQLite refuses a later mode whose non-memory bits are greater than the
+    # flags still set, for example `mode=ro&mode=rw`. `mode=memory` then
+    # `mode=rw` is a disk file again. The memory bit is `0x80`.
+    #
+    # @param text [String] the mode value.
+    # @param options [Hash] `:open_flags` is updated in place.
+    # @return [Boolean] false when the value is unknown or not allowed.
+    def self.sqlite_uri_mode(text, options)
+      readonly = 0x01
+      readwrite = 0x02
+      create = 0x04
+      memory = 0x80
+      bits = {
+        "ro" => readonly,
+        "rw" => readwrite,
+        "rwc" => readwrite | create,
+        "memory" => memory
+      }[text]
+      return false unless bits
+
+      mask = readonly | readwrite | create | memory
+      flags = options[:open_flags] ||= readwrite | create
+      return false if (bits & ~memory) > (mask & flags)
+
+      options[:open_flags] = (flags & ~mask) | bits
+      true
+    end
+
+    # @param bytes [Array<Integer>]
+    # @return [String] UTF-8 when the bytes are valid text, otherwise binary.
+    def self.sqlite_uri_text(bytes)
+      text = bytes.pack("C*")
+      utf8 = text.dup.force_encoding(Encoding::UTF_8)
+      return utf8 if utf8.valid_encoding?
+
+      text.force_encoding(Encoding::ASCII_8BIT)
+    end
+
+    # @param byte [Integer, nil]
+    # @return [Boolean]
+    def self.sqlite_uri_hex?(byte)
+      return false if byte.nil?
+
+      (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x46) || (byte >= 0x61 && byte <= 0x66)
     end
 
     # Open the SQLite run lock once and take it.

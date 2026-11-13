@@ -198,9 +198,18 @@ A daemon that died or did not reply in time gives `daemon crashed` or `daemon st
 (schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
 (#417 items 5–6).
 
-`details` is redacted, but only in part. Redaction replaces the password of `DATABASE_URL`, and the
-password in any `scheme://user:password@host` URL, with `[REDACTED]`. A password that appears on its
-own, from another setting, stays visible (#341 tracks redaction gaps). An exception message can hold
+`details` is redacted. Redaction replaces the password of `DATABASE_URL` from the environment and from
+these dotenv files: `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`,
+and `.env.test.local`. A double-quoted value may span lines. A backslash before `$` is a literal
+dollar. An invalid byte does not stop that read. A Ruby process that `--test-command` starts
+hides a password that process assigns itself. It also replaces the password in any
+`scheme://user:password@host` URL.
+A one-character password, a password equal to the username, the host, or the database name, and a
+common word such as `password` or `test` stay visible outside a URL and outside a `password=` parameter.
+Any other form longer than one character is hidden only as a whole token, with no ASCII letter, digit,
+or underscore touching either edge, when it has at most three characters or is made only of ASCII
+letters, digits, and underscores. A longer form that contains another character is hidden wherever it
+appears. A password from another setting stays visible. An exception message can hold
 other secrets too, so treat the report like a log. A message
 can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
 between two runs with the same verdicts.

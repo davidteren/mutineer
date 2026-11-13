@@ -206,6 +206,59 @@ All notable changes to this project are documented here. The format is based on
   as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
   ship Prism, and requiring Prism there would turn off worker-database
   routing.
+- **Direct stderr and stdout no longer print a database password (#341).**
+  A boot file, a forked test, and a program that test starts inherit a pipe.
+  Mutineer copies each line and hides the `DATABASE_URL` password before the
+  line reaches the terminal. `abort` in a boot file is included. A line with
+  no password is unchanged. A fork that sets `DATABASE_URL` itself is
+  redacted in that process. A password that contains a newline stays
+  together until a newline follows it or the stream ends, so neither half is
+  printed. The daemon does not boot when stderr cannot be redirected. A fork
+  whose own copier cannot start writes nothing further. A fork that execs a
+  program hands it the parent's pipe, so that output is still shown and
+  redacted. If the program would run with a `DATABASE_URL` the parent does
+  not know, its output is dropped instead. The same holds for `spawn` and
+  `system` when their environment hash sets a `DATABASE_URL` this process
+  does not know. That program's own redirects of stdout and stderr are
+  replaced too, so an `Open3` capture of it gets no output. Other ways to start a program with its own password, such
+  as backticks, `IO.popen`, or a shell command that sets the variable, still
+  pass that password through. Shutdown writes every byte already
+  queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
+  password the boot file assigns is hidden even when the tool's environment
+  does not have it. `--test-command` output is redacted with the tool's
+  `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project
+  (`.env`, `.env.local`, `.env.development`, `.env.development.local`,
+  `.env.test`, `.env.test.local`). A double-quoted value may span lines. A
+  quote that never closes is a plain value on its own line, as in dotenv. A
+  backslash before `$` is a literal dollar. An invalid byte does not stop
+  the read. A Ruby process the command starts hides a bare password it
+  assigns itself, including one set only in that process (#457). A program
+  that is not Ruby ignores that copier, so when that Ruby execs a program
+  with a `DATABASE_URL` the tool did not know, the program's output is
+  dropped. A password inside a URL is still hidden.
+- **Redaction no longer blanks a host, a database name, one character, or a
+  common word (#341).** A password that equals the host or the database name
+  stays readable outside a URL, as a password that equals the username
+  already did. A one-character password (`a`, `1`) stays readable outside a
+  URL, so it does not erase that character from every line. The words
+  `password`, `test`, `secret`, `postgres`, and the rest of the list in
+  `Redaction::COMMON_WORDS` stay readable as bare words. The password is
+  still hidden inside a URL and as the value of a `password=` parameter.
+  Local and CI URLs often use these words. A production password usually
+  does not.
+- **A `file:` SQLite name locks the file it opens (#412).**
+  `file:storage/test.sqlite3?mode=rwc` takes the same run lock as
+  `storage/test.sqlite3` when both names open that file. A second daemon
+  run stops with `another Mutineer run is using <file>`. A memory URI
+  (`file::memory:` or `mode=memory`) takes no lock. An empty `file:` URI
+  is a private temporary database and takes no lock. A relative `file:`
+  path is resolved from the working directory, which the daemon sets to
+  the app root before the lock. A later `mode` that adds write or create
+  access, such as `mode=ro&mode=rw`, is a URI SQLite rejects, so it takes
+  no lock. Other run-lock gaps are unchanged (#416): in-process `--rails`
+  runs, the lock taken after boot and `--require` files, a prepare daemon
+  that fails to boot, and the `--jobs 1` respawn window. A custom VFS that
+  does not open the URI path is not covered.
 - **An RSpec example's database error scores `error`, and a parallel Minitest
   class follows queue order (#347).** The first failed RSpec example now
   follows the Minitest rule. An Active Record connection or lock error
@@ -365,7 +418,7 @@ All notable changes to this project are documented here. The format is based on
   A run now holds a lock on `<base file>-mutineer.lock` beside the database
   file, and a second run stops with `another Mutineer run is using <base>`,
   as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
-  file. A `file:` database name still takes no lock (#412).
+  file. A `file:` name that opens a disk file takes that same lock (#412).
 
 ## [1.8.2] - 2026-11-10
 

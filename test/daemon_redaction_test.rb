@@ -57,6 +57,69 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
+  # #341: the daemon process sees a DATABASE_URL the boot file assigns. The
+  # parent's environment does not have it. The bare word is still hidden, and
+  # the protocol line stays JSON.
+  def test_stderr_hides_a_password_the_boot_file_assigns
+    out, err = daemon_boot(<<~RUBY)
+      ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+      STDERR.puts "bare s3cret end"
+    RUBY
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "bare [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  # #341: a dotenv file is read before the app boots, so a bare password from
+  # that file is hidden even when the boot file never assigns DATABASE_URL.
+  def test_boot_stops_when_stderr_cannot_be_redirected
+    dir = Dir.pwd
+    out = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@output, out)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, StringIO.new)
+    status = nil
+    # A singleton stub, removed after the block, so no later test sees it.
+    exit_stub = ->(code = true) { throw :boot_exit, code }
+    Mutineer::OutputFilter.stub(:install, :failed) do
+      Mutineer::DaemonServer.stub(:exit!, exit_stub) do
+        status = catch(:boot_exit) do
+          Mutineer::DaemonServer.send(:boot!, { "project_root" => dir, "framework" => "minitest" })
+          nil
+        end
+      end
+    end
+
+    assert_equal 1, status
+    assert_includes out.string, "password"
+  ensure
+    Dir.chdir(dir) if dir
+    Mutineer::DaemonServer.instance_variable_set(:@output, nil)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, nil)
+    Mutineer::Redaction.extra_urls = []
+    Mutineer::OutputFilter.uninstall
+  end
+
+  def test_stderr_hides_a_bare_password_from_a_dotenv_file
+    out, err = daemon_boot('STDERR.puts "file s3cret end"', dotenv: "DATABASE_URL=postgres://u:s3cret@h/db\n")
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "file [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  def daemon_boot(boot_source, dotenv: nil)
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "boot.rb"), boot_source)
+      File.write(File.join(dir, ".env"), dotenv) if dotenv
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "boot" => boot_source && "boot.rb")
+      return Open3.capture3({ "DATABASE_URL" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                            stdin_data: "#{stdin}\n")
+    end
+  end
+
   # #303: with LC_ALL=C the daemon reads its stdin as US-ASCII. A boot line
   # with a non-ASCII path must still parse, so the daemon replies.
   def test_boot_line_with_a_non_ascii_path_parses_under_an_ascii_locale
@@ -181,9 +244,14 @@ class DaemonRedactionTest < Minitest::Test
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
     rd, wr = IO.pipe
     wr.binmode
-    wr.write(bytes)
-    wr.close
+    # Write while the drain reads: a payload larger than the pipe buffer
+    # (16 KiB on some macOS runners) would block a write made first.
+    writer = Thread.new do
+      wr.write(bytes)
+      wr.close
+    end
     client.send(:drain_stderr, rd)
+    writer.join
     errio.string
   ensure
     rd&.close
@@ -195,6 +263,22 @@ class DaemonRedactionTest < Minitest::Test
     assert_includes out, "postgres://u:[REDACTED]@ho st/db"
     assert_includes out, "second line"
     refute_includes out, "s3cret"
+  end
+
+  # A long line is scanned once its newline arrives, not on every 4 KiB read,
+  # so the drain stays linear in the line length. The line is larger than
+  # any pipe buffer, so the reads really come in pieces.
+  def test_daemon_stderr_drain_scans_a_long_line_once
+    real = Mutineer::Redaction.method(:take_redactable)
+    calls = 0
+    counting = lambda do |buffer, flush:|
+      calls += 1
+      real.call(buffer, flush: flush)
+    end
+    out = Mutineer::Redaction.stub(:take_redactable, counting) { drain("#{"A" * 200_000}\n") }
+
+    assert_equal 200_001, out.bytesize
+    assert_operator calls, :<=, 2
   end
 
   def test_daemon_stderr_drain_survives_invalid_bytes
