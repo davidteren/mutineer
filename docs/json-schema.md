@@ -162,7 +162,11 @@ line ran while the app booted or its class loaded (for example a class body that
 only at load, gets this status instead of `survived` or `no_coverage`, under both strategies (`reload` runs the
 file's class body again, but not an initializer or another file's code); run `--test-command` to verify these.
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
-count at load is used instead.
+count at load is used instead. A block on that `def` line is not classified from the line (#389).
+A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
+stores (#435). Another block on that line stays scored. `each` with an empty array can count the line without running
+its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
+Code that runs only sometimes, such as the body of `x if c`, does not.
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were

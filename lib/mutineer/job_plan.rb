@@ -377,9 +377,20 @@ module Mutineer
     # count at load without it. The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
+    # A `define_method` or `define_singleton_method` call stores its block.
+    # Reloading the method does not run the class that already called it, such
+    # as `Greeter` calling `greets`, so a mutant in that call or in the stored
+    # block is the original method when the call's line ran at load (#435).
+    # The line of `each` on an empty array counts without the block, so a block
+    # that is not one of those calls stays scored (#286). Re-running the
+    # caller's class body is #389. `CI` is not read here. Rails eager load,
+    # which the test env turns on when `CI` is set, is what puts the line in
+    # the load set.
+    #
     # A one-line or endless def keeps its body on the `def` line, so it uses
     # the method's own call count at load instead (#209), for code that runs
-    # each time the method does ({StatementLines.runs_with_method?}).
+    # each time the method does ({StatementLines.runs_with_method?}). A block
+    # on that `def` line is unchanged (#389).
     #
     # @param source_file [String] the mutated source file path.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -399,8 +410,12 @@ module Mutineer
       end
 
       body = (loc.start_line..loc.end_line)
-      lines = StatementLines.for(subject.def_node, source, mutation.start_offset)
-      lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
+      ran = lambda do |lines|
+        lines.any? { |l| l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l) }
+      end
+      return true if ran.call(StatementLines.for(subject.def_node, source, mutation.start_offset))
+
+      ran.call(StatementLines.stored_method_lines(subject.def_node, source, mutation.start_offset))
     end
 
     # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});

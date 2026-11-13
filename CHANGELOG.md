@@ -157,6 +157,30 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A mutant in `define_method` or `define_singleton_method` on a load line is `ran_at_load` (#435).**
+  A class method such as `greets` runs when the including class loads.
+  Rails turns eager load on when `CI` is set, so that call happens before
+  the mutant. The call's own mutants were `ran_at_load`. A mutant of a
+  string inside the block on that same line was a survivor, and the score
+  fell to 0.0. It is now `ran_at_load` too, under `reload`, `redefine`, and
+  the daemon. A kill still counts. `CI` itself changes nothing: only
+  whether the line ran at load does. Without eager load the class loads
+  after the mutant, and those mutants stay killed. An equivalent
+  `each` → `map` still survives in that case. On the reported method, 2 of
+  5 mutants moved, so that run's score goes from 0.0 to no score. A run
+  that still has other survivors can score higher, because these mutants
+  leave the denominator. `--threshold` skips a nil score. The new case is
+  a `define_method` or `define_singleton_method` call whose line ran at
+  load, including the block that call stores. Another block on that line,
+  such as `each` with an empty array, stays scored: the line can count
+  without the block, and a test can run the mutated block. An
+  empty `each` that shares its line with `define_method` can still hide
+  that call (#286). That needs the call to have been made with no elements while
+  the class loaded, then again with elements by a test that does not check
+  the generated method. The reported call is `greets :alice`. Re-running
+  the caller's class body, so these mutants can be killed, stays #389. A
+  one-line or endless `def` still uses its call count, so a block on the
+  `def` line is unchanged (#389).
 - **An endless range on a Hash, Proc, or other non-literal receiver is swapped (#344).**
   The `range` operator skipped an endless range (`1..`, `1..nil`) used as an
   index of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice`,
