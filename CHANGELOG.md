@@ -178,6 +178,34 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A non-ASCII path and a non-UTF-8 source no longer stop the run (#346).**
+  With `LANG` and `LC_ALL` unset, a source file, test file, or project
+  folder whose name is not ASCII made coverage fail, or the path missed
+  its match, so the run stopped or scored those mutants `no_coverage`.
+  Paths are read as UTF-8 when the bytes are UTF-8, and as binary
+  otherwise, and compared in that encoding. Minitest is given the path
+  in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
+  otherwise (under `LC_ALL=C` that encoding is already binary). Its
+  failure backtrace is retagged the same way, so a killed mutant is not
+  reported as an error. RSpec is given the
+  path as UTF-8, which its path regexp requires.
+  This covers the in-process coverage subprocess, the fork capture used
+  by `--rails` and `--daemon`, pairing (including a split test name),
+  and `--since` path keys.
+  A source file whose magic comment names an encoding (`# encoding: EUC-JP`,
+  and the other forms Ruby accepts) is read in that encoding. The comment
+  is taken from the first line, or the second after a shebang, within the
+  first 4096 bytes. The mutant keeps those bytes, so Ruby can load it.
+  The daemon receives the text through JSON, which is Unicode, and writes
+  the file back in the encoding the comment names. The comment forms are
+  the ones Ruby accepts, including an indented comment and a vim
+  `fileencoding` modeline. `# encoding=NAME` with no space is not one of
+  them. A file with no such comment is still read as UTF-8. A redefine
+  snippet has no comment of its own, so the write adds one when the
+  snippet is already in another encoding. The daemon still reads `db/schema.rb`
+  as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
+  ship Prism, and requiring Prism there would turn off worker-database
+  routing.
 - **Direct stderr and stdout no longer print a database password (#341).**
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the

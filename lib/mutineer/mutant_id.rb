@@ -110,7 +110,10 @@ module Mutineer
     # @param parts [Array] the values that make up the id.
     # @return [String] a 12-character hex id.
     def digest(parts)
-      Digest::SHA256.hexdigest(parts.join("\x00"))[0, 12]
+      # Each part keeps its own bytes. A UTF-8 path joined with an EUC-JP
+      # token would raise, and an ASCII token's bytes do not change (#346).
+      blob = parts.map { |part| part.to_s.b }.join("\x00".b)
+      Digest::SHA256.hexdigest(blob)[0, 12]
     end
 
     # Extracts the exact code being mutated, whitespace-collapsed — the same

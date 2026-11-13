@@ -129,6 +129,12 @@ module Mutineer
     # @param argv [Array<String>] raw command-line arguments.
     # @return [void]
     def self.start(argv)
+      # Reports and warnings name paths. Under an ASCII locale the stdio
+      # encoding is US-ASCII, so a non-ASCII path cannot be written.
+      # Binary mode writes each string's own bytes: UTF-8 text stays UTF-8,
+      # and a path that is not valid UTF-8 does not raise on the way out (#346).
+      [$stdout, $stderr].each(&:binmode)
+
       # Set before any exit: the method's ensure reads it, and exit runs ensure.
       filter_owned = false
       previous_urls = nil

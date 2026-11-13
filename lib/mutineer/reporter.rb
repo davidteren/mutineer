@@ -691,7 +691,7 @@ module Mutineer
     end
 
     # HTML-escapes any text destined for the document (stdlib CGI).
-    def esc(text) = CGI.escapeHTML(text.to_s)
+    def esc(text) = CGI.escapeHTML(utf8_text(text))
 
     # The same delta facts the human report prints, for dashboards. new_survivors
     # reuse the mutant_json shape (subject/file/line/operator/token/id) and sort
@@ -744,16 +744,17 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof)
       new_lines = side_lines(mutated_block, at_eof)
+      shown_file = utf8_text(file)
       {
-        subject: result.subject.qualified_name,
+        subject: utf8_text(result.subject.qualified_name.to_s),
         file: file,
         line: start_line,
         operator: m.operator.to_s,
         # The stable, copy-pasteable id (next to the human-readable token) so a
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
-        token: token,
-        diff: "--- a/#{file}\n+++ b/#{file}\n" \
+        token: utf8_text(token),
+        diff: "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
               "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
               "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
@@ -769,7 +770,9 @@ module Mutineer
     # @param at_eof [Boolean] no newline follows the block in the file.
     # @return [Array<String>] its lines, with their endings.
     def side_lines(block, at_eof)
-      (at_eof ? block : "#{block}\n").lines
+      newline = "\n".dup.force_encoding(block.encoding)
+      text = at_eof ? block : block + newline
+      text.lines.map { |line| utf8_text(line) }
     end
 
     # The `-` or `+` lines of one side. A line with no newline is the file's
@@ -895,10 +898,14 @@ module Mutineer
       before = source.byteslice(line_begin...m.start_offset)
       after  = source.byteslice(m.end_offset...line_end)
       original_block = source.byteslice(line_begin...line_end)
-      mutated_block  = "#{before}#{m.replacement}#{after}"
+      replacement = m.replacement
+      replacement = replacement.dup.force_encoding(before.encoding) if replacement.ascii_only?
+      mutated_block = before + replacement + after
       start_line  = source.byteslice(0, m.start_offset).count("\n") + 1
       token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
-      token       = "#{token[0, 47]}..." if token.length > 50
+      if token.length > 50
+        token = token[0, 47] + "...".dup.force_encoding(token.encoding)
+      end
       [start_line, original_block, mutated_block, token]
     end
 
@@ -1262,26 +1269,45 @@ module Mutineer
     end
 
     # The source text of `file`: the run's copy when it has one, else the file
-    # read as UTF-8 whatever the locale (#303).
+    # read in its magic-comment encoding, or UTF-8 (#303, #346).
     #
     # @api private
     # @param file [String] source file path.
     # @return [String] source text.
-    def source_for(file) = @source_map[file] || File.read(file, encoding: "UTF-8")
+    def source_for(file) = @source_map[file] || Parser.read(file)
 
     # Source text, a method name or a file path made safe for a terminal (#163):
     # each control character except tab becomes its Ruby escape (ESC prints as
-    # `\e`). The text is read as UTF-8 whatever the locale, and each byte that is
-    # not valid UTF-8 (a Latin-1 source, say) prints as `\xNN`, so nothing is
-    # lost and the regex never raises. JSON and HTML escape on their own.
+    # `\e`). A valid string in another encoding (EUC-JP, Shift_JIS) is
+    # transcoded to UTF-8. Bytes that are not valid in their encoding are
+    # read as UTF-8 and each bad byte prints as `\xNN`, so nothing is lost
+    # and the regex never raises (#346). JSON and HTML escape on their own,
+    # after the same transcoding.
     #
     # @api private
     # @param text [String] source text.
     # @return [String] the text with control characters and invalid bytes escaped.
     def printable(text)
-      text.dup.force_encoding(Encoding::UTF_8)
-          .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
-          .gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
+      utf8_text(text).gsub(/[[:cntrl:]&&[^\t]]/) { |c| c.dump[1..-2] }
+    end
+
+    # `text` as valid UTF-8. A valid string in another encoding is
+    # transcoded. Invalid bytes become `\xNN`.
+    #
+    # @api private
+    # @param text [String]
+    # @return [String]
+    def utf8_text(text)
+      str = text.to_s
+      return str if str.encoding == Encoding::UTF_8 && str.valid_encoding?
+      # ASCII-8BIT is "valid" for every byte, and encode raises on a byte
+      # UTF-8 cannot hold. Those bytes fall through and print as \xNN.
+      if str.encoding != Encoding::ASCII_8BIT && str.valid_encoding?
+        return str.encode(Encoding::UTF_8)
+      end
+
+      str.dup.force_encoding(Encoding::UTF_8)
+         .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
     end
 
     # Writes the final verdict line.

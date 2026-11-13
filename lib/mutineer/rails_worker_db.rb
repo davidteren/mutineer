@@ -501,6 +501,9 @@ module Mutineer
     # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [Boolean]
     def self.schema_current?(schema_path)
+      # UTF-8, not Parser.read. This file loads in the app's Ruby, which may
+      # not ship Prism. A require of parser.rb would disable worker-database
+      # routing (#346). Rails writes schema.rb as UTF-8.
       text    = File.read(schema_path, encoding: "UTF-8")
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
