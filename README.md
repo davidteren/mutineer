@@ -182,6 +182,7 @@ This gap is common in rushed tests and tests written by AI agents.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
    Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
+   The clean check and each mutant run share one seed: Minitest uses `SEED` or `1`, and a random RSpec order uses seed `1` unless the suite sets one. See the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
    Score: `killed / (killed + survived)`. In coverage-guided runs, timeouts, errors, and uncovered lines count as neither; `--test-command` has no coverage, so a mutant no test reaches survives.
 
@@ -207,6 +208,11 @@ mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)
 mutineer migrate <source...> [--dry-run] [--operators LIST]
 mutineer config cache_dir|baseline [run options]
 ```
+
+`mutineer triage REPORT.json --reason TEXT` prints `ignore:` entries and does not edit files.
+`--id ID` selects one survivor. Repeat `--id` for several. `--all` selects every survivor.
+A copy id selects that survivor and every id in its `copies`.
+Paste every entry. An entry ignores only its own id.
 
 `migrate --dry-run` lists `ignore:` entries that match no mutant in the sources and operators you pass. It writes nothing and exits 1 when any entry matches nothing. Run it over every source. `run` warns once for each such entry in that run, lists the ids under `summary.unmatched_ignores`, and still exits 0. `--since` does not warn about an entry whose mutant sits outside the diff. A run of some files warns only about entries those files and operators do not match. A source you passed that has no paired test is skipped, but its mutants still count for ignore matching, so `run` and `run --dry-run` agree; they stay out of the score and cannot fail `--threshold` (see [unpaired counts](https://github.com/davidteren/mutineer/blob/main/docs/json-schema.md)). `--only` skips the check. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 

@@ -47,10 +47,39 @@ A blank value exits 2.
 A directory or glob with no test file exits 2.
 Each expanded directory or glob prints its file count on stderr.
 
+## Test order
+
+Coverage capture, the clean check and each mutant run share one seed (#282).
+A green clean check uses that seed.
+When a mutant runs several files, its file order can still differ from the combined clean check.
+
+Minitest uses seed `1`, or `SEED` when you set it.
+A test helper can change `SEED` after it loads.
+Those runs read it then.
+To reproduce a failure, run the listed files with the same seed, for example `SEED=1 bundle exec ruby -Itest test/models/order_test.rb`.
+
+A random RSpec order uses seed `1`.
+A defined order is left as it is.
+Set another seed with `--seed N` or `--order rand:N` on the command line, in `SPEC_OPTS`, or in `.rspec`, or with `config.seed = N` in a spec helper, a `--require` file, or the boot file.
+RSpec reads `SPEC_OPTS` after the command line, so a seed there replaces `--seed` on the `rspec` command.
+A spec helper that only reads `config.seed`, as the generated `Kernel.srand config.seed` does, does not set one.
+
+Files run in the order that run was given.
+For Minitest, class order inside one file depends only on the seed, not on the other files in the run.
+RSpec's random order does the same: each example is ordered by a hash of the seed and its id.
+A custom RSpec order that looks at the whole list can still change when another file is added.
+A mutant run's files are the covering tests, paired files first, then the cheapest.
+The combined clean check runs the covering tests in the order you passed them.
+When one mutant runs several files, those two orders can differ.
+
+`--test-command` is the exception.
+Mutineer does not set its seed.
+See that flag.
+
 Other commands:
 
 - `mutineer init [--rails] [--force]`
-- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`
+- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`. Prints one `ignore:` entry per survivor, and one per id in that survivor's `copies`. An id from `copies` selects that whole group. It writes nothing.
 - `mutineer migrate <source...> [--dry-run] [--operators LIST]`: rewrite old `ignore:` ids. `--dry-run` lists each change and every entry that matches no mutant, writes nothing, and exits 1 when any entry matches nothing. `run` warns about those entries for its own sources and operators, lists them in `summary.unmatched_ignores`, and still exits 0. `--only` skips that warning and reports an empty list, which does not mean every entry matched. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 - `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 

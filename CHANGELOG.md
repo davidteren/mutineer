@@ -22,6 +22,17 @@ All notable changes to this project are documented here. The format is based on
   `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
   That exit code is the CI check, in 1.x and after 2.0.
   The key is part of schema `1.10`, which is not in a release yet, so `schema_version` stays `1.10`.
+- **A report names the dropped copy of an edit (#374).**
+  When two operators, or one operator twice, make the same change on one
+  line, one copy runs and the other is dropped. The JSON report now lists
+  each dropped id on the kept mutant as `copies`, on survivors, ignored
+  mutants, and the other mutant rows. `summary.dropped` counts them. They
+  stay out of `total` and out of the score. `mutineer triage` prints an
+  `ignore:` entry for the survivor and for each of those ids, so one round
+  writes every entry. An entry still ignores only its own id. The human
+  report, the HTML report, the dry run, and the Action summary show the
+  count. A dropped copy of an ignored mutant is listed on the kept mutant,
+  so that entry no longer looks unused. Schema version stays `1.10`.
 - **A source that cannot load alone points at `boot:` (#376).**
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names
@@ -145,6 +156,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`collection_method` skips `each` and `map` when the result is discarded (#436).**
+  For Enumerable, `each` returns the receiver and `map` returns a new array.
+  No test can tell those two apart when that value is thrown away.
+  A method of either name on another class can still differ. The check does
+  not see the class, so that skip can hide the difference.
+  The swap is declined, and the dry run and JSON report count it in
+  `declined_by_operator`.
+  The last expression of a method, block, or lambda is still swapped.
+  So are assignment, an argument, a chained call, `return` / `break` / `next`,
+  and a condition.
+  A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
+  The value read by string or symbol interpolation, a backtick or `%x`
+  command, or an interpolated regexp still swaps. Interpolation calls `to_s`
+  on that value, the command runs, and the regexp is compiled, even when
+  their result is thrown away. An earlier statement inside the interpolation
+  is still skipped. `defined?` does not evaluate its operand, so an `each` or
+  `map` inside it is skipped, including a `lazy` chain and an interpolation.
+  A hash key still swaps, because insertion calls `hash` and `eql?`.
+  A later `rescue` clause follows the `begin`.
+  A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
+  runs the block and `Lazy#map` does not.
+  A lazy enumerator stored in a variable is still skipped.
+  `all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are unchanged.
+  The operator is not in the default set, so a default run's mutant count and
+  score do not change.
+  On `lib/` of this repository, 86 of 149 `each` and `map` calls are discarded
+  (57.7%).
+  The other 313 `collection_method` swaps on `lib/` stay.
+  The operator's mutant count there drops from 462 to 376.
+  The report that opened the issue found this mutant in 4 of 23 ignore entries.
+  See `docs/equivalent-skips.md`.
 - **Behavior change.** A continuation-line survivor that ran is scored (#345).
   Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
   selection (#254, #289): Mutineer runs the tests of the statement's other
@@ -192,6 +234,26 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The clean check and the mutant runs share one RSpec seed, and one order inside a Minitest file (#282).**
+  A random RSpec order used a new seed in every process.
+  The clean check and a mutant run could disagree, and a hang could score `killed` on one run and `timeout` on the next.
+  A random order now uses seed `1` for coverage capture, the clean checks and the mutant runs, unless the suite sets a seed (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`).
+  A defined order is left as it is.
+  A mutant run now passes each spec file by its real path, as the clean check does.
+  RSpec hashes that path into the random order, so a symlinked project root (such as `/var` on macOS) no longer gives the two runs different orders.
+  Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
+  A `config.seed=` in a spec helper, a `--require` file, or the boot file does, and the clean check and the mutant runs keep it.
+  The coverage cache includes `SPEC_OPTS` and the project `.rspec` and `.rspec-local` files, so a changed seed there is captured again.
+  `~/.rspec` is not part of that cache key.
+  Minitest already used seed `1`.
+  Classes inside one file were still shuffled with the whole class list, so adding a file changed their order.
+  Each file is now shuffled from that seed alone, on the clean check and the mutant runs.
+  Files run in the order that run was given.
+  A mutant run's files stay in coverage order (paired, then cheapest).
+  The combined clean check uses the order the tests were given.
+  Those two file lists can differ.
+  `--test-command` still sets no seed (#338).
+  A coverage cache from another `SPEC_OPTS`, or from a version that did not pin the RSpec seed, is captured again.
 - **Direct stderr and stdout no longer print a database password (#341).**
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the

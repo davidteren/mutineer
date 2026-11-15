@@ -64,7 +64,7 @@ module Mutineer
     # coverage map, run every mutation, and aggregate. Returns
     # [AggregateResult, source_map, extras], where extras is the hash
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
-    # `:dropped_id_map`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
+    # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
@@ -128,6 +128,10 @@ module Mutineer
       # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+
+      # Before boot and `--require`, so a `config.seed=` in those files is
+      # recorded and every forked child keeps it (#282).
+      prepare_rspec_seed!(config)
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -552,6 +556,25 @@ module Mutineer
       file
     end
     private_class_method :project_file!
+
+    # Installs the RSpec seed watcher in this process when the run uses
+    # RSpec. Boot and `--require` files then load with the watcher on, and
+    # forks inherit the record of a seed they set. A project without rspec
+    # is left for the child to report, as before.
+    #
+    # @api private
+    # @param config [Mutineer::Config]
+    # @return [void]
+    def self.prepare_rspec_seed!(config)
+      return unless config.framework == "rspec"
+
+      require "rspec/core"
+      ::RSpec::Core::Runner.disable_autorun!
+      TestRunners::RSpecSeed.install!
+    rescue LoadError
+      nil
+    end
+    private_class_method :prepare_rspec_seed!
 
     # Extra line when a source raises NameError and the run has no boot file.
     # `require:` files load after the sources, so they cannot define names the
