@@ -5,6 +5,7 @@ require "digest"
 require "fileutils"
 require "rbconfig"
 require "coverage"
+require "prism"
 require "set"
 require_relative "minitest_integration"
 require_relative "test_runners"
@@ -21,7 +22,10 @@ module Mutineer
   # Maps `(source_file, line) -> [test_files]` so each mutant runs only against
   # the tests that actually exercise its line. Built once, then queried per
   # mutant via #tests_for. Persisted to .mutineer/coverage.json with a
-  # content-based digest that rebuilds the map whenever any tracked file changes.
+  # content-based digest. A later run recaptures every test when a run input,
+  # a loaded file, or the shape of a source changes. A change that stays inside
+  # method bodies, without moving a line or editing a method that ran at load,
+  # recaptures only the tests in that source's map entries (#421).
   #
   # Keys are "file:line" strings (relative to project_root) everywhere, in
   # memory and on disk, so load/save needs no key transformation.
@@ -44,6 +48,24 @@ module Mutineer
 
     # Cap for a failing clean-suite report on the SmokeCheckError line (#360).
     CLEAN_FAILURE_DETAIL_LIMIT = 800
+
+    # Key in coverage.json that marks a map built after #426. Standalone
+    # capture no longer credits every test with lines that ran only while the
+    # sources loaded. A standalone cache without this key was built the old
+    # way and is rebuilt once. Boot and daemon maps already omitted those
+    # lines; a hit there does not read the key.
+    NARROW_LOAD_LINES = "narrow_load_lines"
+
+    # Keys a cache needs before a method-body edit can recapture part of the
+    # map (#421). A cache saved before these keys existed is rebuilt once.
+    PARTIAL_CACHE_KEYS = %w[run_inputs sources skeletons tests load_method_bodies].freeze
+
+    # Key for the paired tests that kept load-only lines when the map was
+    # saved. {Pairing.infer_tests} reads files that are not in this run. An
+    # exact spec replaces split tests, and the content digest does not see a
+    # file the run did not select. A standalone hit rebuilds when this list
+    # no longer matches.
+    LOAD_LINE_PAIRS = "load_line_pairs"
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
                 :phase_a_ran, :map
@@ -99,7 +121,7 @@ module Mutineer
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
-      instance.instance_variable_set(:@project_root, project_root)
+      instance.instance_variable_set(:@project_root, FsPath.read(project_root))
       instance
     end
 
@@ -107,13 +129,13 @@ module Mutineer
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
                    framework: "minitest", verbose: false, require_paths: [], coverage_from: nil)
-      @source_paths = Array(source_paths)
-      @require_paths = Array(require_paths)
-      @test_paths   = Array(test_paths)
-      @cache_dir    = cache_dir
-      @coverage_from = coverage_from
-      @load_paths   = Array(load_paths)
-      @project_root = project_root
+      @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
+      @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
+      @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }
+      @cache_dir    = FsPath.read(cache_dir)
+      @coverage_from = coverage_from && FsPath.read(coverage_from)
+      @load_paths   = Array(load_paths).map { |path| FsPath.read(path) }
+      @project_root = FsPath.read(project_root)
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
       @framework    = framework || "minitest"
@@ -361,12 +383,43 @@ module Mutineer
 
     # True when a failed split test file pairs with this source. Directory and
     # the longer-source check match {Pairing}, so a test outside the mirror, or
-    # one owned by `user_session.rb`, does not taint `user.rb`.
+    # one owned by `user_session.rb`, does not taint `user.rb`. A concern with
+    # no test at its `concerns/` path also accepts a split name at its
+    # namespace path (#408). A longer concern owns that name only when it
+    # pairs with the file. A namespace spec leaves split names unpaired, so
+    # a failed split does not mark the concern.
     #
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
     def split_failed_test?(source_rel)
       base, lib = Pairing.logical_path(source_rel)
+      return true if failed_split_in?(base, lib, concern: false)
+
+      ns = Pairing.namespace_base(source_rel)
+      return false unless ns
+      return false if own_concern_test?(source_rel, ns)
+      return false if namespace_spec?(source_rel)
+
+      failed_split_in?(ns, false, concern: true)
+    end
+
+    # True when the concern's namespace pairing is one spec file.
+    # Split names do not join a spec, so a failed split must not mark it.
+    #
+    # @param source_rel [String] project-relative concern path.
+    # @return [Boolean]
+    def namespace_spec?(source_rel)
+      Pairing.infer_tests(source_rel, project_root: @project_root).any? { |t| t.end_with?("_spec.rb") }
+    end
+
+    # True when one failed split file in the mirror of `base` pairs with it.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param concern [Boolean] true for a concern's namespace mirror, so a
+    #   longer concern file can own the name.
+    # @return [Boolean]
+    def failed_split_in?(base, lib, concern:)
       name = File.basename(base)
       @failed_test_files.any? do |t|
         test_rel = relativize(t)
@@ -374,6 +427,7 @@ module Mutineer
         next false unless Pairing.split_entry?(entry, name)
         next false unless mirrored_test_dir?(test_rel, base, lib)
         next false if Pairing.claimed_by_longer_source?(@project_root, base, entry, File.dirname(test_rel))
+        next false if concern && Pairing.claimed_by_longer_concern?(@project_root, base, entry)
 
         true
       end
@@ -418,27 +472,17 @@ module Mutineer
       return reuse_capture(after_fork) if @coverage_from
 
       cached = read_cache
-      # A cache from before load methods (#209) or test timings (#203) were
-      # saved rebuilds once. A cache that does not record this process's
+      # A cache from before load methods (#209), test timings (#203), the
+      # standalone load-line narrowing (#426), or partial recapture (#421)
+      # rebuilds once. A cache that does not record this process's
       # PARALLEL_WORKERS value rebuilds too. Rails reads that value inside
       # parallelize, so a map from another worker count selects the wrong
       # tests. The daemon writes this same file. Boot mode reads its load
       # lines and methods from the live boot instead (#build_via_fork), but
       # its map from before #209 lacks the `def` lines of the methods each
       # test called.
-      if cached && cached["digest"] == @digest && dependencies_match?(cached) &&
-         cached.key?("load_methods") && cached.key?("timings") &&
-         parallel_workers_match?(cached)
-        @map = cached["map"] || {}
-        @timings = cached["timings"] || {}
-        unless @boot_path
-          @load_lines = Set.new(cached["load_lines"])
-          @load_methods = Set.new(cached["load_methods"])
-        end
-        @failed_test_files = cached["failed_test_files"] || []
-        @failed_clean_tests = []
-        @failed_clean_details = {}
-        @loaded_dependencies = cached["dependencies"] || {}
+      if cache_hit?(cached)
+        apply_cache(cached)
         recaptured = retry_failed_captures(after_fork)
         warn_incomplete unless @failed_test_files.empty?
         checked = clean_check_test_paths
@@ -450,6 +494,9 @@ module Mutineer
         save
         return self
       end
+
+      plan = partial_plan(cached)
+      return self if plan && apply_partial(plan, cached, after_fork)
 
       yield
       verify_combined_clean(after_fork: after_fork)
@@ -565,7 +612,7 @@ module Mutineer
         return "it has no source fingerprints; capture it again with this version and --rails/--boot"
       end
       return "its entries are not the shape a coverage cache saves; capture it again" unless well_formed_capture?(cached)
-      return "its tests, --require files, boot file, load paths, framework or Minitest seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
+      return "its tests, --require files, boot file, load paths, framework or test seed differ, or an older version made it; capture it again" unless cached["inputs"] == compute_digest(inputs_only: true)
 
       fingerprints = source_fingerprints
       missing = fingerprints.keys - cached["sources"].keys
@@ -651,6 +698,7 @@ module Mutineer
       @failed_clean_tests = []
       @failed_clean_details = {}
       @loaded_dependencies = {}
+      @paired_in_run = nil
 
       @test_paths.each do |test_path|
         payload = timed(test_path) { capture(test_path) }
@@ -743,8 +791,11 @@ module Mutineer
             passed, report = run_clean_with_report([abs_test])
             # {file => {lines: [...], methods: {...}}}; reduce to the counts
             # array record() expects, keeping only our source files.
+            wanted = abs_sources.map { |path| FsPath.read(path) }
+            # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
             coverage = Coverage.result(stop: false)
-                               .select { |f, _| abs_sources.include?(f) }
+                               .to_h { |f, v| [FsPath.read(f), v] }
+                               .select { |f, _| wanted.include?(f) }
                                .transform_values { |v| v.is_a?(Hash) ? lines_with_called_defs(v) : v }
             { "passed" => passed, "coverage" => coverage,
               "failure_report" => passed ? nil : report,
@@ -860,7 +911,15 @@ module Mutineer
       end
 
       coverage = payload["coverage"]
-      record(coverage, test_path) if coverage.is_a?(Hash)
+      return unless coverage.is_a?(Hash)
+
+      # Post-load counts only. Standalone capture clears the load snapshot
+      # before the test runs; a fork capture already discarded the boot delta.
+      record(map_coverage(coverage), test_path)
+      # Lines that ran only while the sources loaded. The paired test keeps
+      # them, so a reload mutant a test checks through a value built at load
+      # still runs (#348). An unrelated test does not.
+      record_paired_load_lines(payload["load_coverage"], coverage, test_path)
     end
 
     # Notes a red unmutated suite for {JobPlan.abort_if_unclean!} (issue #360).
@@ -936,17 +995,28 @@ module Mutineer
       return pending if pending.empty?
 
       @failed_test_files = []
-      abs_sources = abs_source_paths
       pending.each do |rel|
         test_path = @test_paths.find { |t| relativize(t) == rel } || rel
-        if @boot_path
-          accept_fork_payload(test_path, timed(test_path) { fork_capture(absolute(test_path), abs_sources, after_fork) })
-        else
-          payload = timed(test_path) { capture(test_path) }
-          accept_capture_payload(test_path, payload) if payload
-        end
+        capture_one(test_path, after_fork)
       end
       pending
+    end
+
+    # Captures one test file, standalone or by fork, and records the result.
+    #
+    # @api private
+    # @param test_path [String] test file path.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [void]
+    def capture_one(test_path, after_fork)
+      if @boot_path
+        accept_fork_payload(test_path, timed(test_path) do
+          fork_capture(absolute(test_path), abs_source_paths, after_fork)
+        end)
+      else
+        payload = timed(test_path) { capture(test_path) }
+        accept_capture_payload(test_path, payload) if payload
+      end
     end
 
     # Runs every successfully captured test of {#clean_check_test_paths}
@@ -1035,12 +1105,19 @@ module Mutineer
     end
 
     # Reads the one result line a {#spawn_script} child writes to fd
-    # {RESULT_FD}.
+    # {RESULT_FD}. The line is JSON and may name a non-ASCII path. The pipe
+    # follows the locale, so under `LC_ALL=C` those bytes arrive tagged
+    # US-ASCII and `JSON.parse` raises. The bytes are UTF-8 (#346).
     #
     # @api private
     # @param io [IO] the parent end of the result pipe.
     # @return [String] the line, or `""` at end of file.
-    def read_result_line(io) = io.gets.to_s
+    def read_result_line(io)
+      line = io.gets
+      return "" unless line
+
+      line.dup.force_encoding(Encoding::UTF_8)
+    end
 
     # Reads the one Marshal object a forked capture child writes, without
     # waiting for end of file.
@@ -1095,12 +1172,13 @@ module Mutineer
     # Ruby source that opens the result channel in a {#spawn_script} child. The
     # script runs it first, so no file that a test opens can take fd
     # {RESULT_FD}. Close-on-exec keeps the fd out of the test's own
-    # subprocesses.
+    # subprocesses. Binary mode writes the JSON bytes as they are, so a
+    # non-ASCII path is not rejected by an ASCII locale (#346).
     #
     # @api private
     # @return [String] Ruby script text.
     def result_channel_expression
-      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.close_on_exec = true"
+      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.binmode; _result.close_on_exec = true"
     end
 
     # Runs test files in a fork of the booted parent and returns whether they
@@ -1209,21 +1287,22 @@ module Mutineer
     # @param test_paths [Array<String>] test file paths.
     # @return [String] Ruby script text.
     def minitest_clean_check_script(test_paths)
-      loads = Array(test_paths).map { |t| "load #{absolute(t).inspect}" }.join("\n")
       <<~RUBY
         #{result_channel_expression}
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           Minitest::Runnable.reset
-          #{loads}
+          #{minitest_file_order_setup(Array(test_paths).map { |t| FsPath.filesystem(absolute(t)).inspect }.join(", "))}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
@@ -1252,11 +1331,13 @@ module Mutineer
           exit 3
         end
         RSpec::Core::Runner.disable_autorun!
+        #{rspec_seed_install}
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
         #{load_failure_rescue}
         end
+        #{rspec_order_preamble(specs)}
         _sink = StringIO.new
         status = RSpec::Core::Runner.run(["--no-color", #{specs}], _sink, _sink)
         _failure = status.zero? ? nil : #{redacted_expression("_sink.string")}
@@ -1326,8 +1407,10 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
@@ -1335,15 +1418,16 @@ module Mutineer
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
+          #{discard_load_counts_expression}
           Minitest::Runnable.reset
-          load #{absolute(test_path).inspect}
+          #{minitest_file_order_setup(FsPath.filesystem(absolute(test_path)).inspect)}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
         _failure = _passed ? nil : #{redacted_expression("_report.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        #{test_coverage_assignment}
         _result.puts JSON.generate("passed" => _passed == true, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1364,6 +1448,56 @@ module Mutineer
       "ENV[\"SEED\"] ? [] : [\"--seed\", #{MinitestIntegration::PINNED_SEED.to_s.inspect}]"
     end
 
+    # Loads the test files and installs {MinitestIntegration::FileOrder} so the
+    # subprocess clean check and coverage capture shuffle each file the same
+    # way as {MinitestIntegration.run} (#282). The child requires only the
+    # file-order file, not the rest of the runner.
+    #
+    # @api private
+    # @param files_list_source [String] Ruby source for the path arguments,
+    #   one inspected string or several joined by commas.
+    # @return [String] Ruby script text.
+    def minitest_file_order_setup(files_list_source)
+      path = File.expand_path("minitest_integration/file_order.rb", __dir__)
+      <<~RUBY.chomp
+        _rank = {}
+        [#{files_list_source}].each_with_index do |_f, _i|
+          load _f
+          Minitest::Runnable.runnables.each { |_klass| _rank[_klass] ||= _i }
+        end
+        require #{path.inspect}
+        Mutineer::MinitestIntegration.keep_file_order(_rank)
+      RUBY
+    end
+
+    # Installs the RSpec seed watcher. The subprocess must do this before it
+    # loads `--require` files, so a `config.seed=` there is recorded (#282).
+    #
+    # @api private
+    # @return [String] Ruby script text.
+    def rspec_seed_install
+      seed = File.expand_path("test_runners/rspec_seed.rb", __dir__)
+      <<~RUBY.chomp
+        require #{seed.inspect}
+        Mutineer::TestRunners::RSpecSeed.install!
+      RUBY
+    end
+
+    # Ruby source that keeps spec files in the order given, the same hook as
+    # {TestRunners::RSpec.run}. The seed watcher is installed earlier, before
+    # the preloads ({#rspec_seed_install}).
+    #
+    # @api private
+    # @param spec_list_source [String] Ruby source for the spec path arguments.
+    # @return [String] Ruby script text.
+    def rspec_order_preamble(spec_list_source)
+      runner = File.expand_path("test_runners/rspec.rb", __dir__)
+      <<~RUBY.chomp
+        require #{runner.inspect}
+        Mutineer::TestRunners::RSpec.keep_file_order([#{spec_list_source}])
+      RUBY
+    end
+
     # Same coverage-JSON contract as the minitest path, but driven by RSpec:
     # require rspec/core lazily, require the sources under Coverage, then run the
     # one spec via RSpec::Core::Runner. The JSON goes to the result channel (see
@@ -1375,6 +1509,7 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "stringio"
         begin
           require "rspec/core"
@@ -1383,17 +1518,20 @@ module Mutineer
           exit 3
         end
         RSpec::Core::Runner.disable_autorun!
+        #{rspec_seed_install}
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
           #{abs_preload_paths.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
+          #{discard_load_counts_expression}
         #{load_failure_rescue}
         end
+        #{rspec_order_preamble(absolute(test_path).inspect)}
         _sink = StringIO.new
         _status = RSpec::Core::Runner.run(["--no-color", #{absolute(test_path).inspect}], _sink, _sink)
         _failure = _status.zero? ? nil : #{redacted_expression("_sink.string")}
-        _coverage = Coverage.result.transform_values { |v| v.is_a?(Hash) ? v[:lines] : v }
+        #{test_coverage_assignment}
         _result.puts JSON.generate("passed" => _status.zero?, "coverage" => _coverage,
                                     "failure_report" => _failure,
                                     "load_coverage" => _load,
@@ -1403,11 +1541,185 @@ module Mutineer
     end
 
     # Records every source line with a non-zero execution count as covered by
-    # this test file. Coverage.result keys are absolute; relativize and drop any
-    # path outside the project (stdlib/gem files).
+    # this test file. The counts are lines that ran after the sources loaded.
+    # Coverage.result keys are absolute; relativize and drop any path outside
+    # the project (stdlib/gem files).
     def record(coverage, test_path)
       rel_test = relativize(test_path)
-      each_covered_key(coverage) { |key| (@map[key] ||= []) << rel_test }
+      each_covered_key(coverage) { |key| add_covering_test(key, rel_test) }
+    end
+
+    # Adds `rel_test` to the map entry for `key`, in `@test_paths` order.
+    # A partial recapture appends a test that a full capture would have
+    # recorded earlier. Sorting by the run's test order keeps the two maps
+    # equal (#421). A full capture appends in order, so it takes the fast
+    # path: sorting on every append made capture quadratic in the test count.
+    #
+    # @api private
+    # @param key [String] a "file:line" map key.
+    # @param rel_test [String] project-relative test path.
+    # @return [void]
+    def add_covering_test(key, rel_test)
+      list = (@map[key] ||= [])
+      last = list.last
+      if last.nil? || test_index(last) < test_index(rel_test)
+        list << rel_test
+      else
+        list << rel_test unless list.include?(rel_test)
+        list.sort_by! { |test| test_index(test) }
+      end
+    end
+
+    # Position of `rel` in `@test_paths`. A path outside the run sorts last.
+    #
+    # @api private
+    # @param rel [String] project-relative test path.
+    # @return [Integer]
+    def test_index(rel)
+      @test_index ||= @test_paths.each_with_index.to_h { |path, index| [relativize(path), index] }
+      @test_index.fetch(rel, @test_index.length)
+    end
+
+    # Line counts for the map, with `def` lines of methods the test called
+    # filled in. A fork capture already did that and sends plain arrays.
+    #
+    # @api private
+    # @param coverage [Hash] counts per absolute file.
+    # @return [Hash] the same files, values reduced to line-count arrays.
+    def map_coverage(coverage)
+      coverage.to_h do |file, data|
+        lines = if data.is_a?(Hash) && (data.key?(:methods) || data.key?("methods"))
+                  lines_with_called_defs(data)
+                else
+                  data
+                end
+        [file, lines]
+      end
+    end
+
+    # Credits `test_path` with source lines that ran only while the sources
+    # loaded, when this test is one that should keep them (#426).
+    #
+    # Standalone capture preloads every source in every test's process, so
+    # those lines would otherwise put every `--test` file on the map and a
+    # cache hit would check them all. The lines stay in {#load_lines} either
+    # way. They stay on the map for a paired test in this run: under
+    # `--strategy reload` that test can kill a mutant on the line by checking
+    # a value the load built (#348, `Catalog.price`). When the run has no
+    # paired test, every test keeps the lines, so that kill is not dropped.
+    # A line the test also ran after load is already on the map.
+    #
+    # @api private
+    # @param load_coverage [Hash, nil] the load snapshot from the child.
+    # @param test_coverage [Hash] the post-load coverage from the child.
+    # @param test_path [String] test file path.
+    # @return [void]
+    def record_paired_load_lines(load_coverage, test_coverage, test_path)
+      return unless load_coverage.is_a?(Hash)
+
+      rel_test = relativize(test_path)
+      post = line_counts_by_rel(map_coverage(test_coverage))
+      @source_rels ||= @source_paths.to_set { |path| relativize(absolute(path)) }
+      load_coverage.each do |abs_file, data|
+        rel = relativize(abs_file)
+        next unless @source_rels.include?(rel)
+        next unless credit_load_only_line?(rel, rel_test)
+
+        counts = data.is_a?(Hash) ? data["lines"] : data
+        next unless counts.is_a?(Array)
+
+        post_counts = post[rel]
+        counts.each_with_index do |count, idx|
+          next unless count&.positive?
+          next if post_counts&.[](idx)&.positive?
+
+          add_covering_test("#{rel}:#{idx + 1}", rel_test)
+        end
+      end
+    end
+
+    # Line-count arrays from a coverage hash, keyed by project-relative path.
+    #
+    # @api private
+    # @param coverage [Hash] counts per absolute file.
+    # @return [Hash{String => Array}]
+    def line_counts_by_rel(coverage)
+      coverage.each_with_object({}) do |(abs_file, data), out|
+        counts = data.is_a?(Hash) ? (data["lines"] || data[:lines]) : data
+        next unless counts.is_a?(Array)
+
+        out[relativize(abs_file)] = counts
+      end
+    end
+
+    # Whether `rel_test` keeps lines of `rel_source` that ran only at load.
+    # A paired test in the run does. When none of the run's tests pair with
+    # the source, every test does.
+    #
+    # @api private
+    # @param rel_source [String] project-relative source path.
+    # @param rel_test [String] project-relative test path.
+    # @return [Boolean]
+    def credit_load_only_line?(rel_source, rel_test)
+      paired = paired_tests_in_run(rel_source)
+      paired.empty? || paired.include?(rel_test)
+    end
+
+    # Conventional tests for `rel_source` that this run actually captures.
+    #
+    # @api private
+    # @param rel_source [String] project-relative source path.
+    # @return [Array<String>] project-relative test paths.
+    def paired_tests_in_run(rel_source)
+      @paired_in_run ||= {}
+      @paired_in_run[rel_source] ||= begin
+        run = @test_paths.to_set { |path| relativize(path) }
+        Pairing.infer_tests(rel_source, project_root: @project_root, prefer: @framework || "minitest")
+               .select { |path| run.include?(path) }
+      end
+    end
+
+    # True when a standalone cache was built with the #426 load-line rule
+    # and the same paired tests would keep load-only lines now. Boot and
+    # daemon maps never credited those lines to tests.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def standalone_load_lines_current?(cached)
+      return true if @boot_path
+
+      cached[NARROW_LOAD_LINES] == true && load_line_pairs_match?(cached)
+    end
+
+    # The tests in this run that {#credit_load_only_line?} treats as paired,
+    # per source. An empty list means every test keeps the load-only lines.
+    #
+    # @api private
+    # @return [Hash{String => Array<String>}] project-relative source to sorted test paths.
+    def load_line_pairs
+      @source_paths.filter_map do |source|
+        rel = relativize(absolute(source))
+        next if rel.start_with?("/")
+
+        [rel, paired_tests_in_run(rel).sort]
+      end.to_h
+    end
+
+    # True when `cached` recorded the same {#load_line_pairs} this run has now.
+    # A missing key is a map saved before the pairing decision was stored.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def load_line_pairs_match?(cached)
+      saved = cached[LOAD_LINE_PAIRS]
+      return false unless saved.is_a?(Hash)
+
+      current = load_line_pairs
+      return false unless saved.keys.sort == current.keys.sort
+
+      current.all? { |rel, tests| Array(saved[rel]).sort == tests }
     end
 
     # Adds the configured source lines that ran at load to {#load_lines}, and
@@ -1419,40 +1731,83 @@ module Mutineer
     #   them; a Hash entry can also hold "methods", as {#load_entry} builds it.
     # @return [void]
     def record_load(coverage)
-      return unless coverage.is_a?(Hash)
+      lines, methods = load_sets_from(coverage)
+      return if lines.nil?
 
-      @source_rels ||= @source_paths.to_set { |p| relativize(absolute(p)) }
-      ours = coverage.select { |abs_file, _| @source_rels.include?(relativize(abs_file)) }
-      each_covered_key(ours) { |key| @load_lines << key }
+      @load_lines.merge(lines)
+      @load_methods.merge(methods)
+      return unless @collect_load
+
+      @seen_load_lines = lines
+      @seen_load_methods = methods
+    end
+
+    # Line and method keys that ran at load in `coverage`, limited to this
+    # run's sources. `[nil, nil]` when `coverage` is not a snapshot.
+    #
+    # @api private
+    # @param coverage [Hash, nil] counts per absolute file, as {#record_load} reads them.
+    # @return [Array(Set, Set), Array(nil, nil)]
+    def load_sets_from(coverage)
+      return [nil, nil] unless coverage.is_a?(Hash)
+
+      lines = Set.new
+      methods = Set.new
+      ours = coverage.select { |abs_file, _| source_rels.include?(relativize(abs_file)) }
+      each_covered_key(ours) { |key| lines << key }
       ours.each do |abs_file, data|
         next unless data.is_a?(Hash) && data["methods"].is_a?(Array)
 
-        data["methods"].each { |line, column| @load_methods << "#{relativize(abs_file)}:#{line}:#{column}" }
+        data["methods"].each { |line, column| methods << "#{relativize(abs_file)}:#{line}:#{column}" }
       end
+      [lines, methods]
     end
 
     # One file's line counts, with the `def` line of each method the test
     # called counted too (#209). A forked capture does not see the `def` lines
-    # run, since the boot defined the methods before the test. Ruby counts no
-    # line when an endless method runs, so without this its mutants would be
-    # `no_coverage` even when a test calls it. A line where more than one
-    # method starts is not counted: the map keys tests by line, so the test
-    # would also be credited with the methods it did not call.
+    # run, since the boot defined the methods before the test. Standalone
+    # capture clears the load snapshot before the test, so it does not either.
+    # Ruby counts no line when an endless method runs, so without this its
+    # mutants would be `no_coverage` even when a test calls it. A line where
+    # more than one method starts is not counted: the map keys tests by line,
+    # so the test would also be credited with the methods it did not call.
     #
     # @api private
-    # @param data [Hash] `Coverage` result for one file, with `:lines` and `:methods`.
+    # @param data [Hash] `Coverage` result for one file, with `:lines` and
+    #   `:methods`, or the JSON shape from {#test_coverage_assignment}
+    #   (`"lines"` and `"methods"` as `[line, column, count]` rows).
     # @return [Array, nil] line counts.
     def lines_with_called_defs(data)
-      lines = data[:lines]
-      return lines unless lines && data[:methods]
+      lines = data[:lines] || data["lines"]
+      methods = data[:methods] || data["methods"]
+      return lines unless lines && methods
 
       lines = lines.dup
-      starts = data[:methods].keys.map { |key| key[2] }.tally
-      data[:methods].each do |key, count|
-        line = key[2]
+      entries = method_call_entries(methods)
+      starts = entries.map(&:first).tally
+      entries.each do |line, count|
         lines[line - 1] = [lines[line - 1].to_i, count].max if count.positive? && starts[line] == 1
       end
       lines
+    end
+
+    # Start line and call count for each method in a Coverage method table.
+    # A Hash is the live Coverage result. An Array is the JSON shape
+    # `[line, column, count]` from {#test_coverage_assignment}.
+    #
+    # @api private
+    # @param methods [Hash, Array] method counts.
+    # @return [Array<Array(Integer, Integer)>] `[start_line, count]` pairs.
+    def method_call_entries(methods)
+      if methods.is_a?(Hash)
+        methods.map { |key, count| [key[2], count.to_i] }
+      else
+        Array(methods).filter_map do |row|
+          next unless row.is_a?(Array) && row.size >= 3 && row[0].is_a?(Integer) && row[2].is_a?(Numeric)
+
+          [row[0], row[2].to_i]
+        end
+      end
     end
 
     # One file's load-time coverage in the shape {#record_load} reads: the line
@@ -1476,9 +1831,42 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def load_coverage_expression
-      "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }" \
-        ".transform_values { |v| { \"lines\" => v[:lines], " \
-        "\"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } } }"
+      "Coverage.peek_result.filter_map { |f, v| key = Mutineer::FsPath.read((File.realpath(f) rescue f)); " \
+        "[key, { \"lines\" => v[:lines], \"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } }] " \
+        "if #{abs_source_paths.map { |path| FsPath.read(path) }.inspect}.include?(key) }.to_h"
+    end
+
+    # Ruby that drops the line and method counts recorded while the sources
+    # loaded, and leaves Coverage running for the test (#426). The same call
+    # the fork capture uses before a test. The load snapshot in `_load` is
+    # already a copy, so this does not erase {#load_lines}.
+    #
+    # @api private
+    # @return [String] one statement for a capture subprocess script.
+    def discard_load_counts_expression
+      "Coverage.result(clear: true, stop: false)"
+    end
+
+    # Ruby that stores the test's post-load coverage in `_coverage`.
+    # Each file keeps its line counts and every method as
+    # `[start_line, start_column, count]`, so {#lines_with_called_defs} can
+    # credit a `def` line the test called. A line that ran only while the
+    # sources loaded is absent, because {#discard_load_counts_expression} ran
+    # first. Coverage keys are US-ASCII with invalid bytes under LC_ALL=C,
+    # so each key is read back with {FsPath.read} (#346).
+    #
+    # @api private
+    # @return [String] statements for a capture subprocess script.
+    def test_coverage_assignment
+      <<~RUBY.chomp
+        _raw = Coverage.result
+        _coverage = _raw.to_h do |_f, _v|
+          next [Mutineer::FsPath.read(_f), _v] unless _v.is_a?(Hash)
+
+          [Mutineer::FsPath.read(_f),
+           { "lines" => _v[:lines], "methods" => (_v[:methods] || {}).map { |_k, _n| [_k[2], _k[3], _n] } }]
+        end
+      RUBY
     end
 
     # Yields a "file:line" key for every project line with a non-zero count.
@@ -1504,9 +1892,13 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def loaded_files_expression
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      # Byte prefix: a UTF-8 root and a binary loaded path must not raise.
+      # A raise here used to be rescued into an empty list, and an empty
+      # dependency hash then matched a stale cache (#346).
+      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.b.end_with?(\".rb\".b); abs = (File.realpath(f) rescue next); Mutineer::FsPath.read(abs) if Mutineer::FsPath.bytes_start_with?(abs, _root) }; rescue StandardError; []; end"
     end
 
     # Canonical project root for loaded-feature matching (`/var` vs `/private/var`).
@@ -1520,13 +1912,14 @@ module Mutineer
     # @api private
     # @return [Array<String>] absolute realpaths.
     def capture_loaded_files
-      prefix = project_root_real
-      prefix = "#{prefix}/" unless prefix.end_with?("/")
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
       $LOADED_FEATURES.filter_map do |f|
-        next unless f.end_with?(".rb")
+        next unless f.b.end_with?(".rb".b)
 
         abs = File.realpath(f)
-        abs if abs.start_with?(prefix)
+        FsPath.read(abs) if FsPath.bytes_start_with?(abs, prefix)
       rescue Errno::ENOENT
         nil
       end
@@ -1557,11 +1950,12 @@ module Mutineer
     # @param abs [String] absolute realpath.
     # @return [String, nil]
     def loaded_relative(abs)
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      return unless abs.start_with?(prefix)
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      return unless FsPath.bytes_start_with?(abs, prefix)
 
-      abs.delete_prefix(prefix)
+      FsPath.bytes_delete_prefix(abs, prefix)
     end
 
     # Byte fingerprint of a file for cache dependency checks.
@@ -1579,15 +1973,509 @@ module Mutineer
     #
     # @api private
     # @param cached [Hash] parsed coverage.json.
+    # @param except [Array<String>] project-relative paths whose fingerprint
+    #   may differ. A method-body edit of a run source is checked by the
+    #   skeleton instead (#421). Any other loaded file still has to match.
     # @return [Boolean]
-    def dependencies_match?(cached)
+    def dependencies_match?(cached, except: [])
       deps = cached["dependencies"]
       return false unless deps.is_a?(Hash)
 
+      skip = except.to_set
       deps.all? do |rel, fingerprint|
+        next true if skip.include?(rel)
+
         abs = absolute(rel)
         File.file?(abs) && file_fingerprint(abs) == fingerprint
       end
+    end
+
+    # True when `cached` is a complete map for this exact run: same digest,
+    # same loaded files, and the keys a later partial recapture needs.
+    #
+    # @api private
+    # @param cached [Hash, nil] parsed coverage.json.
+    # @return [Boolean]
+    def cache_hit?(cached)
+      cached && cached["digest"] == @digest && dependencies_match?(cached) &&
+        cached.key?("load_methods") && cached.key?("timings") &&
+        parallel_workers_match?(cached) && standalone_load_lines_current?(cached) &&
+        partial_cache?(cached)
+    end
+
+    # True when `cached` has the keys {PARTIAL_CACHE_KEYS} names.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def partial_cache?(cached)
+      PARTIAL_CACHE_KEYS.all? { |key| cached.key?(key) }
+    end
+
+    # Copies a saved map into this object. Boot mode keeps the load lines it
+    # just read from the live boot.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [void]
+    def apply_cache(cached)
+      @map = cached["map"] || {}
+      @timings = cached["timings"] || {}
+      unless @boot_path
+        @load_lines = Set.new(cached["load_lines"])
+        @load_methods = Set.new(cached["load_methods"])
+      end
+      @failed_test_files = Array(cached["failed_test_files"])
+      @failed_clean_tests = []
+      @failed_clean_details = {}
+      @loaded_dependencies = cached["dependencies"] || {}
+    end
+
+    # How to recapture part of `cached`, or nil when the run must capture
+    # every test. Nil covers a class-body edit, a moved line, a load-time
+    # method whose body changed, a loaded file outside the run's sources, a
+    # run input, and a change to which tests pair with a source (#421).
+    #
+    # @api private
+    # @param cached [Hash, nil] parsed coverage.json.
+    # @return [Hash, nil] `"removed"`, `"recapture"`, and `"changed_sources"`.
+    def partial_plan(cached)
+      return nil unless cached.is_a?(Hash) && partial_cache?(cached)
+      return nil unless cached.key?("load_methods") && cached.key?("timings")
+      return nil unless parallel_workers_match?(cached) && standalone_load_lines_current?(cached)
+      return nil unless cached["run_inputs"] == run_inputs_digest
+      return nil unless dependencies_match?(cached, except: source_rels.to_a)
+
+      tests = cached["tests"]
+      sources = cached["sources"]
+      skeletons = cached["skeletons"]
+      return nil unless tests.is_a?(Hash) && sources.is_a?(Hash) && skeletons.is_a?(Hash)
+
+      current_tests = test_fingerprints
+      current_sources = source_fingerprints
+      current_skeletons = source_skeletons
+      return nil unless current_sources.keys.sort == sources.keys.sort
+
+      changed_sources = []
+      current_sources.each do |rel, fingerprint|
+        next if sources[rel] == fingerprint
+
+        skeleton = current_skeletons[rel]
+        return nil if skeleton.nil? || skeletons[rel] != skeleton
+
+        changed_sources << rel
+      end
+      return nil unless load_method_bodies_unchanged?(cached, changed_sources)
+      return nil if @boot_path && load_record_changed?(cached, changed_sources)
+
+      old_rels = tests.keys
+      new_rels = current_tests.keys
+      return nil if pairing_sets_changed?(old_rels, new_rels)
+
+      removed = old_rels - new_rels
+      added = new_rels - old_rels
+      edited = (new_rels & old_rels).select { |rel| tests[rel] != current_tests[rel] }
+      failed = Array(cached["failed_test_files"]) & new_rels
+      touching = tests_in_source_entries(cached["map"], changed_sources) & new_rels
+      recapture = (added + edited + failed + touching).uniq
+      # Keeping nothing is a full capture. It rebuilds load lines in one pass.
+      return nil if removed.empty? && recapture.size == new_rels.size
+
+      { "removed" => removed, "recapture" => recapture, "changed_sources" => changed_sources }
+    end
+
+    # Rebuilds the tests in `plan` and keeps the rest. Returns false when the
+    # recaptured load snapshot disagrees with the cache: the caller then
+    # captures every test. A kept test is not credited with another source's
+    # load-only lines, because those entries are left as the full capture
+    # stored them and {#record_paired_load_lines} does not add them back.
+    #
+    # @api private
+    # @param plan [Hash] the plan from {#partial_plan}.
+    # @param cached [Hash] parsed coverage.json.
+    # @param after_fork [Proc, nil] boot-mode fork hook.
+    # @return [Boolean] true when the partial map was saved.
+    def apply_partial(plan, cached, after_fork)
+      apply_cache(cached)
+      removed = plan["removed"]
+      recapture = plan["recapture"]
+      (removed + recapture).each { |rel| drop_test(rel) }
+      @failed_test_files -= (removed + recapture)
+      @collect_load = true
+      @seen_load_lines = nil
+      @seen_load_methods = nil
+      @test_paths.each do |path|
+        capture_one(path, after_fork) if recapture.include?(relativize(path))
+      end
+      @collect_load = false
+      return false if !@boot_path && recapture.any? && partial_load_diverged?(cached)
+
+      refresh_dependency_fingerprints(plan["changed_sources"] + recapture)
+      # A removed test keeps its fingerprint: a kept test may still load
+      # that file, and the map does not record which test loaded what.
+      sort_map_entries
+      @phase_a_ran = true if recapture.any?
+      warn_recaptured(recapture.size, @test_paths.size)
+      checked = clean_check_test_paths
+      verify_cached_clean(after_fork: after_fork,
+                          test_paths: checked.reject { |test| recapture.include?(relativize(test)) })
+      verify_combined_clean(after_fork: after_fork)
+      warn_unchecked("coverage cache", checked.size)
+      save
+      true
+    end
+
+    # Removes `rel` from every map entry and forgets its timing.
+    #
+    # @api private
+    # @param rel [String] project-relative test path.
+    # @return [void]
+    def drop_test(rel)
+      @map.each_value { |tests| tests.delete(rel) if tests.is_a?(Array) }
+      @map.delete_if { |_key, tests| !tests.is_a?(Array) || tests.empty? }
+      @timings.delete(rel)
+    end
+
+    # Puts every map entry in `@test_paths` order, which is the order a full
+    # capture records tests.
+    #
+    # @api private
+    # @return [void]
+    def sort_map_entries
+      @map.each_value { |tests| tests.sort_by! { |test| test_index(test) } if tests.is_a?(Array) }
+    end
+
+    # True when this boot's load lines or load methods for `changed_sources`
+    # differ from the cache. The method body then changed what ran at boot,
+    # so a kept test's coverage is not trusted.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @param changed_sources [Array<String>] project-relative source paths.
+    # @return [Boolean]
+    def load_record_changed?(cached, changed_sources)
+      wanted = changed_sources.to_set
+      pick = lambda do |keys|
+        Array(keys).select { |key| wanted.include?(key_source(key)) }.to_set
+      end
+      pick.call(@load_lines) != pick.call(cached["load_lines"]) ||
+        pick.call(@load_methods) != pick.call(cached["load_methods"])
+    end
+
+    # True when a recaptured standalone test saw different load lines than
+    # the cache recorded. The body change reached load time.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def partial_load_diverged?(cached)
+      return false unless @seen_load_lines
+
+      @seen_load_lines != Set.new(Array(cached["load_lines"])) ||
+        @seen_load_methods != Set.new(Array(cached["load_methods"]))
+    end
+
+    # Writes the current fingerprint of each `rels` entry over the cached one.
+    # Only a path the cache already lists is refreshed: a test file that no
+    # test loads is tracked by the "tests" fingerprints, as on a full capture.
+    #
+    # @api private
+    # @param rels [Array<String>] project-relative paths.
+    # @return [void]
+    def refresh_dependency_fingerprints(rels)
+      rels.each do |rel|
+        next unless @loaded_dependencies.key?(rel)
+
+        abs = absolute(rel)
+        next unless File.file?(abs)
+
+        @loaded_dependencies[rel] = file_fingerprint(abs)
+      end
+    end
+
+    # Tests in `map` entries whose source is one of `source_rels`.
+    #
+    # @api private
+    # @param map [Hash, nil] a "file:line" => [test files] map.
+    # @param source_rels [Array<String>] project-relative source paths.
+    # @return [Array<String>] project-relative test paths.
+    def tests_in_source_entries(map, source_rels)
+      return [] unless map.is_a?(Hash)
+
+      wanted = source_rels.to_set
+      map.each_with_object([]) do |(key, tests), list|
+        next unless wanted.include?(key_source(key))
+
+        Array(tests).each { |test| list << test if test.is_a?(String) && !list.include?(test) }
+      end
+    end
+
+    # True when the conventional pair for any run source is a different set
+    # of tests than the cache was built with. Load-only lines would move.
+    #
+    # @api private
+    # @param old_rels [Array<String>] project-relative tests in the cache.
+    # @param new_rels [Array<String>] project-relative tests in this run.
+    # @return [Boolean]
+    def pairing_sets_changed?(old_rels, new_rels)
+      old_set = old_rels.to_set
+      new_set = new_rels.to_set
+      source_rels.any? { |rel| paired_among(rel, old_set) != paired_among(rel, new_set) }
+    end
+
+    # Conventional tests for `source_rel` that are in `test_rels`.
+    #
+    # @api private
+    # @param source_rel [String] project-relative source path.
+    # @param test_rels [Set<String>] project-relative test paths.
+    # @return [Array<String>]
+    def paired_among(source_rel, test_rels)
+      Pairing.infer_tests(source_rel, project_root: @project_root, prefer: @framework || "minitest")
+             .select { |path| test_rels.include?(path) }
+             .sort
+    end
+
+    # Project-relative paths of this run's sources.
+    #
+    # @api private
+    # @return [Set<String>]
+    def source_rels
+      @source_rels ||= @source_paths.to_set { |path| relativize(absolute(path)) }
+    end
+
+    # Fingerprint of each test file, by project-relative path.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def test_fingerprints
+      @test_paths.to_h { |path| [relativize(absolute(path)), file_fingerprint(absolute(path))] }
+    end
+
+    # Digest of everything that forces a full capture except source and test
+    # contents (#421). The source list is included, so adding a source still
+    # captures every test: standalone capture loads every source.
+    #
+    # @api private
+    # @return [String] hex digest.
+    def run_inputs_digest
+      digest = Digest::SHA256.new
+      source_rels.to_a.sort.each do |rel|
+        digest.update("source\0")
+        digest.update(rel)
+        digest.update("\0")
+      end
+      @require_paths.each { |path| digest_group(digest, "require", [digest_path(path)]) }
+      digest_group(digest, "boot", [digest_path(@boot_path)]) if @boot_path
+      ownership_paths.each do |rel|
+        digest.update("owner\0")
+        digest.update(rel)
+        digest.update("\0")
+      end
+      @load_paths.sort.each { |load_path| digest.update("loadpath\0#{load_path}\0") }
+      digest.update("framework\0#{@framework}\0")
+      digest_test_seed(digest)
+      digest.hexdigest
+    end
+
+    # Skeleton digest of each source, by project-relative path. Nil when the
+    # file does not parse: a partial recapture then does not run.
+    #
+    # @api private
+    # @return [Hash{String => String, nil}]
+    def source_skeletons
+      @source_paths.to_h { |path| [relativize(absolute(path)), source_skeleton_digest(absolute(path))] }
+    end
+
+    # Digest of `abs` with each method body blanked, plus the line of every
+    # `def`. Two files match when the edit is inside method bodies and no
+    # line moved. A comment outside a body, a class-body statement, and an
+    # added or removed line do not match.
+    #
+    # @api private
+    # @param abs [String] absolute source path.
+    # @return [String, nil] hex digest, or nil when the file cannot be parsed.
+    def source_skeleton_digest(abs)
+      source = File.binread(abs)
+      result = Prism.parse(source)
+      return nil unless result.errors.empty?
+
+      ranges = []
+      tuples = []
+      each_def(result.value) do |node|
+        loc = node.body&.location
+        range = body_byte_range(node)
+        ranges << range if range
+        tuples << [node.location.start_line, node.location.start_column, loc&.start_line, loc&.end_line]
+      end
+      digest = Digest::SHA256.new
+      digest.update(blank_method_bodies(source, ranges))
+      tuples.sort.each do |tuple|
+        digest.update("\0")
+        digest.update(tuple.map { |part| part.nil? ? "-" : part.to_s }.join(":"))
+      end
+      digest.hexdigest
+    rescue SystemCallError
+      nil
+    end
+
+    # Byte range of the body of `node`, after its name and parameters. Nil
+    # when the body is empty. A `def` with `rescue` or `ensure` has a
+    # BeginNode body that starts at the `def` keyword, so the range starts
+    # where the signature ends: a same-line name or parameter edit is not a
+    # body edit.
+    #
+    # @api private
+    # @param node [Prism::DefNode] a method definition.
+    # @return [Array(Integer, Integer), nil] half-open byte range.
+    def body_byte_range(node)
+      loc = node.body&.location
+      return nil unless loc
+
+      signature_end = [node.name_loc, node.parameters&.location, node.rparen_loc].compact.map(&:end_offset).max
+      start = [loc.start_offset, signature_end].max
+      start < loc.end_offset ? [start, loc.end_offset] : nil
+    end
+
+    # `source` with every method-body byte range replaced by one marker.
+    # Nested bodies are one marker: the outer range already covers them.
+    #
+    # @api private
+    # @param source [String] source bytes.
+    # @param ranges [Array<Array(Integer, Integer)>] half-open byte ranges.
+    # @return [String] binary skeleton text.
+    def blank_method_bodies(source, ranges)
+      return source if ranges.empty?
+
+      skip = Array.new(source.bytesize, false)
+      ranges.each do |start, finish|
+        next if start.negative? || finish > source.bytesize
+
+        (start...finish).each { |index| skip[index] = true }
+      end
+      out = +"".b
+      source.each_byte.with_index do |byte, index|
+        if skip[index]
+          out << 0 unless index.positive? && skip[index - 1]
+        else
+          out << byte
+        end
+      end
+      out
+    end
+
+    # Yields each `def` in `node`, including defs nested in another body.
+    #
+    # @api private
+    # @param node [Prism::Node, nil] syntax node.
+    # @yieldparam node [Prism::DefNode]
+    # @return [void]
+    def each_def(node, &block)
+      return unless node.is_a?(Prism::Node)
+
+      block.call(node) if node.is_a?(Prism::DefNode)
+      node.child_nodes.each { |child| each_def(child, &block) }
+    end
+
+    # True when every load-time method of `changed_sources` still has the
+    # body the cache recorded. A different body can change a value other
+    # tests read without those tests appearing in this source's map.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @param changed_sources [Array<String>] project-relative source paths.
+    # @return [Boolean]
+    def load_method_bodies_unchanged?(cached, changed_sources)
+      stored = cached["load_method_bodies"]
+      return false unless stored.is_a?(Hash)
+
+      wanted = changed_sources.to_set
+      stored.all? do |key, digest|
+        next true unless wanted.include?(key_source(key))
+        next false unless digest.is_a?(String)
+
+        body_digest_at(key) == digest
+      end
+    end
+
+    # Body digest of each method in {#load_methods}, keyed the same way.
+    # `"missing"` marks a `def` the file no longer has at that line.
+    #
+    # @api private
+    # @return [Hash{String => String}]
+    def current_load_method_bodies
+      @load_methods.to_h { |key| [key, body_digest_at(key) || "missing"] }
+    end
+
+    # Digest of the method body at the `def` named by `key`, in the file as
+    # it is now. Nil when that `def` is gone or the file does not parse.
+    #
+    # @api private
+    # @param key [String] a "file:line:column" load-method key.
+    # @return [String, nil] hex digest.
+    def body_digest_at(key)
+      rel, line, column = split_method_key(key)
+      text = method_bodies(rel)&.[]([line, column])
+      return nil if text.nil?
+
+      Digest::SHA256.hexdigest(text)
+    end
+
+    # Method bodies in `rel`, keyed by the `def` line and column Coverage uses.
+    # Nil when the file does not parse.
+    #
+    # @api private
+    # @param rel [String] project-relative source path.
+    # @return [Hash{Array(Integer, Integer) => String}, nil]
+    def method_bodies(rel)
+      @method_bodies ||= {}
+      return @method_bodies[rel] if @method_bodies.key?(rel)
+
+      abs = absolute(rel)
+      return @method_bodies[rel] = nil unless File.file?(abs)
+
+      source = File.binread(abs)
+      result = Prism.parse(source)
+      return @method_bodies[rel] = nil unless result.errors.empty?
+
+      found = {}
+      each_def(result.value) do |node|
+        loc = node.body&.location
+        text = if loc && loc.end_offset > loc.start_offset
+                 source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
+               else
+                 +""
+               end
+        found[[node.location.start_line, node.location.start_column]] = text
+      end
+      @method_bodies[rel] = found
+    rescue SystemCallError
+      @method_bodies[rel] = nil
+    end
+
+    # Source path, `def` line, and `def` column of a load-method key.
+    #
+    # @api private
+    # @param key [String] a "file:line:column" key.
+    # @return [Array(String, Integer, Integer)]
+    def split_method_key(key)
+      rel = key_source(key)
+      line, column = key.delete_prefix("#{rel}:").split(":").map(&:to_i)
+      [rel, line, column]
+    end
+
+    # Tells the user how many test files a partial recapture ran again.
+    # Prints nothing when every file was recaptured or none was: the first
+    # is a full capture, and the second kept the whole map.
+    #
+    # @api private
+    # @param recaptured [Integer] test files captured again.
+    # @param total [Integer] test files in the run.
+    # @return [void]
+    def warn_recaptured(recaptured, total)
+      kept = total - recaptured
+      return unless recaptured.positive? && kept.positive?
+
+      warn "[mutineer] coverage cache: recaptured #{recaptured} of #{total} test files; kept #{kept}."
     end
 
     # True when `cached` records the same +PARALLEL_WORKERS+ value this process
@@ -1622,17 +2510,43 @@ module Mutineer
       end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
-      # The seed sets the test order, and the order can change which lines run (#282).
-      # This is the configured seed. A test helper that changes SEED is not
-      # digested, like any other helper edit.
-      d.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
+      digest_test_seed(d)
       d.hexdigest
+    end
+
+    # Adds the test seed inputs to `digest`. The seed sets the test order, and
+    # the order can change which lines run (#282). Minitest: the configured
+    # seed. A test helper that changes SEED is not digested, like any other
+    # helper edit. RSpec: the pinned seed, SPEC_OPTS, and the project `.rspec`
+    # files. `~/.rspec` and a `config.seed` in a spec helper are not digested;
+    # a helper edit is seen when that file is part of the capture.
+    # {#compute_digest} and {#run_inputs_digest} share this, so a seed change
+    # never reaches a partial recapture (#421).
+    #
+    # @api private
+    # @param digest [Digest::SHA256] the digest to update.
+    # @return [void]
+    def digest_test_seed(digest)
+      if @framework == "rspec"
+        digest.update("seed\0#{MinitestIntegration::PINNED_SEED}\0#{ENV['SPEC_OPTS']}\0")
+        %w[.rspec .rspec-local].each do |name|
+          path = File.join(@project_root, name)
+          digest.update("rspec-opts\0#{name}\0")
+          digest.update(File.file?(path) ? File.binread(path) : "")
+          digest.update("\0")
+        end
+      else
+        digest.update("seed\0#{MinitestIntegration.seed}\0")
+      end
     end
 
     # Longer source files that can take a split test from a configured source.
     # Only their presence is digested. A content edit of a sibling does not
     # change pairing, and it does not rebuild coverage. Each directory is
-    # listed once, even when many sources share it.
+    # listed once, even when many sources share it. A concern also digests
+    # longer files in its namespace directory, because those files can own a
+    # namespace split name (#408). A model does not digest a concern file:
+    # the model keeps a split file it already pairs with.
     #
     # @return [Array<String>] project-relative paths, sorted.
     def ownership_paths
@@ -1643,26 +2557,39 @@ module Mutineer
         next [] if rel.start_with?("/")
 
         base, = Pairing.logical_path(rel)
-        name = File.basename(base)
-        dir = File.dirname(base)
-        folders = [dir == "." ? nil : dir]
-        %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
-        folders.uniq.flat_map do |folder|
-          abs = folder ? File.join(root, folder) : root
-          entries = listings.fetch(abs) do
-            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
-          end
-          entries.filter_map do |entry|
-            next unless entry.end_with?(".rb")
-
-            stem = entry.delete_suffix(".rb")
-            next unless stem.start_with?("#{name}_") && stem.length > name.length
-
-            folder ? File.join(folder, entry) : entry
-          end
-        end
+        bases = [base]
+        ns = Pairing.namespace_base(rel)
+        bases << ns if ns
+        bases.uniq.flat_map { |logical| owner_files(root, logical, listings) }
       end
       paths.uniq.sort
+    end
+
+    # Longer `.rb` files that can own a split name of `base`.
+    #
+    # @param root [String] expanded project root.
+    # @param base [String] logical source path without extension.
+    # @param listings [Hash{String => Array<String>}] directory children, filled once.
+    # @return [Array<String>] project-relative paths.
+    def owner_files(root, base, listings)
+      name = File.basename(base)
+      dir = File.dirname(base)
+      folders = [dir == "." ? nil : dir]
+      %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+      folders.uniq.flat_map do |folder|
+        abs = folder ? File.join(root, folder) : root
+        entries = listings.fetch(abs) do
+          listings[abs] = File.directory?(abs) ? Dir.children(abs).map { |entry| FsPath.read(entry) } : []
+        end
+        entries.filter_map do |entry|
+          next unless entry.end_with?(".rb")
+
+          stem = entry.delete_suffix(".rb")
+          next unless stem.start_with?("#{name}_") && stem.length > name.length
+
+          folder ? File.join(folder, entry) : entry
+        end
+      end
     end
 
     # boot_path and require_paths are require-style paths (e.g. "config/environment",
@@ -1683,7 +2610,9 @@ module Mutineer
     # @return [Array(String, String, Array<String>)] grouped digest data.
     def digest_group(digest, role, paths)
       paths.sort.each do |p|
-        content = File.read(absolute(p))
+        # Bytes, not a locale read: a magic-comment encoding such as EUC-JP
+        # is not valid UTF-8, and the digest is of the file's bytes (#346).
+        content = File.binread(absolute(p))
         digest.update(role)
         digest.update("\0")
         digest.update(relativize(absolute(p)))
@@ -1735,7 +2664,11 @@ module Mutineer
       data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
                "dependencies" => @loaded_dependencies, "map" => @map,
                "load_lines" => @load_lines.to_a.sort, "load_methods" => @load_methods.to_a.sort,
-               "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil) }
+               "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil),
+               NARROW_LOAD_LINES => true, "run_inputs" => run_inputs_digest,
+               "sources" => source_fingerprints, "skeletons" => source_skeletons,
+               "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies }
+      data[LOAD_LINE_PAIRS] = load_line_pairs unless @boot_path
       if @boot_path
         data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,
                     "owners" => ownership_paths)

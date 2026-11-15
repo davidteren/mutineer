@@ -100,9 +100,8 @@ class MutantIdTest < Minitest::Test
   # file's subjects exactly as a run does.
   def ids_for(root, rel, name)
     file = File.join(root, rel)
-    source_map = {}
-    subject = Mutineer::Project.discover([file], source_map: source_map).find { |s| s.name == name }
-    source = source_map.fetch(file)
+    subject = Mutineer::Project.discover([file]).find { |s| s.name == name }
+    source = Mutineer::Parser.read(file)
     mutations = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source)
     ID.for_subject(subject, source, mutations, path: Mutineer::ProjectPath.relative(file, root))
   end

@@ -3,6 +3,7 @@
 require "did_you_mean"
 require "etc"
 require "yaml"
+require_relative "fs_path"
 
 module Mutineer
   # The phrase every 1.x warning uses for behaviour that 2.0 turns into an
@@ -134,7 +135,7 @@ module Mutineer
       self.threshold     ||= 0.0
       self.dry_run       ||= false
       self.cache_dir     ||= ".mutineer"
-      self.project_root  ||= Dir.pwd
+      self.project_root = FsPath.read(project_root || Dir.pwd)
       self.load_paths    ||= ["lib"]
       self.jobs          ||= Etc.nprocessors
       self.format        ||= "human"

@@ -526,6 +526,10 @@ runs:
                  + " | \(.summary.killed) | \(.summary.survived) | \(.summary.no_coverage)"
                  + " | \(.summary.ignored) | \(.summary.no_verdict)"
                  + " | " + (if .summary.unmutated_subjects == null then "—" else "\(.summary.unmutated_subjects)" end) + " |"),
+              (if (.summary.dropped // 0) > 0 then
+                 "",
+                 ("Dropped: \(.summary.dropped) repeat(s) of a kept mutant. Their ids are on `copies` in the JSON report. An ignore entry still ignores only its own id, so keep every copy.")
+               else empty end),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
                       + (if (.baseline.score_comparable != false) then
@@ -541,7 +545,11 @@ runs:
               (if (.survivors | length) > 0 then "", "### Surviving mutants", "" else empty end),
               (.survivors[:20][]
                  | "- `" + (.file | oneline) + ":\(.line)` " + (.operator | oneline) + ": `"
-                   + (.token | oneline) + "` (id `" + (.id | oneline) + "`)"),
+                   + (.token | oneline) + "` (id `" + (.id | oneline) + "`"
+                   + (if ((.copies // []) | length) > 0 then
+                        "; copies `" + ((.copies // []) | map(oneline) | join("`, `")) + "`"
+                      else "" end)
+                   + ")"),
               (if (.survivors | length) > 20 then
                  "", "… and \((.survivors | length) - 20) more: full list in the JSON report (the action'\''s `report` output)."
                else empty end)
@@ -572,6 +580,9 @@ runs:
             | "::\($lvl) file=" + ($f | prop) + ",line=\(.line),title=Surviving mutant::"
               + (.operator | msg) + ": `" + (.token | msg)
               + "` survived: no test caught this change (id " + (.id | msg) + ")"
+              + (if ((.copies // []) | length) > 0 then
+                   " Copies: " + ((.copies // []) | map(msg) | join(", ")) + "."
+                 else "" end)
           ' "$TMP_REPORT" \
             || echo "::warning::mutineer: could not emit survivor annotations."
           # Old-format ids (#126): the CLI warns on stderr; repeat it as one

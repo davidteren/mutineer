@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "shellwords"
 require "tempfile"
+require "tmpdir"
 require_relative "result"
 require_relative "rails_run_env"
 require_relative "redaction"
@@ -386,6 +388,47 @@ module Mutineer
       parts
     end
 
+    # RUBYOPT for a `--test-command` child: the copier file alone. The tool's
+    # own RUBYOPT (`-rbundler/setup` under `bundle exec`) stays out, as
+    # {child_env} clears every `RUBY*` key so the suite picks its own Ruby and
+    # gems. Empty when the copier file cannot be named without whitespace.
+    #
+    # @api private
+    # @param dir [String] the directory that holds command_redact.rb.
+    # @return [String]
+    def self.command_rubyopt(dir = __dir__)
+      path = command_redact_file(dir)
+      path ? "-r#{path}" : ""
+    end
+
+    # Path of command_redact.rb that RUBYOPT can carry. Ruby splits RUBYOPT at
+    # whitespace and has no quoting or escape, so a path with a space (a home
+    # directory named "Jane Doe") makes every Ruby child stop with "invalid
+    # switch in RUBYOPT". Such a path is reached through a symlink in a
+    # temporary directory, removed when this process exits. `require_relative`
+    # in the file resolves the real path, so the rest of the copier loads.
+    #
+    # @api private
+    # @param dir [String] the directory that holds command_redact.rb.
+    # @return [String, nil] nil when the temporary directory name has whitespace too.
+    def self.command_redact_file(dir)
+      path = File.expand_path("command_redact.rb", dir)
+      return path unless path.match?(/\s/)
+
+      COMMAND_REDACT_LINKS[dir] ||= begin
+        tmp = Dir.mktmpdir("mutineer-redact")
+        at_exit { FileUtils.remove_entry(tmp, true) }
+        link = File.join(tmp, "command_redact.rb")
+        File.symlink(path, link)
+        link
+      end
+      link = COMMAND_REDACT_LINKS[dir]
+      link.match?(/\s/) ? nil : link
+    end
+
+    # Symlinks {command_redact_file} made, by source directory.
+    COMMAND_REDACT_LINKS = {} # rubocop:disable Style/MutableConstant
+
     # Spawns the command to a captured combined-output tempfile, enforces a
     # wall-clock timeout (SIGKILL past the deadline), and returns
     # [kind, exit_code, output, elapsed]. Mirrors Isolation's single-waiter loop:
@@ -409,7 +452,10 @@ module Mutineer
       # explicit [program, argv0] form guarantees the no-shell exec path even for a
       # degenerate single-element argv (Process.spawn(*argv) would route a lone
       # metachar-bearing string through /bin/sh, breaking the argv-only invariant).
-      pid = Process.spawn(child_env, [argv.first, argv.first], *argv[1..],
+      # RUBYOPT loads the copier in each Ruby process this command starts, so a
+      # password that process assigns is hidden before the bytes are captured
+      # (#457). A program that is not Ruby ignores RUBYOPT.
+      pid = Process.spawn(child_env.merge("RUBYOPT" => command_rubyopt), [argv.first, argv.first], *argv[1..],
                           out: out, err: %i[child out], pgroup: true)
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start

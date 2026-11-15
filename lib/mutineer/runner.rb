@@ -16,9 +16,12 @@ require_relative "project_path"
 require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
+require_relative "reach_probe"
 require_relative "job_plan"
 require_relative "rails_run_env"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Raised when the tool process cannot load a project file: the boot file, a
@@ -61,7 +64,7 @@ module Mutineer
     # coverage map, run every mutation, and aggregate. Returns
     # [AggregateResult, source_map, extras], where extras is the hash
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
-    # `:dropped_id_map`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
+    # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
@@ -76,8 +79,24 @@ module Mutineer
     def self.execute(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
+      # The ensure below reads these. Set them before anything that can raise.
+      filter_owned = false
+      urls_owned = false
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]
       RailsRunEnv.pin_process!
+      # The CLI installs the filter first and owns it for the report that
+      # follows this method. A library caller owns it for the run itself.
+      # Direct writes from a fork or a subprocess then go through the pipe (#341).
+      case OutputFilter.install
+      when :started
+        filter_owned = true
+      when :failed
+        raise "cannot redirect stdout and stderr for redaction"
+      end
+      if Redaction.extra_urls.empty?
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        urls_owned = true
+      end
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -130,13 +149,9 @@ module Mutineer
         since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
       end
 
-      if config.strategy == "redefine"
-        dirs.reject { |d| File.writable?(d) }.each do |d|
-          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
-               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
-               "Make the directory writable to avoid this (#339)."
-        end
-      end
+      # Before boot and `--require`, so a `config.seed=` in those files is
+      # recorded and every forked child keeps it (#282).
+      prepare_rspec_seed!(config)
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -240,8 +255,7 @@ module Mutineer
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework,
-                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix,
-                source: source_map.fetch(subject.file))
+                timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
           end
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
@@ -258,6 +272,10 @@ module Mutineer
     ensure
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
+      OutputFilter.uninstall if filter_owned
+      # The CLI set its own list before this method and restores it. Clear
+      # only the list this call loaded.
+      Redaction.extra_urls = [] if urls_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
@@ -343,8 +361,7 @@ module Mutineer
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
-                             source: source_map.fetch(subject.file))
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -364,10 +381,9 @@ module Mutineer
     # in-process path gives at the pre-fork check.
     #
     # @param check_summary [Boolean] passed to {ExternalBackend.run}.
-    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, source: nil)
-      source ||= Parser.parse_file(subject.file).source.source
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
+      source  = Parser.read(subject.file)
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
@@ -423,12 +439,10 @@ module Mutineer
     # @param framework [String] test framework name.
     # @param matrix [Boolean] a `--matrix` run: run every covering test and
     #   attach the {Kills} row, with project-relative test files.
-    # @param source [String, nil] parsed source text, including its declared encoding.
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
-                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false,
-                 source: nil)
-      source ||= Parser.parse_file(source_file).source.source
+                 timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
+      source  = Parser.read(source_file)
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.
@@ -444,35 +458,49 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
+      # A :maybe mutant records whether the mutated expression ran (#345).
+      sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      reach_key = sentinel && ReachProbe.reach_key
 
-      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
-        # Forking inherits the parent's live DB connection; sharing one socket
-        # across processes corrupts it. Drop it so AR reconnects per child.
-        reconnect_active_record if rails
-        if strategy == "redefine"
-          # Load each enclosing def too: its body holds the original nested def,
-          # which a call to it would define again over the mutant (#290).
-          Isolation.apply_surgical(mutation, subject, source)
-          s = subject
-          Isolation.apply_surgical(mutation, s, source) while (s = s.enclosing_subject)
-        elsif subject&.reload_hook_call
-          # #297: a def in a concern's hook block reaches each class that has it.
-          code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
-          Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
-        else
-          Isolation.apply_whole_file(mutated, source_file)
+      begin
+        result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
+          # Forking inherits the parent's live DB connection; sharing one socket
+          # across processes corrupts it. Drop it so AR reconnects per child.
+          reconnect_active_record if rails
+          if strategy == "redefine"
+            # Load each enclosing def too: its body holds the original nested def,
+            # which a call to it would define again over the mutant (#290).
+            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path, reach_key: reach_key)
+            s = subject
+            while (s = s.enclosing_subject)
+              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
+            end
+          elsif subject&.reload_hook_call
+            # #297: a def in a concern's hook block reaches each class that has it.
+            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                 reach_key: reach_key)
+            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
+          else
+            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
+                                        source_file)
+          end
+          # A reload can run the expression while the file loads. That is not
+          # a test reaching it (#345).
+          ReachProbe.forget_load(sentinel.path, reach_key) if sentinel
+          if channel
+            # --matrix: every covering test runs, and each outcome goes to the parent.
+            TestRunners.for(framework).run(abs_tests, record_to: channel)
+          else
+            # One failing test already kills the mutant, so the child stops there.
+            TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+          end
         end
-        if channel
-          # --matrix: every covering test runs, and each outcome goes to the parent.
-          TestRunners.for(framework).run(abs_tests, record_to: channel)
-        else
-          # One failing test already kills the mutant, so the child stops there.
-          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
-        end
+        result = relative_kills(result, coverage_map.project_root)
+        result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+        JobPlan.selection_verdict(kind, result, reached: ReachProbe.reached?(sentinel))
+      ensure
+        ReachProbe.close_sentinel(sentinel)
       end
-      result = relative_kills(result, coverage_map.project_root)
-      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-      JobPlan.selection_verdict(kind, result)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project
@@ -554,6 +582,25 @@ module Mutineer
       file
     end
     private_class_method :project_file!
+
+    # Installs the RSpec seed watcher in this process when the run uses
+    # RSpec. Boot and `--require` files then load with the watcher on, and
+    # forks inherit the record of a seed they set. A project without rspec
+    # is left for the child to report, as before.
+    #
+    # @api private
+    # @param config [Mutineer::Config]
+    # @return [void]
+    def self.prepare_rspec_seed!(config)
+      return unless config.framework == "rspec"
+
+      require "rspec/core"
+      ::RSpec::Core::Runner.disable_autorun!
+      TestRunners::RSpecSeed.install!
+    rescue LoadError
+      nil
+    end
+    private_class_method :prepare_rspec_seed!
 
     # Extra line when a source raises NameError and the run has no boot file.
     # `require:` files load after the sources, so they cannot define names the

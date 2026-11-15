@@ -37,7 +37,8 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test
 | `redefine` | Reloads the mutated method and each directly enclosing method, not the whole file. |
 | Methods nested in blocks | A method inside a block such as `define_method` can falsely survive. Use `--strategy reload`. |
 
-A file at `app/<dir>/concerns/` pairs with an exact namespace test when the `concerns/` path has none.
+A file at `app/<dir>/concerns/<rest>.rb` pairs with a namespace test when the `concerns/` path has no pairable test.
+For example, `app/models/concerns/storage/totaled.rb` pairs with `test/models/storage/totaled_test.rb` or an unclaimed split such as `test/models/storage/totaled_bytes_test.rb`; a longer source or an already-paired model can retain that split.
 See the [pairing table](ci.md).
 
 A controller concern often has no test at the conventional path.
@@ -155,14 +156,14 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Database | Worker provisioning and cleanup |
 | --- | --- |
 | SQLite | Copies each worker file on first use. For `storage/test.sqlite3`, worker files are `storage/test-<N>.sqlite3` and the run lock is `storage/test.sqlite3-mutineer.lock`. |
-| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` database name takes no lock (#412). Other known gaps are tracked in #416. |
+| SQLite lock file | The lock file never goes stale. Do not delete it while a run is active. Wait for the other run to finish, or stop it. Add `<base file>-mutineer.lock` to `.gitignore` unless your rules already cover `storage/*`. A `file:` name that opens a disk file takes this lock on that file. A memory URI (`file::memory:` or `mode=memory`) and an empty `file:` name take no lock. Other known gaps are tracked in #416. |
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |
 | MySQL 8 | Creates `<base>-mutineer-<N>`, shortened to fit 64 bytes. Loads `schema.rb` or `structure.sql`, then copies rows before workers start. |
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
-| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases (not `file:` names). |
+| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
@@ -239,7 +240,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
 | Forced child settings | Replaces existing values with `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1`, and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`. |
-| Test order | Must be fixed. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. It cannot see a seed set in a wrapper script or `.rspec`, or a Minitest `test_order`, so the warning can print when the order is already fixed ([#368](https://github.com/davidteren/mutineer/issues/368)). |
+| Test order | Only for `--test-command`. Other runs share one seed; see the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order). This command must use a fixed order. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. It cannot see a seed set in a wrapper script or `.rspec`, or a Minitest `test_order`, so the warning can print when the order is already fixed ([#368](https://github.com/davidteren/mutineer/issues/368)). |
 
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis) for wrapper behaviour.
 

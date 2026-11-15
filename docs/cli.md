@@ -6,7 +6,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention, plus any matching `tests:` map entries; unmatched sources are skipped and counted in the report; `--test` replaces pairing and the map; `--dry-run` with `--rails` or `--boot` still needs `--test` |
+| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention, plus any matching `tests:` map entries. A source at `app/<dir>/concerns/<rest>.rb` with no pairable test there also pairs with an unclaimed split test at its namespace path. Unmatched sources are skipped and counted in the report; `--test` replaces pairing and the map; `--dry-run` with `--rails` or `--boot` still needs `--test` |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
@@ -47,11 +47,40 @@ A blank value exits 2.
 A directory or glob with no test file exits 2.
 Each expanded directory or glob prints its file count on stderr.
 
+## Test order
+
+Coverage capture, the clean check and each mutant run share one seed (#282).
+A green clean check uses that seed.
+When a mutant runs several files, its file order can still differ from the combined clean check.
+
+Minitest uses seed `1`, or `SEED` when you set it.
+A test helper can change `SEED` after it loads.
+Those runs read it then.
+To reproduce a failure, run the listed files with the same seed, for example `SEED=1 bundle exec ruby -Itest test/models/order_test.rb`.
+
+A random RSpec order uses seed `1`.
+A defined order is left as it is.
+Set another seed with `--seed N` or `--order rand:N` on the command line, in `SPEC_OPTS`, or in `.rspec`, or with `config.seed = N` in a spec helper, a `--require` file, or the boot file.
+RSpec reads `SPEC_OPTS` after the command line, so a seed there replaces `--seed` on the `rspec` command.
+A spec helper that only reads `config.seed`, as the generated `Kernel.srand config.seed` does, does not set one.
+
+Files run in the order that run was given.
+For Minitest, class order inside one file depends only on the seed, not on the other files in the run.
+RSpec's random order does the same: each example is ordered by a hash of the seed and its id.
+A custom RSpec order that looks at the whole list can still change when another file is added.
+A mutant run's files are the covering tests, paired files first, then the cheapest.
+The combined clean check runs the covering tests in the order you passed them.
+When one mutant runs several files, those two orders can differ.
+
+`--test-command` is the exception.
+Mutineer does not set its seed.
+See that flag.
+
 Other commands:
 
 - `mutineer init [--rails] [--force]`
-- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`
-- `mutineer migrate <source...> [--dry-run] [--operators LIST]`
+- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`. Prints one `ignore:` entry per survivor, and one per id in that survivor's `copies`. An id from `copies` selects that whole group. It writes nothing.
+- `mutineer migrate <source...> [--dry-run] [--operators LIST]`: rewrite old `ignore:` ids. `--dry-run` lists each change and every entry that matches no mutant, writes nothing, and exits 1 when any entry matches nothing. `run` warns about those entries for its own sources and operators, lists them in `summary.unmatched_ignores`, and still exits 0. `--only` skips that warning and reports an empty list, which does not mean every entry matched. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 - `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 
 Exit codes: [README](https://github.com/davidteren/mutineer#exit-codes).
@@ -124,7 +153,8 @@ rails: true
 
 ### Extra tests for a source
 
-Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it:
+Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it.
+A source at `app/<dir>/concerns/<rest>.rb` with no pairable test at its `concerns/` path already pairs with an exact or split name at its namespace path. The map is for tests that are not named that way:
 
 ```yaml
 tests:
@@ -148,8 +178,11 @@ Quote a pattern that starts with `*`.
 Quote a pattern with braces inside a `[...]` list.
 `--test` replaces pairing and the map.
 
-Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. Mutineer rebuilds it when a source, a test,
-or a project file the tests load changes. The run then captures every test again (#421 tracks a per-test rebuild).
+Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. A change inside a method body, with no
+added or removed line and no change to a method that ran while the file loaded, recaptures the tests that
+cover that source, plus any test file that was added or edited. The map matches a full capture. A class-body
+edit, an added or removed source line, a load-time method, a change to which test pairs with a source, a
+`--require` file, or another project file the tests load still recaptures every test (#421).
 
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 
@@ -158,8 +191,11 @@ Before the mutants run, Mutineer checks that the unchanged tests pass:
 - **Cache hit.** Only the test files that cover a source line run, alone and then together. A mutant runs
   only those files, so a red test outside them cannot change a result. Mutineer prints how many files it
   did not check. A test file whose last capture failed is captured again, which also runs it. When no test
-  covers any source line, every test file runs. In a standalone run (no boot file), each test loads every
-  source and so covers it, and every test file runs (#426).
+  covers any source line, every test file runs. In a standalone run, a line that ran only while the sources
+  loaded does not put every test file in this set (#426). The conventionally paired test for that source
+  still covers the line. A `tests:` map entry does not count as that pair. When none of the run's tests are
+  conventionally paired with the source, every test file stays in the set (#467). A line a test
+  runs after the sources load covers that test, as on a boot or daemon run.
 - **`--coverage-from`** (in-process `--rails` or `--boot` runs only; other runs ignore it). As on a cache hit: only the test files that cover a source line run, alone and then
   together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.
 - **`--test-command`.** No coverage map is built. The clean run runs every `--test` file.

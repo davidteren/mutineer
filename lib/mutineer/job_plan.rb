@@ -41,7 +41,9 @@ module Mutineer
     # recorded even when a new id is also listed, since the old entry still
     # over-matches other files), `id_map` (every reported mutant's new id =>
     # its old-format id), `dropped_id_map` (the same for each dropped repeat of
-    # an edit: its id is still current for `mutineer migrate`) and `declined`
+    # an edit: its id is still current for `mutineer migrate`), `copies` (each
+    # kept mutant's id => the ids dropped as repeats of that edit, in drop
+    # order, #374) and `declined`
     # (operator name => count of candidates that operator found and did not
     # mutate, {Mutators::Base#declined}; only counts above zero, keys sorted).
     # The name is the {MutatorRegistry::ALL} key, or the class's `to_s` for an
@@ -69,7 +71,7 @@ module Mutineer
     # @param operator_classes [Array<Class>] resolved operators.
     # @return [Array(Array, Array<Result>, Hash<String,String>, Hash{Symbol => Hash})]
     #   jobs, ignored, source_map, and extras (`:legacy_ignore_matches`,
-    #   `:id_map`, `:dropped_id_map`, `:declined`, `:subjects`,
+    #   `:id_map`, `:dropped_id_map`, `:copies`, `:declined`, `:subjects`,
     #   `:unmutated_subjects`).
     def self.collect_jobs(config, operator_classes)
       # Registry order, so a repeat across operators keeps the registry-first
@@ -92,11 +94,14 @@ module Mutineer
       legacy_ignore_matches = {}
       id_map = {}
       dropped_id_map = {}
+      # Kept id => dropped ids. Separate from dropped_id_map, which migrate
+      # reads as dropped id => old-format id (#374).
+      copies = {}
       declined = Hash.new(0)
       # [id_path, def offset] => nil, or the method's entry when it got no mutation.
       subjects = {}
-      Project.discover(config.sources, only: config.only, source_map: source_map).each do |subject|
-        source = source_map.fetch(subject.file)
+      Project.discover(config.sources, only: config.only).each do |subject|
+        source = (source_map[subject.file] ||= Parser.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         # A repeated operator name runs once, so its declines count once.
         mutations = operator_classes.uniq.flat_map do |klass|
@@ -126,9 +131,10 @@ module Mutineer
         keys = result_keys(mutations, source, lines)
         # A repeat of an earlier edit on the same line, from any operator, is
         # dropped (#159, #275), separately among the run and the ignored
-        # mutants, so an ignored copy never hides a copy that should run. A
-        # dropped copy is not reported, but its id stays current for migrate.
-        seen = { run: Set.new, ignored: Set.new }
+        # mutants, so an ignored copy never hides a copy that should run. The
+        # dropped id stays current for migrate, and `copies` names it on the
+        # kept mutant so a report can show it (#374).
+        seen = { run: {}, ignored: {} }
         mutations.each_with_index do |mutation, i|
           id = ids[i]
           legacy = legacy_ids[i]
@@ -139,10 +145,13 @@ module Mutineer
           if ignore_set.include?(legacy)
             (legacy_ignore_matches[legacy] ||= []) << { id: id, file: id_path, subject: subject.qualified_name }
           end
-          unless seen[ignored ? :ignored : :run].add?(keys[i])
+          bucket = seen[ignored ? :ignored : :run]
+          if (kept_id = bucket[keys[i]])
             dropped_id_map[id] = legacy
+            (copies[kept_id] ||= []) << id
             next
           end
+          bucket[keys[i]] = id
 
           id_map[id] = legacy
           if ignored
@@ -157,7 +166,7 @@ module Mutineer
       infos = subjects.values
       unmutated = public_unmutated(infos)
       [jobs, ignored_results, source_map, { legacy_ignore_matches: legacy_ignore_matches, id_map: id_map,
-                                            dropped_id_map: dropped_id_map, declined: declined,
+                                            dropped_id_map: dropped_id_map, copies: copies, declined: declined,
                                             subjects: infos.size, unmutated_subjects: unmutated,
                                             subject_ranges: infos }]
     end
@@ -205,9 +214,8 @@ module Mutineer
     #
     # @param coverage_map [Mutineer::CoverageMap] the built or loaded map.
     # @param framework [String, nil] the run's framework (nil is Minitest, as in
-    #   {TestRunners.for}). For Minitest, the message names the seed: an
-    #   order-dependent suite can pass in a random order and fail in the
-    #   pinned one (#282).
+    #   {TestRunners.for}). The message names the seed: an order-dependent
+    #   suite can pass in a random order and fail in the pinned one (#282).
     # @return [void]
     # @raise [Mutineer::SmokeCheckError] when any captured test failed clean,
     #   or when no test recorded coverage and a capture failed.
@@ -219,7 +227,7 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
-      seed_hint = TestRunners.for(framework) == TestRunners::Minitest ? minitest_seed_hint : ""
+      seed_hint = seed_hint_for(framework)
       # The hint opens with "the unmutated suite is not green", so the files
       # follow it rather than repeat that sentence (#360). Failure names and
       # the first error follow when capture stored them.
@@ -251,6 +259,24 @@ module Mutineer
       "\n#{text[0, limit].rstrip}\n…"
     end
 
+    # The not-green hint for this framework, or empty when it has no seed.
+    #
+    # @api private
+    # @param framework [String, nil]
+    # @return [String]
+    def self.seed_hint_for(framework)
+      # `==`, not `case`: `when` uses Module#===, and a module is not an
+      # instance of itself.
+      runner = TestRunners.for(framework)
+      if runner == TestRunners::Minitest
+        minitest_seed_hint
+      elsif runner == TestRunners::RSpec
+        rspec_seed_hint
+      else
+        ""
+      end
+    end
+
     # Names the configured seed, and accounts for helper overrides.
     #
     # @api private
@@ -262,6 +288,21 @@ module Mutineer
         "Check the listed test files with the same seed and helpers " \
         "(for \"combined suite\", all of them together). " \
         "Change SEED, including helper settings, to choose another order."
+    end
+
+    # Names the seed a random RSpec order uses. A defined order is unchanged.
+    #
+    # @api private
+    # @return [String]
+    def self.rspec_seed_hint
+      seed = TestRunners::RSpecSeed.advertised_seed
+      " Mutineer runs a random RSpec order with seed #{seed}, unless you set a seed " \
+        "(--seed, --order rand:N, SPEC_OPTS, .rspec, or config.seed). " \
+        "RSpec reads SPEC_OPTS after the command line, so a seed there replaces " \
+        "--seed on the rspec command. " \
+        "A defined order is left as it is. " \
+        "An order-dependent example can fail here and pass in another order. " \
+        "Check the listed spec files with the same seed."
     end
 
     # The reload mutant text for a def in a concern's `included` or `prepended`
@@ -280,11 +321,15 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] the mutation.
     # @param subject [Mutineer::Subject] a subject with a {Subject#reload_hook_call}.
     # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    #   The placed def records a run of the mutated expression.
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
-    def self.hook_mutant(mutated, mutation, subject, source)
+    def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
       at = subject.reload_hook_call.location.start_offset
-      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n#{Isolation.mutated_def(mutation, subject, source)}\nend; "
+      stored = "::Mutineer::ConcernBlocks.store_hook_def do\n" \
+               "#{Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)}\nend; "
       [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
@@ -301,8 +346,8 @@ module Mutineer
     # multi-line `a && b`, #254), and a first or last line that holds other
     # code (the opener of a one-line block, #289), but never the `def` line.
     # Those tests may not have run the mutant, so the answer is
-    # `[:maybe, abs_test_paths]` and {selection_verdict} treats a survivor as
-    # no_coverage.
+    # `[:maybe, abs_test_paths]`. {selection_verdict} keeps a survivor that
+    # the probe saw run, and leaves one it did not see as no_coverage (#345).
     #
     # An empty selection is `:ran_at_load` when the mutant's line ran while the
     # app booted or its class loaded ({ran_at_load?}): no test ran it, but the
@@ -346,23 +391,28 @@ module Mutineer
         return [:verdict, Result.no_coverage]
       end
 
-      [kind, coverage_map.order_tests(source_file, chosen).map { |t| File.expand_path(t, coverage_map.project_root) }]
+      # The clean checks name each test by its real path (ProjectPath.absolute).
+      # A random RSpec order hashes that name, so a mutant run uses the same
+      # spelling, or a symlinked root (/var on macOS) reorders the examples (#282).
+      [kind, coverage_map.order_tests(source_file, chosen).map { |t| ProjectPath.absolute(t, coverage_map.project_root) }]
     end
 
     # The verdict of a mutant whose tests {coverage_selection} chose as `:maybe`:
     # they ran its statement but may not have run the mutated code. A kill is a
-    # real kill. A survivor is no_coverage, because the run cannot tell "never
-    # ran" from "ran unchecked" (#254); like any no_coverage mutant it has no
-    # `--matrix` row. An error or a timeout stays what it is: the mutant ran, and
-    # a failure is reported, not hidden. A kill keeps its whole `--matrix` row.
-    # A result of any other selection comes back unchanged.
+    # real kill. A survivor the probe saw run is a real survivor and keeps its
+    # `--matrix` row (#345). A survivor the probe did not see is no_coverage,
+    # the same as any other unreached mutant, and has no `--matrix` row (#254).
+    # An error or a timeout stays what it is: the mutant ran, and a failure is
+    # reported, not hidden. A kill keeps its whole `--matrix` row. A result of
+    # any other selection comes back unchanged.
     #
     # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
     #   answer, or a falsy value when no selection ran.
     # @param result [Mutineer::Result] the mutant's verdict.
+    # @param reached [Boolean] true when the mutated expression ran in the child.
     # @return [Mutineer::Result]
-    def self.selection_verdict(kind, result)
-      return result unless kind == :maybe && result.survived?
+    def self.selection_verdict(kind, result, reached: false)
+      return result unless kind == :maybe && result.survived? && !reached
 
       result.with(status: :no_coverage, kills: nil)
     end
@@ -534,10 +584,17 @@ module Mutineer
     # They do not drop the source. Ignored mutants are not in the count.
     # The count is not a validity check.
     #
+    # The third element holds the id maps from those sources, taken before
+    # `--since` narrows the count. A real run drops unpaired sources before
+    # {collect_jobs}, so the unmatched-ignore check merges these maps back in
+    # and agrees with a dry run of the same files (#377). A source that could
+    # not be read contributes no ids.
+    #
     # @param config [Mutineer::Config] run configuration. Reads `unpaired_sources`.
     # @param operator_classes [Array<Class>] resolved operators.
-    # @return [Array(Hash{String => Integer, nil}, Array<Hash>)]
-    #   file => count, in source order, and `{file:, error:}` failures.
+    # @return [Array(Hash{String => Integer, nil}, Array<Hash>, Hash)]
+    #   file => count, in source order; `{file:, error:}` failures; and
+    #   `{id_map:, dropped_id_map:, legacy_ignore_matches:}` for those sources.
     def self.unpaired_counts(config, operator_classes)
       counts = {}
       failures = []
@@ -545,16 +602,24 @@ module Mutineer
       pending_ignored = []
       pending_map = {}
       pending_files = []
+      id_map = {}
+      dropped_id_map = {}
+      legacy_ignore_matches = {}
 
       config.unpaired_sources.each do |file|
         copy = config.dup
         copy.sources = [file]
         begin
-          jobs, ignored, source_map, = collect_jobs(copy, operator_classes)
+          jobs, ignored, source_map, file_extras = collect_jobs(copy, operator_classes)
         rescue StandardError => e
           counts[file] = nil
           failures << { file: file, error: "#{e.class}: #{e.message}" }
           next
+        end
+        id_map.merge!(file_extras[:id_map])
+        dropped_id_map.merge!(file_extras[:dropped_id_map])
+        file_extras[:legacy_ignore_matches].each do |old, hits|
+          (legacy_ignore_matches[old] ||= []).concat(hits)
         end
 
         if jobs.empty? || !config.since
@@ -569,7 +634,8 @@ module Mutineer
       end
 
       apply_unpaired_since!(counts, pending_jobs, pending_ignored, pending_map, pending_files, config) if config.since
-      [counts, failures]
+      [counts, failures, { id_map: id_map, dropped_id_map: dropped_id_map,
+                           legacy_ignore_matches: legacy_ignore_matches }]
     end
 
     # Replaces pending unpaired counts with the jobs `--since` keeps.
@@ -615,7 +681,8 @@ module Mutineer
     # (nil without --since), so the CLI can tell "the changes held nothing to
     # test" from "nothing was mutable at all". When `extras` is given, also
     # narrows `subjects` / `unmutated_subjects` to methods whose def range
-    # intersects the diff (#420).
+    # intersects the diff (#420), and drops `copies` whose kept mutant is out
+    # of scope (#374).
     #
     # @param jobs [Array] (subject, mutation, id) entries to run.
     # @param ignored_results [Array<Mutineer::Result>] suppressed mutants.
@@ -637,8 +704,28 @@ module Mutineer
       changed = ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       kept = filter_since(jobs + ignored_entries, source_map, config, changed: changed)
       kept_ignored, kept_jobs = kept.partition { |entry| entry.last.is_a?(Result) }
-      narrow_subjects_since!(extras, config, changed: changed) if extras
+      if extras
+        narrow_subjects_since!(extras, config, changed: changed)
+        narrow_copies!(extras, kept_jobs, kept_ignored.map(&:last))
+      end
       [kept_jobs, kept_ignored.map(&:last), jobs.size + ignored_results.size]
+    end
+
+    # Drops copy lists whose kept mutant `--since` removed (#374). A dropped
+    # copy shares that mutant's line, so it leaves with the mutant.
+    #
+    # @api private
+    # @param extras [Hash] {collect_jobs} extras.
+    # @param kept_jobs [Array] jobs still in scope; each id is the last element.
+    # @param kept_ignored [Array<Mutineer::Result>] ignored mutants still in scope.
+    # @return [void]
+    def self.narrow_copies!(extras, kept_jobs, kept_ignored)
+      copies = extras[:copies]
+      return unless copies
+
+      keep = Set.new(kept_jobs.map(&:last))
+      kept_ignored.each { |result| keep.add(result.id) }
+      extras[:copies] = copies.select { |id, _list| keep.include?(id) }
     end
 
     # Keeps `subjects` / `unmutated_subjects` for methods whose def range
@@ -658,7 +745,7 @@ module Mutineer
       files = ranges.map { |h| h[:file] }.uniq
       changed ||= ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       in_scope = ranges.select do |h|
-        lines = changed.fetch(File.expand_path(h[:file], config.project_root), Set.new)
+        lines = changed.fetch(FsPath.expand(h[:file], config.project_root), Set.new)
         next false if lines.empty?
 
         (h[:line]..h[:end_line]).any? { |ln| lines.include?(ln) }
@@ -681,7 +768,7 @@ module Mutineer
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-        abs = File.expand_path(subject.file, config.project_root)
+        abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end
     end

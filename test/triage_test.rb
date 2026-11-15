@@ -99,6 +99,42 @@ class TriageTest < Minitest::Test
     end
   end
 
+  # #374: one triage round writes the survivor and each dropped copy.
+  def test_all_prints_a_dropped_copy_after_its_survivor
+    Dir.mktmpdir("mutineer-triage") do |dir|
+      rows = [
+        { "id" => "aaaaaaaaaaaa", "copies" => %w[bbbbbbbbbbbb] },
+        { "id" => "cccccccccccc", "copies" => "not-a-list" },
+        { "id" => "dddddddddddd", "copies" => ["", 12, "aaaaaaaaaaaa", "eeeeeeeeeeee", "eeeeeeeeeeee"] }
+      ]
+      File.write(File.join(dir, "report.json"), JSON.generate("survivors" => rows))
+      out, err, status = mutineer("triage", "report.json", "--all", "--reason", "same edit", chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [
+        { "id" => "aaaaaaaaaaaa", "reason" => "same edit" },
+        { "id" => "bbbbbbbbbbbb", "reason" => "same edit" },
+        { "id" => "cccccccccccc", "reason" => "same edit" },
+        { "id" => "dddddddddddd", "reason" => "same edit" },
+        { "id" => "eeeeeeeeeeee", "reason" => "same edit" }
+      ], YAML.safe_load(out)
+    end
+  end
+
+  # Selecting the copy id still prints the kept survivor first, then the copy.
+  def test_id_of_a_dropped_copy_prints_the_whole_group
+    Dir.mktmpdir("mutineer-triage") do |dir|
+      rows = [{ "id" => "aaaaaaaaaaaa", "copies" => ["bbbbbbbbbbbb"] }]
+      File.write(File.join(dir, "report.json"), JSON.generate("survivors" => rows))
+      out, err, status = mutineer("triage", "report.json", "--id", "bbbbbbbbbbbb", "--reason", "same edit",
+                                  chdir: dir)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [
+        { "id" => "aaaaaaaaaaaa", "reason" => "same edit" },
+        { "id" => "bbbbbbbbbbbb", "reason" => "same edit" }
+      ], YAML.safe_load(out)
+    end
+  end
+
   def test_one_id_prints_one_entry
     Dir.mktmpdir("mutineer-triage") do |dir|
       write_report(dir, %w[aaaaaaaaaaaa bbbbbbbbbbbb])
@@ -162,6 +198,86 @@ class TriageTest < Minitest::Test
       assert_empty again["survivors"]
       assert_equal survivors.map { |row| row["id"] }.sort, again["ignored"].map { |row| row["id"] }.sort
       again["ignored"].each { |row| assert_equal "same value", row["reason"] }
+    end
+  end
+
+  # #374: the reported edit. One triage round writes both ignore entries.
+  # Ignoring only the id the row shows lets the other copy run. Ignoring both
+  # leaves the dropped id on the kept mutant, so it does not look unused.
+  def test_issue_374_one_triage_round_writes_both_copies_of_the_edit
+    Dir.mktmpdir("mutineer-374") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "lib"))
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      File.write(File.join(proj, "lib/g.rb"), <<~RUBY)
+        module G
+          def self.kind(file) = file.end_with?(".erb") ? :erb : :plain
+        end
+      RUBY
+      File.write(File.join(proj, "test/test_g.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/g"
+        class TestG < Minitest::Test
+          def test_kind = assert_equal(:erb, G.kind("a.erb"))
+        end
+      RUBY
+
+      _out, err, status = mutineer("run", "lib/g.rb", "--test", "test/test_g.rb",
+                                  "--operators", "literal_mutation,string_literal",
+                                  "--format", "json", "--output", "report.json", "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(File.read(File.join(proj, "report.json")))
+      assert_equal 1, doc["summary"]["total"], doc["summary"].inspect
+      assert_equal 1, doc["summary"]["survived"]
+      assert_equal 1, doc["summary"]["dropped"]
+      survivor = doc["survivors"].first
+      assert_equal "literal_mutation", survivor["operator"]
+      assert_equal 1, survivor["copies"].size
+      assert_includes survivor["diff"], 'end_with?(".erb")'
+      assert_includes survivor["diff"], 'end_with?("")'
+
+      source = File.join(proj, "lib/g.rb")
+      string_id = Mutineer::JobPlan.collect_jobs(
+        Mutineer::Config.new(sources: [source], project_root: proj),
+        Mutineer::MutatorRegistry.resolve(%w[string_literal])
+      ).first.first.last
+      literal_id = survivor["id"]
+      assert_equal [string_id], survivor["copies"]
+      refute_equal literal_id, string_id
+
+      printed, err, status = mutineer("triage", "report.json", "--all", "--reason", "equivalent", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal [
+        { "id" => literal_id, "reason" => "equivalent" },
+        { "id" => string_id, "reason" => "equivalent" }
+      ], YAML.safe_load(printed)
+
+      File.write(File.join(proj, ".mutineer.yml"), "ignore:\n  - { id: #{literal_id}, reason: equivalent }\n")
+      _out, err, status = mutineer("run", "lib/g.rb", "--test", "test/test_g.rb",
+                                  "--operators", "literal_mutation,string_literal",
+                                  "--format", "json", "--output", "one.json", "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      one = JSON.parse(File.read(File.join(proj, "one.json")))
+      assert_equal [string_id], one["survivors"].map { |row| row["id"] }
+      assert_equal "string_literal", one["survivors"].first["operator"]
+      refute one["survivors"].first.key?("copies")
+      assert_equal [literal_id], one["ignored"].map { |row| row["id"] }
+      assert_equal 0, one["summary"]["dropped"]
+
+      File.write(File.join(proj, ".mutineer.yml"), <<~YAML)
+        ignore:
+          - { id: #{literal_id}, reason: equivalent }
+          - { id: #{string_id}, reason: equivalent }
+      YAML
+      _out, err, status = mutineer("run", "lib/g.rb", "--test", "test/test_g.rb",
+                                  "--operators", "literal_mutation,string_literal",
+                                  "--format", "json", "--output", "both.json", "--jobs", "1", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      both = JSON.parse(File.read(File.join(proj, "both.json")))
+      assert_empty both["survivors"]
+      assert_equal 1, both["summary"]["ignored"]
+      assert_equal 1, both["summary"]["dropped"]
+      assert_equal [literal_id], both["ignored"].map { |row| row["id"] }
+      assert_equal [string_id], both["ignored"].first["copies"]
     end
   end
 end
