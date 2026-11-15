@@ -1143,6 +1143,522 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # --- #421: a method-body edit recaptures part of the map ------------
+
+  PARTIAL_TESTS = %w[test/caller_test.rb test/mail_test.rb test/price_test.rb test/shelf_test.rb].freeze
+  SHELF_SOURCE = <<~RUBY
+    class StandaloneShelf
+      def self.bump(n)
+        n + 1
+      end
+
+      MARK = 1
+    end
+  RUBY
+  PARTIAL_SENTINEL = 'if ENV["MUTINEER_SENTINEL"]; _mode = defined?(Coverage) && Coverage.running? ? "capture" : "clean"; ' \
+                     'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)} #{_mode}\n", mode: "a"); end'
+
+  def write_partial_app(dir, mail_extra: nil)
+    FileUtils.mkdir_p(File.join(dir, "lib"))
+    File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+    File.write(File.join(dir, "lib/shelf.rb"), SHELF_SOURCE)
+    FileUtils.mkdir_p(File.join(dir, "test"))
+    File.write(File.join(dir, "test/price_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{PARTIAL_SENTINEL}
+      class StandalonePriceTest < Minitest::Test
+        def test_called; assert_equal 4, StandalonePrice.called(2); end
+        def test_endless; assert_equal 6, StandalonePrice.endless(2); end
+        def test_both; assert_equal 8, StandalonePrice.both(2); end
+        def test_loaded; assert_equal 10, StandalonePrice::LOADED; end
+        def test_flunk; refute ENV["MUTINEER_FLUNK"]; end
+      end
+    RUBY
+    File.write(File.join(dir, "test/caller_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{PARTIAL_SENTINEL}
+      class StandaloneCallerTest < Minitest::Test
+        def test_endless; assert_equal 9, StandalonePrice.endless(3); end
+      end
+    RUBY
+    File.write(File.join(dir, "test/shelf_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/shelf"
+      #{PARTIAL_SENTINEL}
+      class StandaloneShelfTest < Minitest::Test
+        def test_bump; assert_equal 2, StandaloneShelf.bump(1); end
+        def test_mark; assert_equal 1, StandaloneShelf::MARK; end
+      end
+    RUBY
+    File.write(File.join(dir, "test/mail_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      #{mail_extra}
+      #{PARTIAL_SENTINEL}
+      class StandaloneMailTest < Minitest::Test
+        def test_ok; assert_equal 1, 1; end
+      end
+    RUBY
+  end
+
+  def partial_map(dir, cache, tests: PARTIAL_TESTS, **options)
+    Mutineer::CoverageMap.new(source_paths: %w[lib/price.rb lib/shelf.rb], test_paths: tests,
+                              cache_dir: cache, project_root: dir, **options).build_or_load
+  end
+
+  def with_sentinel(dir)
+    sentinel = File.join(dir, "sentinel")
+    File.write(sentinel, "")
+    ENV["MUTINEER_SENTINEL"] = sentinel
+    yield
+    File.readlines(sentinel, chomp: true).map(&:split)
+  ensure
+    ENV.delete("MUTINEER_SENTINEL")
+  end
+
+  def captured_files(events)
+    events.select { |row| row[2] == "capture" }.map { |row| row[1] }.sort
+  end
+
+  def assert_same_map(actual, expected)
+    assert_equal expected.map, actual.map
+    assert_equal expected.load_lines, actual.load_lines
+    assert_equal expected.load_methods, actual.load_methods
+  end
+
+  # A same-line edit inside a method keeps the skeleton. The next run
+  # recaptures the tests already in that source's map, not a test that only
+  # loaded the file. The paired test still owns the load-only lines. An
+  # unrelated test that was recaptured does not take them, or the other
+  # source's load-only lines. The map matches a full capture.
+  def test_method_body_edit_recaptures_only_the_tests_in_the_source_map
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      src = File.join(dir, "lib/price.rb")
+      shelf = File.join(dir, "lib/shelf.rb")
+      capture_io { partial_map(dir, cache) }
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_equal saved["load_methods"].sort, saved["load_method_bodies"].keys.sort
+      refute_includes saved["load_method_bodies"].values, "missing"
+
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      partial = nil
+      err = nil
+      events = with_sentinel(dir) { _, err = capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb price_test.rb], captured_files(events)
+      assert_includes err, "[mutineer] coverage cache: recaptured 2 of 4 test files; kept 2."
+      assert partial.phase_a_ran
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      assert_same_map(partial, full)
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("class StandalonePrice"))
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/shelf_test.rb], partial.tests_for(shelf, 1)
+      refute_includes events.map { |row| row[1] }, "mail_test.rb"
+
+      third = nil
+      again = with_sentinel(dir) { capture_io { third = partial_map(dir, cache) } }
+      refute third.phase_a_ran, "the partial save is a hit on the next run"
+      assert_empty captured_files(again)
+    end
+  end
+
+  # Recapturing one new test must not credit it with a source's load-only
+  # lines. The paired test keeps them.
+  def test_recapturing_one_test_does_not_take_another_sources_load_lines
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      File.write(File.join(dir, "test/extra_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/price"
+        require_relative "../lib/shelf"
+        #{PARTIAL_SENTINEL}
+        class StandaloneExtraTest < Minitest::Test
+          def test_ok; assert_equal 1, 1; end
+        end
+      RUBY
+      tests = PARTIAL_TESTS + ["test/extra_test.rb"]
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache, tests: tests) } }
+      assert_equal %w[extra_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh"), tests: tests) }
+      assert_same_map(partial, full)
+      src = File.join(dir, "lib/price.rb")
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/shelf_test.rb], partial.tests_for(File.join(dir, "lib/shelf.rb"), 1)
+    end
+  end
+
+  # A class-body edit can change which lines run at load. Every test is
+  # captured again.
+  def test_class_body_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("class StandalonePrice", "class StandalonePrice # edited"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # A method that ran at load can change a value another test reads. Its body
+  # is not a partial recapture, even when the line numbers stay put.
+  def test_load_method_body_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n + 9", "n + 8 + 1"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # An added line moves every later line. The old map keys would be wrong,
+  # so the run captures every test.
+  def test_added_line_inside_a_method_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "_ = 0\n        n * 2"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # Editing one test file recaptures that file. The paired test keeps the
+  # load-only lines, and the map matches a full capture.
+  def test_test_file_edit_recaptures_only_that_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      mail = File.join(dir, "test/mail_test.rb")
+      File.write(mail, File.read(mail) + "# note\n")
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[mail_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      assert_same_map(partial, full)
+      assert_equal %w[test/price_test.rb], partial.tests_for(File.join(dir, "lib/price.rb"), price_line("n + 9"))
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      fresh = JSON.parse(File.read(File.join(dir, "fresh", "coverage.json")))
+      assert_equal fresh["dependencies"].keys.sort, saved["dependencies"].keys.sort,
+                   "a recaptured test file is not a loaded dependency"
+
+      File.write(mail, File.read(mail) + "# second note\n")
+      again = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[mail_test.rb], captured_files(again), "a second edit of the same test is still partial"
+    end
+  end
+
+  # A project file outside the run's sources still recaptures every test.
+  # Per-test executed files are the rest of #421.
+  def test_loaded_helper_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      helper = File.join(dir, "test/mail_helper.rb")
+      write_partial_app(dir, mail_extra: 'require_relative "mail_helper"')
+      File.write(helper, "MAIL_HELPER = 1\n")
+      capture_io { partial_map(dir, cache) }
+      File.write(helper, "MAIL_HELPER = 2\n")
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # A kept test can load a file the run no longer selects. Dropping that
+  # test must keep the file's fingerprint, or a later edit to it reuses
+  # stale coverage on a cache hit.
+  def test_a_removed_test_file_that_a_kept_test_loads_stays_a_dependency
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir, mail_extra: 'require_relative "caller_test"')
+      kept = PARTIAL_TESTS - %w[test/caller_test.rb]
+      capture_io { partial_map(dir, cache) }
+      capture_io { partial_map(dir, cache, tests: kept) }
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_includes saved["dependencies"].keys, "test/caller_test.rb"
+
+      caller = File.join(dir, "test/caller_test.rb")
+      File.write(caller, "#{File.read(caller)}CALLER_EDIT = 1\n")
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache, tests: kept) } }
+      refute_empty captured_files(events), "an edit to a file a kept test loads must not be a cache hit"
+    end
+  end
+
+  # A `--require` file is a run input. Changing it captures every test.
+  def test_require_file_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      setup = File.join(dir, "setup.rb")
+      File.write(setup, "PARTIAL_SETUP = 1\n")
+      build = -> { partial_map(dir, cache, require_paths: ["setup"]) }
+      capture_io { build.call }
+      File.write(setup, "PARTIAL_SETUP = 2\n")
+      events = with_sentinel(dir) { capture_io { build.call } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # Dropping the paired test changes who may keep a load-only line. The run
+  # captures every remaining test, and the map matches a full capture.
+  def test_removing_the_paired_test_recaptures_every_remaining_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      tests = PARTIAL_TESTS - ["test/price_test.rb"]
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache, tests: tests) } }
+      assert_equal %w[caller_test.rb mail_test.rb shelf_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh"), tests: tests) }
+      assert_same_map(partial, full)
+    end
+  end
+
+  # A red covering test is recorded on the partial recapture, which is what
+  # stops the run before any mutant.
+  def test_partial_recapture_records_a_red_covering_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      before = JSON.parse(File.read(File.join(cache, "coverage.json")))["digest"]
+      partial = nil
+      full = nil
+      with_env("MUTINEER_FLUNK" => "1") do
+        capture_io { partial = partial_map(dir, cache) }
+        capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      end
+      assert_includes partial.failed_clean_tests, "test/price_test.rb"
+      assert_same_map(partial, full)
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_equal before, saved["digest"], "a red suite does not replace the cache"
+    end
+  end
+
+  # A capture that failed last time (`failed_test_files`) is captured again
+  # on a partial run, even when it is not in the edited source's map, and
+  # the failure is cleared once it captures.
+  def test_partial_recapture_retries_a_previously_failed_capture
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      saved["failed_test_files"] = %w[test/mail_test.rb]
+      File.write(path, JSON.generate(saved))
+
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb], captured_files(events)
+      assert_empty partial.failed_test_files
+      assert_empty JSON.parse(File.read(path))["failed_test_files"]
+    end
+  end
+
+  # A cache from before the partial-recapture keys is rebuilt once.
+  def test_cache_without_run_inputs_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      saved.delete("run_inputs")
+      File.write(path, JSON.generate(saved))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # The skeleton ignores a same-line body edit and changes when a line is
+  # added or the class body changes.
+  def test_source_skeleton_ignores_a_same_line_method_body
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "price.rb")
+      File.write(path, STANDALONE_PRICE)
+      map = Mutineer::CoverageMap.new(source_paths: [path], test_paths: [], cache_dir: dir, project_root: dir)
+      original = map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("n * 2", "n * 2 + 0"))
+      assert_equal original, map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("n * 2", "_ = 0\n        n * 2"))
+      refute_equal original, map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("class StandalonePrice", "class StandalonePrice # edited"))
+      refute_equal original, map.send(:source_skeleton_digest, path)
+    end
+  end
+
+  # The skeleton rule across real files, not one example: for defs in every
+  # `lib/` and fixture file, a same-line edit inside the body keeps the
+  # skeleton, a new line inside the body changes it, and so do an edit just
+  # before a `def` that is not inside another body and a same-line rename.
+  def test_source_skeleton_rule_holds_across_real_ruby_files
+    root = File.expand_path("..", __dir__)
+    files = Dir[File.join(root, "{lib,test/fixtures}/**/*.rb")].sort
+    checked = 0
+    skipped = 0
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      map = Mutineer::CoverageMap.new(source_paths: [path], test_paths: [], cache_dir: dir, project_root: dir)
+      digest = lambda do |text|
+        File.binwrite(path, text)
+        map.send(:source_skeleton_digest, path)
+      end
+      files.each do |file|
+        source = File.binread(file)
+        result = Prism.parse(source)
+        next unless result.errors.empty?
+
+        defs = []
+        map.send(:each_def, result.value) { |node| defs << node }
+        sample = defs.reject { |node| node.equal_loc || node.body.nil? }
+        sample = sample.values_at(0, sample.size / 2, -1).compact.uniq
+        original = digest.call(source)
+        next skipped += 1 if original.nil?
+
+        sample.each do |node|
+          body = node.body
+          first = body.is_a?(Prism::BeginNode) ? body.statements&.location : body.location
+          next skipped += 1 if first.nil?
+
+          at = first.start_offset
+          same_line = source.byteslice(0, at) + "nil; " + source.byteslice(at..)
+          new_line = source.byteslice(0, at) + "nil\n" + source.byteslice(at..)
+          start = node.location.start_offset
+          nested = defs.any? do |other|
+            loc = other.body&.location
+            !other.equal?(node) && loc && loc.start_offset <= start && start < loc.end_offset
+          end
+          before_def = source.byteslice(0, start) + "nil; " + source.byteslice(start..)
+          name_end = node.name_loc.end_offset
+          renamed = source.byteslice(0, name_end) + "_x" + source.byteslice(name_end..)
+          edited = [same_line, new_line, before_def, renamed].map { |text| [text, Prism.parse(text).errors.empty?] }
+          next skipped += 1 unless edited.all?(&:last)
+
+          label = "#{file.delete_prefix("#{root}/")}:#{node.location.start_line}"
+          # A nested def on the edited line moves; its position is part of the skeleton.
+          shifts_def = defs.any? { |other| other.location.start_line == first.start_line && other.location.start_offset >= at }
+          assert_equal original, digest.call(same_line), "same-line body edit at #{label}" unless shifts_def
+          refute_equal original, digest.call(new_line), "added body line at #{label}"
+          refute_equal original, digest.call(before_def), "edit before def at #{label}" unless nested
+          refute_equal original, digest.call(renamed), "same-line rename at #{label}" unless nested
+          checked += 1
+        end
+      end
+    end
+    assert_operator checked, :>=, 200, "too few defs checked (#{checked}, skipped #{skipped})"
+    assert_operator skipped, :<=, checked / 10, "too many inputs skipped (#{skipped} of #{checked + skipped})"
+  end
+
+  # Boot mode clears coverage before each test. A method-body edit recaptures
+  # the test in the source's map, not the test that only saw the file at boot.
+  def test_boot_method_body_edit_recaptures_only_the_covering_test
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "alpha.rb"), <<~RUBY)
+        class BootPartialAlpha
+          def self.double(x)
+            x * 2
+          end
+
+          def self.widen(x)
+            x + 1
+          end
+        end
+      RUBY
+      File.write(File.join(dir, "beta.rb"), <<~RUBY)
+        require_relative "alpha"
+        class BootPartialBeta
+          WIDTH = BootPartialAlpha.widen(3)
+
+          def self.half(x)
+            x / 2
+          end
+        end
+      RUBY
+      File.write(File.join(dir, "boot.rb"), "require_relative \"alpha\"\nrequire_relative \"beta\"\n")
+      note = PARTIAL_SENTINEL
+      File.write(File.join(dir, "alpha_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "alpha"
+        #{note}
+        class BootPartialAlphaTest < Minitest::Test
+          def test_double; assert_equal 6, BootPartialAlpha.double(3); end
+        end
+      RUBY
+      File.write(File.join(dir, "beta_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "beta"
+        #{note}
+        class BootPartialBetaTest < Minitest::Test
+          def test_half; assert_equal 2, BootPartialBeta.half(4); end
+          def test_width; assert_equal 4, BootPartialBeta::WIDTH; end
+        end
+      RUBY
+      cache = File.join(dir, "cache")
+      first = boot_partial_run(dir, cache)
+      assert first["phase_a_ran"], first["stderr"]
+      assert_empty first["failed"], first["stderr"]
+
+      alpha = File.read(File.join(dir, "alpha.rb"))
+      File.write(File.join(dir, "alpha.rb"), alpha.sub("x * 2", "x * 2 + 0"))
+      partial = boot_partial_run(dir, cache)
+      assert_equal %w[alpha_test.rb], partial["captures"], partial["stderr"]
+      assert_includes partial["stderr"], "recaptured 1 of 2 test files; kept 1."
+      full = boot_partial_run(dir, File.join(dir, "fresh"))
+      assert_equal full["map"], partial["map"]
+      assert_equal full["load_lines"], partial["load_lines"]
+      assert_equal full["load_methods"], partial["load_methods"]
+    end
+  end
+
+  def boot_partial_run(dir, cache)
+    require "open3"
+    script = <<~RUBY
+      require "coverage"
+      require "json"
+      require "mutineer"
+      dir, cache = ARGV
+      Coverage.start(lines: true, methods: true)
+      require File.join(dir, "boot.rb")
+      ENV["MUTINEER_SENTINEL"] = File.join(dir, "sentinel")
+      map = Mutineer::CoverageMap.new(source_paths: ["alpha.rb"], test_paths: ["alpha_test.rb", "beta_test.rb"],
+                                      cache_dir: cache, project_root: dir, boot_path: "boot.rb").build_via_fork
+      puts JSON.generate("phase_a_ran" => map.phase_a_ran, "map" => map.map,
+                         "load_lines" => map.load_lines.to_a.sort,
+                         "load_methods" => map.load_methods.to_a.sort,
+                         "failed" => map.failed_test_files, "clean" => map.failed_clean_tests)
+    RUBY
+    File.write(File.join(dir, "sentinel"), "")
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, "lib")}", "-e", script, dir, cache)
+    flunk("#{status.exitstatus}: #{stderr}") unless status.success?
+
+    result = JSON.parse(stdout.lines.grep(/\A\{/).last)
+    result["stderr"] = stderr
+    result["captures"] = File.readlines(File.join(dir, "sentinel"), chomp: true)
+                              .map(&:split).select { |row| row[2] == "capture" }.map { |row| row[1] }.sort
+    result
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
@@ -1244,32 +1760,38 @@ class CoverageMapTest < Minitest::Test
 
   # The seed sets the test order, so a map captured under another seed is not
   # reused (#282). Minitest reads SEED. RSpec reads the pinned seed and SPEC_OPTS.
+  # The partial-recapture digest (#421) must see the same changes, or a seed
+  # change would keep the old map with nothing recaptured.
   def test_digest_is_minitest_seed_sensitive
+    %i[compute_digest run_inputs_digest].each { |name| assert_seed_sensitive(name) }
+  end
+
+  def assert_seed_sensitive(name)
     Dir.mktmpdir do |dir|
+      make = ->(framework) {
+        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                  framework: framework)
+      }
       digest = lambda do |seed, framework, spec_opts: nil|
         prior = ENV.fetch("SEED", nil)
         prior_opts = ENV.fetch("SPEC_OPTS", nil)
         seed ? ENV["SEED"] = seed : ENV.delete("SEED")
         spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
-        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
-                                  framework: framework).send(:compute_digest)
+        make.call(framework).send(name)
       ensure
         prior ? ENV["SEED"] = prior : ENV.delete("SEED")
         prior_opts ? ENV["SPEC_OPTS"] = prior_opts : ENV.delete("SPEC_OPTS")
       end
-      refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest")
-      assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest")
-      assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec")
-      refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2")
+      refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest"), name
+      assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest"), name
+      assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec"), name
+      refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2"), name
       bare = digest.call(nil, "rspec")
       File.write(File.join(dir, ".rspec"), "--seed 7\n")
-      with_file = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
-                                            framework: "rspec").send(:compute_digest)
-      refute_equal bare, with_file
+      with_file = make.call("rspec").send(name)
+      refute_equal bare, with_file, name
       File.write(File.join(dir, ".rspec"), "--seed 8\n")
-      changed = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
-                                          framework: "rspec").send(:compute_digest)
-      refute_equal with_file, changed
+      refute_equal with_file, make.call("rspec").send(name), name
     end
   end
 

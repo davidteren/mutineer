@@ -175,7 +175,7 @@ This gap is common in rushed tests and tests written by AI agents.
 1. **Parse.** [Prism](https://github.com/ruby/prism), included in Ruby 3.4, parses source files. Mutineer uses only Prism and the standard library.
 2. **Mutate.** Operators make one change per mutant. Mutineer parses each result again and skips invalid Ruby.
 3. **Map coverage and check unchanged tests.** Each test file runs with coverage to map lines to tests.
-   `.mutineer/coverage.json` caches the map; a change to a source, a test or a project file the tests load rebuilds it. A fresh capture runs every
+   `.mutineer/coverage.json` caches the map. A method-body edit with no added or removed line recaptures the tests that cover that source; an added or edited test file recaptures that test. A class-body edit, a load-time method, a `--require` file, or a project file the tests load recaptures every test. A fresh capture runs every
    test alone; a failure stops the run. With a cached map, only the tests that cover the sources run again,
    alone and together, because a mutant runs only those tests. In a standalone run, a line that runs only
    while the source loads does not count as coverage of every test. The conventionally paired test still
@@ -200,7 +200,7 @@ This gap is common in rushed tests and tests written by AI agents.
 |---|---|
 | Parser | Prism, with no runtime gem dependencies |
 | Ruby | 3.4 or later; older apps use `--test-command` |
-| Operators | 21 (5 by default, 16 opt-in) |
+| Operators | 22 (5 by default, 17 opt-in) |
 | Isolation | One fork per mutant on Linux and macOS |
 | Report formats | human, JSON (versioned schema), HTML |
 
@@ -255,7 +255,7 @@ List with `mutineer --list-operators`. Enable specific operators with `--operato
 | Group | Operators |
 |---|---|
 | Tier 1 (default) | `arithmetic`, `comparison`, `boolean_connector`, `boolean_literal`, `statement_removal` |
-| Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment` |
+| Tier 2 (opt-in) | `return_nil`, `literal_mutation`, `condition_negation`, `string_literal`, `regex`, `collection_method`, `safe_navigation`, `range`, `negation_removal`, `chain_link`, `call_to_receiver`, `operand_removal`, `array_literal`, `condition_true`, `condition_false`, `operator_assignment`, `rescue_body` |
 
 The default operators give no mutant to some methods, such as a method whose body is one `if` with a `rescue`.
 The report counts these methods on its `No mutants:` line. `--dry-run --verbose` and the JSON report list them.
@@ -267,7 +267,9 @@ The `--operators` list replaces the default set, so name the default operators t
 mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,condition_true,condition_false
 ```
 
-No operator mutates a one-statement `rescue` body yet (#418).
+For a `rescue` clause, add `rescue_body`. It replaces each `rescue` body with `nil`, even a one-statement body,
+and turns `x rescue y` into `x rescue nil`. `return_nil` also reaches a method with a def-level `rescue`:
+it gives `nil` for the final expression of the body (or of the `else` clause when there is one) and of each `rescue` clause (#418).
 
 ## For AI agents & pipelines
 
