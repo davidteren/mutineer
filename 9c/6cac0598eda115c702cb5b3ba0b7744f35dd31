@@ -1,0 +1,34 @@
+test/coverage_map_test.rb
+  s_065c506cad57f6::t_1dc0a7d8ac37c6 1448-1470
+  s_065c506cad57f6::t_e0d94dde54c1e7 1373-1392
+  s_065c506cad57f6::t_baf355c2b60135 1532-1536
+  s_065c506cad57f6::t_a08fb19fd74297 1540-1543
+  s_065c506cad57f6::t_4c5a72259792d3 1556
+  s_065c506cad57f6::t_a22a97aff30ed0 1551-1553
+  s_065c506cad57f6::t_2b6d51645287d6 1503-1504,1507-1531,1537-1539,1544,1548-1550,1554-1555,1557-1564
+  s_065c506cad57f6::t_d1c8d92cba56e4 1505-1506,1545-1547
+lib/mutineer/coverage_map.rb
+  s_065c506cad57f6::t_baf355c2b60135 2302-2303,2317-2332
+  s_065c506cad57f6::t_92de4db5b5d7f1 2114-2115
+  s_065c506cad57f6::t_281c1aaf92fa4d 2333-2334
+README.md
+  s_065c506cad57f6::t_8ebc5453b9377b 178
+docs/cli.md
+  s_065c506cad57f6::t_8ebc5453b9377b 184-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c6cac0598eda115c702cb5b3ba0b7744f35dd31",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
