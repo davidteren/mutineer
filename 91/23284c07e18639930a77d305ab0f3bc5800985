@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_065c506cad57f6::t_6d583de9cb9102 25-41,106
+README.md
+  s_065c506cad57f6::t_ff31a7a19ff76b 46-47
+docs/ci.md
+  s_065c506cad57f6::t_de575535eb1b89 39
+docs/cli.md
+  s_065c506cad57f6::t_2d1105a5140536 9,156-157
+docs/rails-setup.md
+  s_065c506cad57f6::t_260bff3b788752 40-41
+lib/mutineer/cli.rb
+  s_065c506cad57f6::t_f69191ddc4a2a2 69-72
+lib/mutineer/coverage_map.rb
+  s_065c506cad57f6::t_a404901285336d 364-368,374-400,408,1733-1736,1747-1772,1774-1775,1777
+lib/mutineer/pairing.rb
+  s_065c506cad57f6::t_a722e6395a2de8 25-27,384-388,397,403-437,637-692,694,697,700,702
+test/cli_test.rb
+  s_065c506cad57f6::t_5b5bca04a76a0d 2149-2193
+test/coverage_map_test.rb
+  s_065c506cad57f6::t_200cdb3f1e7287 1103-1119,1831-1856,1858-1860,1867-1920,1923,1925-1935,2058-2092
+test/pairing_test.rb
+  s_065c506cad57f6::t_2c9f0e15aaa335 538-676
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9123284c07e18639930a77d305ab0f3bc5800985",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
