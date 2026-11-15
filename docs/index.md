@@ -84,6 +84,11 @@ mutineer run --dry-run lib/discount.rb
 
 Typed flags override `.mutineer.yml`. Every flag with its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md), `mutineer --help`, or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
 
+Runs that Mutineer starts share one seed.
+Minitest uses `SEED` or `1`.
+A random RSpec order uses seed `1` unless the suite sets one.
+See [Test order](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).
+
 `--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
 for Rails tests. A script that sets this variable again can start Rails test
 workers. The command must run the tests in a fixed order: put `SEED=1` before

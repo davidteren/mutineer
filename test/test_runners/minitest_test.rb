@@ -258,6 +258,13 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_equal "bbbaaap", class_order(%w[b a], stop_at_first_failure: true)
   end
 
+  # #282: a clean check arms no hook. It still runs files in the order given,
+  # the same order as the mutant run.
+  def test_a_plain_run_uses_the_same_file_order_as_a_mutant_run
+    assert_equal class_order(%w[a b], stop_at_first_failure: true), class_order(%w[a b])
+    assert_equal "bbbaaap", class_order(%w[b a])
+  end
+
   # Minitest 5.15 and older shuffle `runnables.reject { ... }`, a new array.
   def test_file_order_survives_the_filter_of_older_minitest
     code = fork_status do
