@@ -192,6 +192,18 @@ class DocsContractTest < Minitest::Test
     assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{tier2.size} opt-in) |"
     assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> types of code change)
     assert_includes File.read("docs/llms.txt"), "#{total} mutation operators"
+    index = File.read("docs/index.html")
+    assert_includes index, "<h2>#{count_word(total)} ways to break your code.</h2>"
+    assert_includes index, "#{count_word(defaults.size)} run by default. #{count_word(tier2.size)} Tier-2 operators"
+  end
+
+  # Spells a count below 100 as the landing page does: 22 -> "Twenty-two".
+  def count_word(n)
+    ones = %w[zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen
+              fifteen sixteen seventeen eighteen nineteen]
+    tens = %w[_ _ twenty thirty forty fifty sixty seventy eighty ninety]
+    word = n < 20 ? ones[n] : [tens[n / 10], (ones[n % 10] unless (n % 10).zero?)].compact.join("-")
+    word.capitalize
   end
 
   def test_json_schema_links_to_the_stability_contract

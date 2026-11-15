@@ -158,6 +158,26 @@ class IntegrationTest < Minitest::Test
                          operator: :operator_assignment, subject: "sum", token: "+=", replacement: "-=")
   end
 
+  # #418: the Fizzy shape, a one-statement def-level rescue body.
+  def test_rescue_body_survivor
+    assert_sole_survivor(source: "test/fixtures/day_lookup.rb", test: "test/fixtures/day_lookup_test.rb",
+                         operator: :rescue_body, subject: "day", token: ":not_found", replacement: "nil")
+  end
+
+  # #418: return_nil reaches both final expressions of a def-level rescue. The
+  # test kills the body's and leaves the rescue clause's.
+  def test_return_nil_reaches_a_def_level_rescue
+    result = run_mutineer(sources: ["test/fixtures/day_lookup.rb"],
+                          tests: ["test/fixtures/day_lookup_test.rb"], operators: %w[return_nil])
+
+    assert_equal 1, result.killed_count
+    assert_equal 1, result.survived_count
+    s = result.surviving_mutants.first
+    assert_equal "day", s.subject.name.to_s
+    assert_equal :return_nil, s.mutation.operator
+    assert_equal ":not_found", source_token(s)
+  end
+
   # Scenario B — calculator + strong, perfect score (R10)
   def test_calculator_strong_kills_all
     result = run_mutineer(sources: ["test/fixtures/calculator.rb"],
