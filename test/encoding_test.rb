@@ -353,6 +353,28 @@ class EncodingTest < Minitest::Test
     JSON.generate(row)
   end
 
+  # A path whose bytes are not UTF-8 stays binary (FsPath.read). Every JSON
+  # field that carries it, not only the diff header, must still generate.
+  def test_json_report_writes_a_path_that_is_not_utf8
+    path = "caf\xE9.rb".b
+    source = "class C\n  def add(a, b)\n    a + b\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first.body.body.first
+    subject = Mutineer::Subject.new(file: path, namespace: ["C"], name: :add,
+                                     singleton: false, def_node: def_node)
+    offset = source.byteindex("+")
+    mutation = Mutineer::Mutation.new(start_offset: offset, end_offset: offset + 1,
+                                       replacement: "-", operator: :arithmetic)
+    survived = Mutineer::Result.survived.with(subject: subject, mutation: mutation, id: "abc123")
+    killed = Mutineer::Result.killed.with(subject: subject, mutation: mutation, id: "def456")
+    reporter = Mutineer::Reporter.new(Mutineer::AggregateResult.new([survived, killed]), { path => source })
+    doc = JSON.parse(reporter.send(:json_report))
+    assert_equal "caf\\xE9.rb", doc.fetch("survivors").first.fetch("file")
+    assert_equal "caf\\xE9.rb", doc.fetch("killed").first.fetch("file")
+    assert_equal "caf\\xE9.rb", doc.fetch("per_source").first.fetch("file")
+    dry = JSON.parse(Mutineer::Reporter.dry_run_json([[subject, mutation, "abc123"]], { path => source }))
+    assert_equal "caf\\xE9.rb", dry.fetch("mutants").first.fetch("file")
+  end
+
   def test_an_id_joins_a_utf8_path_with_an_euc_jp_token
     path = "caf\u00e9.rb"
     token = "\xA4\xA2".b.force_encoding(Encoding::EUC_JP)

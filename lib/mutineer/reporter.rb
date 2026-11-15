@@ -353,7 +353,7 @@ module Mutineer
       # Additive baseline-delta block, present only with --baseline. Existing
       # consumers ignore the extra key; it does not move schema_version on its own.
       doc[:baseline] = baseline_json(baseline) if baseline
-      "#{JSON.generate(doc)}\n"
+      "#{JSON.generate(json_safe(doc))}\n"
     end
 
     # One self-contained HTML file (inline CSS, no external assets): the overall
@@ -883,7 +883,7 @@ module Mutineer
         },
         mutants: mutants
       }
-      "#{JSON.generate(doc)}\n"
+      "#{JSON.generate(reporter.__send__(:json_safe, doc))}\n"
     end
 
     # Builds a line-aligned diff for a mutation whose byte range may span several
@@ -1308,6 +1308,22 @@ module Mutineer
 
       str.dup.force_encoding(Encoding::UTF_8)
          .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
+    end
+
+    # A JSON document with every string as UTF-8 (#346). A path whose bytes
+    # are not UTF-8 is binary, and `JSON.generate` refuses it. Such bytes
+    # print as \xNN, as in the human report.
+    #
+    # @api private
+    # @param value [Object] a document built from Hash, Array, String and scalars.
+    # @return [Object] the same shape, its strings passed through {#utf8_text}.
+    def json_safe(value)
+      case value
+      when String then utf8_text(value)
+      when Hash then value.to_h { |k, v| [json_safe(k), json_safe(v)] }
+      when Array then value.map { |v| json_safe(v) }
+      else value
+      end
     end
 
     # Writes the final verdict line.
