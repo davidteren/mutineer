@@ -89,8 +89,9 @@ All notable changes to this project are documented here. The format is based on
   With them, it was 150 of 990 (15.2%), so the warning fired.
   With all 21 operators, the four paired files that can hold an unrun mutant had 24 under redefine and 20 under reload.
   Against the default run's 840 attempted mutants, that is at most 2.8%.
-  The 10% limit stays. A share above it from unpaired mutants is a true count, not noise.
-  The 2 skipped (invalid) mutants are a `literal_mutation` bug (#469).
+  The 10% limit stays.
+  A share above it that comes from unpaired mutants is a true count, not noise.
+  The 2 skipped (invalid) mutants in the all-operator runs come from a `literal_mutation` bug (#469).
 - **A concern pairs with the test that mirrors its namespace (#379).**
   `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
   That path matches `Storage::Totaled`.
