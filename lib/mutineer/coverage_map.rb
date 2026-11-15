@@ -2176,12 +2176,16 @@ module Mutineer
     end
 
     # Writes the current fingerprint of each `rels` entry over the cached one.
+    # Only a path the cache already lists is refreshed: a test file that no
+    # test loads is tracked by the "tests" fingerprints, as on a full capture.
     #
     # @api private
     # @param rels [Array<String>] project-relative paths.
     # @return [void]
     def refresh_dependency_fingerprints(rels)
       rels.each do |rel|
+        next unless @loaded_dependencies.key?(rel)
+
         abs = absolute(rel)
         next unless File.file?(abs)
 

@@ -1352,6 +1352,14 @@ class CoverageMapTest < Minitest::Test
       capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
       assert_same_map(partial, full)
       assert_equal %w[test/price_test.rb], partial.tests_for(File.join(dir, "lib/price.rb"), price_line("n + 9"))
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      fresh = JSON.parse(File.read(File.join(dir, "fresh", "coverage.json")))
+      assert_equal fresh["dependencies"].keys.sort, saved["dependencies"].keys.sort,
+                   "a recaptured test file is not a loaded dependency"
+
+      File.write(mail, File.read(mail) + "# second note\n")
+      again = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[mail_test.rb], captured_files(again), "a second edit of the same test is still partial"
     end
   end
 
