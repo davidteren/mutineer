@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_065c506cad57f6::t_752de5909dae0f 276-291
+Rakefile
+  s_065c506cad57f6::t_051bb70186fb58 14
+lib/mutineer/reload_guards.rb
+  s_065c506cad57f6::t_f40dde54bd5ae9 184-185,208,214-233,324-327,341,343-348,353-501
+test/rails_callback_restore_test.rb
+  s_065c506cad57f6::t_f469090e11927c 1-33
+test/reload_guards_test.rb
+  s_065c506cad57f6::t_d8b672d6c9b668 346-611
+test/support/rails_callback_restore_probe.rb
+  s_065c506cad57f6::t_2e7fce358bbbd1 1-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "484409167a96657d12d8d5622d5f7075b55ed28e",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
