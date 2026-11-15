@@ -1218,6 +1218,18 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #418: rescue_body reaches each method with a rescue clause, and return_nil
+  # now reaches a method with a def-level rescue (a BeginNode body).
+  def test_collect_jobs_reaches_rescue_methods_with_rescue_body_and_return_nil
+    day_shapes_extras(%w[rescue_body]) do |extras, _path|
+      assert_equal %w[Day#total Day#noop Day#bare_unless Day#bare_case Day#ternary Day#modifier_if Day#begin_ensure],
+                   extras[:unmutated_subjects].map { |h| h[:subject] }
+    end
+    day_shapes_extras(%w[return_nil]) do |extras, _path|
+      assert_equal %w[Day#noop], extras[:unmutated_subjects].map { |h| h[:subject] }
+    end
+  end
+
   def test_collect_jobs_lists_a_method_whose_candidates_were_all_declined
     Dir.mktmpdir do |root|
       path = File.join(root, "notes.rb")

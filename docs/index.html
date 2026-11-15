@@ -77,7 +77,7 @@
       </div>
       <div class="badges" aria-label="Tool facts">
         <span class="badge"><b>00</b> runtime dependencies</span>
-        <span class="badge"><b class="odo" data-from="0">21</b> types of code change</span>
+        <span class="badge"><b class="odo" data-from="0">22</b> types of code change</span>
         <span class="badge"><b class="odo" data-from="0">01</b> change at a time</span>
         <span class="badge"><b>JSON</b> reports for CI and agents</span>
       </div>
@@ -256,6 +256,7 @@
             <tr><td class="op">condition_true</td><td class="rule">if / elsif / unless / ternary / modifier / case-in guard condition → true</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">condition_false</td><td class="rule">if / elsif / unless / ternary / modifier / case-in guard condition → false</td><td><span class="pill t2">tier 2</span></td></tr>
             <tr><td class="op">operator_assignment</td><td class="rule">+= ↔ −= , *= ↔ /= , %= → *= , **= → *= (not ||= , &amp;&amp;=)</td><td><span class="pill t2">tier 2</span></td></tr>
+            <tr><td class="op">rescue_body</td><td class="rule">rescue clause body → nil ; x rescue y → x rescue nil</td><td><span class="pill t2">tier 2</span></td></tr>
           </tbody>
         </table>
       </div>
