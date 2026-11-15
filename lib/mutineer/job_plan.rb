@@ -101,7 +101,7 @@ module Mutineer
       # [id_path, def offset] => nil, or the method's entry when it got no mutation.
       subjects = {}
       Project.discover(config.sources, only: config.only).each do |subject|
-        source = (source_map[subject.file] ||= File.read(subject.file, encoding: "UTF-8"))
+        source = (source_map[subject.file] ||= Parser.read(subject.file))
         disabled = (disabled_map[subject.file] ||= suppress_map(source, subject.file))
         # A repeated operator name runs once, so its declines count once.
         mutations = operator_classes.uniq.flat_map do |klass|
@@ -584,10 +584,17 @@ module Mutineer
     # They do not drop the source. Ignored mutants are not in the count.
     # The count is not a validity check.
     #
+    # The third element holds the id maps from those sources, taken before
+    # `--since` narrows the count. A real run drops unpaired sources before
+    # {collect_jobs}, so the unmatched-ignore check merges these maps back in
+    # and agrees with a dry run of the same files (#377). A source that could
+    # not be read contributes no ids.
+    #
     # @param config [Mutineer::Config] run configuration. Reads `unpaired_sources`.
     # @param operator_classes [Array<Class>] resolved operators.
-    # @return [Array(Hash{String => Integer, nil}, Array<Hash>)]
-    #   file => count, in source order, and `{file:, error:}` failures.
+    # @return [Array(Hash{String => Integer, nil}, Array<Hash>, Hash)]
+    #   file => count, in source order; `{file:, error:}` failures; and
+    #   `{id_map:, dropped_id_map:, legacy_ignore_matches:}` for those sources.
     def self.unpaired_counts(config, operator_classes)
       counts = {}
       failures = []
@@ -595,16 +602,24 @@ module Mutineer
       pending_ignored = []
       pending_map = {}
       pending_files = []
+      id_map = {}
+      dropped_id_map = {}
+      legacy_ignore_matches = {}
 
       config.unpaired_sources.each do |file|
         copy = config.dup
         copy.sources = [file]
         begin
-          jobs, ignored, source_map, = collect_jobs(copy, operator_classes)
+          jobs, ignored, source_map, file_extras = collect_jobs(copy, operator_classes)
         rescue StandardError => e
           counts[file] = nil
           failures << { file: file, error: "#{e.class}: #{e.message}" }
           next
+        end
+        id_map.merge!(file_extras[:id_map])
+        dropped_id_map.merge!(file_extras[:dropped_id_map])
+        file_extras[:legacy_ignore_matches].each do |old, hits|
+          (legacy_ignore_matches[old] ||= []).concat(hits)
         end
 
         if jobs.empty? || !config.since
@@ -619,7 +634,8 @@ module Mutineer
       end
 
       apply_unpaired_since!(counts, pending_jobs, pending_ignored, pending_map, pending_files, config) if config.since
-      [counts, failures]
+      [counts, failures, { id_map: id_map, dropped_id_map: dropped_id_map,
+                           legacy_ignore_matches: legacy_ignore_matches }]
     end
 
     # Replaces pending unpaired counts with the jobs `--since` keeps.
@@ -729,7 +745,7 @@ module Mutineer
       files = ranges.map { |h| h[:file] }.uniq
       changed ||= ChangedLines.for(ref: config.since, files: files, project_root: config.project_root)
       in_scope = ranges.select do |h|
-        lines = changed.fetch(File.expand_path(h[:file], config.project_root), Set.new)
+        lines = changed.fetch(FsPath.expand(h[:file], config.project_root), Set.new)
         next false if lines.empty?
 
         (h[:line]..h[:end_line]).any? { |ln| lines.include?(ln) }
@@ -752,7 +768,7 @@ module Mutineer
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
         line = source.byteslice(0, mutation.start_offset).count("\n") + 1
-        abs = File.expand_path(subject.file, config.project_root)
+        abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end
     end

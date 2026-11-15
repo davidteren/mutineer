@@ -2,6 +2,7 @@
 
 require "set"
 require "open3"
+require_relative "fs_path"
 
 module Mutineer
   # Maps each source file to the set of NEW-side line numbers changed since a
@@ -50,7 +51,7 @@ module Mutineer
     # @return [Hash<String, Set<Integer>>] absolute file path to changed lines.
     def for(ref:, files:, project_root:, runner: method(:git_diff))
       files.each_with_object({}) do |file, acc|
-        abs = File.expand_path(file, project_root)
+        abs = FsPath.expand(file, project_root)
         acc[abs] = parse(runner.call(ref, abs, project_root))
       end
     end

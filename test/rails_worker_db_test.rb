@@ -22,6 +22,27 @@ class RailsWorkerDbTest < Minitest::Test
     assert_equal "mydb-1", Mutineer::RailsWorkerDb.worker_database_path("mydb", 1)
   end
 
+  # The daemon loads this file on the app's Ruby. That Ruby may be older
+  # than 3.4 and have no Prism. Requiring parser.rb raises LoadError, and
+  # the daemon then runs parallel workers on one database (#346).
+  def test_loads_when_prism_cannot_be_required
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      module Kernel
+        alias_method :require_without_block, :require
+        def require(path)
+          raise LoadError, "prism blocked" if path == "prism"
+          require_without_block(path)
+        end
+      end
+      require "mutineer/rails_worker_db"
+      puts Mutineer::RailsWorkerDb.name
+    RUBY
+    out, err, status = Open3.capture3(RbConfig.ruby, "-I#{lib}", "-e", script)
+    assert_equal 0, status.exitstatus, err
+    assert_equal "Mutineer::RailsWorkerDb", out.strip
+  end
+
   # R10: the adapter must never touch AR unless the app loaded it. In the zero-dep
   # suite AR is absent, so `available?` must be a strict `false` (not nil) — the guard
   # every other method relies on.
