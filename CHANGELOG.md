@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **New opt-in operator `rescue_body` mutates `rescue` clauses (#418).**
+  It replaces the whole body of each `rescue` clause with `nil`, including a one-statement body.
+  It also turns `x rescue y` into `x rescue nil`.
+  A re-raise or a `retry` body is mutated too, because `nil` swallows the error.
+  An empty body, a body that is already `nil`, `(nil)` or `()`, and an `ensure` body give no mutant.
+  A body whose value is discarded and that holds only literals and variable reads is declined, and counts in `summary.declined_by_operator`.
+  See `docs/equivalent-skips.md`, "Rescue body".
+  Before this, no operator mutated a one-statement `rescue` body.
+  The default operator set does not change.
+- **`return_nil` reaches a method with a def-level `rescue`, `else` or `ensure` (#418).**
+  It replaces the final expression of the body, or of the `else` clause when there is one, with `nil`.
+  It does the same for each `rescue` clause. The `ensure` value is not a return value, so it is left alone.
+  Before this, `return_nil` gave such a method no final-expression mutant.
+  A run with `return_nil` can now report more mutants and new survivors. With `--baseline`, refresh the baseline.
+  With both operators, a one-statement `rescue` body gives the same edit twice. The run keeps the `return_nil` mutant, lists the `rescue_body` id in its `copies`, and counts that copy in `dropped`.
+  A final explicit `begin ... rescue ... end` block still gets one `nil` for the whole block (#470).
 - **`run` says when an `ignore:` entry matches no mutant (#377).**
   The warning names the id and says the list covers only that run's sources and operators.
   The exit code stays 0.

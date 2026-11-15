@@ -45,15 +45,30 @@ module Mutineer
 
       # Mutates a method's final expression to nil when eligible.
       #
-      # @param body [Prism::Node] method body node.
+      # A def-level `rescue`, `else` or `ensure` makes the body a `BeginNode`
+      # (#418). The method then returns the `else` value, or the main body's
+      # value when there is no `else`, or the value of the `rescue` clause that
+      # ran. Each of those final expressions becomes nil. The `ensure` value is
+      # discarded, so it is not a final expression. A final explicit
+      # `begin ... rescue ... end` statement still becomes one `nil` (#470).
+      #
+      # @param body [Prism::Node, nil] method body node, or a statement list in it.
       # @return [void]
       def final_expression_nil(body)
-        return unless body.is_a?(Prism::StatementsNode)
+        case body
+        when Prism::StatementsNode
+          last = body.body.last
+          return if last.nil? || last.is_a?(Prism::ReturnNode) || last.is_a?(Prism::NilNode)
 
-        last = body.body.last
-        return if last.nil? || last.is_a?(Prism::ReturnNode) || last.is_a?(Prism::NilNode)
-
-        emit(last.location)
+          emit(last.location)
+        when Prism::BeginNode
+          final_expression_nil(body.else_clause ? body.else_clause.statements : body.statements)
+          clause = body.rescue_clause
+          while clause
+            final_expression_nil(clause.statements)
+            clause = clause.subsequent # Prism 2 removed the `consequent` alias.
+          end
+        end
       end
 
       # Emits a return-nil mutation.

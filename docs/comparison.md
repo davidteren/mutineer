@@ -32,7 +32,7 @@ Compare frameworks, Rails support, CI, and costs. Checked against project README
 | Test frameworks | Minitest, RSpec; one gem | RSpec, Minitest, Test::Unit; separate integration gems |
 | What you mutate | Files: `mutineer run lib/foo.rb --test test/foo_test.rb`; methods: `--only 'Foo#bar'` | Subject expressions: `mutant run 'Foo#bar'`, `'Foo*'` |
 | Which tests run | Files whose coverage reaches the mutated line | Tests declaring the subject through RSpec descriptions or Minitest `cover`, or selected through per-test coverage |
-| Operators | 21 (5 by default, 16 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
+| Operators | 22 (5 by default, 17 opt-in) | A larger set; the default `light` set applies almost all of it (`full` adds `#==` to `#eql?`) |
 | CI gating | `--threshold`, `--baseline` deltas, `--since`, GitHub Action | Incremental mode (`--since`), recorded session history |
 | Machine-readable output | Versioned JSON report schema | Session JSON schema |
 

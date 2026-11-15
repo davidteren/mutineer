@@ -21,6 +21,7 @@ require_relative "mutators/operand_removal"
 require_relative "mutators/array_literal"
 require_relative "mutators/condition_forcing"
 require_relative "mutators/operator_assignment"
+require_relative "mutators/rescue_body"
 
 module Mutineer
   # Maps operator names to operator classes.
@@ -53,7 +54,8 @@ module Mutineer
       "array_literal"      => Mutators::ArrayLiteral,
       "condition_true"     => Mutators::ConditionTrue,
       "condition_false"    => Mutators::ConditionFalse,
-      "operator_assignment" => Mutators::OperatorAssignment
+      "operator_assignment" => Mutators::OperatorAssignment,
+      "rescue_body"        => Mutators::RescueBody
     }.freeze
 
     # The default Tier-1 operator set.
@@ -62,7 +64,7 @@ module Mutineer
     TIER2_NAMES   = %w[return_nil literal_mutation condition_negation string_literal regex collection_method
                        safe_navigation range negation_removal
                        chain_link call_to_receiver operand_removal array_literal
-                       condition_true condition_false operator_assignment].freeze
+                       condition_true condition_false operator_assignment rescue_body].freeze
 
     # Short human-readable descriptions for each operator.
     DESCRIPTIONS = {
@@ -86,7 +88,8 @@ module Mutineer
       "array_literal"      => "[a, b] -> []",
       "condition_true"     => "if/elsif/unless/ternary/modifier/case-in guard condition -> true",
       "condition_false"    => "if/elsif/unless/ternary/modifier/case-in guard condition -> false",
-      "operator_assignment" => "+= <-> -=, *= <-> /=, %= -> *=, **= -> *= (not ||=, &&=)"
+      "operator_assignment" => "+= <-> -=, *= <-> /=, %= -> *=, **= -> *= (not ||=, &&=)",
+      "rescue_body"        => "rescue clause body -> nil, x rescue y -> x rescue nil"
     }.freeze
 
     # Resolves operator names to classes.
