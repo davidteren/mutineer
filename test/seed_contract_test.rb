@@ -102,17 +102,24 @@ class SeedContractTest < Minitest::Test
   end
 
   # RSpec's random order sorts each group by a hash of the seed and its id, so
-  # another spec does not change the order inside the first.
+  # another spec does not change the order inside the first. The id holds the
+  # spec path as passed, so a mutant run must spell it as the clean check does,
+  # also under a symlinked root (/var on macOS).
   def test_rspec_order_inside_a_file_does_not_depend_on_the_other_files
     ENV.delete("SPEC_OPTS")
-    Dir.mktmpdir("mutineer-rspec-groups") do |dir|
+    Dir.mktmpdir("mutineer-rspec-groups") do |tmp|
+      Dir.mkdir(File.join(tmp, "project"))
+      dir = File.join(tmp, "link")
+      File.symlink(File.join(tmp, "project"), dir)
       log = File.join(dir, "order")
       ENV["MUTINEER_SEED_LOG"] = log
       file_a = write_rspec_groups(dir, "a")
       file_b = write_rspec_groups(dir, "b", groups: %w[B1])
       File.write(File.join(dir, "subject.rb"), "class SeedContractSubject\n  def value = 1\nend\n")
-      alone = rspec_order_of([file_a], log)
-      both = rspec_order_of([file_a, file_b], log)
+      run_a, run_b = mutant_run_paths(dir, [file_a, file_b])
+      assert_equal [File.realpath(file_a), File.realpath(file_b)], [run_a, run_b]
+      alone = rspec_order_of([run_a], log)
+      both = rspec_order_of([run_a, run_b], log)
       clean = rspec_clean_order(dir, [file_a, file_b], log)
       assert_equal alone, both.gsub("B1one", "").gsub("B1two", "")
       assert_equal alone, clean.gsub("B1one", "").gsub("B1two", "")
@@ -283,6 +290,18 @@ class SeedContractTest < Minitest::Test
     end.join
     File.write(path, "RSpec.configure { |config| config.order = :random; Kernel.srand config.seed }\n#{body}")
     path
+  end
+
+  # The spec paths JobPlan.coverage_selection gives a mutant run of `files`.
+  def mutant_run_paths(dir, files)
+    map = Struct.new(:project_root, :tests) do
+      def tests_for(*) = tests
+      def order_tests(_file, chosen) = chosen
+    end.new(dir, files.map { |f| File.basename(f) })
+    mutation = Mutineer::Mutation.new(start_offset: 0, end_offset: 1, replacement: "nil", operator: :test)
+    kind, paths = Mutineer::JobPlan.coverage_selection("subject.rb", mutation, nil, "x\n", map)
+    assert_equal :run, kind
+    paths
   end
 
   def rspec_order_of(files, log)

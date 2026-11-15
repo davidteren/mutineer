@@ -183,6 +183,8 @@ All notable changes to this project are documented here. The format is based on
   The clean check and a mutant run could disagree, and a hang could score `killed` on one run and `timeout` on the next.
   A random order now uses seed `1` for coverage capture, the clean checks and the mutant runs, unless the suite sets a seed (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`).
   A defined order is left as it is.
+  A mutant run now passes each spec file by its real path, as the clean check does.
+  RSpec hashes that path into the random order, so a symlinked project root (such as `/var` on macOS) no longer gives the two runs different orders.
   Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
   A `config.seed=` in a spec helper, a `--require` file, or the boot file does, and the clean check and the mutant runs keep it.
   The coverage cache includes `SPEC_OPTS` and the project `.rspec` and `.rspec-local` files, so a changed seed there is captured again.

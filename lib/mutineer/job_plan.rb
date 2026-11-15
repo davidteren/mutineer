@@ -382,7 +382,10 @@ module Mutineer
         return [:verdict, Result.no_coverage]
       end
 
-      [kind, coverage_map.order_tests(source_file, chosen).map { |t| File.expand_path(t, coverage_map.project_root) }]
+      # The clean checks name each test by its real path (ProjectPath.absolute).
+      # A random RSpec order hashes that name, so a mutant run uses the same
+      # spelling, or a symlinked root (/var on macOS) reorders the examples (#282).
+      [kind, coverage_map.order_tests(source_file, chosen).map { |t| ProjectPath.absolute(t, coverage_map.project_root) }]
     end
 
     # The verdict of a mutant whose tests {coverage_selection} chose as `:maybe`:
