@@ -158,7 +158,7 @@ ignore:
     <p>The operator replaces each <code>rescue</code> body with <code>nil</code>, and turns <code>x rescue y</code> into <code>x rescue nil</code>. It skips a body whose value is discarded and that holds only literals and variable reads, such as <code>:failed</code>, <code>0</code>, <code>"text"</code>, <code>true</code>, <code>self</code>, <code>@cache</code> or a local variable. Evaluating that body has no effect, and nothing reads its value, so <code>nil</code> changes nothing. Each skipped body counts as declined.</p>
     <p>The value is discarded only when the <code>begin ... end</code> block, or the <code>x rescue y</code> statement, is a statement that is not the last one in its list. The last statement of a method, a block, a branch or a <code>begin</code> counts as kept, even inside a loop or an <code>ensure</code>, so those bodies are still mutated. A body with a method call, a constant, or a class or global variable is still mutated. A call can change state. A constant or a class variable can raise.</p>
     <p>A body that is <code>nil</code>, <code>(nil)</code> or <code>()</code>, and an empty body, give no mutant at all, because the edit would change nothing. They are not counted as declined.</p>
-    <p>On the Fizzy copy measured for <a href="https://github.com/davidteren/mutineer/issues/418">#418</a>, this skip declined none of the rescue bodies in <code>app/</code> and <code>lib/</code>, which gave 42 mutants.</p>
+    <p>On the Fizzy copy measured for <a href="https://github.com/davidteren/mutineer/issues/418">#418</a>, this skip declined none of the rescue bodies in <code>app/</code> and <code>lib/</code>.</p>
   </article>
 </main>
 

@@ -216,4 +216,4 @@ The value is discarded only when the `begin ... end` block, or the `x rescue y` 
 
 A body that is `nil`, `(nil)` or `()`, and an empty body, give no mutant at all, because the edit would change nothing. They are not counted as declined.
 
-On the Fizzy copy measured for #418, this skip declined none of the rescue bodies in `app/` and `lib/`, which gave 42 mutants.
+On the Fizzy copy measured for #418, this skip declined none of the rescue bodies in `app/` and `lib/`.
