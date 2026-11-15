@@ -200,6 +200,7 @@ All notable changes to this project are documented here. The format is based on
   is in the run.
   A kill that only the unpaired test would have caught can become
   `ran_at_load` or a survivor. The checked fixtures do not hit that case.
+  Issue #467 tracks that case and the run with no paired test.
 - **Direct stderr and stdout no longer print a database password (#341).**
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the
