@@ -79,6 +79,10 @@ All notable changes to this project are documented here. The format is based on
   On Fizzy at `f220e4832`, 92 sources and 149 mutants were unpaired.
   The paired total was 922, so the raw share was 13.9%.
   After the 10 ignored mutants leave the denominator, the share is 14.0%.
+  Mutineer now parses those sources.
+  A disable-line warning or a git-diff warning can name them.
+  The Action summary line waits on pull request #395.
+  A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
   #349 measured the unrun share (of attempted plus unrun) on Fizzy at `f220e4832`, with Mutineer at `46ee2bb3`.
   A full daemon run with the default operators had 840 attempted mutants, 1 unplaceable, 0 skipped (invalid) and 149 unpaired.
   Without the unpaired mutants, the share was 1 of 841 (0.12%).
@@ -87,10 +91,6 @@ All notable changes to this project are documented here. The format is based on
   Against the default run's 840 attempted mutants, that is at most 2.8%.
   The 10% limit stays. A share above it from unpaired mutants is a true count, not noise.
   The 2 skipped (invalid) mutants are a `literal_mutation` bug (#469).
-  Mutineer now parses those sources.
-  A disable-line warning or a git-diff warning can name them.
-  The Action summary line waits on pull request #395.
-  A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
 - **A concern pairs with the test that mirrors its namespace (#379).**
   `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
   That path matches `Storage::Totaled`.
