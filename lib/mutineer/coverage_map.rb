@@ -1451,7 +1451,8 @@ module Mutineer
     # Adds `rel_test` to the map entry for `key`, in `@test_paths` order.
     # A partial recapture appends a test that a full capture would have
     # recorded earlier. Sorting by the run's test order keeps the two maps
-    # equal (#421).
+    # equal (#421). A full capture appends in order, so it takes the fast
+    # path: sorting on every append made capture quadratic in the test count.
     #
     # @api private
     # @param key [String] a "file:line" map key.
@@ -1459,8 +1460,13 @@ module Mutineer
     # @return [void]
     def add_covering_test(key, rel_test)
       list = (@map[key] ||= [])
-      list << rel_test unless list.include?(rel_test)
-      list.sort_by! { |test| test_index(test) }
+      last = list.last
+      if last.nil? || test_index(last) < test_index(rel_test)
+        list << rel_test
+      else
+        list << rel_test unless list.include?(rel_test)
+        list.sort_by! { |test| test_index(test) }
+      end
     end
 
     # Position of `rel` in `@test_paths`. A path outside the run sorts last.
