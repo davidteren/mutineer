@@ -1,0 +1,45 @@
+CHANGELOG.md
+  s_d4768bba36413f::t_6cb1d22ea8a237 200-204
+README.md
+  s_d4768bba36413f::t_21f11b4c10b9ed 247
+STABILITY.md
+  s_d4768bba36413f::t_0c8cc290894c5d 36
+action.yml
+  s_d4768bba36413f::t_9356f7a624175a 121
+docs/agentic-coding.html
+  s_d4768bba36413f::t_af92477a38d134 169
+docs/agentic-coding.md
+  s_d4768bba36413f::t_ef3756885e1ad2 216
+docs/fragments/contract.yml
+  s_8f922dd3b7b410::t_40d0bfd85ad481 16,28
+docs/index.md
+  s_d4768bba36413f::t_14d41a32d5c332 104
+docs/json-schema.md
+  s_d4768bba36413f::t_54a84e738936cd 333
+skills/mutineer/SKILL.md
+  s_d4768bba36413f::t_13a2aaab9cd485 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d020877b2b39497251c6e5dd6b7105924212aaa9",
+  "prompts": {},
+  "sessions": {
+    "s_8f922dd3b7b410": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af7376e9-d314-4deb-85dc-67f63e0ddec8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d4768bba36413f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40888e8c-f83d-441f-830f-5833e3c84b2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
