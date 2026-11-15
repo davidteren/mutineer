@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "run_seed"
+require_relative "minitest_integration/file_order"
 require_relative "minitest_integration/stop_at_first_failure"
 require_relative "minitest_integration/kill_recorder"
 require_relative "minitest_integration/in_test_database_error"
@@ -22,16 +24,19 @@ module Mutineer
   # Active Record connection or lock error (#296, {InTestDatabaseError}).
   class MinitestIntegration
     # The seed of every Minitest run Mutineer starts, unless `SEED` is set:
-    # coverage capture, the clean checks and the mutant runs (#282). A file's
-    # clean check then runs its tests in the order a mutant run of that file
-    # uses. Several covering files can still differ from the combined clean
-    # check: a smaller class list shuffles differently. With the stop,
-    # the test order can decide `killed` vs `timeout`; a fixed order keeps the
-    # verdict stable for a `--baseline` gate. A `--matrix` run uses the same
-    # order, so its first failure comes at the same point as the stop's.
+    # coverage capture, the clean checks and the mutant runs (#282). The same
+    # value is {RunSeed::PINNED_SEED}, which a random RSpec order uses too.
+    # Within one file, class order depends only on this seed, so adding
+    # another file does not reshuffle it. Files run in the order that run
+    # was given. A mutant run's file list is coverage order (paired, then
+    # cheapest); the combined clean check uses the order the tests were
+    # given. With the stop, the test order can decide `killed` vs `timeout`;
+    # a fixed order keeps the verdict stable for a `--baseline` gate. A
+    # `--matrix` run uses the same order, so its first failure comes at the
+    # same point as the stop's.
     #
     # @api private
-    PINNED_SEED = 1
+    PINNED_SEED = RunSeed::PINNED_SEED
 
     # The arguments that give `Minitest.run` the shared seed. With `SEED` set,
     # none: Minitest reads `SEED` itself.
@@ -96,16 +101,16 @@ module Mutineer
         Minitest::Runnable.runnables.each { |klass| rank[klass] ||= i }
       end
 
-      armed =
-        if record_to
-          KillRecorder.arm!(record_to, Minitest::Runnable.runnables)
-        elsif stop_at_first_failure
-          StopAtFirstFailure.arm!(Minitest::Runnable.runnables)
-        end
+      if record_to
+        KillRecorder.arm!(record_to, Minitest::Runnable.runnables)
+      elsif stop_at_first_failure
+        StopAtFirstFailure.arm!(Minitest::Runnable.runnables)
+      end
       # An unknown Minitest shape arms no hook and gets a full run, in the
-      # same seeded order.
-      keep_file_order(rank) if armed
-      # Every run, on its own line: `armed` decides the file order (#296).
+      # same seeded file order as a clean check (#282).
+      keep_file_order(rank)
+      # On its own line, not inside the stop or matrix branch. Folding it
+      # in would tie the database-error hook to those hooks (#296).
       InTestDatabaseError.arm!
       # No silencing here: the fork boundary that calls this method has already
       # pointed stdout at File::NULL (see ChildStdout).
@@ -123,45 +128,5 @@ module Mutineer
       InTestDatabaseError.disarm!
     end
 
-    # Runs the test classes in the order of their files (#203). Minitest
-    # shuffles the classes with the seed, then runs the serial classes before
-    # the parallel (`parallelize_me!`) ones. A stable sort by file position
-    # after that shuffle puts the files in the given order and keeps the
-    # seeded order within one file. The serial-then-parallel split is
-    # unchanged. Only the child's own class list gets {FileOrder}.
-    #
-    # @api private
-    # @param rank [Hash{Class => Integer}] each class's file position.
-    # @return [void]
-    def self.keep_file_order(rank)
-      FileOrder.rank = rank
-      ::Minitest::Runnable.runnables.extend(FileOrder)
-    end
-
-    # Extends the list of test classes: its `shuffle` keeps the file order.
-    module FileOrder
-      class << self
-        # Each test class's file position.
-        #
-        # @return [Hash{Class => Integer}, nil]
-        attr_accessor :rank
-      end
-
-      # The seeded shuffle, then a stable sort by file position.
-      #
-      # @return [Array<Class>]
-      def shuffle(...)
-        rank = FileOrder.rank || {}
-        super.sort_by.with_index { |klass, i| [rank.fetch(klass, rank.size), i] }
-      end
-
-      # Minitest 5.15 and older drop empty classes before the shuffle, so the
-      # filtered list keeps the file order too.
-      #
-      # @return [Array<Class>]
-      def reject(...)
-        super.extend(FileOrder)
-      end
-    end
   end
 end

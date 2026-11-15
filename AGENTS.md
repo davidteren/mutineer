@@ -332,8 +332,11 @@ audit of every merged PR. They stop the defect patterns that reached users.
 The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
 Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
 every other reviewer, human or bot, applies the same file by hand. Score terms
-are defined in "Score-model discipline" below. Issue #282 tracks the remaining
-ordering gaps: RSpec random order and Minitest class order across selected files.
+are defined in "Score-model discipline" below. In-process Minitest and RSpec runs
+share one seed (#282). Within a file, that order does not depend on the other
+files. A mutant run still orders its files by coverage (paired, then cheapest),
+and the combined clean check uses the order the tests were given.
+`--test-command` order is issue #338.
 
 The eleven rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -
