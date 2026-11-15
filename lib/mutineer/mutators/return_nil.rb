@@ -49,7 +49,8 @@ module Mutineer
       # (#418). The method then returns the `else` value, or the main body's
       # value when there is no `else`, or the value of the `rescue` clause that
       # ran. Each of those final expressions becomes nil. The `ensure` value is
-      # discarded, so it is not a final expression.
+      # discarded, so it is not a final expression. A final explicit
+      # `begin ... rescue ... end` statement still becomes one `nil` (#470).
       #
       # @param body [Prism::Node, nil] method body node, or a statement list in it.
       # @return [void]
