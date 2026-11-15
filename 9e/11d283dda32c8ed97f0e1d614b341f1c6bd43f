@@ -1,0 +1,71 @@
+lib/mutineer/test_runners/rspec.rb
+  s_065c506cad57f6::t_28fb16b9849396 7,46,65-67,163-164
+lib/mutineer/minitest_integration.rb
+  s_065c506cad57f6::t_28fb16b9849396 4-5,28-37,40,107-111,113-116
+CHANGELOG.md
+  s_065c506cad57f6::t_ba47e7235bf70b 145-175,251-270
+lib/mutineer/coverage_map.rb
+  s_065c506cad57f6::t_9b05cd421b8c6a 568,1238,1267,1273,1357,1384-1433,1454,1462,1703-1718
+.expectation-fit/ways-of-working.yaml
+  s_065c506cad57f6::t_0e7027c5360aa0 28-34
+AGENTS.md
+  s_065c506cad57f6::t_c16a0a2c9af48b 335-339
+README.md
+  s_065c506cad57f6::t_39ca9b4fd5646e 185
+docs/cli.md
+  s_065c506cad57f6::t_1fb2a18a75ad96 50-78
+docs/equivalent-skips.html
+  s_065c506cad57f6::t_964a98fbe07e93 7,14,22,53,129-154
+docs/equivalent-skips.md
+  s_065c506cad57f6::t_201f8d1b599b00 8-9,177-207
+docs/index.md
+  s_065c506cad57f6::t_f6c7d4a7e85282 87-91
+docs/rails-setup.md
+  s_065c506cad57f6::t_b2e8b81f4ef0b1 242
+lib/mutineer/daemon_server.rb
+  s_065c506cad57f6::t_57d888f9e31d69 568-569
+lib/mutineer/job_plan.rb
+  s_065c506cad57f6::t_d3ad97604b1a76 217-218,230,262-279,293-307,394-397
+lib/mutineer/minitest_integration/file_order.rb
+  s_065c506cad57f6::t_8b0205744edf42 1-56
+lib/mutineer/mutators/collection_method.rb
+  s_065c506cad57f6::t_6d93ac6ccdd25b 11-17,32-73,75,83-92,96-230
+lib/mutineer/run_seed.rb
+  s_065c506cad57f6::t_a25842e9732943 1-16
+lib/mutineer/runner.rb
+  s_065c506cad57f6::t_55eda14572cd69 132-135,560-578
+lib/mutineer/test_runners/rspec_seed.rb
+  s_065c506cad57f6::t_3eaa24f4fdbab7 1-151
+test/concern_blocks_test.rb
+  s_065c506cad57f6::t_5f00aa7db909ad 260-262,267
+test/coverage_map_test.rb
+  s_065c506cad57f6::t_2c59a8e41152de 655,983-984,987,989,991,996,1001-1010
+test/mutators/collection_method_test.rb
+  s_065c506cad57f6::t_0dc5f62d39b922 47-790
+test/runner_test.rb
+  s_065c506cad57f6::t_cec482b327a09b 607-619
+test/seed_contract_test.rb
+  s_065c506cad57f6::t_8ce9bad87e03ea 1-394
+test/site_docs_test.rb
+  s_065c506cad57f6::t_bdb9615ce3413a 121-140
+test/test_runners/minitest_test.rb
+  s_065c506cad57f6::t_d9df32f18cff27 261-267
+test/test_runners/rspec_test.rb
+  s_065c506cad57f6::t_89ed1c5025be50 482-487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e11d283dda32c8ed97f0e1d614b341f1c6bd43f",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
