@@ -6,7 +6,7 @@ name only, so they are not always equivalent. The endless-range skip applies
 only when the receiver is an array or string literal, where `(1..)` and
 `(1...)` select the same elements.
 Mutineer counts every skip on this page when its operator runs. The collection-method,
-chain-link, call-to-receiver and range operators are not in the default set, so their skips
+rescue-body, chain-link, call-to-receiver and range operators are not in the default set, so their skips
 are counted only when `--operators` selects them. The dry run prints the count,
 and the JSON report gives it in `summary.declined_by_operator`.
 
@@ -205,3 +205,15 @@ The result is kept, and the swap still runs, when the call is any of these:
 `all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are swapped even when the result is discarded. `all?` and `any?` can stop on different elements. A block can show that change.
 
 The report that opened this skip found the `each` to `map` mutant in 4 of 23 ignore entries.
+
+## Rescue body
+
+The `rescue_body` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`.
+
+The operator replaces each `rescue` body with `nil`, and turns `x rescue y` into `x rescue nil`. It skips a body whose value is discarded and that holds only literals and variable reads, such as `:failed`, `0`, `"text"`, `true`, `self`, `@cache` or a local variable. Evaluating that body has no effect, and nothing reads its value, so `nil` changes nothing. Each skipped body counts as declined.
+
+The value is discarded only when the `begin ... end` block, or the `x rescue y` statement, is a statement that is not the last one in its list. The last statement of a method, a block, a branch or a `begin` counts as kept, even inside a loop or an `ensure`, so those bodies are still mutated. A body with a method call, a constant, or a class or global variable is still mutated. A call can change state. A constant or a class variable can raise.
+
+A body that is `nil`, `(nil)` or `()`, and an empty body, give no mutant at all, because the edit would change nothing. They are not counted as declined.
+
+On the Fizzy copy measured for #418, this skip declined none of the rescue bodies in `app/` and `lib/`, which gave 42 mutants.

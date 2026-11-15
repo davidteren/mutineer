@@ -12,7 +12,9 @@ All notable changes to this project are documented here. The format is based on
   It replaces the whole body of each `rescue` clause with `nil`, including a one-statement body.
   It also turns `x rescue y` into `x rescue nil`.
   A re-raise or a `retry` body is mutated too, because `nil` swallows the error.
-  An empty body, a body that is already `nil` and an `ensure` body give no mutant.
+  An empty body, a body that is already `nil`, `(nil)` or `()`, and an `ensure` body give no mutant.
+  A body whose value is discarded and that holds only literals and variable reads is declined, and counts in `summary.declined_by_operator`.
+  See `docs/equivalent-skips.md`, "Rescue body".
   Before this, no operator mutated a one-statement `rescue` body.
   The default operator set does not change.
 - **`return_nil` reaches a method with a def-level `rescue`, `else` or `ensure` (#418).**

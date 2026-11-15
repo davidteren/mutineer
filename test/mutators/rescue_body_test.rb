@@ -86,10 +86,40 @@ class RescueBodyTest < Minitest::Test
       "def f\n  g\nrescue\nend\n",                 # empty body
       "def f\n  g\nrescue\n  nil\nend\n",          # body already nil
       "def f\n  Integer(@x) rescue nil\nend\n",    # modifier value already nil
+      "def f\n  g\nrescue\n  (nil)\nend\n",        # parenthesized nil body
+      "def f\n  g\nrescue\n  ()\nend\n",           # empty parentheses are nil
+      "def f\n  Integer(@x) rescue (nil)\nend\n",  # parenthesized nil modifier value
       "def f\n  g\nensure\n  close\nend\n"         # ensure is not a rescue body
     ].each do |source|
       mutations, _, mutator = run_mutator(source)
       assert_empty mutations, source
+      assert_equal 0, mutator.declined, source
+    end
+  end
+
+  # A discarded value that only holds literals and variable reads is declined;
+  # a discarded call, and a kept literal, are still mutated.
+  def test_discarded_inert_body_is_declined
+    declined = [
+      "def f\n  begin\n    g\n  rescue\n    :failed\n  end\n  h\nend\n",
+      "def f\n  begin\n    g\n  rescue\n    @x\n    1\n  end\n  h\nend\n",
+      "def f(y)\n  Integer(y) rescue y\n  h\nend\n"
+    ]
+    declined.each do |source|
+      mutations, _, mutator = run_mutator(source)
+      assert_empty mutations, source
+      assert_equal 1, mutator.declined, source
+    end
+
+    kept = {
+      "def f\n  begin\n    g\n  rescue\n    log(1)\n  end\n  h\nend\n" => ["log(1)"],
+      "def f\n  begin\n    g\n  rescue\n    :failed\n  end\nend\n" => [":failed"],
+      "def f\n  x = begin\n    g\n  rescue\n    :failed\n  end\n  x\nend\n" => [":failed"],
+      "def f\n  items.each do |i|\n    g\n  rescue\n    :skip\n  end\n  h\nend\n" => [":skip"]
+    }
+    kept.each do |source, expected|
+      mutations, source, mutator = run_mutator(source)
+      assert_equal expected, tokens(mutations, source), source
       assert_equal 0, mutator.declined, source
     end
   end
