@@ -1,0 +1,75 @@
+docs/equivalent-skips.html
+  s_065c506cad57f6::t_39082ece174e39 116
+test/action_harness_test.rb
+  s_065c506cad57f6::t_39082ece174e39 62-65
+lib/mutineer/reporter.rb
+  s_065c506cad57f6::t_39082ece174e39 64,81-84,87-88,278-280,443,494,518,760,773,848-852,857,864,878-881,883,885,900,947,957-1028,1072-1073
+docs/json-schema.md
+  s_065c506cad57f6::t_39082ece174e39 78,101,232,368,381-385
+docs/getting-started.md
+  s_065c506cad57f6::t_39082ece174e39 111-113
+test/html_reporter_test.rb
+  s_065c506cad57f6::t_39082ece174e39 52-63
+CHANGELOG.md
+  s_065c506cad57f6::t_39082ece174e39 11-21
+action.yml
+  s_065c506cad57f6::t_39082ece174e39 529-532,548-552,583-585
+docs/agentic-coding.md
+  s_065c506cad57f6::t_39082ece174e39 203-207
+docs/cli.md
+  s_065c506cad57f6::t_39082ece174e39 53
+test/fixtures/action_harness.sh
+  s_065c506cad57f6::t_39082ece174e39 80-89
+docs/agentic-coding.html
+  s_065c506cad57f6::t_39082ece174e39 160
+lib/mutineer/job_plan.rb
+  s_065c506cad57f6::t_39082ece174e39 44-46,74,97-99,134-137,148-149,151,154,169,633-634,656-659,663-677
+  s_065c506cad57f6::t_3760bda1e38918 678-679
+lib/mutineer/cli.rb
+  s_065c506cad57f6::t_39082ece174e39 50-52,1039-1040,1231-1236,1239,1272
+docs/equivalent-skips.md
+  s_065c506cad57f6::t_39082ece174e39 124-125
+test/json_reporter_test.rb
+  s_065c506cad57f6::t_39082ece174e39 293-358
+docs/results.md
+  s_065c506cad57f6::t_39082ece174e39 24-29,82-83,87-92
+  s_065c506cad57f6::t_d99211dcccb197 93
+lib/mutineer/runner.rb
+  s_065c506cad57f6::t_39082ece174e39 67
+docs/learn.html
+  s_065c506cad57f6::t_39082ece174e39 127
+test/daemon_backend_contract_test.rb
+  s_065c506cad57f6::t_39082ece174e39 620-647
+docs/learn.md
+  s_065c506cad57f6::t_39082ece174e39 144-149
+test/triage_test.rb
+  s_065c506cad57f6::t_39082ece174e39 102-137,203-282
+test/runner_test.rb
+  s_065c506cad57f6::t_39082ece174e39 972-1053,1476-1481
+README.md
+  s_065c506cad57f6::t_39082ece174e39 211-215
+test/cli_test.rb
+  s_065c506cad57f6::t_39082ece174e39 721-746
+test/reporter_test.rb
+  s_065c506cad57f6::t_39082ece174e39 705-716
+lib/mutineer/triage.rb
+  s_065c506cad57f6::t_39082ece174e39 8-11,63-64,66-71,73,77-91,109-120,133,141-154
+skills/mutineer/SKILL.md
+  s_065c506cad57f6::t_39082ece174e39 56-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6fe38f6969f88071076c7af20f1b0092ad21588",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
