@@ -197,6 +197,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Behavior change.** An in-process `--since` run with no mutant on a changed line
+  skips the coverage map (#396). It no longer boots the app or runs the unmutated suite to say there is nothing to test.
+  A red suite or a boot file that fails no longer fails that run.
+  A missing `--boot` or `--require` file is still a usage error.
+  Thanks to @dannyward630.
 - **`collection_method` skips `each` and `map` when the result is discarded (#436).**
   For Enumerable, `each` returns the receiver and `map` returns a new array.
   No test can tell those two apart when that value is thrown away.

@@ -111,7 +111,7 @@ module Mutineer
         # The daemon loads these files itself and would report a missing one as
         # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
         # as it is in process.
-        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        check_boot_files!(config)
         return DaemonBackend.execute(config, operator_classes)
       end
 
@@ -128,6 +128,26 @@ module Mutineer
       # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
+      # A `--since` run with no changed mutant has nothing to execute. Collect
+      # and scope once before loading the app or capturing coverage so an empty
+      # scope can return without paying for a full clean-suite run. Nonempty
+      # scopes reuse this work after coverage capture instead of repeating source
+      # discovery, parsing, and git diff.
+      since_scope = nil
+      if config.since
+        # The empty-scope return skips the later require calls, so keep missing
+        # boot and --require paths as usage errors on that path too.
+        check_boot_files!(config)
+
+        since_jobs, since_ignored, since_source_map, since_extras =
+          JobPlan.collect_jobs(config, operator_classes)
+        since_jobs, since_ignored, since_extras[:unscoped_mutants] =
+          JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
+        if since_jobs.empty?
+          return [AggregateResult.new(since_ignored), since_source_map, since_extras]
+        end
+        since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
+      end
 
       # Before boot and `--require`, so a `config.seed=` in those files is
       # recorded and every forked child keeps it (#282).
@@ -210,10 +230,13 @@ module Mutineer
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-
-      jobs, ignored_results, extras[:unscoped_mutants] =
-        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      if since_scope
+        jobs, ignored_results, source_map, extras = since_scope
+      else
+        jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      end
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -556,6 +579,18 @@ module Mutineer
       file
     end
     private_class_method :project_file!
+
+    # Checks that the boot file and every --require file exist, so a missing
+    # one stays a usage error (exit 2) on paths that skip the later require.
+    #
+    # @api private
+    # @param config [Config]
+    # @raise [Errno::ENOENT] when a file does not exist.
+    # @return [void]
+    def self.check_boot_files!(config)
+      [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+    end
+    private_class_method :check_boot_files!
 
     # Installs the RSpec seed watcher in this process when the run uses
     # RSpec. Boot and `--require` files then load with the watcher on, and
