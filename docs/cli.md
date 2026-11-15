@@ -6,7 +6,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention, plus any matching `tests:` map entries; unmatched sources are skipped and counted in the report; `--test` replaces pairing and the map; `--dry-run` with `--rails` or `--boot` still needs `--test` |
+| `--test PATH` | Test file, directory or quoted glob; repeat for more | Paired with each source by convention, plus any matching `tests:` map entries. A source at `app/<dir>/concerns/<rest>.rb` with no pairable test there also pairs with an unclaimed split test at its namespace path. Unmatched sources are skipped and counted in the report; `--test` replaces pairing and the map; `--dry-run` with `--rails` or `--boot` still needs `--test` |
 | `--framework minitest\|rspec` | Test framework | `rspec` if most tests end in `_spec.rb`; otherwise `minitest` |
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
@@ -80,7 +80,7 @@ Other commands:
 
 - `mutineer init [--rails] [--force]`
 - `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`. Prints one `ignore:` entry per survivor, and one per id in that survivor's `copies`. An id from `copies` selects that whole group. It writes nothing.
-- `mutineer migrate <source...> [--dry-run] [--operators LIST]`
+- `mutineer migrate <source...> [--dry-run] [--operators LIST]`: rewrite old `ignore:` ids. `--dry-run` lists each change and every entry that matches no mutant, writes nothing, and exits 1 when any entry matches nothing. `run` warns about those entries for its own sources and operators, lists them in `summary.unmatched_ignores`, and still exits 0. `--only` skips that warning and reports an empty list, which does not mean every entry matched. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 - `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 
 Exit codes: [README](https://github.com/davidteren/mutineer#exit-codes).
@@ -153,7 +153,8 @@ rails: true
 
 ### Extra tests for a source
 
-Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it:
+Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it.
+A source at `app/<dir>/concerns/<rest>.rb` with no pairable test at its `concerns/` path already pairs with an exact or split name at its namespace path. The map is for tests that are not named that way:
 
 ```yaml
 tests:

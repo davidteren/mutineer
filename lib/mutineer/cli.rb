@@ -51,8 +51,11 @@ module Mutineer
                                                      dropped as a repeat of one.
                                                      Does not edit files.
         migrate [options] <source...>                Rewrite old ignore ids in
-                                                     .mutineer.yml. --dry-run prints
-                                                     each change and writes nothing
+                                                     .mutineer.yml. --dry-run lists
+                                                     each change and every entry
+                                                     that matches no mutant, writes
+                                                     nothing, and exits 1 for a miss.
+                                                     run warns and still exits 0
         init [--rails] [--force]                     Write .mutineer.yml and print
                                                      the first run command.
                                                      --force replaces an existing file.
@@ -63,7 +66,10 @@ module Mutineer
         --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
                              and any tests: map in .mutineer.yml (not under
-                             --dry-run). --test replaces pairing and the map
+                             --dry-run). A source at app/<dir>/concerns/ with no
+                             test there also pairs with a split test at its
+                             namespace path.
+                             --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -1007,11 +1013,21 @@ module Mutineer
       end
 
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      unpaired, failures = JobPlan.unpaired_counts(config, operator_classes)
+      unpaired, failures, unpaired_ids = JobPlan.unpaired_counts(config, operator_classes)
       warn_unpaired_count_failures(failures)
 
       aggregate, source_map, extras = Runner.execute(config)
-      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      # Pairing drops unpaired sources before collect_jobs. Their ids still
+      # count, so a real run agrees with a dry run of the same files. The
+      # baseline keeps the paired id map: an unpaired mutant is not a survivor.
+      legacy_matches = merged_legacy_matches(extras[:legacy_ignore_matches], unpaired_ids[:legacy_ignore_matches])
+      warn_legacy_ignore_matches(legacy_matches)
+      # Matched before --since narrows the jobs, so an entry for a mutant
+      # outside the diff is not listed. --only returns an empty list.
+      known = { id_map: extras[:id_map].merge(unpaired_ids[:id_map]),
+                dropped_id_map: extras[:dropped_id_map].merge(unpaired_ids[:dropped_id_map]) }
+      unmatched_ignores = unmatched_ignore_ids(config, known)
+      warn_unmatched_ignores(unmatched_ignores)
       matrix = KillMatrix.new(aggregate.results) if config.matrix
       reporter = Reporter.new(aggregate, source_map, matrix: matrix, unpaired: unpaired,
                               fail_fast: config.fail_fast)
@@ -1030,11 +1046,12 @@ module Mutineer
       warn_legacy_baseline if delta&.legacy_matches&.positive?
 
       # ignore counts old-format entries (one warning each), not the ids they matched.
-      legacy_id_matches = { ignore: extras[:legacy_ignore_matches].size,
+      legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
                       copies: extras.fetch(:copies, {}))
@@ -1167,6 +1184,67 @@ module Mutineer
            "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
+    # `ignore:` ids that match no mutant in this run's sources and operators.
+    # The set is the new ids and old-format ids from {JobPlan.collect_jobs}
+    # (`id_map` and `dropped_id_map`), including sources pairing skipped
+    # ({JobPlan.unpaired_counts}), so a dropped repeat of an edit counts as
+    # matched (#275) and an old-format id that still matches is not listed
+    # (the legacy warning names it). Matching happens before `--since` narrows
+    # the jobs, so an entry for a mutant outside the diff is not listed.
+    # `--only` returns an empty list: methods are narrowed before matching, so
+    # a miss there would not mean the entry is stale. File order, each id once.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the {JobPlan.collect_jobs} extras (`:id_map`,
+    #   `:dropped_id_map`).
+    # @return [Array<String>] unmatched ids.
+    def self.unmatched_ignore_ids(config, extras)
+      return [] if config.only
+
+      known = {}
+      [extras[:id_map], extras[:dropped_id_map]].each do |map|
+        map&.each do |new_id, old_id|
+          known[new_id] = true
+          known[old_id] = true
+        end
+      end
+      seen = {}
+      Array(config.ignore).each_with_object([]) do |id, out|
+        next if known[id] || seen[id]
+
+        seen[id] = true
+        out << id
+      end
+    end
+
+    # Old-format ignore matches from the paired run plus sources pairing
+    # skipped. Arrays are copied, so the paired extras stay unchanged.
+    #
+    # @param paired [Hash{String => Array}] old id => hits from the paired run.
+    # @param unpaired [Hash{String => Array}] the same from unpaired sources.
+    # @return [Hash{String => Array}]
+    def self.merged_legacy_matches(paired, unpaired)
+      merged = paired.to_h { |old, hits| [old, hits.dup] }
+      unpaired.each do |old, hits|
+        (merged[old] ||= []).concat(hits)
+      end
+      merged
+    end
+
+    # Warns once per `ignore:` entry that matched no mutant (#377). The text
+    # says the list covers only this run, so a run of some files does not
+    # claim an entry is stale in the rest of the project. The exit code does
+    # not change. `--only` passes an empty list ({unmatched_ignore_ids}).
+    #
+    # @param ids [Array<String>] unmatched ids, in file order.
+    # @return [void]
+    def self.warn_unmatched_ignores(ids)
+      ids.each do |id|
+        warn "[mutineer] ignore entry #{id} matched no mutant in this run's sources and operators. " \
+             "If those cover its code, the entry is stale: remove it."
+      end
+    end
+
     # Warns once per old-format `ignore:` entry (#126), naming each new id it
     # matched with that mutant's file and subject. mutineer cannot tell a full
     # run from a narrowed one, so the text always says the list covers only this
@@ -1218,6 +1296,8 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      unmatched_ignores = unmatched_ignore_ids(config, extras)
+      warn_unmatched_ignores(unmatched_ignores)
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
@@ -1236,7 +1316,8 @@ module Mutineer
       dropped = Reporter.dropped_count_for(copies)
       if config.format == "json"
         rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
-                                         skipped_invalid: skipped, ignored: ignored, copies: copies)
+                                         skipped_invalid: skipped, ignored: ignored,
+                                         unmatched_ignores: unmatched_ignores, copies: copies)
         if config.output
           abs = File.expand_path(config.output)
           File.write(abs, rendered)

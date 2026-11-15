@@ -8,6 +8,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`run` says when an `ignore:` entry matches no mutant (#377).**
+  The warning names the id and says the list covers only that run's sources and operators.
+  The exit code stays 0.
+  `--format json` lists the ids in `summary.unmatched_ignores`, in file order, each id once.
+  `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+  `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
+  A run of some files warns about entries those files and operators do not match. The warning says so.
+  A source you passed that has no paired test still counts: its entries are not reported as unmatched, and `run` agrees with `run --dry-run` of the same files.
+  `--only` skips the check. The list is then empty, which does not mean every entry matched.
+  A dropped repeat of an edit counts as matched.
+  An old-format id that still matches is not in this list. The old-id warning still names it.
+  `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
+  That exit code is the CI check, in 1.x and after 2.0.
+  The key is part of schema `1.10`, which is not in a release yet, so `schema_version` stays `1.10`.
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has a test that pairs, exact or split.
+  A split owned by a longer source does not count.
+  A longer source keeps its file when that source pairs with it.
+  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
+  The longer concern does not add that file.
+  A namespace spec stays the only file. A failed split beside it does not mark the concern.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
 - **A report names the dropped copy of an edit (#374).**
   When two operators, or one operator twice, make the same change on one
   line, one copy runs and the other is dropped. The JSON report now lists
@@ -71,9 +102,8 @@ All notable changes to this project are documented here. The format is based on
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
   With `use-bundler: true`, the Gemfile picks the version.
-  A split name pairs only at the `concerns/` path.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
-  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+  A namespace split name pairs under #408.
 - **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now

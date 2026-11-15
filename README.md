@@ -43,6 +43,8 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 ```
 
 Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+A concern at `app/models/concerns/storage/totaled.rb` pairs with `test/models/concerns/storage/totaled_test.rb` or an unclaimed split test such as `test/models/concerns/storage/totaled_bytes_test.rb`.
+With no test there, it pairs with `test/models/storage/totaled_test.rb`, an unclaimed split test such as `test/models/storage/totaled_bytes_test.rb`, `test/models/storage/test_totaled.rb`, or `spec/models/storage/totaled_spec.rb`.
 See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
 
 ## Documentation
@@ -213,6 +215,8 @@ mutineer config cache_dir|baseline [run options]
 `--id ID` selects one survivor. Repeat `--id` for several. `--all` selects every survivor.
 A copy id selects that survivor and every id in its `copies`.
 Paste every entry. An entry ignores only its own id.
+
+`migrate --dry-run` lists `ignore:` entries that match no mutant in the sources and operators you pass. It writes nothing and exits 1 when any entry matches nothing. Run it over every source. `run` warns once for each such entry in that run, lists the ids under `summary.unmatched_ignores`, and still exits 0. `--since` does not warn about an entry whose mutant sits outside the diff. A run of some files warns only about entries those files and operators do not match. A source you passed that has no paired test is skipped, but its mutants still count for ignore matching, so `run` and `run --dry-run` agree; they stay out of the score and cannot fail `--threshold` (see [unpaired counts](https://github.com/davidteren/mutineer/blob/main/docs/json-schema.md)). `--only` skips the check. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
 
 ### Options
 
