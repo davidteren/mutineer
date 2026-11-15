@@ -257,11 +257,14 @@ class ConcernBlocksTest < Minitest::Test
   def test_place_hook_def_raises_when_a_subclass_aliased_the_method
     with_hook_concern("def tag = :original") do |source, line|
       host = Class.new { include HookPlaced }
-      Class.new(host) { alias_method :base_tag, :tag }
+      # Held until the end: place_hook_def can GC, and an unreferenced anonymous
+      # subclass would be collected before the alias lookup walks the heap.
+      subclass = Class.new(host) { alias_method :base_tag, :tag }
       Mutineer::ConcernBlocks.store_hook_def { def tag = :mutant }
 
       error = assert_raises(RuntimeError) { place(source, line, :tag) }
       assert_includes error.message, "#base_tag is an alias of it"
+      assert_same host, subclass.superclass
     end
   end
 
