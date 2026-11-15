@@ -113,7 +113,7 @@
 ignore:
   - id: ID_FROM_THE_JSON_REPORT
     reason: the receiver is a record or nil, and the result is only a condition</code></pre>
-    <p><code>mutineer triage REPORT.json --id ID --reason TEXT</code> prints one mapping. Repeat <code>--id</code> for each site you judge equivalent. Do not use <code>--all</code>. <code>--all</code> also maps survivors that are real gaps.</p>
+    <p><code>mutineer triage REPORT.json --id ID --reason TEXT</code> prints one mapping for that survivor, and one for each id in its <code>copies</code>. Paste every mapping. An entry ignores only its own id. Repeat <code>--id</code> for each site you judge equivalent. Do not use <code>--all</code>. <code>--all</code> also maps survivors that are real gaps.</p>
     <p>An <code>ignore:</code> id changes after a file move. It also changes after a method rename or a class rename. The survivor then returns. See <a href="https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids">Mutant ids</a>.</p>
     <p>Do not use a line marker for this site. The marker hides every <code>call_to_receiver</code> mutant on that line. It also hides <code>account.name</code> becoming <code>account</code>. That second mutant is not equivalent. Use the <code>ignore:</code> id above for the <code>present?</code> mutant only.</p>
     <pre><code>account.name if account.present? # mutineer:disable-line call_to_receiver</code></pre>
