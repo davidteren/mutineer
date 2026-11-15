@@ -64,7 +64,7 @@ module Mutineer
     # coverage map, run every mutation, and aggregate. Returns
     # [AggregateResult, source_map, extras], where extras is the hash
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
-    # `:dropped_id_map`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
+    # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.

@@ -61,6 +61,7 @@ module Mutineer
       @matrix = matrix
       @unpaired = unpaired
       @fail_fast = fail_fast
+      @copies = {}
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -77,9 +78,14 @@ module Mutineer
     # from {JobPlan.collect_jobs}, #386) feed the same two reports. Left out,
     # they are unknown: JSON reports null and the human report has no row. The
     # two are one unit: when either is left out, both are unknown.
+    # `copies` (kept mutant id => dropped repeat ids, from {JobPlan.collect_jobs},
+    # #374) is listed on each kept mutant and counted in `summary.dropped`.
+    # An empty hash reports zero. The count covers mutants in this report,
+    # so `--fail-fast` leaves out copies of mutants it did not schedule.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 }, declined: {},
-               subjects: nil, unmutated_subjects: nil)
+               subjects: nil, unmutated_subjects: nil, copies: {})
+      @copies = copies || {}
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
@@ -269,6 +275,9 @@ module Mutineer
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
+          # Additive (1.10, #374): repeats of a kept mutant that were not run.
+          # Not in `total` and not in the score. The ids sit on `copies`.
+          dropped: dropped_count,
           # The gate is computed from these two, so a consumer never re-derives them.
           attempted: attempted_count, no_verdict: no_verdict_count,
           score: score,
@@ -431,6 +440,7 @@ module Mutineer
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
         "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
+        "dropped" => dropped_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
         "unpaired" => unpaired_mutant_count
@@ -481,6 +491,7 @@ module Mutineer
           <div class="survivor">
           <h3>#{esc(s[:subject])}</h3>
           <div class="meta">#{esc(s[:file])}:#{s[:line]} &middot; #{esc(s[:operator])} &middot; <span class="id">#{esc(s[:id])}</span></div>
+          #{copies_html(s[:copies])}
           <pre class="diff">#{diff_lines}</pre>
           </div>
         CARD
@@ -504,6 +515,7 @@ module Mutineer
           <h3>#{esc(row[:subject])}</h3>
           <div class="meta">#{esc(row[:file])}:#{row[:line]} &middot; #{esc(row[:operator])} &middot; <span class="id">#{esc(row[:id])}</span></div>
           #{reason}
+          #{copies_html(row[:copies])}
           </div>
         CARD
       end.join("\n")
@@ -744,7 +756,7 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof)
       new_lines = side_lines(mutated_block, at_eof)
-      {
+      row = {
         subject: result.subject.qualified_name,
         file: file,
         line: start_line,
@@ -757,6 +769,7 @@ module Mutineer
               "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
               "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
+      attach_copies(row, result.id)
     end
 
     # One side of the diff as the file holds it: the {#diff_for} block plus the
@@ -829,21 +842,23 @@ module Mutineer
     def lean_mutant_json(subject, mutation, id)
       # Stub results in tests (and rare pre-attach kills) can lack a subject.
       # Match no_verdict_json: null fields rather than raising.
-      return {
-        subject: nil, file: nil, line: nil, operator: nil, token: nil, id: id
-      } if subject.nil? || mutation.nil?
+      if subject.nil? || mutation.nil?
+        return attach_copies({
+          subject: nil, file: nil, line: nil, operator: nil, token: nil, id: id
+        }, id)
+      end
 
       file = subject.file
       source = source_for(file)
       start_line, _orig, _mut, token = diff_for(mutation, source)
-      {
+      attach_copies({
         subject: subject.qualified_name,
         file: file,
         line: start_line,
         operator: mutation.operator.to_s,
         token: token,
         id: id
-      }
+      }, id)
     end
 
     # JSON for `--dry-run --format json`: every valid candidate with its stable
@@ -857,9 +872,14 @@ module Mutineer
     # @param declined [Hash{String => Integer}] operator name => declined count.
     # @param skipped_invalid [Integer] candidates that did not re-parse.
     # @param ignored [Integer] suppressed candidates.
+    # @param copies [Hash{String => Array<String>}] kept id => dropped repeat
+    #   ids (#374). Each listed mutant gains `copies` when it has any.
+    #   `summary.dropped` counts every id in `copies`, including a repeat of
+    #   an ignored mutant, which this document does not list.
     # @return [String] JSON text.
-    def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0)
+    def self.dry_run_json(jobs, source_map, declined: {}, skipped_invalid: 0, ignored: 0, copies: {})
       reporter = new(AggregateResult.new([]), source_map)
+      reporter.send(:apply_copies, copies)
       by_operator = Hash.new(0)
       mutants = jobs.map do |subject, mutation, id|
         by_operator[mutation.operator.to_s] += 1
@@ -874,6 +894,7 @@ module Mutineer
           total: mutants.size,
           skipped_invalid: skipped_invalid,
           ignored: ignored,
+          dropped: dropped_count_for(copies),
           declined: declined.values.sum,
           declined_by_operator: declined,
           by_operator: by_operator.sort.to_h
@@ -916,7 +937,7 @@ module Mutineer
       # As in result_line: diff_for needs the source, so a mutation needs a file.
       m = result.mutation if file
       line, _orig, _mut, token = diff_for(m, source_for(file)) if m
-      {
+      row = {
         subject: result.subject&.qualified_name,
         file: file,
         line: line,
@@ -926,6 +947,78 @@ module Mutineer
         status: result.status.to_s,
         details: result.details && Redaction.text(result.details)
       }
+      attach_copies(row, result.id)
+    end
+
+    # Adds `copies` when this mutant has dropped repeats (#374). Absent when
+    # it has none, so a report with no repeats keeps the previous keys.
+    #
+    # @api private
+    # @param row [Hash] one mutant's JSON object.
+    # @param id [String, nil] the kept mutant's id.
+    # @return [Hash] `row`.
+    def attach_copies(row, id)
+      list = @copies[id] if id
+      row[:copies] = list if list&.any?
+      row
+    end
+
+    # Stores the copy map for a reporter built outside {#report}, such as the
+    # dry-run document.
+    #
+    # @api private
+    # @param copies [Hash, nil] kept id => dropped ids.
+    # @return [void]
+    def apply_copies(copies)
+      @copies = copies || {}
+    end
+
+    # Dropped repeats of mutants this report lists. A skipped mutant has no
+    # row, so its repeats are not counted. `--fail-fast` omits unscheduled
+    # mutants, and their repeats with them.
+    #
+    # @api private
+    # @return [Integer]
+    def dropped_count
+      @agg.results.sum do |result|
+        next 0 if result.skipped? || result.id.nil?
+
+        @copies[result.id]&.size || 0
+      end
+    end
+
+    # The copy lists for `ids`, or every list when `ids` is nil.
+    #
+    # @param copies [Hash, nil] kept id => dropped ids.
+    # @param ids [Array<String>, nil] kept ids to keep.
+    # @return [Hash{String => Array<String>}]
+    def self.copies_for(copies, ids = nil)
+      map = copies || {}
+      return map if ids.nil?
+
+      wanted = ids.to_set
+      map.select { |id, _list| wanted.include?(id) }
+    end
+
+    # How many dropped ids `copies` holds. With `ids`, only those kept mutants.
+    #
+    # @param copies [Hash, nil] kept id => dropped ids.
+    # @param ids [Array<String>, nil] kept ids to count; nil counts every list.
+    # @return [Integer]
+    def self.dropped_count_for(copies, ids = nil)
+      copies_for(copies, ids).each_value.sum { |list| Array(list).size }
+    end
+
+    # The HTML line of dropped-copy ids, or "" when there are none.
+    #
+    # @api private
+    # @param copies [Array<String>, nil]
+    # @return [String]
+    def copies_html(copies)
+      return "" if copies.nil? || copies.empty?
+
+      ids = copies.map { |id| "<span class=\"id\">#{esc(id)}</span>" }.join(", ")
+      "<div class=\"meta\">copies #{ids}</div>"
     end
 
     # Writes the summary block.
@@ -969,6 +1062,8 @@ module Mutineer
       end
       # Equivalent mutants the user suppressed; excluded from the denominator.
       out.puts format("Ignored:      %-6d  (equivalent, suppressed)", @agg.ignored_count)
+      # Repeats that were not run (#374). The ids are on `copies` in the JSON.
+      out.puts format("Dropped:      %-6d  (repeats of a kept mutant; see --format json)", dropped_count)
       out.puts unpaired_line(scoped)
     end
 

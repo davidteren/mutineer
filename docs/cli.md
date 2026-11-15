@@ -50,7 +50,7 @@ Each expanded directory or glob prints its file count on stderr.
 Other commands:
 
 - `mutineer init [--rails] [--force]`
-- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`
+- `mutineer triage REPORT.json --reason TEXT (--id ID ... | --all)`. Prints one `ignore:` entry per survivor, and one per id in that survivor's `copies`. An id from `copies` selects that whole group. It writes nothing.
 - `mutineer migrate <source...> [--dry-run] [--operators LIST]`
 - `mutineer config cache_dir|baseline [run options]`: print the value `run` would use with these options and `.mutineer.yml`. An unset baseline prints nothing. It writes nothing. The GitHub Action uses it.
 

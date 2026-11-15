@@ -47,7 +47,9 @@ module Mutineer
         run --dry-run [options] <source...>          Print candidate mutations only
         triage REPORT.json --reason TEXT
             (--id ID ... | --all)                    Print ignore: entries for
-                                                     survivors. Does not edit files.
+                                                     survivors and for each copy
+                                                     dropped as a repeat of one.
+                                                     Does not edit files.
         migrate [options] <source...>                Rewrite old ignore ids in
                                                      .mutineer.yml. --dry-run prints
                                                      each change and writes nothing
@@ -1028,7 +1030,8 @@ module Mutineer
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
-                      unmutated_subjects: extras.fetch(:unmutated_subjects, []))
+                      unmutated_subjects: extras.fetch(:unmutated_subjects, []),
+                      copies: extras.fetch(:copies, {}))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -1219,9 +1222,15 @@ module Mutineer
       end
       skipped = invalid.size
 
+      # Copies of the mutants this dry run accounts for: the valid candidates
+      # it lists, and the ignored mutants a finished run lists. A candidate
+      # that does not re-parse is skipped and has no row, so its repeats are
+      # left out, as in a finished report (#374).
+      copies = Reporter.copies_for(extras[:copies], valid.map(&:last) + ignored_results.map(&:id))
+      dropped = Reporter.dropped_count_for(copies)
       if config.format == "json"
         rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
-                                         skipped_invalid: skipped, ignored: ignored)
+                                         skipped_invalid: skipped, ignored: ignored, copies: copies)
         if config.output
           abs = File.expand_path(config.output)
           File.write(abs, rendered)
@@ -1254,6 +1263,7 @@ module Mutineer
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
            "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
+           "#{dropped} dropped (repeats of a kept mutant); " \
            "#{declined_summary(extras[:declined], since: config.since)}; " \
            "#{dry_run_unpaired_clause(config, jobs)}; " \
            "#{unmutated_summary(unmutated.size, extras[:subjects], since: config.since)}"
