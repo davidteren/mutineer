@@ -1,0 +1,25 @@
+docs/equivalent-skips.md
+  s_065c506cad57f6::t_d9a73c5cf532f0 183
+test/mutators/collection_method_test.rb
+  s_065c506cad57f6::t_55d32428bc4c60 256-268
+docs/equivalent-skips.html
+  s_065c506cad57f6::t_d9a73c5cf532f0 133
+lib/mutineer/mutators/collection_method.rb
+  s_065c506cad57f6::t_971446012c6dd1 206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8dc64ea5730368117fa9bc4e485408ace275de54",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
