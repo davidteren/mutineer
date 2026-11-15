@@ -702,6 +702,18 @@ class ReporterTest < Minitest::Test
     refute_includes out.string.split("No mutants:").last, "not narrowed by --since"
   end
 
+  # #374: the summary counts dropped repeats, including zero.
+  def test_human_summary_counts_dropped_copies
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    assert_match(/Dropped:\s+0\s+\(repeats of a kept mutant; see --format json\)/, out.string)
+
+    kept = survivor_result.with(id: "kept00000001")
+    out = StringIO.new
+    reporter([kept]).report(out: out, err: StringIO.new, copies: { "kept00000001" => %w[drop00000001 drop00000002] })
+    assert_match(/Dropped:\s+2\s+\(repeats of a kept mutant; see --format json\)/, out.string)
+  end
+
   def test_human_summary_leaves_out_the_no_mutants_row_when_counts_are_unknown
     out = StringIO.new
     reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
