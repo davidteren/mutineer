@@ -113,7 +113,7 @@ module Mutineer
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
-      instance.instance_variable_set(:@project_root, project_root)
+      instance.instance_variable_set(:@project_root, FsPath.read(project_root))
       instance
     end
 
@@ -121,13 +121,13 @@ module Mutineer
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
                    framework: "minitest", verbose: false, require_paths: [], coverage_from: nil)
-      @source_paths = Array(source_paths)
-      @require_paths = Array(require_paths)
-      @test_paths   = Array(test_paths)
-      @cache_dir    = cache_dir
-      @coverage_from = coverage_from
-      @load_paths   = Array(load_paths)
-      @project_root = project_root
+      @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
+      @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
+      @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }
+      @cache_dir    = FsPath.read(cache_dir)
+      @coverage_from = coverage_from && FsPath.read(coverage_from)
+      @load_paths   = Array(load_paths).map { |path| FsPath.read(path) }
+      @project_root = FsPath.read(project_root)
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
       @framework    = framework || "minitest"
@@ -375,12 +375,43 @@ module Mutineer
 
     # True when a failed split test file pairs with this source. Directory and
     # the longer-source check match {Pairing}, so a test outside the mirror, or
-    # one owned by `user_session.rb`, does not taint `user.rb`.
+    # one owned by `user_session.rb`, does not taint `user.rb`. A concern with
+    # no test at its `concerns/` path also accepts a split name at its
+    # namespace path (#408). A longer concern owns that name only when it
+    # pairs with the file. A namespace spec leaves split names unpaired, so
+    # a failed split does not mark the concern.
     #
     # @param source_rel [String] project-relative source path.
     # @return [Boolean]
     def split_failed_test?(source_rel)
       base, lib = Pairing.logical_path(source_rel)
+      return true if failed_split_in?(base, lib, concern: false)
+
+      ns = Pairing.namespace_base(source_rel)
+      return false unless ns
+      return false if own_concern_test?(source_rel, ns)
+      return false if namespace_spec?(source_rel)
+
+      failed_split_in?(ns, false, concern: true)
+    end
+
+    # True when the concern's namespace pairing is one spec file.
+    # Split names do not join a spec, so a failed split must not mark it.
+    #
+    # @param source_rel [String] project-relative concern path.
+    # @return [Boolean]
+    def namespace_spec?(source_rel)
+      Pairing.infer_tests(source_rel, project_root: @project_root).any? { |t| t.end_with?("_spec.rb") }
+    end
+
+    # True when one failed split file in the mirror of `base` pairs with it.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param concern [Boolean] true for a concern's namespace mirror, so a
+    #   longer concern file can own the name.
+    # @return [Boolean]
+    def failed_split_in?(base, lib, concern:)
       name = File.basename(base)
       @failed_test_files.any? do |t|
         test_rel = relativize(t)
@@ -388,6 +419,7 @@ module Mutineer
         next false unless Pairing.split_entry?(entry, name)
         next false unless mirrored_test_dir?(test_rel, base, lib)
         next false if Pairing.claimed_by_longer_source?(@project_root, base, entry, File.dirname(test_rel))
+        next false if concern && Pairing.claimed_by_longer_concern?(@project_root, base, entry)
 
         true
       end
@@ -758,8 +790,11 @@ module Mutineer
             passed, report = run_clean_with_report([abs_test])
             # {file => {lines: [...], methods: {...}}}; reduce to the counts
             # array record() expects, keeping only our source files.
+            wanted = abs_sources.map { |path| FsPath.read(path) }
+            # Coverage keys are US-ASCII with invalid bytes under LC_ALL=C (#346).
             coverage = Coverage.result(stop: false)
-                               .select { |f, _| abs_sources.include?(f) }
+                               .to_h { |f, v| [FsPath.read(f), v] }
+                               .select { |f, _| wanted.include?(f) }
                                .transform_values { |v| v.is_a?(Hash) ? lines_with_called_defs(v) : v }
             { "passed" => passed, "coverage" => coverage,
               "failure_report" => passed ? nil : report,
@@ -1058,12 +1093,19 @@ module Mutineer
     end
 
     # Reads the one result line a {#spawn_script} child writes to fd
-    # {RESULT_FD}.
+    # {RESULT_FD}. The line is JSON and may name a non-ASCII path. The pipe
+    # follows the locale, so under `LC_ALL=C` those bytes arrive tagged
+    # US-ASCII and `JSON.parse` raises. The bytes are UTF-8 (#346).
     #
     # @api private
     # @param io [IO] the parent end of the result pipe.
     # @return [String] the line, or `""` at end of file.
-    def read_result_line(io) = io.gets.to_s
+    def read_result_line(io)
+      line = io.gets
+      return "" unless line
+
+      line.dup.force_encoding(Encoding::UTF_8)
+    end
 
     # Reads the one Marshal object a forked capture child writes, without
     # waiting for end of file.
@@ -1118,12 +1160,13 @@ module Mutineer
     # Ruby source that opens the result channel in a {#spawn_script} child. The
     # script runs it first, so no file that a test opens can take fd
     # {RESULT_FD}. Close-on-exec keeps the fd out of the test's own
-    # subprocesses.
+    # subprocesses. Binary mode writes the JSON bytes as they are, so a
+    # non-ASCII path is not rejected by an ASCII locale (#346).
     #
     # @api private
     # @return [String] Ruby script text.
     def result_channel_expression
-      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.close_on_exec = true"
+      "_result = IO.new(#{RESULT_FD}, \"w\"); _result.binmode; _result.close_on_exec = true"
     end
 
     # Runs test files in a fork of the booted parent and returns whether they
@@ -1235,17 +1278,19 @@ module Mutineer
       <<~RUBY
         #{result_channel_expression}
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
         Minitest.extensions << "mutineer_report"
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           Minitest::Runnable.reset
-          #{minitest_file_order_setup(test_paths.map { |t| absolute(t).inspect }.join(", "))}
+          #{minitest_file_order_setup(Array(test_paths).map { |t| FsPath.filesystem(absolute(t)).inspect }.join(", "))}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
@@ -1350,8 +1395,10 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "minitest"
         require "stringio"
+        Mutineer::FsPath.install_minitest_path_filter!
         def Minitest.autorun; end
         _report = StringIO.new
         Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
@@ -1359,11 +1406,11 @@ module Mutineer
         Coverage.start(lines: true, methods: true)
         $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
         begin
-          #{abs_preload_paths.inspect}.each { |f| require f }
+          #{abs_preload_paths.map { |path| FsPath.filesystem(path) }.inspect}.each { |f| require f }
           _load = #{load_coverage_expression}
           #{discard_load_counts_expression}
           Minitest::Runnable.reset
-          #{minitest_file_order_setup(absolute(test_path).inspect)}
+          #{minitest_file_order_setup(FsPath.filesystem(absolute(test_path)).inspect)}
         #{load_failure_rescue}
         end
         _passed = Minitest.run(#{minitest_seed_args_expression})
@@ -1450,6 +1497,7 @@ module Mutineer
         #{result_channel_expression}
         require "coverage"
         require "json"
+        require #{FsPath::PATH.inspect}
         require "stringio"
         begin
           require "rspec/core"
@@ -1722,9 +1770,9 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def load_coverage_expression
-      "Coverage.peek_result.select { |f, _| #{abs_source_paths.inspect}.include?((File.realpath(f) rescue f)) }" \
-        ".transform_values { |v| { \"lines\" => v[:lines], " \
-        "\"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } } }"
+      "Coverage.peek_result.filter_map { |f, v| key = Mutineer::FsPath.read((File.realpath(f) rescue f)); " \
+        "[key, { \"lines\" => v[:lines], \"methods\" => v[:methods].filter_map { |k, n| k[2, 2] if n.positive? } }] " \
+        "if #{abs_source_paths.map { |path| FsPath.read(path) }.inspect}.include?(key) }.to_h"
     end
 
     # Ruby that drops the line and method counts recorded while the sources
@@ -1743,17 +1791,19 @@ module Mutineer
     # `[start_line, start_column, count]`, so {#lines_with_called_defs} can
     # credit a `def` line the test called. A line that ran only while the
     # sources loaded is absent, because {#discard_load_counts_expression} ran
-    # first.
+    # first. Coverage keys are US-ASCII with invalid bytes under LC_ALL=C,
+    # so each key is read back with {FsPath.read} (#346).
     #
     # @api private
     # @return [String] statements for a capture subprocess script.
     def test_coverage_assignment
       <<~RUBY.chomp
         _raw = Coverage.result
-        _coverage = _raw.transform_values do |_v|
-          next _v unless _v.is_a?(Hash)
+        _coverage = _raw.to_h do |_f, _v|
+          next [Mutineer::FsPath.read(_f), _v] unless _v.is_a?(Hash)
 
-          { "lines" => _v[:lines], "methods" => (_v[:methods] || {}).map { |_k, _n| [_k[2], _k[3], _n] } }
+          [Mutineer::FsPath.read(_f),
+           { "lines" => _v[:lines], "methods" => (_v[:methods] || {}).map { |_k, _n| [_k[2], _k[3], _n] } }]
         end
       RUBY
     end
@@ -1781,9 +1831,13 @@ module Mutineer
     # @api private
     # @return [String] expression to embed in a capture subprocess script.
     def loaded_files_expression
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.end_with?(\".rb\"); abs = (File.realpath(f) rescue next); abs if abs.start_with?(_root) }; rescue StandardError; []; end"
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      # Byte prefix: a UTF-8 root and a binary loaded path must not raise.
+      # A raise here used to be rescued into an empty list, and an empty
+      # dependency hash then matched a stale cache (#346).
+      "begin; _root = #{prefix.inspect}; $LOADED_FEATURES.filter_map { |f| next unless f.b.end_with?(\".rb\".b); abs = (File.realpath(f) rescue next); Mutineer::FsPath.read(abs) if Mutineer::FsPath.bytes_start_with?(abs, _root) }; rescue StandardError; []; end"
     end
 
     # Canonical project root for loaded-feature matching (`/var` vs `/private/var`).
@@ -1797,13 +1851,14 @@ module Mutineer
     # @api private
     # @return [Array<String>] absolute realpaths.
     def capture_loaded_files
-      prefix = project_root_real
-      prefix = "#{prefix}/" unless prefix.end_with?("/")
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
       $LOADED_FEATURES.filter_map do |f|
-        next unless f.end_with?(".rb")
+        next unless f.b.end_with?(".rb".b)
 
         abs = File.realpath(f)
-        abs if abs.start_with?(prefix)
+        FsPath.read(abs) if FsPath.bytes_start_with?(abs, prefix)
       rescue Errno::ENOENT
         nil
       end
@@ -1834,11 +1889,12 @@ module Mutineer
     # @param abs [String] absolute realpath.
     # @return [String, nil]
     def loaded_relative(abs)
-      root = project_root_real
-      prefix = root.end_with?("/") ? root : "#{root}/"
-      return unless abs.start_with?(prefix)
+      root = FsPath.read(project_root_real)
+      prefix = root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      return unless FsPath.bytes_start_with?(abs, prefix)
 
-      abs.delete_prefix(prefix)
+      FsPath.bytes_delete_prefix(abs, prefix)
     end
 
     # Byte fingerprint of a file for cache dependency checks.
@@ -1922,7 +1978,10 @@ module Mutineer
     # Longer source files that can take a split test from a configured source.
     # Only their presence is digested. A content edit of a sibling does not
     # change pairing, and it does not rebuild coverage. Each directory is
-    # listed once, even when many sources share it.
+    # listed once, even when many sources share it. A concern also digests
+    # longer files in its namespace directory, because those files can own a
+    # namespace split name (#408). A model does not digest a concern file:
+    # the model keeps a split file it already pairs with.
     #
     # @return [Array<String>] project-relative paths, sorted.
     def ownership_paths
@@ -1933,26 +1992,39 @@ module Mutineer
         next [] if rel.start_with?("/")
 
         base, = Pairing.logical_path(rel)
-        name = File.basename(base)
-        dir = File.dirname(base)
-        folders = [dir == "." ? nil : dir]
-        %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
-        folders.uniq.flat_map do |folder|
-          abs = folder ? File.join(root, folder) : root
-          entries = listings.fetch(abs) do
-            listings[abs] = File.directory?(abs) ? Dir.children(abs) : []
-          end
-          entries.filter_map do |entry|
-            next unless entry.end_with?(".rb")
-
-            stem = entry.delete_suffix(".rb")
-            next unless stem.start_with?("#{name}_") && stem.length > name.length
-
-            folder ? File.join(folder, entry) : entry
-          end
-        end
+        bases = [base]
+        ns = Pairing.namespace_base(rel)
+        bases << ns if ns
+        bases.uniq.flat_map { |logical| owner_files(root, logical, listings) }
       end
       paths.uniq.sort
+    end
+
+    # Longer `.rb` files that can own a split name of `base`.
+    #
+    # @param root [String] expanded project root.
+    # @param base [String] logical source path without extension.
+    # @param listings [Hash{String => Array<String>}] directory children, filled once.
+    # @return [Array<String>] project-relative paths.
+    def owner_files(root, base, listings)
+      name = File.basename(base)
+      dir = File.dirname(base)
+      folders = [dir == "." ? nil : dir]
+      %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
+      folders.uniq.flat_map do |folder|
+        abs = folder ? File.join(root, folder) : root
+        entries = listings.fetch(abs) do
+          listings[abs] = File.directory?(abs) ? Dir.children(abs).map { |entry| FsPath.read(entry) } : []
+        end
+        entries.filter_map do |entry|
+          next unless entry.end_with?(".rb")
+
+          stem = entry.delete_suffix(".rb")
+          next unless stem.start_with?("#{name}_") && stem.length > name.length
+
+          folder ? File.join(folder, entry) : entry
+        end
+      end
     end
 
     # boot_path and require_paths are require-style paths (e.g. "config/environment",
@@ -1973,7 +2045,9 @@ module Mutineer
     # @return [Array(String, String, Array<String>)] grouped digest data.
     def digest_group(digest, role, paths)
       paths.sort.each do |p|
-        content = File.read(absolute(p))
+        # Bytes, not a locale read: a magic-comment encoding such as EUC-JP
+        # is not valid UTF-8, and the digest is of the file's bytes (#346).
+        content = File.binread(absolute(p))
         digest.update(role)
         digest.update("\0")
         digest.update(relativize(absolute(p)))

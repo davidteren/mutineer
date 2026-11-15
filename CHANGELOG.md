@@ -8,6 +8,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`run` says when an `ignore:` entry matches no mutant (#377).**
+  The warning names the id and says the list covers only that run's sources and operators.
+  The exit code stays 0.
+  `--format json` lists the ids in `summary.unmatched_ignores`, in file order, each id once.
+  `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+  `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
+  A run of some files warns about entries those files and operators do not match. The warning says so.
+  A source you passed that has no paired test still counts: its entries are not reported as unmatched, and `run` agrees with `run --dry-run` of the same files.
+  `--only` skips the check. The list is then empty, which does not mean every entry matched.
+  A dropped repeat of an edit counts as matched.
+  An old-format id that still matches is not in this list. The old-id warning still names it.
+  `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
+  That exit code is the CI check, in 1.x and after 2.0.
+  The key is part of schema `1.10`, which is not in a release yet, so `schema_version` stays `1.10`.
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has a test that pairs, exact or split.
+  A split owned by a longer source does not count.
+  A longer source keeps its file when that source pairs with it.
+  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
+  The longer concern does not add that file.
+  A namespace spec stays the only file. A failed split beside it does not mark the concern.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
 - **A report names the dropped copy of an edit (#374).**
   When two operators, or one operator twice, make the same change on one
   line, one copy runs and the other is dropped. The JSON report now lists
@@ -71,9 +102,8 @@ All notable changes to this project are documented here. The format is based on
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
   With `use-bundler: true`, the Gemfile picks the version.
-  A split name pairs only at the `concerns/` path.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
-  Namespace split names are issue #408 (pair split test files at a concern's namespace path).
+  A namespace split name pairs under #408.
 - **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now
@@ -243,6 +273,34 @@ All notable changes to this project are documented here. The format is based on
   A kill that only the unpaired test would have caught can become
   `ran_at_load` or a survivor. The checked fixtures do not hit that case.
   Issue #467 tracks that case and the run with no paired test.
+- **A non-ASCII path and a non-UTF-8 source no longer stop the run (#346).**
+  With `LANG` and `LC_ALL` unset, a source file, test file, or project
+  folder whose name is not ASCII made coverage fail, or the path missed
+  its match, so the run stopped or scored those mutants `no_coverage`.
+  Paths are read as UTF-8 when the bytes are UTF-8, and as binary
+  otherwise, and compared in that encoding. Minitest is given the path
+  in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
+  otherwise (under `LC_ALL=C` that encoding is already binary). Its
+  failure backtrace is retagged the same way, so a killed mutant is not
+  reported as an error. RSpec is given the
+  path as UTF-8, which its path regexp requires.
+  This covers the in-process coverage subprocess, the fork capture used
+  by `--rails` and `--daemon`, pairing (including a split test name),
+  and `--since` path keys.
+  A source file whose magic comment names an encoding (`# encoding: EUC-JP`,
+  and the other forms Ruby accepts) is read in that encoding. The comment
+  is taken from the first line, or the second after a shebang, within the
+  first 4096 bytes. The mutant keeps those bytes, so Ruby can load it.
+  The daemon receives the text through JSON, which is Unicode, and writes
+  the file back in the encoding the comment names. The comment forms are
+  the ones Ruby accepts, including an indented comment and a vim
+  `fileencoding` modeline. `# encoding=NAME` with no space is not one of
+  them. A file with no such comment is still read as UTF-8. A redefine
+  snippet has no comment of its own, so the write adds one when the
+  snippet is already in another encoding. The daemon still reads `db/schema.rb`
+  as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
+  ship Prism, and requiring Prism there would turn off worker-database
+  routing.
 - **The clean check and the mutant runs share one RSpec seed, and one order inside a Minitest file (#282).**
   A random RSpec order used a new seed in every process.
   The clean check and a mutant run could disagree, and a hang could score `killed` on one run and `timeout` on the next.

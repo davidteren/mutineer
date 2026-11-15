@@ -10,6 +10,7 @@ require_relative "redaction"
 require_relative "database_urls"
 require_relative "output_filter"
 require_relative "child_cause"
+require_relative "source_bytes"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -95,7 +96,9 @@ module Mutineer
         @errio = errio
         @output = output
         # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        # Replies are UTF-8 too, including a non-ASCII path (#346).
         input.set_encoding(Encoding::UTF_8)
+        output.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 
@@ -550,7 +553,9 @@ module Mutineer
           # Held until this block ends, including SIGKILL (the kernel drops it).
           # Another run's sweep sees the lock and does not delete the file.
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
-          f.write(payload.fetch("code"))
+          # JSON delivered Unicode. Write the encoding the comment names (#346).
+          f.binmode
+          f.write(SourceBytes.for_file(payload.fetch("code")))
           f.flush
           ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path, hook_def: hook)
         end
