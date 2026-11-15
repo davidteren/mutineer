@@ -253,6 +253,19 @@ class CollectionMethodTest < Minitest::Test
           end
         end
       RUBY
+      # Prism 2 has no RescueNode#consequent; this row reaches that branch.
+      ["rescue exception list is evaluated", <<~RUBY, [%w[map each], %w[each map]], 0],
+        def m
+          begin
+            work
+          rescue *errors.map { |error| error }
+            nil
+          rescue others.each { |error| error }
+            nil
+          end
+          :done
+        end
+      RUBY
       ["discarded string interpolation still calls to_s", <<~RUBY, [%w[each map]], 0],
         def m
           "\#{users.each { |user| user.notify }}"

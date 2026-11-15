@@ -180,7 +180,7 @@ The `collection_method` operator is not in the default set. Select it with `--op
 
 The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. It skips `each` and `map` when the call's result is discarded. For `Enumerable`, `each` returns the receiver and `map` returns a new array, so a discarded value is the same. A method of either name on another class can still differ, and the check does not see the class, so the skip can hide that difference. Each skipped call counts as declined.
 
-The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. One receiver is visible in the tree: a chain that calls `lazy`, as in `xs.lazy.each` or `xs.lazy.map { }.each`. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not, so that chain is still swapped. A lazy enumerator stored in a variable has no `lazy` call left in the chain, so a discarded statement on that variable is still skipped.
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. One receiver is visible in the tree: a chain that calls `lazy`, as in `xs.lazy.each` or `xs.lazy.map { }.each`. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not, so that chain is still swapped. A lazy enumerator stored in a variable has no `lazy` call left in the chain, so a discarded statement on that variable is still skipped (#468).
 
 The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
 

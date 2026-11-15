@@ -203,7 +203,7 @@ module Mutineer
 
           result_used?(parent)
         when Prism::RescueNode
-          if parent.statements.equal?(node) || parent.subsequent.equal?(node) || parent.consequent.equal?(node)
+          if parent.statements.equal?(node) || parent.subsequent.equal?(node)
             result_used?(parent)
           else
             true
