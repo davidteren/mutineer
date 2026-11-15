@@ -16,9 +16,12 @@ require_relative "project_path"
 require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
+require_relative "reach_probe"
 require_relative "job_plan"
 require_relative "rails_run_env"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Raised when the tool process cannot load a project file: the boot file, a
@@ -30,12 +33,20 @@ module Mutineer
     #   in the original `cause` chain, outermost first.
     attr_reader :causes
 
+    # @return [String, nil] an extra line when a source raises NameError
+    #   (including NoMethodError) and the run has no boot file. Nil for
+    #   every other load failure, including a NameError in the boot file
+    #   or a `require:` file.
+    attr_reader :hint
+
     # @param message [String] the redacted message.
     # @param causes [Array<String>] see {#causes}.
+    # @param hint [String, nil] see {#hint}.
     # @return [ProjectLoadError]
-    def initialize(message, causes: [])
+    def initialize(message, causes: [], hint: nil)
       super(message)
       @causes = causes
+      @hint = hint
     end
   end
 
@@ -68,8 +79,24 @@ module Mutineer
     def self.execute(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
+      # The ensure below reads these. Set them before anything that can raise.
+      filter_owned = false
+      urls_owned = false
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]
       RailsRunEnv.pin_process!
+      # The CLI installs the filter first and owns it for the report that
+      # follows this method. A library caller owns it for the run itself.
+      # Direct writes from a fork or a subprocess then go through the pipe (#341).
+      case OutputFilter.install
+      when :started
+        filter_owned = true
+      when :failed
+        raise "cannot redirect stdout and stderr for redaction"
+      end
+      if Redaction.extra_urls.empty?
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        urls_owned = true
+      end
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -89,23 +116,18 @@ module Mutineer
       end
 
       # Both strategies (whole-file reload and redefine, #279) write
-      # .mutineer_mutant*.rb into each source dir (so require_relative and
-      # __dir__ resolve). Redefine falls back to the system temp dir for a
-      # read-only source dir, which this sweep does not reach; the OS cleans
-      # it, as in 1.x. A SIGKILL'd child skips the tempfile's
-      # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
-      # PARENT sweeps each source dir before and after the run. Orphans are
-      # impossible after a normal run. The first sweep runs before the boot: a
-      # file an older version left without the dot would stop Zeitwerk (#253).
+      # .mutineer_mutant*.rb into each source dir. Redefine falls back to the
+      # system temp dir for a read-only source dir, which this sweep does not
+      # reach; the OS cleans it, as in 1.x. The snippet rewrites `__dir__`,
+      # `__FILE__`, and `require_relative` to the original file, so that
+      # fallback does not false-kill (#339). A SIGKILL'd child skips the
+      # tempfile's ensure-unlink, orphaning it. `ensure` is unreliable vs
+      # SIGKILL, so the PARENT sweeps each source dir before and after the run.
+      # Orphans are impossible after a normal run. The first sweep runs before
+      # the boot: a file an older version left without the dot would stop
+      # Zeitwerk (#253).
       dirs = JobPlan.source_dirs(config)
       JobPlan.sweep_orphans(dirs)
-      if config.strategy == "redefine"
-        dirs.reject { |d| File.writable?(d) }.each do |d|
-          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
-               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
-               "Make the directory writable to avoid this (#339)."
-        end
-      end
 
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
@@ -132,7 +154,13 @@ module Mutineer
         end
         require_project_file(config.project_root, config.boot)
       else
-        config.sources.each { |f| require_project_file(config.project_root, f) }
+        # No boot file, so each source loads here, and require: files load
+        # after this loop (#217). A NameError means the source named
+        # something that is not loaded yet; the hint points at boot:, which
+        # loads first (#376).
+        config.sources.each do |f|
+          require_project_file(config.project_root, f, on_name_error: SOURCE_NEEDS_BOOT_HINT)
+        end
       end
       config.require_paths.each { |f| require_project_file(config.project_root, f) }
       preload_owners(config) if config.boot && config.strategy == "redefine"
@@ -214,6 +242,10 @@ module Mutineer
     ensure
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
+      OutputFilter.uninstall if filter_owned
+      # The CLI set its own list before this method and restores it. Clear
+      # only the list this call loaded.
+      Redaction.extra_urls = [] if urls_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
@@ -396,35 +428,49 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
+      # A :maybe mutant records whether the mutated expression ran (#345).
+      sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      reach_key = sentinel && ReachProbe.reach_key
 
-      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
-        # Forking inherits the parent's live DB connection; sharing one socket
-        # across processes corrupts it. Drop it so AR reconnects per child.
-        reconnect_active_record if rails
-        if strategy == "redefine"
-          # Load each enclosing def too: its body holds the original nested def,
-          # which a call to it would define again over the mutant (#290).
-          Isolation.apply_surgical(mutation, subject, source)
-          s = subject
-          Isolation.apply_surgical(mutation, s, source) while (s = s.enclosing_subject)
-        elsif subject&.reload_hook_call
-          # #297: a def in a concern's hook block reaches each class that has it.
-          code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source)
-          Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
-        else
-          Isolation.apply_whole_file(mutated, source_file)
+      begin
+        result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
+          # Forking inherits the parent's live DB connection; sharing one socket
+          # across processes corrupts it. Drop it so AR reconnects per child.
+          reconnect_active_record if rails
+          if strategy == "redefine"
+            # Load each enclosing def too: its body holds the original nested def,
+            # which a call to it would define again over the mutant (#290).
+            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path, reach_key: reach_key)
+            s = subject
+            while (s = s.enclosing_subject)
+              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
+            end
+          elsif subject&.reload_hook_call
+            # #297: a def in a concern's hook block reaches each class that has it.
+            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                 reach_key: reach_key)
+            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
+          else
+            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
+                                        source_file)
+          end
+          # A reload can run the expression while the file loads. That is not
+          # a test reaching it (#345).
+          ReachProbe.forget_load(sentinel.path, reach_key) if sentinel
+          if channel
+            # --matrix: every covering test runs, and each outcome goes to the parent.
+            TestRunners.for(framework).run(abs_tests, record_to: channel)
+          else
+            # One failing test already kills the mutant, so the child stops there.
+            TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+          end
         end
-        if channel
-          # --matrix: every covering test runs, and each outcome goes to the parent.
-          TestRunners.for(framework).run(abs_tests, record_to: channel)
-        else
-          # One failing test already kills the mutant, so the child stops there.
-          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
-        end
+        result = relative_kills(result, coverage_map.project_root)
+        result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+        JobPlan.selection_verdict(kind, result, reached: ReachProbe.reached?(sentinel))
+      ensure
+        ReachProbe.close_sentinel(sentinel)
       end
-      result = relative_kills(result, coverage_map.project_root)
-      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-      JobPlan.selection_verdict(kind, result)
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project
@@ -507,6 +553,14 @@ module Mutineer
     end
     private_class_method :project_file!
 
+    # Extra line when a source raises NameError and the run has no boot file.
+    # `require:` files load after the sources, so they cannot define names the
+    # source needs while it loads (#376, #217).
+    SOURCE_NEEDS_BOOT_HINT = "a source that needs other files loaded first takes them from " \
+                             "`boot:` (or `--boot`), which loads before the sources; " \
+                             "`require:` files load after them"
+    private_constant :SOURCE_NEEDS_BOOT_HINT
+
     # Require one project file in the tool process. A failure becomes a
     # {ProjectLoadError} whose message, and each cause in its list, is
     # redacted. The original backtrace is kept; the cause is not, because
@@ -515,10 +569,13 @@ module Mutineer
     # @api private
     # @param root [String] the project root.
     # @param path [String] the path as the user gave it.
+    # @param on_name_error [String, nil] {ProjectLoadError#hint} when the file
+    #   raises NameError. Sources pass {SOURCE_NEEDS_BOOT_HINT}. The boot
+    #   file and `require:` files pass nil: those errors are not this case.
     # @raise [Errno::ENOENT] when the requested file does not exist.
     # @raise [ProjectLoadError] when the file raises while it loads.
     # @return [void]
-    def self.require_project_file(root, path)
+    def self.require_project_file(root, path, on_name_error: nil)
       # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
       # stays a usage error (exit 2), not a load failure.
       file = project_file!(root, path)
@@ -534,7 +591,13 @@ module Mutineer
           causes << Redaction.describe(cause)
           cause = cause.cause
         end
-        error = ProjectLoadError.new("cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}", causes: causes)
+        # The exception that escaped, not an exception it wrapped. A
+        # RuntimeError whose cause is a NameError is a different failure.
+        hint = on_name_error if e.is_a?(NameError)
+        error = ProjectLoadError.new(
+          "cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}",
+          causes: causes, hint: hint
+        )
         error.set_backtrace(e.backtrace)
         raise error, cause: nil
       end

@@ -60,6 +60,13 @@ module Mutineer
     # map (#421). A cache saved before these keys existed is rebuilt once.
     PARTIAL_CACHE_KEYS = %w[run_inputs sources skeletons tests load_method_bodies].freeze
 
+    # Key for the paired tests that kept load-only lines when the map was
+    # saved. {Pairing.infer_tests} reads files that are not in this run. An
+    # exact spec replaces split tests, and the content digest does not see a
+    # file the run did not select. A standalone hit rebuilds when this list
+    # no longer matches.
+    LOAD_LINE_PAIRS = "load_line_pairs"
+
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
                 :phase_a_ran, :map
 
@@ -1565,8 +1572,9 @@ module Mutineer
       end
     end
 
-    # True when a standalone cache was built with the #426 load-line rule.
-    # Boot and daemon maps never credited those lines to tests.
+    # True when a standalone cache was built with the #426 load-line rule
+    # and the same paired tests would keep load-only lines now. Boot and
+    # daemon maps never credited those lines to tests.
     #
     # @api private
     # @param cached [Hash] parsed coverage.json.
@@ -1574,7 +1582,37 @@ module Mutineer
     def standalone_load_lines_current?(cached)
       return true if @boot_path
 
-      cached[NARROW_LOAD_LINES] == true
+      cached[NARROW_LOAD_LINES] == true && load_line_pairs_match?(cached)
+    end
+
+    # The tests in this run that {#credit_load_only_line?} treats as paired,
+    # per source. An empty list means every test keeps the load-only lines.
+    #
+    # @api private
+    # @return [Hash{String => Array<String>}] project-relative source to sorted test paths.
+    def load_line_pairs
+      @source_paths.filter_map do |source|
+        rel = relativize(absolute(source))
+        next if rel.start_with?("/")
+
+        [rel, paired_tests_in_run(rel).sort]
+      end.to_h
+    end
+
+    # True when `cached` recorded the same {#load_line_pairs} this run has now.
+    # A missing key is a map saved before the pairing decision was stored.
+    #
+    # @api private
+    # @param cached [Hash] parsed coverage.json.
+    # @return [Boolean]
+    def load_line_pairs_match?(cached)
+      saved = cached[LOAD_LINE_PAIRS]
+      return false unless saved.is_a?(Hash)
+
+      current = load_line_pairs
+      return false unless saved.keys.sort == current.keys.sort
+
+      current.all? { |rel, tests| Array(saved[rel]).sort == tests }
     end
 
     # Adds the configured source lines that ran at load to {#load_lines}, and
@@ -2450,6 +2488,7 @@ module Mutineer
                NARROW_LOAD_LINES => true, "run_inputs" => run_inputs_digest,
                "sources" => source_fingerprints, "skeletons" => source_skeletons,
                "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies }
+      data[LOAD_LINE_PAIRS] = load_line_pairs unless @boot_path
       if @boot_path
         data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,
                     "owners" => ownership_paths)

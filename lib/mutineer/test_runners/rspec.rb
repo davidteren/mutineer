@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "../child_cause"
 require_relative "../kill_channel"
+require_relative "../minitest_integration/in_test_database_error"
 
 module Mutineer
   # Raised when the target project asks for a framework whose gem isn't present.
@@ -12,8 +14,10 @@ module Mutineer
     # Child-process-only RSpec runner.
     #
     # Mirrors MinitestIntegration's contract: run the given spec files and
-    # return 0 (all passed), 1 (an example failed) or 2 (only an error
-    # outside examples, such as a spec file that raised while loading).
+    # return 0 (all passed), 1 (an example failed) or 2 (no verdict). Exit 2
+    # is an error outside examples, such as a spec file that raised while
+    # loading, or a run whose first failed example failed with an Active
+    # Record connection or lock error (#347).
     module RSpec
       # The sink text from the most recent {.run} (#360 clean-failure detail).
       #
@@ -65,20 +69,85 @@ module Mutineer
         # early, so `end` needs a reported outcome for every planned example.
         KillChannel.write_end(record_to) if record_to && KillFormatter.last&.saw_every_example?
 
-        status.zero? ? 0 : failure_code
+        return 0 if status.zero?
+
+        code = failure_code
+        # Fixed cause when RSpec failed outside examples (#417 / KTD5). Status 2
+        # is also an in-example database error (#347), so test the predicate,
+        # not the status. Write here so failure_code stays a pure status helper.
+        ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES) if outside_examples?
+        code
       ensure
         FileOrder.rank = nil
       end
 
       # The exit status of a failed run: 2 when no example failed and RSpec
-      # recorded an error outside examples, else 1.
+      # recorded an error outside examples, or when the first failed example's
+      # own exception is an Active Record connection or lock error (#347).
+      # Otherwise 1.
+      #
+      # A later `after` hook is not the example's own exception. RSpec keeps
+      # the first one and wraps a later hook error around it, the same way
+      # Minitest records a teardown error after the setup or body error.
       #
       # @api private
       # @return [Integer] 1 or 2.
       def self.failure_code
+        return 2 if outside_examples?
+
+        if (error = first_failed_database_error)
+          MinitestIntegration::InTestDatabaseError.warn_database_error(error)
+          return 2
+        end
+
+        1
+      end
+
+      # True when RSpec recorded an error outside examples and no example failed.
+      #
+      # Exit status 2 is also an in-example database error ({.failure_code}).
+      # A cause line for the outside-examples case has to test this predicate,
+      # not a status of 2. Pull request #443 writes that cause when the status
+      # is 2; after this change that condition would label a database error as
+      # an error outside examples (#347, #417).
+      #
+      # @api private
+      # @return [Boolean]
+      def self.outside_examples?
         world = ::RSpec.world
-        outside_examples = world.respond_to?(:non_example_failure) && world.non_example_failure
-        outside_examples && ::RSpec.configuration.reporter.failed_examples.empty? ? 2 : 1
+        outside = world.respond_to?(:non_example_failure) && world.non_example_failure
+        !!(outside && ::RSpec.configuration.reporter.failed_examples.empty?)
+      end
+
+      # The database error of the first failed example, in run order, or nil
+      # when that example failed for another reason.
+      #
+      # @api private
+      # @return [Exception, nil]
+      def self.first_failed_database_error
+        example = ::RSpec.configuration.reporter.failed_examples.first
+        return unless example
+
+        error = primary_exception(example.exception)
+        error if MinitestIntegration::InTestDatabaseError.database_exception?(error)
+      rescue StandardError
+        nil
+      end
+
+      # The exception that ended the example, before a later hook error.
+      # `RSpec::Core::MultipleExceptionError` keeps that first exception at
+      # the front of `all_exceptions` and appends each later hook error.
+      #
+      # @api private
+      # @param error [Exception, nil]
+      # @return [Exception, nil]
+      def self.primary_exception(error)
+        nested = ::RSpec::Core::MultipleExceptionError
+        return error.all_exceptions.first if error.is_a?(nested) && error.respond_to?(:all_exceptions)
+
+        error
+      rescue StandardError
+        error
       end
 
       # Runs the top-level example groups in the order of `spec_files` (#203),
@@ -246,7 +315,8 @@ module Mutineer
         # @param notification [RSpec::Core::Notifications::FailedExampleNotification]
         # @return [void]
         def example_failed(notification)
-          send_event(KillChannel::KILL, notification.example)
+          example = notification.example
+          send_event(example_event(example), example)
           example_finished
           @failed = true
         end
@@ -310,9 +380,29 @@ module Mutineer
           KillChannel.write_unskip(@channel)
         end
 
+        # {KillChannel::UNAVAILABLE} when the example's own exception is a
+        # database error, otherwise {KillChannel::KILL}. A fault here is a
+        # kill: recording nothing would hide a failure, and raising would
+        # change the verdict.
+        #
+        # @param example [RSpec::Core::Example] the failed example.
+        # @return [String]
+        def example_event(example)
+          error = example.exception if example.respond_to?(:exception)
+          error = Mutineer::TestRunners::RSpec.primary_exception(error)
+          if error && Mutineer::MinitestIntegration::InTestDatabaseError.database_exception?(error)
+            KillChannel::UNAVAILABLE
+          else
+            KillChannel::KILL
+          end
+        rescue StandardError
+          KillChannel::KILL
+        end
+
         # Writes one test line for `example`.
         #
-        # @param event [String] {KillChannel::PASS} or {KillChannel::KILL}.
+        # @param event [String] {KillChannel::PASS}, {KillChannel::KILL}, or
+        #   {KillChannel::UNAVAILABLE}.
         # @param example [RSpec::Core::Example] the example.
         # @return [void]
         def send_event(event, example)

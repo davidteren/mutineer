@@ -279,8 +279,8 @@ class ReloadGuardsTest < Minitest::Test
     end
   end
 
-  def assert_same_list(expected, actual)
-    assert_equal expected.map(&:object_id), actual.to_a.map(&:object_id)
+  def assert_same_list(expected, actual, message = nil)
+    assert_equal expected.map(&:object_id), actual.to_a.map(&:object_id), message
   end
 
   # #390: a second run of the class body appended a new copy of the validator
@@ -461,10 +461,12 @@ class ReloadGuardsTest < Minitest::Test
   end
 
   # A new entry with no equivalent old one pairs by key only when that pairing
-  # is certain. Here a concern and the class body each had a validator of that
-  # kind, so a guess could drop the concern's: both old ones stay.
+  # is certain. Here a concern and the class body each validate :title with
+  # `minimum:`, and the mutant changed the body's number, so a guess could
+  # drop the concern's: both old ones stay. Different option names are not
+  # this case (#413).
   def test_an_unmatched_entry_with_two_candidates_keeps_every_copy
-    concern_entry = Callback.new(:before, Validator.new([:title], { maximum: 5 }))
+    concern_entry = Callback.new(:before, Validator.new([:title], { minimum: 1 }))
     old_body = Callback.new(:before, Validator.new([:title], { minimum: 2 }))
     new_body = Callback.new(:before, Validator.new([:title], { minimum: 3 }))
     klass = callback_class
@@ -500,19 +502,29 @@ class ReloadGuardsTest < Minitest::Test
   end
 
   # `&:name` blocks have no source and capture nothing, and callback classes
-  # can share class-level state. Each matches only itself, so the concern's
-  # entry stays. Rails caches `&:name` per symbol, so a real repeat still
-  # matches.
+  # can share class-level state. A different symbol, and a different class,
+  # are not the repeat, so the concern's entries stay. Ruby caches 67
+  # `&:name` procs; filling that cache makes the repeat a new object, and it
+  # still pairs by the symbol. The same class object still pairs by identity.
   def test_symbol_blocks_and_callback_classes_match_only_themselves
     concern_entries = [Callback.new(:before, :concern_hook.to_proc), Callback.new(:after, Class.new)]
-    old_body = [Callback.new(:before, :own_hook.to_proc), Callback.new(:after, Class.new)]
-    new_body = [Callback.new(:before, :own_hook.to_proc), Callback.new(:after, old_body[1].filter)]
+    old_hook = :own_hook.to_proc
+    old_body = [Callback.new(:before, old_hook), Callback.new(:after, Class.new)]
+    evict_symbol_proc_cache
+    new_hook = :own_hook.to_proc
+    refute_same old_hook, new_hook
+    new_body = [Callback.new(:before, new_hook), Callback.new(:after, old_body[1].filter)]
     klass = callback_class
     klass.__callbacks = { save: Chain.new(*concern_entries, *old_body, *new_body) }
 
     Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: concern_entries + old_body } }, [__FILE__])
 
     assert_same_list concern_entries + new_body, klass.__callbacks[:save]
+  end
+
+  # Ruby keeps 67 `Symbol#to_proc` results. One more name drops an older one.
+  def evict_symbol_proc_cache
+    80.times { |i| :"mutineer_cache_evict_#{i}".to_proc }
   end
 
   # Stands in for an ActiveSupport callback with `if:` conditions, which
@@ -581,5 +593,650 @@ class ReloadGuardsTest < Minitest::Test
     Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_body] } }, ["model.rb"])
 
     assert_same_list [concern_entry, new_body], klass.__callbacks[:save]
+  end
+
+  # #413: the key used to treat a different symbol, a different block, a
+  # different option name or a different condition as the same callback.
+  # The concern's entry then blocked the pair, and both copies of the class
+  # body's callback stayed. Each row is one real shape. The concern entry
+  # must stay, and the new body must take the old body's place.
+  def test_a_narrower_key_pairs_the_repeat_and_keeps_the_different_entry
+    paired = 0
+    pair_rows.each do |row|
+      concern, old_entry, new_entry = row.fetch(:entries)
+      assert_repeat_replaced(row.fetch(:label), concern, old_entry, new_entry, validators: row[:validators])
+      paired += 1
+    end
+    assert_operator paired, :>, 70, "the corpus must cover many real callback shapes"
+  end
+
+  # The same symbol, the same block code, the same option names or the same
+  # stateless object under the same condition is still ambiguous: the
+  # concern's copy could be the one the new entry repeats. Every copy stays.
+  # A fresh anonymous class is a new object with no code of its own, so it
+  # matches only itself too.
+  def test_an_identical_look_alike_still_keeps_every_copy
+    kept = 0
+    keep_rows.each do |row|
+      concern, old_entry, new_entry = row.fetch(:entries)
+      assert_every_copy_stays(row.fetch(:label), concern, old_entry, new_entry)
+      kept += 1
+    end
+    assert_operator kept, :>, 10, "the identical cases must cover each shape the key cannot split"
+  end
+
+  # `__FILE__` is the mutant path on the second load. The block is still the
+  # same callback, and a different block in the same class is not.
+  def test_a_block_that_reads_its_file_pairs_across_the_mutant_path
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "parcel.rb")
+      mutant = File.join(dir, "parcel.rb.mut")
+      File.write(source, FILE_PATH_CORPUS)
+      File.write(mutant, FILE_PATH_CORPUS)
+      load source
+      concern = FilePathCorpus::OTHER
+      old_block = FilePathCorpus::PROC
+      $VERBOSE = nil
+      load mutant
+      new_block = FilePathCorpus::PROC
+      refute_same old_block, new_block
+      refute_same old_block.binding.local_variable_get(:token), new_block.binding.local_variable_get(:token)
+
+      concern_entry = Callback.new(:before, concern)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, mutant])
+
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save]
+
+      shifted = File.join(dir, "parcel_shifted.rb")
+      File.write(shifted, FILE_PATH_CORPUS_SHIFTED)
+      $VERBOSE = nil
+      load shifted
+      shifted_block = FilePathCorpus::PROC
+      shifted_other = FilePathCorpus::OTHER
+      concern_entry = Callback.new(:before, shifted_other)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, shifted_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, shifted])
+
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save], "a mutant line above the block"
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :FilePathCorpus) if Object.const_defined?(:FilePathCorpus, false)
+  end
+
+  # A `rescue` or `ensure` stores a nested sequence whose path and lines
+  # differ on the mutant file. The repeat still pairs, and a different block
+  # in the same class stays.
+  def test_a_rescued_or_ensured_block_pairs_across_the_mutant_path
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "parcel.rb")
+      shifted = File.join(dir, "parcel_shifted.rb")
+      File.write(source, RESCUE_CORPUS)
+      File.write(shifted, RESCUE_CORPUS_SHIFTED)
+      $VERBOSE = nil
+      load source
+      old_rescue = RescueCorpus::PROC
+      old_ensured = RescueCorpus::ENSURED
+      load shifted
+      new_rescue = RescueCorpus::PROC
+      new_ensured = RescueCorpus::ENSURED
+      other = RescueCorpus::OTHER
+      refute_same old_rescue, new_rescue
+      refute_same old_rescue.binding.local_variable_get(:token), new_rescue.binding.local_variable_get(:token)
+
+      { rescue: [old_rescue, new_rescue], ensure: [old_ensured, new_ensured] }.each do |label, (old_block, new_block)|
+        concern_entry = Callback.new(:before, other)
+        old_entry = Callback.new(:before, old_block)
+        new_entry = Callback.new(:before, new_block)
+        klass = callback_class
+        klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+        Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, shifted])
+
+        assert_same_list [concern_entry, new_entry], klass.__callbacks[:save], label.to_s
+      end
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :RescueCorpus) if Object.const_defined?(:RescueCorpus, false)
+  end
+
+  # A mutant changed the callback body, so the compiled code no longer
+  # matches. The new body still replaces the old one when nothing else sits
+  # at that place. A concern block with the same label is that something
+  # else: every copy stays.
+  def test_a_mutated_block_pairs_only_when_its_place_is_unique
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "hook.rb")
+      mutant = File.join(dir, "hook_mut.rb")
+      File.write(source, MUTATED_CORPUS)
+      File.write(mutant, MUTATED_CORPUS_CHANGED)
+      $VERBOSE = nil
+      load source
+      old_block = MutatedCorpus.blocks[0]
+      other = MutatedCorpus.other
+      same_label = MutatedCorpus.blocks[1]
+      load mutant
+      new_block = MutatedCorpus.blocks[0]
+      refute_same old_block, new_block
+
+      alone = Callback.new(:before, old_block)
+      changed = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(alone, changed) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [alone] } }, [source, mutant])
+      assert_same_list [changed], klass.__callbacks[:save], "unique place"
+
+      concern_entry = Callback.new(:before, other)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, mutant])
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save], "different label"
+
+      concern_entry = Callback.new(:before, same_label)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, mutant])
+      assert_same_list [concern_entry, old_entry, new_entry], klass.__callbacks[:save], "same label"
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :MutatedCorpus) if Object.const_defined?(:MutatedCorpus, false)
+  end
+
+  # The callback body builds an array whose first string is the instruction
+  # sequence magic. That array is data, not a nested sequence, and the
+  # repeat still pairs across a file whose lines moved.
+  def test_a_block_that_builds_an_instruction_shaped_array_pairs
+    verbose = $VERBOSE
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "magic.rb")
+      shifted = File.join(dir, "magic_shifted.rb")
+      File.write(source, MAGIC_ARRAY_CORPUS)
+      File.write(shifted, MAGIC_ARRAY_CORPUS_SHIFTED)
+      $VERBOSE = nil
+      load source
+      old_block = MagicArrayCorpus::PROC
+      load shifted
+      new_block = MagicArrayCorpus::PROC
+      other = MagicArrayCorpus::OTHER
+      concern_entry = Callback.new(:before, other)
+      old_entry = Callback.new(:before, old_block)
+      new_entry = Callback.new(:before, new_block)
+      klass = callback_class
+      klass.__callbacks = { save: Chain.new(concern_entry, old_entry, new_entry) }
+
+      Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern_entry, old_entry] } }, [source, shifted])
+
+      assert_same_list [concern_entry, new_entry], klass.__callbacks[:save]
+    end
+  ensure
+    $VERBOSE = verbose if defined?(verbose)
+    Object.send(:remove_const, :MagicArrayCorpus) if Object.const_defined?(:MagicArrayCorpus, false)
+  end
+
+  # Two class bodies, one of which records the file path and a new object.
+  FILE_PATH_CORPUS = <<~RUBY
+    module FilePathCorpus
+      token = Object.new
+      PROC = proc { log(__FILE__, token) }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # The same callbacks with a line inserted above them, as a mutant can.
+  # The module name stays, so Ruby's block label stays too.
+  FILE_PATH_CORPUS_SHIFTED = <<~RUBY
+    module FilePathCorpus
+      # a mutant inserted this line
+      token = Object.new
+      PROC = proc { log(__FILE__, token) }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # A rescued callback and an ensured callback, then the same with a line
+  # inserted above them.
+  RESCUE_CORPUS = <<~RUBY
+    module RescueCorpus
+      token = Object.new
+      PROC = proc { update_audit(token) rescue nil }
+      ENSURED = proc do
+        update_audit(token)
+      ensure
+        stamp
+      end
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # The module name stays, so the block label stays. The inserted line moves
+  # the rescue and ensure bodies.
+  RESCUE_CORPUS_SHIFTED = <<~RUBY
+    module RescueCorpus
+      # a mutant inserted this line
+      token = Object.new
+      PROC = proc { update_audit(token) rescue nil }
+      ENSURED = proc do
+        update_audit(token)
+      ensure
+        stamp
+      end
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # A callback registered from a method, then the same method with the block
+  # body changed, as a mutant of that method does.
+  MUTATED_CORPUS = <<~RUBY
+    module MutatedCorpus
+      def self.blocks
+        [proc { audit }, proc { concern_only }]
+      end
+
+      def self.other
+        proc { stamp }
+      end
+    end
+  RUBY
+
+  MUTATED_CORPUS_CHANGED = <<~RUBY
+    module MutatedCorpus
+      def self.blocks
+        [proc { audit_changed }, proc { concern_only }]
+      end
+
+      def self.other
+        proc { stamp }
+      end
+    end
+  RUBY
+
+  # A block whose value is an array headed by the instruction-sequence magic.
+  MAGIC_ARRAY_CORPUS = <<~'RUBY'
+    module MagicArrayCorpus
+      PROC = proc { ["YARVInstructionSequence/SimpleDataFormat", 1, 2, 3, { a: 1 }, "label"] }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  MAGIC_ARRAY_CORPUS_SHIFTED = <<~'RUBY'
+    module MagicArrayCorpus
+      # a mutant inserted this line
+      PROC = proc { ["YARVInstructionSequence/SimpleDataFormat", 1, 2, 3, { a: 1 }, "label"] }
+      OTHER = proc { stamp }
+    end
+  RUBY
+
+  # A callback object with no instance variables.
+  class BareCallback
+    def call = nil
+  end
+
+  # Real `before_save(&:name)` names, including operators and names that need
+  # quotes. Each must pair with itself and not with `:concern_hook`.
+  SYMBOL_NAMES = (%i[
+    normalize validate touch save destroy create update lock unlock
+    changed? valid? invalid? persisted? new_record? draft? published?
+    admin? blank? present? to_s to_i to_a hash eql? freeze
+    + - * / % [] []= ! ~ <=> == ===
+  ] + [:"foo-bar", :"a b", :"x)", :"", :"with space"]).freeze
+
+  # Option hashes real validators take. The repeat changes a value and keeps
+  # the names. `presence:` stands in for the concern when the body uses
+  # something else, and `absence:` when the body already uses `presence:`.
+  OPTION_SHAPES = [
+    { presence: true },
+    { absence: true },
+    { uniqueness: true },
+    { acceptance: true },
+    { confirmation: true },
+    { minimum: 2 },
+    { maximum: 8 },
+    { is: 4 },
+    { in: %w[draft published] },
+    { within: (1..3) },
+    { with: /\A[a-z]+\z/ },
+    { greater_than: 0 },
+    { greater_than_or_equal_to: 0 },
+    { less_than: 10 },
+    { less_than_or_equal_to: 10 },
+    { only_integer: true },
+    { allow_nil: true, minimum: 1 },
+    { allow_blank: true, maximum: 20 },
+    { if: :draft?, minimum: 1 },
+    { unless: :published?, maximum: 5 },
+    { message: "taken" },
+    { too_short: "short", minimum: 3 },
+    { length: { minimum: 2 } },
+    { numericality: { greater_than: 0, only_integer: true } }
+  ].freeze
+
+  # Attribute lists from model validations.
+  ATTRIBUTES = [%i[title], %i[name], %i[slug], %i[weight], %i[status], %i[title name]].freeze
+
+  # @return [Array<Hash>] rows whose new entry must replace the old one.
+  def pair_rows
+    rows = SYMBOL_NAMES.map { |name| symbol_row(name) }
+    rows.concat(block_rows)
+    rows.concat(capture_rows)
+    rows.concat(option_rows)
+    rows.concat(attribute_rows)
+    rows.concat(condition_rows)
+    rows << { label: "same callback class", entries: class_entries(same_class: true) }
+    rows
+  end
+
+  # @return [Array<Hash>] rows whose three entries must all stay.
+  def keep_rows
+    rows = %i[normalize touch valid? + []].map { |name| same_symbol_row(name) }
+    rows.concat([
+                  { label: "same minimum:", entries: validator_entries({ minimum: 1 }, { minimum: 2 }, { minimum: 3 }) },
+                  { label: "same maximum:", entries: validator_entries({ maximum: 1 }, { maximum: 2 }, { maximum: 9 }) },
+                  { label: "same greater_than:", entries: validator_entries({ greater_than: 0 }, { greater_than: 1 }, { greater_than: 4 }) },
+                  { label: "same in:", entries: validator_entries({ in: %w[a] }, { in: %w[a b] }, { in: %w[a b c] }) },
+                  { label: "same message:", entries: validator_entries({ message: "a" }, { message: "b" }, { message: "c" }) }
+                ])
+    rows.concat([0, 3, 7].map { |index| { label: "same block #{index}", entries: identical_block_entries(index) } })
+    rows << { label: "same block code, new capture", entries: capture_entries }
+    rows << { label: "stateless object, same condition", entries: bare_entries(:published?, :published?) }
+    rows << { label: "stateless object, no condition", entries: bare_entries(nil, nil) }
+    rows << { label: "fresh anonymous class", entries: class_entries(same_class: false) }
+    rows
+  end
+
+  # @param name [Symbol]
+  # @return [Hash]
+  def same_symbol_row(name)
+    evict_symbol_proc_cache
+    concern = name.to_proc
+    evict_symbol_proc_cache
+    own = name.to_proc
+    evict_symbol_proc_cache
+    again = name.to_proc
+    refute_same own, again, name.inspect
+    { label: "same &:#{name}", entries: [Callback.new(:before, concern), Callback.new(:before, own), Callback.new(:before, again)] }
+  end
+
+  # @param name [Symbol]
+  # @return [Hash]
+  def symbol_row(name)
+    concern = :concern_hook.to_proc
+    old_proc = name.to_proc
+    evict_symbol_proc_cache
+    new_proc = name.to_proc
+    refute_same old_proc, new_proc, name.inspect
+    { label: "&:#{name}", entries: [Callback.new(:before, concern), Callback.new(:before, old_proc), Callback.new(:before, new_proc)] }
+  end
+
+  # Class-body blocks. One method builds every shape, including the concern's
+  # `concern_only` block, so they share a label and only the code tells them
+  # apart.
+  #
+  # @return [Array<Proc>]
+  def callback_blocks
+    [
+      proc { concern_only },
+      proc { throw :abort },
+      proc { |record| record.errors.add(:base, :invalid) },
+      proc { self.updated_at = Time.current },
+      proc { |record| record.title.blank? },
+      proc { |record| record.published? },
+      proc { normalize },
+      proc { |record| record.normalize },
+      proc { stamp },
+      proc { |record| record.touch },
+      proc { valid? },
+      proc { |record| record.draft? && record.title },
+      proc { |record| record.status == "open" },
+      proc { |record| record.comments.empty? },
+      proc { |record| record.weight > 10 },
+      proc { |record| record.weight >= 10 },
+      proc { |record| !record.locked? },
+      proc { |record| record.name.to_s.downcase },
+      proc { |record| record.slug.presence },
+      proc { |record| Array(record.tags).include?("a") },
+      proc { |record| record.errors.clear },
+      proc { |record| record.readonly! },
+      proc { |record| record.assign_attributes(title: record.title.to_s.strip) },
+      proc { |record| record.notify },
+      proc { draft? }
+    ]
+  end
+
+  # @return [Array<Hash>]
+  def block_rows
+    callback_blocks.each_with_index.filter_map do |_block, index|
+      next if index.zero?
+
+      { label: "block #{index}", entries: [Callback.new(:before, callback_blocks[0]), Callback.new(:before, callback_blocks[index]), Callback.new(:before, callback_blocks[index])] }
+    end
+  end
+
+  # @param index [Integer]
+  # @return [Array<Callback>]
+  def identical_block_entries(index)
+    [
+      Callback.new(:before, callback_blocks[index]),
+      Callback.new(:before, callback_blocks[index]),
+      Callback.new(:before, callback_blocks[index])
+    ]
+  end
+
+  # A new object, a time and a random value, closed over by different blocks.
+  # The `:stable` block shares this method, so it shares their label.
+  #
+  # @return [Array<Proc>]
+  def capture_blocks
+    object = Object.new
+    time = Time.now
+    number = rand
+    [
+      proc { :stable },
+      proc { object },
+      proc { [object, object] },
+      proc { time },
+      proc { time.to_i },
+      proc { number },
+      proc { number.zero? },
+      proc { |record| record.id == object },
+      proc { |record| record.created_at > time }
+    ]
+  end
+
+  # @return [Array<Hash>]
+  def capture_rows
+    capture_blocks.each_with_index.filter_map do |_block, index|
+      next if index.zero?
+
+      { label: "capture #{index}", entries: [Callback.new(:before, capture_blocks[0]), *capture_pair(index)] }
+    end
+  end
+
+  # @param index [Integer]
+  # @return [Array<Callback>]
+  def capture_pair(index)
+    [Callback.new(:before, capture_blocks[index]), Callback.new(:before, capture_blocks[index])]
+  end
+
+  # Three copies of the first capturing block. The captures differ on each
+  # call and the code does not, so the concern stays in the same bucket.
+  #
+  # @return [Array<Callback>]
+  def capture_entries
+    [
+      Callback.new(:before, capture_blocks[1]),
+      Callback.new(:before, capture_blocks[1]),
+      Callback.new(:before, capture_blocks[1])
+    ]
+  end
+
+  # @return [Array<Hash>]
+  def option_rows
+    OPTION_SHAPES.map do |shape|
+      concern_shape = shape.key?(:presence) ? { absence: true } : { presence: true }
+      { label: "options #{shape.keys.join('+')}", entries: validator_entries(concern_shape, shape, changed_values(shape)), validators: true }
+    end
+  end
+
+  # @return [Array<Hash>]
+  def attribute_rows
+    ATTRIBUTES.map do |attributes|
+      concern = Validator.new([:body], { minimum: 1 })
+      old_validator = Validator.new(attributes, { minimum: 2 })
+      new_validator = Validator.new(attributes, { minimum: 9 })
+      { label: "attributes #{attributes.join('+')}", entries: validator_callbacks(concern, old_validator, new_validator), validators: true }
+    end
+  end
+
+  # @param concern_options [Hash]
+  # @param old_options [Hash]
+  # @param new_options [Hash]
+  # @return [Array<Callback>]
+  def validator_entries(concern_options, old_options, new_options)
+    validator_callbacks(Validator.new([:title], concern_options), Validator.new([:title], old_options), Validator.new([:title], new_options))
+  end
+
+  # @param concern [Validator]
+  # @param old_validator [Validator]
+  # @param new_validator [Validator]
+  # @return [Array<Callback>]
+  def validator_callbacks(concern, old_validator, new_validator)
+    [Callback.new(:before, concern), Callback.new(:before, old_validator), Callback.new(:before, new_validator)]
+  end
+
+  # @param value [Object]
+  # @return [Object] `value` with leaf values changed and keys kept.
+  def changed_values(value)
+    case value
+    when Hash then value.to_h { |key, inner| [key, changed_values(inner)] }
+    when Array then value.map { |inner| changed_values(inner) }
+    when Integer then value + 7
+    when String then "#{value}!"
+    when Regexp then /changed/
+    when TrueClass, FalseClass then !value
+    when Range then (value.begin + 1)..(value.end + 1)
+    else value
+    end
+  end
+
+  # Both condition procs are built here, so they share a label.
+  #
+  # @return [Array<Proc>]
+  def condition_procs
+    [proc { draft? }, proc { published? }]
+  end
+
+  # @return [Array<Hash>]
+  def condition_rows
+    [
+      { label: "symbol condition", entries: bare_entries(:draft?, :published?) },
+      { label: "proc condition", entries: [guarded(BareCallback.new, condition_procs[0]), guarded(BareCallback.new, condition_procs[1]), guarded(BareCallback.new, condition_procs[1])] },
+      { label: "same class, symbol condition", entries: class_entries(same_class: true, concern_if: :draft?, body_if: :published?) },
+      { label: "unless symbol", entries: bare_unless(:draft?, :published?) },
+      { label: "unless proc", entries: [guarded(BareCallback.new, nil, unless_condition: condition_procs[0]), guarded(BareCallback.new, nil, unless_condition: condition_procs[1]), guarded(BareCallback.new, nil, unless_condition: condition_procs[1])] }
+    ]
+  end
+
+  # @param concern_if [Object, nil]
+  # @param body_if [Object, nil]
+  # @return [Array<Callback>]
+  def bare_entries(concern_if, body_if)
+    [
+      guarded(BareCallback.new, concern_if),
+      guarded(BareCallback.new, body_if),
+      guarded(BareCallback.new, body_if)
+    ]
+  end
+
+  # @param same_class [Boolean]
+  # @param concern_if [Object, nil]
+  # @param body_if [Object, nil]
+  # @return [Array<Callback>]
+  def class_entries(same_class:, concern_if: nil, body_if: nil)
+    stamp = Class.new
+    [
+      guarded(Class.new, concern_if),
+      guarded(stamp, body_if),
+      guarded(same_class ? stamp : Class.new, body_if)
+    ]
+  end
+
+  # @param concern_unless [Object]
+  # @param body_unless [Object]
+  # @return [Array<Callback>]
+  def bare_unless(concern_unless, body_unless)
+    [
+      guarded(BareCallback.new, nil, unless_condition: concern_unless),
+      guarded(BareCallback.new, nil, unless_condition: body_unless),
+      guarded(BareCallback.new, nil, unless_condition: body_unless)
+    ]
+  end
+
+  # @param filter [Object]
+  # @param condition [Object, nil]
+  # @param unless_condition [Object, nil]
+  # @return [Callback]
+  def guarded(filter, condition, unless_condition: nil)
+    callback = Callback.new(:before, filter)
+    callback.instance_variable_set(:@if, [condition]) if condition
+    callback.instance_variable_set(:@unless, [unless_condition]) if unless_condition
+    callback
+  end
+
+  # @param label [String]
+  # @param concern [Callback]
+  # @param old_entry [Callback]
+  # @param new_entry [Callback]
+  # @param validators [Boolean]
+  # @return [void]
+  def assert_repeat_replaced(label, concern, old_entry, new_entry, validators: false)
+    klass = chain_with(concern, old_entry, new_entry, validators: validators)
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern, old_entry] } }, [__FILE__])
+
+    assert_same_list [concern, new_entry], klass.__callbacks[:save], label
+    return unless validators
+
+    assert_same_list [concern.filter, new_entry.filter], klass._validators[:title], label
+  end
+
+  # @param label [String]
+  # @param concern [Callback]
+  # @param old_entry [Callback]
+  # @param new_entry [Callback]
+  # @return [void]
+  def assert_every_copy_stays(label, concern, old_entry, new_entry)
+    klass = chain_with(concern, old_entry, new_entry, validators: false)
+
+    Mutineer::ReloadGuards::RepeatedCallbacks.remove({ klass => { save: [concern, old_entry] } }, [__FILE__])
+
+    assert_same_list [concern, old_entry, new_entry], klass.__callbacks[:save], label
+  end
+
+  # @param concern [Callback]
+  # @param old_entry [Callback]
+  # @param new_entry [Callback]
+  # @param validators [Boolean]
+  # @return [Class]
+  def chain_with(concern, old_entry, new_entry, validators:)
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(concern, old_entry, new_entry) }
+    klass._validators = { title: [concern.filter, old_entry.filter, new_entry.filter] } if validators
+    klass
   end
 end

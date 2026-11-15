@@ -95,6 +95,19 @@ class SiteDocsTest < Minitest::Test
     assert_equal expected, markdown.scan(/^\| `(\w+)`/).flatten.sort
   end
 
+  # The endless-range section, not the rest of the page, states the literal rule.
+  def test_equivalent_skips_page_limits_the_endless_range_skip_to_literals
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="endless-range">.*\z/m]
+    markdown = File.read("docs/equivalent-skips.md")[/^## Endless range$.*\z/m]
+    [html, markdown].each do |section|
+      assert_includes section, "array or string literal"
+      refute_includes section, "capitals only"
+      refute_includes section, "a range in parentheses inside a slice"
+      assert_includes section, "ignore:"
+      assert_includes section, "hides every"
+    end
+  end
+
   # Every call whose endless-range arguments are skipped is named on both pages.
   def test_equivalent_skips_page_names_every_range_slice_call
     html = File.read("docs/equivalent-skips.html")
