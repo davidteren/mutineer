@@ -286,6 +286,22 @@ All notable changes to this project are documented here. The format is based on
   A kill that only the unpaired test would have caught can become
   `ran_at_load` or a survivor. The checked fixtures do not hit that case.
   Issue #467 tracks that case and the run with no paired test.
+- **A restored subclass skip keeps the reloaded parent conditions (#440).**
+  A parent callback with `if:` or `unless:`, and a subclass `skip_callback`
+  with `if:` or `unless:`, leave a merged copy on the subclass. Reloading
+  the parent appended the new callback and dropped that copy. The reload
+  then put the copy back, so the subclass still ran the parent's old
+  conditions. The copy is now built again from the reloaded callback, and
+  the subclass's own conditions are added the way `skip_callback` adds
+  them. A subclass callback that is not that copy stays as it was. So
+  does a copy left when the parent callback had no conditions (#414):
+  there is no parent condition object to carry, and a subclass callback
+  of the same name must not be rewritten. A parent condition that is only
+  a symbol, or another interned object, is also left on the old copy. An
+  independent subclass callback can name that same symbol, so the symbol
+  is not evidence of a `skip_callback` merge. A Proc copied from the
+  parent is evidence, and that Proc is carried. Redefine does not re-run
+  the class body, so it does not take this path. Reload and the daemon do.
 - **A non-ASCII path and a non-UTF-8 source no longer stop the run (#346).**
   With `LANG` and `LC_ALL` unset, a source file, test file, or project
   folder whose name is not ASCII made coverage fail, or the path missed

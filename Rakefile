@@ -11,6 +11,7 @@ DAEMON_TESTS = %w[
   test/runner_daemon_parallel_test.rb
   test/daemon_coverage_test.rb
   test/rails_dogfood_daemon_test.rb
+  test/rails_callback_restore_test.rb
   test/daemon_postgres_test.rb
   test/daemon_mysql_test.rb
 ].freeze
