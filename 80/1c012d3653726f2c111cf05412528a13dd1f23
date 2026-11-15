@@ -1,0 +1,19 @@
+lib/mutineer/runner.rb
+  s_33255704fef52c::t_89a79ec5125577 114,140,583-594
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "801c012d3653726f2c111cf05412528a13dd1f23",
+  "prompts": {},
+  "sessions": {
+    "s_33255704fef52c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65e9ba78-0ff7-42af-ab62-8a597c0b89d4",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
