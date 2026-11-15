@@ -181,8 +181,8 @@ Quote a pattern with braces inside a `[...]` list.
 Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. A change inside a method body, with no
 added or removed line and no change to a method that ran while the file loaded, recaptures the tests that
 cover that source, plus any test file that was added or edited. The map matches a full capture. A class-body
-edit, a load-time method, a `--require` file, or another project file the tests load still recaptures every
-test (#421).
+edit, an added or removed source line, a load-time method, a change to which test pairs with a source, a
+`--require` file, or another project file the tests load still recaptures every test (#421).
 
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 

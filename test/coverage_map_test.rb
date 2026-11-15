@@ -1370,6 +1370,26 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A kept test can load a file the run no longer selects. Dropping that
+  # test must keep the file's fingerprint, or a later edit to it reuses
+  # stale coverage on a cache hit.
+  def test_a_removed_test_file_that_a_kept_test_loads_stays_a_dependency
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir, mail_extra: 'require_relative "caller_test"')
+      kept = PARTIAL_TESTS - %w[test/caller_test.rb]
+      capture_io { partial_map(dir, cache) }
+      capture_io { partial_map(dir, cache, tests: kept) }
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_includes saved["dependencies"].keys, "test/caller_test.rb"
+
+      caller = File.join(dir, "test/caller_test.rb")
+      File.write(caller, "#{File.read(caller)}CALLER_EDIT = 1\n")
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache, tests: kept) } }
+      refute_empty captured_files(events), "an edit to a file a kept test loads must not be a cache hit"
+    end
+  end
+
   # A `--require` file is a run input. Changing it captures every test.
   def test_require_file_edit_recaptures_every_test
     Dir.mktmpdir do |dir|
@@ -1425,6 +1445,29 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A capture that failed last time (`failed_test_files`) is captured again
+  # on a partial run, even when it is not in the edited source's map, and
+  # the failure is cleared once it captures.
+  def test_partial_recapture_retries_a_previously_failed_capture
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      saved["failed_test_files"] = %w[test/mail_test.rb]
+      File.write(path, JSON.generate(saved))
+
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb], captured_files(events)
+      assert_empty partial.failed_test_files
+      assert_empty JSON.parse(File.read(path))["failed_test_files"]
+    end
+  end
+
   # A cache from before the partial-recapture keys is rebuilt once.
   def test_cache_without_run_inputs_recaptures_every_test
     Dir.mktmpdir do |dir|
@@ -1455,6 +1498,68 @@ class CoverageMapTest < Minitest::Test
       File.write(path, STANDALONE_PRICE.sub("class StandalonePrice", "class StandalonePrice # edited"))
       refute_equal original, map.send(:source_skeleton_digest, path)
     end
+  end
+
+  # The skeleton rule across real files, not one example: for defs in every
+  # `lib/` and fixture file, a same-line edit inside the body keeps the
+  # skeleton, a new line inside the body changes it, and so do an edit just
+  # before a `def` that is not inside another body and a same-line rename.
+  def test_source_skeleton_rule_holds_across_real_ruby_files
+    root = File.expand_path("..", __dir__)
+    files = Dir[File.join(root, "{lib,test/fixtures}/**/*.rb")].sort
+    checked = 0
+    skipped = 0
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      map = Mutineer::CoverageMap.new(source_paths: [path], test_paths: [], cache_dir: dir, project_root: dir)
+      digest = lambda do |text|
+        File.binwrite(path, text)
+        map.send(:source_skeleton_digest, path)
+      end
+      files.each do |file|
+        source = File.binread(file)
+        result = Prism.parse(source)
+        next unless result.errors.empty?
+
+        defs = []
+        map.send(:each_def, result.value) { |node| defs << node }
+        sample = defs.reject { |node| node.equal_loc || node.body.nil? }
+        sample = sample.values_at(0, sample.size / 2, -1).compact.uniq
+        original = digest.call(source)
+        next skipped += 1 if original.nil?
+
+        sample.each do |node|
+          body = node.body
+          first = body.is_a?(Prism::BeginNode) ? body.statements&.location : body.location
+          next skipped += 1 if first.nil?
+
+          at = first.start_offset
+          same_line = source.byteslice(0, at) + "nil; " + source.byteslice(at..)
+          new_line = source.byteslice(0, at) + "nil\n" + source.byteslice(at..)
+          start = node.location.start_offset
+          nested = defs.any? do |other|
+            loc = other.body&.location
+            !other.equal?(node) && loc && loc.start_offset <= start && start < loc.end_offset
+          end
+          before_def = source.byteslice(0, start) + "nil; " + source.byteslice(start..)
+          name_end = node.name_loc.end_offset
+          renamed = source.byteslice(0, name_end) + "_x" + source.byteslice(name_end..)
+          edited = [same_line, new_line, before_def, renamed].map { |text| [text, Prism.parse(text).errors.empty?] }
+          next skipped += 1 unless edited.all?(&:last)
+
+          label = "#{file.delete_prefix("#{root}/")}:#{node.location.start_line}"
+          # A nested def on the edited line moves; its position is part of the skeleton.
+          shifts_def = defs.any? { |other| other.location.start_line == first.start_line && other.location.start_offset >= at }
+          assert_equal original, digest.call(same_line), "same-line body edit at #{label}" unless shifts_def
+          refute_equal original, digest.call(new_line), "added body line at #{label}"
+          refute_equal original, digest.call(before_def), "edit before def at #{label}" unless nested
+          refute_equal original, digest.call(renamed), "same-line rename at #{label}" unless nested
+          checked += 1
+        end
+      end
+    end
+    assert_operator checked, :>=, 200, "too few defs checked (#{checked}, skipped #{skipped})"
+    assert_operator skipped, :<=, checked / 10, "too many inputs skipped (#{skipped} of #{checked + skipped})"
   end
 
   # Boot mode clears coverage before each test. A method-body edit recaptures

@@ -2111,7 +2111,8 @@ module Mutineer
       return false if !@boot_path && recapture.any? && partial_load_diverged?(cached)
 
       refresh_dependency_fingerprints(plan["changed_sources"] + recapture)
-      removed.each { |rel| @loaded_dependencies.delete(rel) }
+      # A removed test keeps its fingerprint: a kept test may still load
+      # that file, and the map does not record which test loaded what.
       sort_map_entries
       @phase_a_ran = true if recapture.any?
       warn_recaptured(recapture.size, @test_paths.size)
@@ -2298,7 +2299,8 @@ module Mutineer
       tuples = []
       each_def(result.value) do |node|
         loc = node.body&.location
-        ranges << [loc.start_offset, loc.end_offset] if loc && loc.end_offset > loc.start_offset
+        range = body_byte_range(node)
+        ranges << range if range
         tuples << [node.location.start_line, node.location.start_column, loc&.start_line, loc&.end_line]
       end
       digest = Digest::SHA256.new
@@ -2310,6 +2312,24 @@ module Mutineer
       digest.hexdigest
     rescue SystemCallError
       nil
+    end
+
+    # Byte range of the body of `node`, after its name and parameters. Nil
+    # when the body is empty. A `def` with `rescue` or `ensure` has a
+    # BeginNode body that starts at the `def` keyword, so the range starts
+    # where the signature ends: a same-line name or parameter edit is not a
+    # body edit.
+    #
+    # @api private
+    # @param node [Prism::DefNode] a method definition.
+    # @return [Array(Integer, Integer), nil] half-open byte range.
+    def body_byte_range(node)
+      loc = node.body&.location
+      return nil unless loc
+
+      signature_end = [node.name_loc, node.parameters&.location, node.rparen_loc].compact.map(&:end_offset).max
+      start = [loc.start_offset, signature_end].max
+      start < loc.end_offset ? [start, loc.end_offset] : nil
     end
 
     # `source` with every method-body byte range replaced by one marker.
