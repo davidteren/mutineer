@@ -30,6 +30,9 @@ module Mutineer
     # skipped invalid, or unpaired) before stderr warns. A warning only: it
     # never changes the exit code. {BROKEN_FLOOR} also applies, so one unrun
     # mutant never warns. `--fail-fast` leaves unpaired mutants out of this share.
+    # Measured on Fizzy at f220e4832 (#349): unplaceable plus skipped invalid were
+    # 0.12% with the default operators and at most 2.8% with all 21, so 10% stays.
+    # With its unpaired mutants the share was 15.2%. That warning is correct.
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
