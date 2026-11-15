@@ -2212,7 +2212,7 @@ module Mutineer
       end
       @load_paths.sort.each { |load_path| digest.update("loadpath\0#{load_path}\0") }
       digest.update("framework\0#{@framework}\0")
-      digest.update("seed\0#{MinitestIntegration.seed}\0") unless @framework == "rspec"
+      digest_test_seed(digest)
       digest.hexdigest
     end
 
@@ -2430,24 +2430,34 @@ module Mutineer
       end
       @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
       d.update("framework\0#{@framework}\0")
-      # The seed sets the test order, and the order can change which lines run (#282).
-      # Minitest: the configured seed. A test helper that changes SEED is not
-      # digested, like any other helper edit. RSpec: the pinned seed,
-      # SPEC_OPTS, and the project `.rspec` files. `~/.rspec` and a
-      # `config.seed` in a spec helper are not digested; a helper edit is
-      # seen when that file is part of the capture.
+      digest_test_seed(d)
+      d.hexdigest
+    end
+
+    # Adds the test seed inputs to `digest`. The seed sets the test order, and
+    # the order can change which lines run (#282). Minitest: the configured
+    # seed. A test helper that changes SEED is not digested, like any other
+    # helper edit. RSpec: the pinned seed, SPEC_OPTS, and the project `.rspec`
+    # files. `~/.rspec` and a `config.seed` in a spec helper are not digested;
+    # a helper edit is seen when that file is part of the capture.
+    # {#compute_digest} and {#run_inputs_digest} share this, so a seed change
+    # never reaches a partial recapture (#421).
+    #
+    # @api private
+    # @param digest [Digest::SHA256] the digest to update.
+    # @return [void]
+    def digest_test_seed(digest)
       if @framework == "rspec"
-        d.update("seed\0#{MinitestIntegration::PINNED_SEED}\0#{ENV['SPEC_OPTS']}\0")
+        digest.update("seed\0#{MinitestIntegration::PINNED_SEED}\0#{ENV['SPEC_OPTS']}\0")
         %w[.rspec .rspec-local].each do |name|
           path = File.join(@project_root, name)
-          d.update("rspec-opts\0#{name}\0")
-          d.update(File.file?(path) ? File.binread(path) : "")
-          d.update("\0")
+          digest.update("rspec-opts\0#{name}\0")
+          digest.update(File.file?(path) ? File.binread(path) : "")
+          digest.update("\0")
         end
       else
-        d.update("seed\0#{MinitestIntegration.seed}\0")
+        digest.update("seed\0#{MinitestIntegration.seed}\0")
       end
-      d.hexdigest
     end
 
     # Longer source files that can take a split test from a configured source.
