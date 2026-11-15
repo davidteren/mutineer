@@ -43,6 +43,8 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 ```
 
 Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
+A concern at `app/models/concerns/storage/totaled.rb` pairs with `test/models/concerns/storage/totaled_test.rb` or an unclaimed split test such as `test/models/concerns/storage/totaled_bytes_test.rb`.
+With no test there, it pairs with `test/models/storage/totaled_test.rb`, an unclaimed split test such as `test/models/storage/totaled_bytes_test.rb`, `test/models/storage/test_totaled.rb`, or `spec/models/storage/totaled_spec.rb`.
 See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
 
 ## Documentation
@@ -98,9 +100,12 @@ job runs it. SQLite file means a database file, not `:memory:`.
 - Postgres worker databases are copied once at the start; MySQL 8 worker databases are created then and the rows copied.
 - A test that commits rows outside a transaction leaves them in that worker's
   database, and the next mutant on that worker sees them. Rails parallel tests have the same limit.
-- RSpec: an example that fails with a database connection error scores
-  `killed`, not `errored`, so the score can read too high
+- RSpec: the first failed example with an Active Record connection or lock
+  error scores `errored`, on the same classes as Minitest
   ([#347](https://github.com/davidteren/mutineer/issues/347)).
+  On Rails 8, `ConnectionNotDefined` is a code error and still scores `killed`.
+  On Rails 7.2 that case raises `ConnectionNotEstablished` and scores `errored`.
+  Other statement errors still score `killed`.
 
 Mutineer sets `PARALLEL_WORKERS=1`, so a `parallelize` call in `test_helper.rb` starts no Rails workers during a mutant run.
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).
@@ -174,9 +179,12 @@ This gap is common in rushed tests and tests written by AI agents.
    test alone; a failure stops the run. With a cached map, only the tests that cover the sources run again,
    alone and together, because a mutant runs only those tests.
 4. **Run each mutant in a fork.** The parent loads code once, including the app with `--rails`.
+   A source that needs other files loaded first can use `--boot` or `boot:`, or be listed after the file that loads them.
+   Without a boot file, `require:` files load after the sources.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
    Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test.
+   The clean check and each mutant run share one seed: Minitest uses `SEED` or `1`, and a random RSpec order uses seed `1` unless the suite sets one. See the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
    Score: `killed / (killed + survived)`. In coverage-guided runs, timeouts, errors, and uncovered lines count as neither; `--test-command` has no coverage, so a mutant no test reaches survives.
 
@@ -203,6 +211,13 @@ mutineer migrate <source...> [--dry-run] [--operators LIST]
 mutineer config cache_dir|baseline [run options]
 ```
 
+`mutineer triage REPORT.json --reason TEXT` prints `ignore:` entries and does not edit files.
+`--id ID` selects one survivor. Repeat `--id` for several. `--all` selects every survivor.
+A copy id selects that survivor and every id in its `copies`.
+Paste every entry. An entry ignores only its own id.
+
+`migrate --dry-run` lists `ignore:` entries that match no mutant in the sources and operators you pass. It writes nothing and exits 1 when any entry matches nothing. Run it over every source. `run` warns once for each such entry in that run, lists the ids under `summary.unmatched_ignores`, and still exits 0. `--since` does not warn about an entry whose mutant sits outside the diff. A run of some files warns only about entries those files and operators do not match. A source you passed that has no paired test is skipped, but its mutants still count for ignore matching, so `run` and `run --dry-run` agree; they stay out of the score and cannot fail `--threshold` (see [unpaired counts](https://github.com/davidteren/mutineer/blob/main/docs/json-schema.md)). `--only` skips the check. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
+
 ### Options
 
 Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md).
@@ -214,6 +229,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
+| `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb`. `require:` files load after this file |
 | `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
 | `--jobs N` | Worker count; default: one per CPU |
 | `--format human\|json\|html` | Report format; default: human |

@@ -1,0 +1,6 @@
+# encoding: EUC-JP
+class Calc
+  def add(a, b) # дв
+    a + b
+  end
+end

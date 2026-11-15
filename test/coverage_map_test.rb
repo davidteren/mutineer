@@ -652,7 +652,7 @@ class CoverageMapTest < Minitest::Test
     cases = {
       "an unchanged project" => [->(_root, _cache) {}, nil],
       "a changed test" => [->(root, _cache) { File.write(File.join(root, "beta_test.rb"), "\n", mode: "a") },
-                           /tests, --require files, boot file, load paths, framework or Minitest seed differ/],
+                           /tests, --require files, boot file, load paths, framework or test seed differ/],
       "a changed source" => [->(root, _cache) { File.write(File.join(root, "alpha.rb"), "\n", mode: "a") },
                              /alpha\.rb changed since the capture/],
       "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
@@ -980,21 +980,34 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
-  # The seed sets the Minitest test order, so a map captured under another
-  # seed is not reused (#282). RSpec does not use it.
+  # The seed sets the test order, so a map captured under another seed is not
+  # reused (#282). Minitest reads SEED. RSpec reads the pinned seed and SPEC_OPTS.
   def test_digest_is_minitest_seed_sensitive
     Dir.mktmpdir do |dir|
-      digest = lambda do |seed, framework|
+      digest = lambda do |seed, framework, spec_opts: nil|
         prior = ENV.fetch("SEED", nil)
+        prior_opts = ENV.fetch("SPEC_OPTS", nil)
         seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+        spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
         Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
                                   framework: framework).send(:compute_digest)
       ensure
         prior ? ENV["SEED"] = prior : ENV.delete("SEED")
+        prior_opts ? ENV["SPEC_OPTS"] = prior_opts : ENV.delete("SPEC_OPTS")
       end
       refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest")
       assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest")
       assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec")
+      refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2")
+      bare = digest.call(nil, "rspec")
+      File.write(File.join(dir, ".rspec"), "--seed 7\n")
+      with_file = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                            framework: "rspec").send(:compute_digest)
+      refute_equal bare, with_file
+      File.write(File.join(dir, ".rspec"), "--seed 8\n")
+      changed = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                          framework: "rspec").send(:compute_digest)
+      refute_equal with_file, changed
     end
   end
 
@@ -1085,6 +1098,23 @@ class CoverageMapTest < Minitest::Test
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/crash_test.rb"], project_root: dir,
                                           timings: slow_start.merge("test/crash_test.rb" => 0.01))
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
+  end
+
+  # A concern's namespace split runs before a cheaper unrelated file.
+  def test_order_tests_puts_a_concern_namespace_split_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "app/models/concerns/storage/totaled.rb"
+    paired = "test/models/storage/totaled_bytes_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
   end
 
   # A concern's namespace test runs before a cheaper unrelated file.
@@ -1798,26 +1828,111 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
-  # A split name at the namespace path does not mark the concern.
-  def test_failing_split_name_at_the_namespace_path_does_not_taint_the_concern
+  # A failed split name at the namespace path marks the concern.
+  def test_failing_split_name_at_the_namespace_path_marks_the_concern
     Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      assert map.uncapturable_source?(src)
+      assert map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A longer model owns the namespace split, so the failed file does not mark
+  # the concern. The model is the source that pairs with the file.
+  def test_failing_namespace_split_owned_by_a_longer_model_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      FileUtils.mkdir_p(File.dirname(longer))
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+      assert map.uncapturable_source?(longer)
+    end
+  end
+
+  # A namespace spec leaves split names unpaired. A failed split must not
+  # mark the concern when that spec is the paired file.
+  def test_failing_namespace_split_does_not_taint_a_concern_paired_with_a_spec
+    Dir.mktmpdir do |dir|
+      spec = File.join(dir, "spec/models/storage/totaled_spec.rb")
+      FileUtils.mkdir_p(File.dirname(spec))
+      File.write(spec, "# spec\n")
       map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
       refute map.uncapturable_source?(src)
       refute map.method_uncapturable?(src, 3..5)
     end
   end
 
+  # The longer concern already has a concerns-path test, so it does not run
+  # the namespace split. A failed copy marks the shorter concern, which does.
+  def test_failing_namespace_split_marks_the_shorter_concern_when_the_longer_one_has_its_own_test
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      own = "test/models/concerns/user_session_test.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, own].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "module M; def n; 1; end; end\n")
+      end
+      bad = File.join(dir, bad_rel)
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [bad],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      assert map.uncapturable_source?(File.join(dir, shorter))
+      refute map.uncapturable_source?(File.join(dir, longer_rel))
+    end
+  end
+
+  # A longer concern owns the namespace split. The shorter concern stays a
+  # coverage gap. The longer concern is the one the failed file marks.
+  def test_failing_namespace_split_owned_by_a_longer_concern_marks_that_concern
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, bad_rel].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, rel == bad_rel ? "require 'does/not/exist'\n" : "module M; def n; 1; end; end\n")
+      end
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [File.join(dir, bad_rel)],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      refute map.uncapturable_source?(File.join(dir, shorter))
+      assert map.uncapturable_source?(File.join(dir, longer_rel))
+    end
+  end
+
   # A test at the concerns path wins, so a failed namespace test does not
   # mark the concern. Pairing would not run the namespace test for it.
+  # An exact name and a split name at the namespace path follow the same rule.
   def test_failing_namespace_test_does_not_taint_a_concern_with_its_own_test
-    %w[test/models/concerns/storage/totaled_test.rb
-       test/models/concerns/storage/totaled_sum_test.rb].each do |own|
-      Dir.mktmpdir do |dir|
-        FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
-        File.write(File.join(dir, own), "# exists\n")
-        map, src = concern_namespace_capture(dir, "test/models/storage/totaled_test.rb")
-        refute map.uncapturable_source?(src), own
-        refute map.method_uncapturable?(src, 3..5), own
+    %w[test/models/storage/totaled_test.rb
+       test/models/storage/totaled_bytes_test.rb].each do |failed|
+      %w[test/models/concerns/storage/totaled_test.rb
+         test/models/concerns/storage/totaled_sum_test.rb].each do |own|
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
+          File.write(File.join(dir, own), "# exists\n")
+          map, src = concern_namespace_capture(dir, failed)
+          refute map.uncapturable_source?(src), "#{own} vs #{failed}"
+          refute map.method_uncapturable?(src, 3..5), "#{own} vs #{failed}"
+        end
       end
     end
   end
@@ -1937,6 +2052,41 @@ class CoverageMapTest < Minitest::Test
       end
       assert rebuilt.phase_a_ran, "deleting the longer source must rebuild coverage"
       refute rebuilt.uncapturable_source?(user)
+    end
+  end
+
+  # A longer file in the namespace directory owns the concern's split name.
+  # Deleting it changes the digest, so the next run captures again.
+  def test_deleting_a_namespace_longer_source_rebuilds_a_concern
+    Dir.mktmpdir do |dir|
+      concern = File.join(dir, "app/models/concerns/storage/totaled.rb")
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      bad = File.join(dir, "test/models/storage/totaled_bytes_extra_test.rb")
+      [concern, longer, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(concern, "module Storage\n  module Totaled\n    def total(a, b)\n      a + b\n    end\n  end\nend\n")
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
+      File.write(bad, <<~RUBY)
+        sibling = File.expand_path("../../../app/models/storage/totaled_bytes.rb", __dir__)
+        raise "sibling present" if File.file?(sibling)
+      RUBY
+      first = nil
+      capture_subprocess_io do
+        first = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                          cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute_empty first.failed_test_files
+      refute first.uncapturable_source?(concern)
+
+      File.delete(longer)
+      refute first.uncapturable_source?(concern), "the stored blame stays with this map"
+
+      rebuilt = nil
+      capture_subprocess_io do
+        rebuilt = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                            cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert rebuilt.phase_a_ran, "deleting the namespace owner must rebuild coverage"
+      refute rebuilt.uncapturable_source?(concern)
     end
   end
 

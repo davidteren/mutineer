@@ -76,12 +76,18 @@ mutineer run --dry-run lib/discount.rb
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
 | `--rails` | Boot `config/environment` once; without `--daemon`, defaults to `redefine` and runs serially |
+| `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb` |
 | `--daemon` | Persistent daemon + per-worker DB isolation (needs `--rails` / `--boot`) |
 | `--timeout SECONDS` | Per-mutant time limit for in-process runs (default: 10); raise it for a slow suite |
 | `--dry-run` | List candidate mutations without executing |
 | `--matrix` | Run every covering test for each mutant and name the blind and redundant tests; the JSON report also lists each mutant's killers (in-process only; RSpec 3.3+) |
 
 Typed flags override `.mutineer.yml`. Every flag with its default: [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md), `mutineer --help`, or the [README](https://github.com/davidteren/mutineer/blob/main/README.md).
+
+Runs that Mutineer starts share one seed.
+Minitest uses `SEED` or `1`.
+A random RSpec order uses seed `1` unless the suite sets one.
+See [Test order](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).
 
 `--test-command` forces one Mutineer worker. It also sets `PARALLEL_WORKERS=1`
 for Rails tests. A script that sets this variable again can start Rails test

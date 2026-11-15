@@ -72,6 +72,9 @@ class DaemonClientTest < Minitest::Test
       raised = ORIGINAL.sub("quantity * unit_price_cents",
                             'raise ActiveRecord::ConnectionNotEstablished, "gone"')
       assert_equal "error", run_payload(client, 2, raised)
+      # #417: the armed cause pipe names the DB error on the daemon reply too.
+      assert_equal "a test failed with a database error: ActiveRecord::ConnectionNotEstablished: gone",
+                   client.last_cause
 
       bad_sql = ORIGINAL.sub("quantity * unit_price_cents", 'raise ActiveRecord::StatementInvalid, "bad SQL"')
       assert_equal "killed", run_payload(client, 3, bad_sql)

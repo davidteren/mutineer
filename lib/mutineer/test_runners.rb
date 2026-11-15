@@ -9,8 +9,9 @@ module Mutineer
   # Each runner responds to
   # `.run(files, stop_at_first_failure: false, record_to: nil) -> 0/1/2`
   # (0 = all passed, 1 = any failure, 2 = no verdict: an error outside tests,
-  # which the RSpec runner reports, or a Minitest run whose first failure was
-  # an Active Record connection or lock error, #296) and is called only inside
+  # which the RSpec runner reports, or a run whose first failure was an Active
+  # Record connection or lock error, on Minitest and on RSpec, #296, #347) and
+  # is called only inside
   # a forked child.
   # Only the mutant path passes `stop_at_first_failure: true`; a `--matrix`
   # mutant run passes `record_to:` instead (a {KillChannel} pipe) and runs every

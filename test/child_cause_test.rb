@@ -127,6 +127,59 @@ class ChildCauseTest < Minitest::Test
     wr.close
   end
 
+  # #417: suite code writes through the armed pipe without holding the IO.
+  def test_armed_write_text_reaches_the_parent
+    rd, wr = IO.pipe
+    wr.sync = true
+    pid = fork do
+      rd.close
+      Mutineer::ChildCause.arm!(wr, Process.pid)
+      Mutineer::ChildCause.write_text(Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES)
+      Mutineer::ChildCause.disarm!
+      exit!(2)
+    end
+    wr.close
+    Process.wait(pid)
+
+    assert_equal Mutineer::ChildCause::RSPEC_OUTSIDE_EXAMPLES, Mutineer::ChildCause.read(rd)
+  ensure
+    rd&.close
+    wr&.close unless wr&.closed?
+    Mutineer::ChildCause.disarm!
+  end
+
+  def test_write_text_does_nothing_when_not_armed
+    rd, wr = IO.pipe
+    wr.sync = true
+    Mutineer::ChildCause.disarm!
+    Mutineer::ChildCause.write_text("should not appear")
+    wr.close
+
+    assert_nil Mutineer::ChildCause.read(rd)
+  ensure
+    rd&.close
+    wr&.close unless wr&.closed?
+  end
+
+  def test_armed_write_error_names_the_exception
+    rd, wr = IO.pipe
+    wr.sync = true
+    pid = fork do
+      rd.close
+      Mutineer::ChildCause.arm!(wr, Process.pid)
+      Mutineer::ChildCause.write_error(ArgumentError.new("enum declared twice"))
+      exit!(2)
+    end
+    wr.close
+    Process.wait(pid)
+
+    assert_equal "ArgumentError: enum declared twice", Mutineer::ChildCause.read(rd)
+  ensure
+    rd&.close
+    wr&.close unless wr&.closed?
+    Mutineer::ChildCause.disarm!
+  end
+
   private
 
   def with_database_url(url)

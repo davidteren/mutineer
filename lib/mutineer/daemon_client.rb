@@ -372,9 +372,12 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Replies are UTF-8 JSON: with LANG unset the pipe would read as
-          # US-ASCII (#303). The stderr drain reads bytes and marks each line
-          # UTF-8 itself (write_redacted).
+          # Requests and replies are UTF-8 JSON, so both pipes are tagged
+          # UTF-8 and do not depend on LANG (#303, #346). `JSON.generate`
+          # already returns UTF-8; the stdin tag keeps a later write of a
+          # UTF-8 string from being converted. The stderr drain reads bytes
+          # and marks each line UTF-8 itself (write_redacted).
+          @stdin.set_encoding(Encoding::UTF_8)
           @stdout.set_encoding(Encoding::UTF_8)
           # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
           # redacted line by line (#288: the app's output goes through here too).
@@ -473,27 +476,53 @@ module Mutineer
           next
         end
         pending << chunk.b
-        while (cut = pending.index("\n"))
-          line = pending.slice!(0..cut)
-          writable &&= write_redacted(line)
-        end
+        # Nothing new can be emitted before a newline, so a long line is not
+        # rescanned on every read.
+        next unless chunk.include?("\n")
+
+        ready, pending = Redaction.take_redactable(pending, flush: false)
+        writable &&= write_redacted(ready) if writable && !ready.empty?
       end
-      write_redacted(pending) if writable && !pending.empty?
+      if writable && !pending.empty?
+        ready, = Redaction.take_redactable(pending, flush: true)
+        write_redacted(ready) unless ready.empty?
+      end
       nil
     rescue StandardError
       nil
     end
 
-    # Write one line of daemon stderr to the tool's stderr, redacted.
+    # Write daemon stderr to the tool's stderr, redacted. One line at a time,
+    # unless a password form itself contains a newline: then the chunk is one
+    # redaction so the form is not split. A failed redaction still keeps each
+    # ordinary line's break.
     #
-    # @param line [String] raw bytes, with or without the trailing newline.
+    # @param chunk [String] raw bytes, with or without a trailing newline.
     # @return [Boolean] false when the write failed.
-    def write_redacted(line)
-      body = line.chomp("\n").force_encoding(Encoding::UTF_8).scrub # an invalid byte must not stop the drain
-      @errio.write(Redaction.text(body), line.end_with?("\n") ? "\n" : "")
+    def write_redacted(chunk)
+      return true if chunk.nil? || chunk.empty?
+
+      if chunk.include?("\n") && Redaction.newline_forms.any?
+        write_redacted_piece(chunk)
+      else
+        chunk.each_line { |line| write_redacted_piece(line) }
+      end
       true
     rescue StandardError
       false
+    end
+
+    # Write one piece of daemon stderr, redacted. The trailing newline is kept
+    # outside the replacement.
+    #
+    # @param line [String]
+    # @return [void]
+    def write_redacted_piece(line)
+      newline = line.end_with?("\n")
+      body = (newline ? line.chomp("\n") : line).dup.force_encoding(Encoding::UTF_8)
+      body.scrub! unless body.valid_encoding? # an invalid byte must not stop the drain
+      @errio.write(Redaction.text(body))
+      @errio.write("\n") if newline
     end
 
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a

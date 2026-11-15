@@ -10,12 +10,10 @@ module Mutineer
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
-  #                  Also a mutant on a later line of a multi-line statement,
-  #                  in code that runs only sometimes, that the statement's
-  #                  tests ran but did not kill (#254): they may not reach it.
-  #                  Also a mutant on a later line of a statement whose first
-  #                  or last line holds other code (a call inside a one-line
-  #                  block), that the tests of that line did not kill (#289).
+  #                  Also a mutant on a later line of a multi-line statement
+  #                  (#254, #289) whose tests ran and did not kill it, when a
+  #                  probe on the mutated expression did not see it run (#345).
+  #                  A survivor the probe saw run is survived, and counts.
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a

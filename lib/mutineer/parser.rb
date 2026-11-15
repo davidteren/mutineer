@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "prism"
+require_relative "source_bytes"
 
 module Mutineer
   # Raised only for I/O failures while reading a source file.
@@ -23,6 +24,19 @@ module Mutineer
       Prism.parse_file(path)
     rescue SystemCallError => e
       raise ParseError, e.message
+    end
+
+    # Reads a Ruby source file in the encoding its magic comment names, or
+    # UTF-8 when it names none (#346). The bytes are not transcoded, so
+    # Prism's offsets still address them and a mutant written back stays
+    # valid for that encoding. An unknown encoding name stays UTF-8, as
+    # Ruby does. I/O errors propagate (`Errno::ENOENT` and the rest).
+    #
+    # @param path [String] source file path.
+    # @return [String] source text, tagged with its encoding.
+    def self.read(path)
+      bytes = File.binread(path)
+      bytes.force_encoding(SourceBytes.encoding_for(bytes))
     end
 
     # Parses source text with Prism.

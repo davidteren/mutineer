@@ -19,6 +19,8 @@ require_relative "mutator_registry"
 require_relative "triage"
 require_relative "init"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
   # Command-line entry point. `start` is the single public method called by
@@ -45,10 +47,15 @@ module Mutineer
         run --dry-run [options] <source...>          Print candidate mutations only
         triage REPORT.json --reason TEXT
             (--id ID ... | --all)                    Print ignore: entries for
-                                                     survivors. Does not edit files.
+                                                     survivors and for each copy
+                                                     dropped as a repeat of one.
+                                                     Does not edit files.
         migrate [options] <source...>                Rewrite old ignore ids in
-                                                     .mutineer.yml. --dry-run prints
-                                                     each change and writes nothing
+                                                     .mutineer.yml. --dry-run lists
+                                                     each change and every entry
+                                                     that matches no mutant, writes
+                                                     nothing, and exits 1 for a miss.
+                                                     run warns and still exits 0
         init [--rails] [--force]                     Write .mutineer.yml and print
                                                      the first run command.
                                                      --force replaces an existing file.
@@ -59,7 +66,10 @@ module Mutineer
         --test PATH          Test file, directory or quoted glob (repeat for more).
                              Omit to pair each source with its test by convention
                              and any tests: map in .mutineer.yml (not under
-                             --dry-run). --test replaces pairing and the map
+                             --dry-run). A source at app/<dir>/concerns/ with no
+                             test there also pairs with a split test at its
+                             namespace path.
+                             --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
         --baseline FILE      Fail (exit 1) on NEW survivors / score drop vs a prior
@@ -83,8 +93,9 @@ module Mutineer
                              these sources or more; runs alone only the tests that
                              cover these sources
         --framework NAME     minitest or rspec (default: auto-detect from --test names)
-        --boot FILE          Require FILE once in the parent to boot the app env, then
-                             fork per mutant (Rails apps; needs a test, given or found by convention)
+        --boot FILE          Require FILE once in the parent before the sources, then
+                             fork per mutant (an app entry point or a gem's lib/<name>.rb;
+                             needs a test, given or found by convention)
         --rails              Boot config/environment; without --daemon, defaults to
                              redefine and serial execution
         --test-command CMD   Run the target suite in the app's own runtime as a
@@ -126,6 +137,15 @@ module Mutineer
     # @param argv [Array<String>] raw command-line arguments.
     # @return [void]
     def self.start(argv)
+      # Reports and warnings name paths. Under an ASCII locale the stdio
+      # encoding is US-ASCII, so a non-ASCII path cannot be written.
+      # Binary mode writes each string's own bytes: UTF-8 text stays UTF-8,
+      # and a path that is not valid UTF-8 does not raise on the way out (#346).
+      [$stdout, $stderr].each(&:binmode)
+
+      # Set before any exit: the method's ensure reads it, and exit runs ensure.
+      filter_owned = false
+      previous_urls = nil
       if argv.first == "triage"
         exit Triage.run(argv[1..])
       end
@@ -244,6 +264,18 @@ module Mutineer
         # A directory source expands to its **/*.rb files; a file inside the
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        # Direct writes from the app, a fork, or a subprocess inherit these
+        # pipes (#341). Dotenv files are merged with any URLs the caller
+        # already set, and that list is restored when start returns.
+        previous_urls = Redaction.extra_urls
+        Redaction.extra_urls = (previous_urls + DatabaseUrls.from_files(config.project_root)).uniq
+        case OutputFilter.install
+        when :started
+          filter_owned = true
+        when :failed
+          warn "mutineer: cannot redirect stdout and stderr, so a database password would be printed"
+          exit 1
+        end
         run(config)
       when "migrate"
         warn_config_root_mismatch(file_path, config.project_root) if file_path
@@ -275,6 +307,12 @@ module Mutineer
       end
       warn "mutineer: #{Redaction.text(details)}"
       exit 1
+    ensure
+      # Flush after the report is printed and before the process exits, while
+      # extra_urls is still set. Then drop them so a later in-process call
+      # does not keep this project's passwords.
+      OutputFilter.uninstall if filter_owned
+      Redaction.extra_urls = previous_urls unless previous_urls.nil?
     end
 
     # Settings `mutineer config` prints. The GitHub Action asks for these
@@ -446,7 +484,10 @@ module Mutineer
     rescue Mutineer::ProjectLoadError => e
       # A boot file, source or --require file failed to load. The message is
       # already redacted; --verbose adds the backtrace and the cause chain.
+      # A source NameError with no boot file adds one line that points at
+      # boot: (#376). The hint is static text, so it needs no redaction.
       warn "mutineer: #{e.message}"
+      warn "mutineer: #{e.hint}" if e.hint
       if config.verbose
         (e.backtrace || []).each { |frame| warn "\t#{Redaction.text(frame)}" }
         e.causes.each { |cause| warn "mutineer: caused by: #{cause}" }
@@ -972,11 +1013,21 @@ module Mutineer
       end
 
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
-      unpaired, failures = JobPlan.unpaired_counts(config, operator_classes)
+      unpaired, failures, unpaired_ids = JobPlan.unpaired_counts(config, operator_classes)
       warn_unpaired_count_failures(failures)
 
       aggregate, source_map, extras = Runner.execute(config)
-      warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      # Pairing drops unpaired sources before collect_jobs. Their ids still
+      # count, so a real run agrees with a dry run of the same files. The
+      # baseline keeps the paired id map: an unpaired mutant is not a survivor.
+      legacy_matches = merged_legacy_matches(extras[:legacy_ignore_matches], unpaired_ids[:legacy_ignore_matches])
+      warn_legacy_ignore_matches(legacy_matches)
+      # Matched before --since narrows the jobs, so an entry for a mutant
+      # outside the diff is not listed. --only returns an empty list.
+      known = { id_map: extras[:id_map].merge(unpaired_ids[:id_map]),
+                dropped_id_map: extras[:dropped_id_map].merge(unpaired_ids[:dropped_id_map]) }
+      unmatched_ignores = unmatched_ignore_ids(config, known)
+      warn_unmatched_ignores(unmatched_ignores)
       matrix = KillMatrix.new(aggregate.results) if config.matrix
       reporter = Reporter.new(aggregate, source_map, matrix: matrix, unpaired: unpaired,
                               fail_fast: config.fail_fast)
@@ -995,13 +1046,15 @@ module Mutineer
       warn_legacy_baseline if delta&.legacy_matches&.positive?
 
       # ignore counts old-format entries (one warning each), not the ids they matched.
-      legacy_id_matches = { ignore: extras[:legacy_ignore_matches].size,
+      legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
+                      unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
-                      unmutated_subjects: extras.fetch(:unmutated_subjects, []))
+                      unmutated_subjects: extras.fetch(:unmutated_subjects, []),
+                      copies: extras.fetch(:copies, {}))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
@@ -1131,6 +1184,67 @@ module Mutineer
            "#{config_dir} will not match this run. Run mutineer from #{config_dir}."
     end
 
+    # `ignore:` ids that match no mutant in this run's sources and operators.
+    # The set is the new ids and old-format ids from {JobPlan.collect_jobs}
+    # (`id_map` and `dropped_id_map`), including sources pairing skipped
+    # ({JobPlan.unpaired_counts}), so a dropped repeat of an edit counts as
+    # matched (#275) and an old-format id that still matches is not listed
+    # (the legacy warning names it). Matching happens before `--since` narrows
+    # the jobs, so an entry for a mutant outside the diff is not listed.
+    # `--only` returns an empty list: methods are narrowed before matching, so
+    # a miss there would not mean the entry is stale. File order, each id once.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @param extras [Hash] the {JobPlan.collect_jobs} extras (`:id_map`,
+    #   `:dropped_id_map`).
+    # @return [Array<String>] unmatched ids.
+    def self.unmatched_ignore_ids(config, extras)
+      return [] if config.only
+
+      known = {}
+      [extras[:id_map], extras[:dropped_id_map]].each do |map|
+        map&.each do |new_id, old_id|
+          known[new_id] = true
+          known[old_id] = true
+        end
+      end
+      seen = {}
+      Array(config.ignore).each_with_object([]) do |id, out|
+        next if known[id] || seen[id]
+
+        seen[id] = true
+        out << id
+      end
+    end
+
+    # Old-format ignore matches from the paired run plus sources pairing
+    # skipped. Arrays are copied, so the paired extras stay unchanged.
+    #
+    # @param paired [Hash{String => Array}] old id => hits from the paired run.
+    # @param unpaired [Hash{String => Array}] the same from unpaired sources.
+    # @return [Hash{String => Array}]
+    def self.merged_legacy_matches(paired, unpaired)
+      merged = paired.to_h { |old, hits| [old, hits.dup] }
+      unpaired.each do |old, hits|
+        (merged[old] ||= []).concat(hits)
+      end
+      merged
+    end
+
+    # Warns once per `ignore:` entry that matched no mutant (#377). The text
+    # says the list covers only this run, so a run of some files does not
+    # claim an entry is stale in the rest of the project. The exit code does
+    # not change. `--only` passes an empty list ({unmatched_ignore_ids}).
+    #
+    # @param ids [Array<String>] unmatched ids, in file order.
+    # @return [void]
+    def self.warn_unmatched_ignores(ids)
+      ids.each do |id|
+        warn "[mutineer] ignore entry #{id} matched no mutant in this run's sources and operators. " \
+             "If those cover its code, the entry is stale: remove it."
+      end
+    end
+
     # Warns once per old-format `ignore:` entry (#126), naming each new id it
     # matched with that mutant's file and subject. mutineer cannot tell a full
     # run from a narrowed one, so the text always says the list covers only this
@@ -1182,6 +1296,8 @@ module Mutineer
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       warn_legacy_ignore_matches(extras[:legacy_ignore_matches])
+      unmatched_ignores = unmatched_ignore_ids(config, extras)
+      warn_unmatched_ignores(unmatched_ignores)
       # Narrow jobs and ignored the same way a real run does, so the summary
       # matches the printed list.
       jobs, ignored_results, = JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
@@ -1192,9 +1308,16 @@ module Mutineer
       end
       skipped = invalid.size
 
+      # Copies of the mutants this dry run accounts for: the valid candidates
+      # it lists, and the ignored mutants a finished run lists. A candidate
+      # that does not re-parse is skipped and has no row, so its repeats are
+      # left out, as in a finished report (#374).
+      copies = Reporter.copies_for(extras[:copies], valid.map(&:last) + ignored_results.map(&:id))
+      dropped = Reporter.dropped_count_for(copies)
       if config.format == "json"
         rendered = Reporter.dry_run_json(valid, source_map, declined: extras[:declined] || {},
-                                         skipped_invalid: skipped, ignored: ignored)
+                                         skipped_invalid: skipped, ignored: ignored,
+                                         unmatched_ignores: unmatched_ignores, copies: copies)
         if config.output
           abs = File.expand_path(config.output)
           File.write(abs, rendered)
@@ -1227,6 +1350,7 @@ module Mutineer
       summary = breakdown.empty? ? "" : "#{breakdown} — "
       puts "#{summary}#{total} mutations (dry run, not executed); " \
            "#{skipped} skipped (invalid); #{ignored} ignored (suppressed); " \
+           "#{dropped} dropped (repeats of a kept mutant); " \
            "#{declined_summary(extras[:declined], since: config.since)}; " \
            "#{dry_run_unpaired_clause(config, jobs)}; " \
            "#{unmutated_summary(unmutated.size, extras[:subjects], since: config.since)}"

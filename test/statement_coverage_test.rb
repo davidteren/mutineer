@@ -66,9 +66,9 @@ class StatementCoverageTest < Minitest::Test
     assert_equal :maybe, selection_for("age > 17")
   end
 
-  # A test that runs the right side kills its mutant. A run whose tests never
-  # reach it cannot tell "never ran" from "ran unchecked", so a survivor is
-  # no_coverage, never a survivor.
+  # A test that runs the right side kills its mutant. A test that never
+  # reaches the right side leaves it no_coverage: the probe did not see it
+  # run (#345).
   def test_a_maybe_mutant_is_killed_or_no_coverage
     { TEST => [1, 0], File.expand_path("fixtures/continuation_weak_test.rb", __dir__) => [0, 1] }.each do |test, want|
       config = Mutineer::Config.new(sources: [SOURCE], tests: [test], only: "Continuation.adult?",
