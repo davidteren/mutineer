@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "stringio"
+require_relative "../fs_path"
 require_relative "../child_cause"
 require_relative "../kill_channel"
 require_relative "rspec_seed"
@@ -58,13 +59,16 @@ module Mutineer
         # silenced here: the fork boundary that calls this method has already
         # pointed stdout at File::NULL (see ChildStdout).
         sink = StringIO.new
+        # RSpec matches the spec path with a UTF-8 regexp. A binary path
+        # under LC_ALL=C raises before the example runs (#346).
+        files = Array(spec_files).map { |file| FsPath.read(file) }
         # Clean checks pass no hook. They still use this file order, so they
         # share it with the mutant run (#282).
-        keep_file_order(spec_files)
+        keep_file_order(files)
         args = ["--no-color"]
         args << "--fail-fast" if stop_at_first_failure
         status = with_fail_fast_off(record_to) do
-          ::RSpec::Core::Runner.run([*args, *Array(spec_files)], sink, sink)
+          ::RSpec::Core::Runner.run([*args, *files], sink, sink)
         end
         @last_output = sink.string
         # Reached only when the suite returned: an example that exits the

@@ -13,7 +13,12 @@ module Mutineer
     # @param source [String] original source text.
     # @return [String] mutated source text.
     def apply(source)
-      source.byteslice(0, start_offset) + replacement + source.byteslice(end_offset..)
+      # An ASCII replacement is retagged so it concatenates with a source
+      # whose magic comment names another encoding (EUC-JP, Shift_JIS).
+      # The bytes do not change, so the file Ruby loads stays in that encoding.
+      repl = replacement
+      repl = repl.dup.force_encoding(source.encoding) if repl.ascii_only? && repl.encoding != source.encoding
+      source.byteslice(0, start_offset) + repl + source.byteslice(end_offset..)
     end
 
     # Checks whether the running Ruby can still load the mutated source (see

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "fs_path"
 require_relative "run_seed"
 require_relative "minitest_integration/file_order"
 require_relative "minitest_integration/stop_at_first_failure"
@@ -77,6 +78,7 @@ module Mutineer
 
       begin
         require "minitest"
+        FsPath.install_minitest_path_filter!
       rescue LoadError
         raise Mutineer::FrameworkUnavailable,
               "minitest is not available — add minitest to the project under test, " \
@@ -97,7 +99,8 @@ module Mutineer
       # Each test class's file position: the file that first defined it.
       rank = {}
       Array(test_files).each_with_index do |f, i|
-        load f
+        # Match Dir.pwd's encoding so Minitest can shorten a failure path (#346).
+        load FsPath.filesystem(f)
         Minitest::Runnable.runnables.each { |klass| rank[klass] ||= i }
       end
 

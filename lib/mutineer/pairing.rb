@@ -45,21 +45,22 @@ module Mutineer
     # @param project_root [String] repository root for relative expansion.
     # @return [Array<String>] flattened, deduped source file list.
     def expand_sources(args, project_root:)
-      root = File.expand_path(project_root)
+      root = FsPath.read(File.expand_path(project_root))
       # The root as typed and as its real path (macOS `/var` vs `/private/var`),
       # resolved once for every file below.
       roots = [root, ProjectPath.root_real(root)].uniq
       Array(args).flat_map do |arg|
+        arg = FsPath.read(arg)
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
           # Escape metacharacters in the directory name so `component[1]` stays
           # literal (same rule as {directory_test_files}).
           listed = if (rel = root_relative(abs, roots))
-                     Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                     fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
                    else
-                     Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
+                     fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
                    end
-          listed.sort.map do |f|
+          listed.sort_by(&:b).map do |f|
             full = File.absolute_path?(f) ? f : File.expand_path(f, root)
             existing_relative(full, roots) || full
           end
@@ -67,7 +68,7 @@ module Mutineer
           # `..` resolves as text, as FileSwap and the daemon already read it.
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
-      end.uniq
+      end.map { |path| FsPath.read(path) }.uniq
     end
 
     # Characters that make a --test value a glob when no path has that name.
@@ -167,7 +168,23 @@ module Mutineer
     # @param path [String] directory path, relative or absolute.
     # @return [String] the same path with pattern characters escaped.
     def glob_literal(path)
-      path.gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+      FsPath.read(path).gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+    end
+
+    # `Dir.glob` with each path read as UTF-8, or binary when it is not (#346).
+    #
+    # @param args [Array] arguments forwarded to {Dir.glob}.
+    # @return [Array<String>]
+    def fs_glob(*args, **kwargs)
+      Dir.glob(*args, **kwargs).map { |path| FsPath.read(path) }
+    end
+
+    # `Dir.children` with each name read as UTF-8, or binary when it is not (#346).
+    #
+    # @param dir [String] directory to list.
+    # @return [Array<String>]
+    def fs_children(dir)
+      Dir.children(dir).map { |path| FsPath.read(path) }
     end
 
     # Test files under a directory. The name rule is {TEST_NAME}. Dot entries
@@ -180,11 +197,11 @@ module Mutineer
     # @return [Array<String>] root-relative paths, or absolute paths outside the root.
     def directory_test_files(abs, root, roots)
       listed = if (rel = root_relative(abs, roots))
-                 Dir.glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                 fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
                else
-                 Dir.glob(File.join(glob_literal(abs), "**", "*.rb"))
+                 fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
                end
-      listed.filter_map { |match| named_test_file(match, root, roots) }.sort
+      listed.filter_map { |match| named_test_file(match, root, roots) }.sort_by(&:b)
     end
 
     # Files a glob matches from the project root. Directories are ignored.
@@ -197,11 +214,11 @@ module Mutineer
     # @return [Array<String>] sorted matching file paths.
     def glob_test_files(pattern, root, roots)
       listed = if File.absolute_path?(pattern)
-                 Dir.glob(pattern)
+                 fs_glob(pattern)
                else
-                 Dir.glob(pattern, base: root)
+                 fs_glob(pattern, base: root)
                end
-      listed.filter_map { |match| glob_file(match, root, roots) }.sort
+      listed.filter_map { |match| glob_file(match, root, roots) }.sort_by(&:b)
     end
 
     # A directory match whose basename is a test name, as a stored path.
@@ -247,7 +264,7 @@ module Mutineer
         files = yield(pattern)
         unmatched << { entry: number, key: key, pattern: pattern } if files.empty?
         files
-      end.uniq.sort
+      end.uniq.sort_by(&:b)
     end
 
     # One map source pattern: Dir.glob then {expand_sources}, so a matched
@@ -267,7 +284,7 @@ module Mutineer
       listed = if File.exist?(abs)
                  [pattern]
                else
-                 Dir.glob(pattern, base: root)
+                 fs_glob(pattern, base: root)
                end
       return [] if listed.empty?
 
@@ -276,7 +293,7 @@ module Mutineer
         next unless File.exist?(path_abs)
 
         existing_relative(path_abs, roots)
-      end.uniq.sort
+      end.uniq.sort_by(&:b)
     end
 
     # One map test pattern. Directories (typed or matched by a glob) expand
@@ -305,7 +322,7 @@ module Mutineer
         next unless File.file?(abs)
 
         existing_relative(abs, roots)
-      end.uniq.sort
+      end.uniq.sort_by(&:b)
     end
 
     # Glob matches for a map `tests:` pattern. A matched directory expands with
@@ -319,9 +336,9 @@ module Mutineer
     # @return [Array<String>] matching test paths (may include outside-root paths).
     def expand_map_test_glob(pattern, root, roots)
       matches = if File.absolute_path?(pattern)
-                  Dir.glob(pattern)
+                  fs_glob(pattern)
                 else
-                  Dir.glob(pattern, base: root)
+                  fs_glob(pattern, base: root)
                 end
       matches.flat_map do |match|
         full = File.absolute_path?(match) ? match : File.expand_path(match, root)
@@ -357,9 +374,14 @@ module Mutineer
     # @param roots [Array<String>] the project root, expanded and real.
     # @return [String, nil] root-relative path, or nil outside the root.
     def root_relative(abs, roots)
+      abs = FsPath.read(abs)
       roots.each do |r|
-        prefix = r.end_with?("/") ? r : "#{r}/"
-        return abs.delete_prefix(prefix) if abs.start_with?(prefix)
+        r = FsPath.read(r)
+        prefix = r.b
+        prefix += "/".b unless prefix.end_with?("/".b)
+        next unless FsPath.bytes_start_with?(abs, prefix)
+
+        return FsPath.bytes_delete_prefix(abs, prefix)
       end
       nil
     end
@@ -587,13 +609,15 @@ module Mutineer
       return [] unless inside_project?(dir_abs, root_abs)
       return [] unless File.directory?(dir_abs)
 
-      Dir.children(dir_abs).filter_map do |entry|
+      fs_children(dir_abs).filter_map do |entry|
         next unless split_entry?(entry, name)
-        next unless File.file?(File.join(dir_abs, entry))
+        next unless File.file?(dir_abs.b + "/".b + entry.b)
         next if claimed_by_longer_source?(root, base, entry, dir_rel)
 
-        File.join(dir_rel, entry)
-      end.sort
+        FsPath.read(dir_rel == "." ? entry.b : dir_rel.b + "/".b + entry.b)
+        # Byte order: a UTF-8 name and a binary name can both hold bytes
+        # above 127, and String#sort raises on that mix (#346).
+      end.sort_by(&:b)
     end
 
     # True when `dir_abs` is the project root or a directory inside it.
@@ -603,8 +627,12 @@ module Mutineer
     # @param root_abs [String] expanded project root.
     # @return [Boolean]
     def inside_project?(dir_abs, root_abs)
-      prefix = root_abs == File::SEPARATOR ? File::SEPARATOR : "#{root_abs}#{File::SEPARATOR}"
-      dir_abs == root_abs || dir_abs.start_with?(prefix)
+      dir_b = FsPath.read(dir_abs).b
+      root_b = FsPath.read(root_abs).b
+      return true if dir_b == root_b
+
+      prefix = root_b == "/".b ? "/".b : root_b + "/".b
+      FsPath.bytes_start_with?(dir_b, prefix)
     end
 
     # True when `entry` is `<name>_<piece>_test.rb` and not the exact
@@ -614,10 +642,16 @@ module Mutineer
     # @param name [String] source basename without extension.
     # @return [Boolean]
     def split_entry?(entry, name)
-      return false unless entry.end_with?("_test.rb")
+      entry = FsPath.read(entry)
+      name = FsPath.read(name)
+      return false unless entry.b.end_with?("_test.rb".b)
 
-      rest = entry.delete_prefix("#{name}_")
-      rest != entry && rest.match?(/\A.+_test\.rb\z/)
+      needle = name.b + "_".b
+      return false unless entry.b.start_with?(needle)
+
+      rest = entry.b.byteslice(needle.bytesize..)
+      suffix = "_test.rb".b
+      !rest.nil? && rest.bytesize > suffix.bytesize && rest.end_with?(suffix)
     end
 
     # True when a longer source file on disk owns this split test. `user.rb`
@@ -690,16 +724,21 @@ module Mutineer
     # @param entry [String] test file basename.
     # @return [Array<String>] owner basenames without extension.
     def longer_owner_stems(name, entry)
-      stem = entry.sub(/_test\.rb\z/, "")
-      return [] unless stem.start_with?("#{name}_")
+      # Bytes, so a non-UTF-8 name compares without raising (#346).
+      name = name.b
+      raw = entry.b
+      suffix = "_test.rb".b
+      stem = raw.end_with?(suffix) ? raw.byteslice(0, raw.bytesize - suffix.bytesize) : raw
+      needle = name + "_".b
+      return [] unless stem.start_with?(needle)
 
-      rest = stem.delete_prefix("#{name}_")
-      return [] if rest.empty?
+      rest = stem.byteslice(needle.bytesize..)
+      return [] if rest.nil? || rest.empty?
 
-      parts = rest.split("_", -1)
+      parts = rest.split("_".b, -1)
       (1..parts.length).filter_map do |i|
-        longer = "#{name}_#{parts.first(i).join("_")}"
-        longer if longer_owns_entry?(entry, longer)
+        longer = name + "_".b + parts.first(i).join("_".b)
+        FsPath.read(longer) if longer_owns_entry?(entry, longer)
       end
     end
 
@@ -711,7 +750,7 @@ module Mutineer
     # @param stem [String] longer source basename without extension.
     # @return [Boolean]
     def longer_owns_entry?(entry, stem)
-      entry == "#{stem}_test.rb" || split_entry?(entry, stem)
+      entry.b == stem.b + "_test.rb".b || split_entry?(entry, stem)
     end
 
     # True when a longer source file exists beside this logical path.
@@ -725,12 +764,12 @@ module Mutineer
     # @param scanned_dir [String, nil] relative test directory being scanned.
     # @return [Boolean]
     def longer_source_exists?(root, dir, stem, scanned_dir = nil)
-      file = "#{stem}.rb"
+      file = stem.b + ".rb".b
       folders = [dir == "." ? nil : dir]
       %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
       folders.uniq.any? do |folder|
-        rel = folder ? File.join(folder, file) : file
-        next false unless File.file?(File.join(root, rel))
+        rel = FsPath.read(folder ? folder.b + "/".b + file : file)
+        next false unless File.file?(root.b + "/".b + rel.b)
         next false if scanned_dir && !source_searches_dir?(rel, scanned_dir)
 
         true
