@@ -111,7 +111,7 @@ module Mutineer
         # The daemon loads these files itself and would report a missing one as
         # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
         # as it is in process.
-        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        check_boot_files!(config)
         return DaemonBackend.execute(config, operator_classes)
       end
 
@@ -137,7 +137,7 @@ module Mutineer
       if config.since
         # The empty-scope return skips the later require calls, so keep missing
         # boot and --require paths as usage errors on that path too.
-        [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+        check_boot_files!(config)
 
         since_jobs, since_ignored, since_source_map, since_extras =
           JobPlan.collect_jobs(config, operator_classes)
@@ -579,6 +579,18 @@ module Mutineer
       file
     end
     private_class_method :project_file!
+
+    # Checks that the boot file and every --require file exist, so a missing
+    # one stays a usage error (exit 2) on paths that skip the later require.
+    #
+    # @api private
+    # @param config [Config]
+    # @raise [Errno::ENOENT] when a file does not exist.
+    # @return [void]
+    def self.check_boot_files!(config)
+      [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+    end
+    private_class_method :check_boot_files!
 
     # Installs the RSpec seed watcher in this process when the run uses
     # RSpec. Boot and `--require` files then load with the watcher on, and
