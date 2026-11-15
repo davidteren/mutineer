@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format is based on
   It does the same for each `rescue` clause. The `ensure` value is not a return value, so it is left alone.
   Before this, `return_nil` gave such a method no final-expression mutant.
   A run with `return_nil` can now report more mutants and new survivors. With `--baseline`, refresh the baseline.
-  With both operators, a one-statement `rescue` body gives the same edit twice. The run keeps one and counts the copy in `dropped`.
+  With both operators, a one-statement `rescue` body gives the same edit twice. The run keeps the `return_nil` mutant, lists the `rescue_body` id in its `copies`, and counts that copy in `dropped`.
   A final explicit `begin ... rescue ... end` block still gets one `nil` for the whole block (#470).
 - **`run` says when an `ignore:` entry matches no mutant (#377).**
   The warning names the id and says the list covers only that run's sources and operators.
