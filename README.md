@@ -269,7 +269,7 @@ mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_lit
 
 For a `rescue` clause, add `rescue_body`. It replaces each `rescue` body with `nil`, even a one-statement body,
 and turns `x rescue y` into `x rescue nil`. `return_nil` also reaches a method with a def-level `rescue`:
-it gives `nil` for the final expression of the body, the `else` clause and each `rescue` clause (#418).
+it gives `nil` for the final expression of the body (or of the `else` clause when there is one) and of each `rescue` clause (#418).
 
 ## For AI agents & pipelines
 
