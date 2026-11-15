@@ -15,7 +15,9 @@ module Mutineer
     # A re-raise or a `retry` body is mutated too: `nil` swallows the error,
     # which a test that expects the error kills. An empty body and a body
     # that is already `nil` give no mutant, because the edit would change
-    # nothing. An `ensure` body is not a rescue body.
+    # nothing. An `ensure` body is not a rescue body. On the Fizzy copy
+    # (#418), 8 of 35 candidates give no mutant this way: 3 empty bodies,
+    # 3 `nil` bodies and 2 `nil` modifier values.
     class RescueBody < Base
       # Visits rescue clauses and emits a body removal.
       #
