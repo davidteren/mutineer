@@ -234,9 +234,6 @@ module Mutineer
         jobs, ignored_results, source_map, extras = since_scope
       else
         jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-      end
-
-      unless since_scope
         jobs, ignored_results, extras[:unscoped_mutants] =
           JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
       end
