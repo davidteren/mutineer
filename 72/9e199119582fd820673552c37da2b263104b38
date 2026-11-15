@@ -1,0 +1,24 @@
+lib/mutineer/job_plan.rb
+  s_065c506cad57f6::t_9128fb7a13d7ab 385-388
+test/seed_contract_test.rb
+  s_065c506cad57f6::t_380822c3855af8 105-107,110-113,119-122,295-304
+  s_065c506cad57f6::t_7bf4af8cb835b6 305-306
+CHANGELOG.md
+  s_065c506cad57f6::t_fdb7c538a62893 186-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "729e199119582fd820673552c37da2b263104b38",
+  "prompts": {},
+  "sessions": {
+    "s_065c506cad57f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3af1c824-c87c-46bf-9d47-e619a00bdc4c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
