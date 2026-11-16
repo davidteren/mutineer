@@ -236,7 +236,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
 | `--jobs N` | Worker count; default: one per CPU |
 | `--format human\|json\|html` | Report format; default: human |
-| `--dry-run` | List mutants without running tests |
+| `--dry-run` | List mutants without running tests. With `--format json`, print them with their ids |
 
 ### Exit codes
 

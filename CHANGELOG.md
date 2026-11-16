@@ -26,7 +26,7 @@ All notable changes to this project are documented here. The format is based on
   A final explicit `begin ... end` block gets the same mutants as the def-level form, so RuboCop's `Style/RedundantBegin` autocorrect does not change them (#470).
 - **`run` says when an `ignore:` entry matches no mutant (#377).**
   The warning names the id and says the list covers only that run's sources and operators.
-  The exit code stays 0.
+  The warning does not change the exit code.
   `--format json` lists the ids in `summary.unmatched_ignores`, in file order, each id once.
   `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
   `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
@@ -37,24 +37,7 @@ All notable changes to this project are documented here. The format is based on
   An old-format id that still matches is not in this list. The old-id warning still names it.
   `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
   That exit code is the CI check, in 1.x and after 2.0.
-  The key is part of schema `1.10`, which is not in a release yet, so `schema_version` stays `1.10`.
-- **A concern pairs with a split test at its namespace path (#408).**
-  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
-  The `concerns/` path still wins when it has a test that pairs, exact or split.
-  A split owned by a longer source does not count.
-  A longer source keeps its file when that source pairs with it.
-  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
-  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
-  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
-  The longer concern does not add that file.
-  A namespace spec stays the only file. A failed split beside it does not mark the concern.
-  Before this, a namespace split name left the concern skipped, with no score.
-  A concern that was skipped can now run. That can change a score or a gate.
-  `--baseline` treats new survivors as new. Refresh the baseline.
-  See `docs/ci.md`, "Refresh the baseline".
-  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
-  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
-  One of 352 `app/` sources paired with a split file.
+  The key is part of schema `1.10`.
 - **A report names the dropped copy of an edit (#374).**
   When two operators, or one operator twice, make the same change on one
   line, one copy runs and the other is dropped. The JSON report now lists
@@ -65,7 +48,7 @@ All notable changes to this project are documented here. The format is based on
   writes every entry. An entry still ignores only its own id. The human
   report, the HTML report, the dry run, and the Action summary show the
   count. A dropped copy of an ignored mutant is listed on the kept mutant,
-  so that entry no longer looks unused. Schema version stays `1.10`.
+  so that entry no longer looks unused. Both keys are part of schema `1.10`.
 - **A source that cannot load alone points at `boot:` (#376).**
   When a source raises `NameError` (including `NoMethodError`) while it
   loads, and the run has no `boot:` file, stderr adds one line. The names
@@ -97,7 +80,7 @@ All notable changes to this project are documented here. The format is based on
   After the 10 ignored mutants leave the denominator, the share is 14.0%.
   Mutineer now parses those sources.
   A disable-line warning or a git-diff warning can name them.
-  The Action summary line waits on pull request #395.
+  The Action step summary does not show these counts (#481).
   A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
   #349 measured the unrun share (of attempted plus unrun) on Fizzy at `f220e4832`, with Mutineer at `46ee2bb3`.
   A full daemon run with the default operators had 840 attempted mutants, 1 unplaceable, 0 skipped (invalid) and 149 unpaired.
@@ -107,7 +90,7 @@ All notable changes to this project are documented here. The format is based on
   Against the default run's 840 attempted mutants, that is at most 2.8%.
   The 10% limit stays.
   A share above it that comes from unpaired mutants is a true count, not noise.
-  The 2 skipped (invalid) mutants in the all-operator runs come from a `literal_mutation` bug (#469).
+  The 2 skipped (invalid) mutants in the all-operator runs came from a `literal_mutation` bug that this release fixes (#469).
 - **A concern pairs with the test that mirrors its namespace (#379).**
   `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
   That path matches `Storage::Totaled`.
@@ -122,13 +105,30 @@ All notable changes to this project are documented here. The format is based on
   See `docs/ci.md`, "Refresh the baseline".
   A failed namespace load can move a `--threshold` run from exit 0 to exit 1.
   Those mutants move from `no_coverage` to `uncapturable`.
-  A `nil` score then fails the gate.
-  The broken share also rises.
+  A `nil` score with a broken mutant then fails the gate.
+  The share of mutants with no verdict also rises.
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
   With `use-bundler: true`, the Gemfile picks the version.
   A failed namespace test does not mark a concern that has a test at its `concerns/` path.
   A namespace split name pairs under #408.
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has a test that pairs, exact or split.
+  A split owned by a longer source does not count.
+  A longer source keeps its file when that source pairs with it.
+  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
+  The longer concern does not add that file.
+  A namespace spec stays the only file. A failed split beside it does not mark the concern.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
 - **Mutineer now reports the methods that got no mutants (#386).** A
   method whose body is one `if` with a `rescue` gets no mutant from the
   default operators, and the run did not say so. The dry run summary now
@@ -142,15 +142,14 @@ All notable changes to this project are documented here. The format is based on
   methods it found and points to `--list-operators`. Scores, exit codes,
   the mutants that run and the default operators do not change. The
   README names `condition_true` and `condition_false` for these methods.
-  Known limit: no operator mutates a one-statement `rescue` body (#418).
-  #386 stays open for the default-operator decision.
+  For a one-statement `rescue` body, use the new opt-in `rescue_body`
+  operator (#418).
 - **`mutineer config KEY` prints a resolved setting (#394).** It prints the
   `cache_dir` or `baseline` that `mutineer run` would use with the same
   options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
   GitHub Action now asks the installed CLI for these two settings, so it no
   longer copies the CLI's rules. With an older installed CLI that does not
   have the command, the Action uses its own copy of the rules, as before.
-
 - **The JSON report names why a mutant errored (#388).** When the mutant's
   child raises, under `reload`, `redefine` or the daemon,
   `no_verdict[].details` now holds `Class: first message line`, at most 500
@@ -163,7 +162,7 @@ All notable changes to this project are documented here. The format is based on
   `a test failed with a database error: Class: message` in `details`. An
   RSpec error outside examples uses a fixed line that names that case. A
   `--matrix` early end after a serial database error uses its own fixed
-  line. `--test-command` and the human/HTML errored lists stay deferred.
+  line. `--test-command` and the human/HTML errored lists stay deferred (#480).
 - **A daemon crash names itself in `details` (#388).** A mutant whose daemon
   died or did not reply in time now has `daemon crashed` or `daemon stopped
   answering`, not `daemon verdict: error`.
@@ -220,7 +219,7 @@ All notable changes to this project are documented here. The format is based on
   is still skipped. `defined?` does not evaluate its operand, so an `each` or
   `map` inside it is skipped, including a `lazy` chain and an interpolation.
   A hash key still swaps, because insertion calls `hash` and `eql?`.
-  A later `rescue` clause follows the `begin`.
+  The last line of each `rescue` clause, including a later clause, is kept or discarded as its `begin` is.
   A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
   runs the block and `Lazy#map` does not.
   A lazy enumerator stored in a variable is still skipped.
@@ -231,6 +230,8 @@ All notable changes to this project are documented here. The format is based on
   (57.7%).
   The other 313 `collection_method` swaps on `lib/` stay.
   The operator's mutant count there drops from 462 to 376.
+  A run that names `collection_method` can report fewer mutants and a different score.
+  With `--baseline`, refresh the baseline.
   The report that opened the issue found this mutant in 4 of 23 ignore entries.
   See `docs/equivalent-skips.md`.
 - **Behavior change.** A continuation-line survivor that ran is scored (#345).
@@ -286,7 +287,7 @@ All notable changes to this project are documented here. The format is based on
   every test. A cache saved before this change rebuilds once.
   #421 stays open for files outside the run's sources, and for the
   Fizzy timing check.
-- **The test-file guard names three fixes (#380).**
+- **The error for a test file passed as a source names three fixes (#380).**
   Quote the glob, pass the directory, or repeat `--test`.
 - **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
   Those values used to exit 0 on a dry run.
@@ -350,6 +351,7 @@ All notable changes to this project are documented here. The format is based on
   With `LANG` and `LC_ALL` unset, a source file, test file, or project
   folder whose name is not ASCII made coverage fail, or the path missed
   its match, so the run stopped or scored those mutants `no_coverage`.
+  Those mutants now get a verdict, so a score can change. With `--baseline`, refresh the baseline.
   Paths are read as UTF-8 when the bytes are UTF-8, and as binary
   otherwise, and compared in that encoding. Minitest is given the path
   in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
@@ -392,9 +394,9 @@ All notable changes to this project are documented here. The format is based on
   A mutant run's files stay in coverage order (paired, then cheapest).
   The combined clean check uses the order the tests were given.
   Those two file lists can differ.
-  `--test-command` still sets no seed (#338).
+  `--test-command` still sets no seed (#368).
   A coverage cache from another `SPEC_OPTS`, or from a version that did not pin the RSpec seed, is captured again.
-- **Direct stderr and stdout no longer print a database password (#341).**
+- **Direct stderr and stdout hide the `DATABASE_URL` password in more cases (#341).**
   A boot file, a forked test, and a program that test starts inherit a pipe.
   Mutineer copies each line and hides the `DATABASE_URL` password before the
   line reaches the terminal. `abort` in a boot file is included. A line with
@@ -467,8 +469,9 @@ All notable changes to this project are documented here. The format is based on
   the queue, not the thread that finishes first. A serial failure still
   decides, because those classes run first. A mutant that mixed a database
   error and an assertion in one parallel class no longer flips between
-  `killed` and `error` across runs. The JSON report still does not name an
-  in-test database error; pull request #443 does that. Active Record 7.2
+  `killed` and `error` across runs. The JSON report names a Minitest
+  in-test database error in `no_verdict[].details` (#417). It does not name
+  an RSpec example's database error (#480). Active Record 7.2
   reports SQLite `database is locked` as `StatementInvalid`, so that mutant
   still scores `killed` (#347).
 - **`--strategy redefine` no longer false-kills path anchors in a read-only
@@ -492,7 +495,8 @@ All notable changes to this project are documented here. The format is based on
   After Rails sets both `Encoding.default_external` and `Encoding.default_internal`
   to UTF-8, that write raised `Encoding::UndefinedConversionError`, and the child
   scored the mutant `errored`. The silenced stdout is binary now, so the bytes
-  are discarded and the failure still counts as a kill. This holds for
+  are discarded and the failure still counts as a kill. Those mutants move
+  from `errored` into the score, so a score can rise. This holds for
   in-process reload and redefine runs and for daemon reload runs.
   The daemon forces reload; redefine is not available there.
   RSpec already writes its failure text to a StringIO, which accepts the bytes.
@@ -508,7 +512,7 @@ All notable changes to this project are documented here. The format is based on
   `each` → `map` still survives in that case. On the reported method, 2 of
   5 mutants moved, so that run's score goes from 0.0 to no score. A run
   that still has other survivors can score higher, because these mutants
-  leave the denominator. `--threshold` skips a nil score. The new case is
+  leave the denominator. `--threshold` passes a nil score when no mutant broke, as here. The new case is
   a `define_method` or `define_singleton_method` call whose line ran at
   load, including the block that call stores. Another block on that line,
   such as `each` with an empty array, stays scored: the line can count
@@ -563,7 +567,7 @@ All notable changes to this project are documented here. The format is based on
   A concern entry that is the same symbol, the same code, or the same
   option names still cannot be told apart, so both copies stay. A
   callback the class body adds only on its first run (`@done ||=`) still
-  keeps every identical copy. Those cases remain #413. Full reload
+  keeps every identical copy. Issue #479 tracks those cases. Full reload
   (#389) would build the class once. Reload and the daemon share this
   path. Redefine does not run the class body again, so it does not add
   the second copy.
