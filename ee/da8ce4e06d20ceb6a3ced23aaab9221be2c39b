@@ -1,0 +1,30 @@
+.expectation-fit/decisions/redaction-and-security.md
+  s_1a828fb201280e::t_cdbbe353a772f1 13
+.expectation-fit/decisions/README.md
+  s_1a828fb201280e::t_bba0feb037a7fc 19-21
+  s_1a828fb201280e::t_cdbbe353a772f1 18
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_1a828fb201280e::t_cdbbe353a772f1 3,17
+.expectation-fit/decisions/cli-contract-and-exit-codes.md
+  s_1a828fb201280e::t_cdbbe353a772f1 5
+.expectation-fit/ways-of-working.yaml
+  s_1a828fb201280e::t_cdbbe353a772f1 59,61
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_1a828fb201280e::t_cdbbe353a772f1 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eeda8ce4e06d20ceb6a3ced23aaab9221be2c39b",
+  "prompts": {},
+  "sessions": {
+    "s_1a828fb201280e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29001b15-ff0a-4878-a62b-eba6b8a4e21a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
