@@ -55,7 +55,8 @@ conventions:
       so an unpinned gemfile can test a different version and give false
       coverage (#400).'
   # Product facts and review checks that reviews taught us, one line each.
-  # The convention lens reads them as rules, below the notes above. See the
-  # README there.
+  # The convention lens reads them as rules, below the notes above. The glob
+  # includes the README there on purpose: it tells the lens what the id suffix
+  # and `Not when:` mean, and that no one has checked the lines against the code.
   sources:
     - '.expectation-fit/decisions/*.md'
