@@ -88,7 +88,7 @@ module Mutineer
         --capture-timeout SECONDS  Time limit for each coverage-capture subprocess
                              and the clean check (default: 120; not with --test-command);
                              the combined clean check gets the larger of this and
-                             1.5x its files' summed capture time
+                             1.5x its files' summed capture time, rounded up
         --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
                              not with --test-command)
         --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over

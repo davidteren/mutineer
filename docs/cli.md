@@ -109,7 +109,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `test_command` | External Ruby test command containing `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34) |
 | `daemon` | Boolean; persistent app daemon with separate worker databases |
 | `timeout` | Positive integer; seconds per mutant (default 10) |
-| `capture_timeout` | Positive integer; coverage capture and clean-run seconds (default 120); the combined clean check gets the larger of this and 1.5 times its files' summed capture time |
+| `capture_timeout` | Positive integer; coverage capture and clean-run seconds (default 120); `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times its files' summed capture time, rounded up |
 | `cache_dir` | Coverage cache directory (default `.mutineer`) |
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
