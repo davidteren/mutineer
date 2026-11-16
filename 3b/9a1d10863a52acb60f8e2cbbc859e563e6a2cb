@@ -1,0 +1,23 @@
+docs/agentic-coding.html
+  s_66fd1fac152819::t_b2329c6d96e896 91
+docs/agentic-coding.md
+  s_66fd1fac152819::t_70b08f8af8b3ad 57
+skills/mutineer/SKILL.md
+  s_66fd1fac152819::t_ce8f416ad90442 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b9a1d10863a52acb60f8e2cbbc859e563e6a2cb",
+  "prompts": {},
+  "sessions": {
+    "s_66fd1fac152819": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "617b3ba1-a273-4d67-955b-fe0a9b25b677",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
