@@ -26,7 +26,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--coverage-from FILE` | Reuse previous `coverage.json` (CLI only) | None |
 | `--format human\|json\|html` | Report format (CLI only) | `human` |
 | `--output FILE` | Report file | stdout |
-| `--dry-run` | List mutants without testing | Off |
+| `--dry-run` | List mutants without testing. With `--format json`, print them with their ids | Off |
 | `--[no-]fail-fast` | Stop at first survivor | Off |
 | `--[no-]matrix` | Run all covering tests; report blind and redundant tests. In-process only | Off |
 | `--[no-]allow-empty` | Suppress warnings for runs without mutants | Off |

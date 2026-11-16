@@ -392,6 +392,21 @@ class EncodingTest < Minitest::Test
     assert_equal "UTF-8", out
   end
 
+  # #484: the Rake tasks read the repo's UTF-8 docs. Under an ASCII locale
+  # docs:check failed with "invalid byte sequence in US-ASCII".
+  def test_rake_docs_check_passes_under_an_ascii_locale
+    env = { "LC_ALL" => "C", "LANG" => nil, "LC_CTYPE" => nil }
+    # The check only means something when that env gives Ruby an ASCII default
+    # and the file the task reads holds non-ASCII bytes.
+    default, = Open3.capture2(env, RUBY, "-e", "print Encoding.default_external")
+    assert_equal "US-ASCII", default
+    assert File.binread(File.join(ROOT, "README.md")).bytes.any? { |b| b > 127 }
+
+    out, status = Open3.capture2e(env, "bundle", "exec", "rake", "docs:check", chdir: ROOT)
+    refute_match(/invalid byte sequence/i, out)
+    assert status.success?, out
+  end
+
   private
 
   def run_json(proj, source, test: nil, framework: nil, env: { "LC_ALL" => "C", "LANG" => nil })

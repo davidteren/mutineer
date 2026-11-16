@@ -344,7 +344,7 @@ are defined in "Score-model discipline" below. In-process Minitest and RSpec run
 share one seed (#282). Within a file, that order does not depend on the other
 files. A mutant run still orders its files by coverage (paired, then cheapest),
 and the combined clean check uses the order the tests were given.
-`--test-command` order is issue #338.
+`--test-command` order is issue #368.
 
 The eleven rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -

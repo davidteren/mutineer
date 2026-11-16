@@ -31,7 +31,7 @@ conventions:
       order and RSpec random order do not depend on the other files.
       A custom RSpec order can. A mutant run orders its
       files by coverage (paired, then cheapest, #203). The combined clean
-      check orders them as given. --test-command is issue #338.'
+      check orders them as given. --test-command is issue #368.'
     - 'Assert the mechanism: A regression test asserts the mechanism
       (owner, arity, the named killing test), never only "killed",
       "passes", or an exit code.'
