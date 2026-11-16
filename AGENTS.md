@@ -331,7 +331,8 @@ trusted publisher makes that old `gem push` fail, because the old job omits
 
 These rules come from a postmortem of issues #252, #253, and #254 and an
 audit of every merged PR. They stop the defect patterns that reached users.
-The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
+The text of these eleven rules lives in one place:
+`.expectation-fit/ways-of-working.yaml`.
 Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
 every other reviewer, human or bot, applies the same file by hand.
 Product facts and checks that reviews taught us live beside it, in
