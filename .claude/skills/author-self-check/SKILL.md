@@ -14,8 +14,10 @@ Base: `origin/main`, or the lower pull request in a stack.
 ## 1. Run the mechanical checks
 
 ```sh
-ruby .claude/skills/author-self-check/self_check.rb <base>
+ruby .claude/skills/author-self-check/self_check.rb origin/main
 ```
+
+In a stack, pass the lower pull request's branch instead of `origin/main`.
 
 It checks committed changes only, so commit first. Deal with each item it
 lists before you go on:

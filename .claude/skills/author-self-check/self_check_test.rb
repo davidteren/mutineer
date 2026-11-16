@@ -16,8 +16,11 @@ class SelfCheckTest < Minitest::Test
     "docs/rails.html" => "<p>Install the gem in the <b>test</b> group.</p>\n"
   }.freeze
 
-  def run_in_repo(subdir: ".", extra_base: {})
-    Dir.mktmpdir do |dir|
+  def run_in_repo(subdir: ".", extra_base: {}, uncommitted: {})
+    # shortcut: a late git write can make mktmpdir's strict cleanup raise ENOTEMPTY;
+    # rm_rf tolerates it. Find the writer if a test leaves files behind.
+    dir = Dir.mktmpdir
+    begin
       Dir.chdir(dir) do
         sh = ->(*a) { system(*a, out: File::NULL, err: File::NULL) or raise a.join(" ") }
         sh.("git", "init", "-q", "-b", "main")
@@ -30,9 +33,12 @@ class SelfCheckTest < Minitest::Test
         yield
         sh.("git", "add", ".")
         sh.("git", "commit", "-qm", "change (#42)")
+        uncommitted.each { |p, body| File.write(p, body) }
         out, status = Open3.capture2e("ruby", SCRIPT, "main", chdir: subdir)
         return [out, status.exitstatus]
       end
+    ensure
+      FileUtils.rm_rf(dir)
     end
   end
 
@@ -98,6 +104,29 @@ class SelfCheckTest < Minitest::Test
       File.write("docs/caf\u00e9.md", "Mutineer runs anywhere.\n")
     end
     assert_includes out, "docs/caf\u00e9.md: \"Mutineer runs on Linux or macOS with Ruby 3.4.\" still in"
+  end
+
+  def test_doc_sync_matches_a_sentence_that_ends_in_a_link
+    page = { "docs/guide.md" => "Read the full setup steps in the [guide](x).\n",
+             "docs/guide.html" => "<p>Read the full setup steps in the <a href=\"x\">guide</a>.</p>\n" }
+    out, = run_in_repo(extra_base: page) { File.write("docs/guide.md", "Setup moved.\n") }
+    assert_includes out, "docs/guide.md: \"Read the full setup steps in the guide.\" still in docs/guide.html"
+  end
+
+  def test_flags_a_removed_assertion_in_a_skill_test
+    out, = run_in_repo(extra_base: { ".claude/skills/x/x_test.rb" => "assert a\nassert b\n" }) do
+      File.write(".claude/skills/x/x_test.rb", "assert a\n")
+    end
+    assert_includes out, ".claude/skills/x/x_test.rb: -1 net: assert b"
+  end
+
+  def test_doc_sync_ignores_uncommitted_doc_edits
+    old = "Mutineer runs on Linux or macOS with Ruby 3.4.\n"
+    out, = run_in_repo(uncommitted: { "docs/index.md" => old }) do
+      File.write("README.md", "Mutineer runs on any platform.\n")
+      File.write("docs/index.md", "Mutineer runs on any platform.\n")
+    end
+    assert_includes out, "twin not changed (0)"
   end
 
   def test_doc_sync_quiet_when_all_copies_change

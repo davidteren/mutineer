@@ -49,7 +49,8 @@ end
 # so an .md sentence matches its .html copy.
 def plain(text)
   t = text.gsub(/<[^>]*>/, " ").gsub(/\[([^\]]*)\]\([^)]*\)/, '\1')
-  CGI.unescapeHTML(t).tr("’‘“”", "''\"\"").gsub(/[`*_#>|]/, " ").split.join(" ")
+  # A removed tag leaves a space before punctuation; drop it so "guide." matches.
+  CGI.unescapeHTML(t).tr("’‘“”", "''\"\"").gsub(/[`*_#>|]/, " ").split.join(" ").gsub(/ ([.,;:!?)])/, '\1')
 end
 
 base = ARGV[0] || "origin/main"
@@ -68,7 +69,7 @@ untracked.each { |p, l| puts "  #{p}: #{l.strip[0, 140]}" }
 
 # A changed assertion is not a weaker test, so count assertions per file.
 code = ->(l) { !l.match?(COMMENT) }
-test_file = ->(p) { p.to_s.start_with?("test/", "spec/") }
+test_file = ->(p) { p.to_s.start_with?("test/", "spec/") || p.to_s.match?(%r{\A\.claude/skills/.+_test\.rb\z}) }
 weakened = removed.select { |p, l| test_file.(p) && code.(l) && l.match?(ASSERT) }
                   .group_by(&:first)
                   .flat_map do |p, lines|
@@ -79,9 +80,10 @@ weakened += added.select { |p, l| test_file.(p) && code.(l) && l.match?(WEAKEN) 
 puts "== Tests to justify: net assertions removed, skips or timeouts added (#{weakened.size})"
 weakened.each { |p, l| puts "  #{p}: #{l[0, 140]}" }
 
-# Doc sync. The tree is the checked-out HEAD.
-docs = git("ls-files").lines.map(&:strip).select { |p| p.match?(DOC) && File.file?(p) && p != "CHANGELOG.md" }
-corpus = docs.to_h { |p| [p, plain(File.read(p, encoding: "UTF-8").scrub)] }
+# Doc sync reads HEAD, the same commit the diff checks, not the working tree.
+head_file = ->(p) { git("show", "HEAD:#{p}").scrub }
+docs = git("ls-tree", "-r", "--name-only", "HEAD").lines.map(&:strip).select { |p| p.match?(DOC) && p != "CHANGELOG.md" }
+corpus = docs.to_h { |p| [p, plain(head_file.(p))] }
 stale = removed.filter_map do |p, l|
   next unless p.to_s.match?(DOC) && p != "CHANGELOG.md"
 
@@ -96,7 +98,7 @@ twins = changed.select { |p| p.start_with?("docs/") && p.match?(/\.(md|html)\z/)
   "#{p} changed, #{twin} did not" if corpus.key?(twin) && !changed.include?(twin)
 end
 # An .html or .txt copy that a rake task names is probably built by it.
-rake_text = git("ls-files", "Rakefile", "rake").lines.map(&:strip).select { |p| File.file?(p) }.map { |p| File.read(p) }.join
+rake_text = git("ls-tree", "-r", "--name-only", "HEAD", "Rakefile", "rake").lines.map(&:strip).map(&head_file).join
 mark = ->(p) { p.match?(/\.(html|txt)\z/) && rake_text.include?(File.basename(p)) ? "#{p} (named in rake/, rebuild if generated)" : p }
 puts "== Doc sync: removed text still in another doc, or twin not changed (#{stale.size + twins.size})"
 puts "   Answer each line: updated, or differs because ..." unless stale.empty? && twins.empty?
