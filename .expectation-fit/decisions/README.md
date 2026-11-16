@@ -39,3 +39,5 @@ can differ (see Limits).
 - The lines came from cubic on 2026-11-16. No one checked each line against
   the code on that day. Correct a line that is wrong when you find it.
 - There is no script that copies new cubic rules here. Copy them by hand.
+
+Issue #483 tracks both limits.
