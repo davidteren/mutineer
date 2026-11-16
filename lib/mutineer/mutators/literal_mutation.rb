@@ -8,16 +8,6 @@ module Mutineer
     #
     # Mutates integers and strings with the Tier-2 literal rules.
     class LiteralMutation < Base
-      # Resets the per-subject record of `"..."` string parts.
-      #
-      # @param subject [Mutineer::Subject] subject whose body is visited.
-      # @param source [String] full source text for byte-based slicing.
-      # @return [Array<Mutineer::Mutation>] collected mutations.
-      def mutations_for(subject, source)
-        @double_quoted_parts = {}.compare_by_identity
-        super
-      end
-
       # Visits integer literals.
       #
       # @param node [Prism::IntegerNode] node to inspect.
@@ -30,34 +20,47 @@ module Mutineer
         super
       end
 
-      # Records the text parts of a `"..."` interpolated string. In those,
-      # `""` closes and reopens the string, so it empties the part.
+      # Visits an interpolated string. In a `"..."` string, `""` over a text
+      # part closes and reopens the string, so it empties the part. Any other
+      # text part is handled as a string with no quotes of its own.
       #
       # @param node [Prism::InterpolatedStringNode] node to inspect.
       # @return [void]
       def visit_interpolated_string_node(node)
-        node.parts.each { |part| @double_quoted_parts[part] = true } if node.opening_loc&.slice == '"'
-        super
+        double_quoted = node.opening_loc&.slice == '"'
+        node.parts.each do |part|
+          next part.accept(self) unless part.is_a?(Prism::StringNode)
+
+          mutate_string(part, quoted: double_quoted || part.opening_loc)
+        end
       end
 
-      # Visits string literals. A string with no quotes of its own (a heredoc
-      # line, a `%(...)` or `%Q(...)` part, a `%w[]` element, a regex or
-      # backtick part) cannot be emptied with `""`: the edit inserts text and
-      # can break the parse (#469). Such a string is declined.
+      # Visits string literals.
       #
       # @param node [Prism::StringNode] node to inspect.
       # @return [void]
       def visit_string_node(node)
-        loc = node.location
-        token = @source.byteslice(loc.start_offset...loc.end_offset)
-        unless token == '""' || token == "''" || node.unescaped.empty?
-          quoted = node.opening_loc || @double_quoted_parts.delete(node)
-          quoted ? emit(loc, '""') : decline
-        end
+        mutate_string(node, quoted: node.opening_loc)
         super
       end
 
       private
+
+      # Empties a non-empty string. A string with no quotes of its own (a
+      # heredoc line, a `%(...)` or `%Q(...)` part, a `%w[]` element, a regex
+      # or backtick part) cannot be emptied with `""`: the edit inserts text
+      # and can break the parse (#469). Such a string is declined.
+      #
+      # @param node [Prism::StringNode] string to inspect.
+      # @param quoted [Object] truthy when `""` empties the string.
+      # @return [void]
+      def mutate_string(node, quoted:)
+        loc = node.location
+        token = @source.byteslice(loc.start_offset...loc.end_offset)
+        return if token == '""' || token == "''" || node.unescaped.empty?
+
+        quoted ? emit(loc, '""') : decline
+      end
 
       # Emits a literal mutation.
       #
