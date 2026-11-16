@@ -1,0 +1,23 @@
+skills/mutineer/SKILL.md
+  s_66fd1fac152819::t_1a4c7a7673f0f5 70
+docs/agentic-coding.html
+  s_66fd1fac152819::t_1a4c7a7673f0f5 91
+docs/agentic-coding.md
+  s_66fd1fac152819::t_1a4c7a7673f0f5 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d706c2f4e025ad8a91bd9be84ec21a199ecf889",
+  "prompts": {},
+  "sessions": {
+    "s_66fd1fac152819": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "617b3ba1-a273-4d67-955b-fe0a9b25b677",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
