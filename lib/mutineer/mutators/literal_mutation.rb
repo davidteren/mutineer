@@ -47,8 +47,8 @@ module Mutineer
       private
 
       # Empties a non-empty string. A string with no quotes of its own (a
-      # heredoc line, a `%(...)` or `%Q(...)` part, a `%w[]` element, a regex
-      # or backtick part) cannot be emptied with `""`: the edit inserts text
+      # heredoc line, a `%(...)` or `%Q(...)` part, a `%w[]` element, a regex,
+      # backtick or interpolated-symbol part) cannot be emptied with `""`: the edit inserts text
       # and can break the parse (#469). Such a string is declined.
       #
       # @param node [Prism::StringNode] string to inspect.

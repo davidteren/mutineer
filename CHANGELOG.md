@@ -294,7 +294,7 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - **`literal_mutation` no longer writes `""` over a string that has no quotes of its own (#469).**
-  That covers a heredoc line, a part of a `%(...)` or `%Q(...)` string, a `%w[]` or `%W[]` element, and a text part of a regex or a backtick string.
+  That covers a heredoc line, a part of a `%(...)` or `%Q(...)` string, a `%w[]` or `%W[]` element, and a text part of a regex, a backtick string or an interpolated symbol (`:"a#{x}"`, a `%I[]` element).
   The edit inserted text instead of emptying the string. Some of these mutants broke the parse and were counted as skipped (invalid). The others ran as the wrong edit.
   Each such string is now declined and counts in `summary.declined_by_operator`. A text part of a `"..."` string still mutates, because `""` closes and reopens the string.
   A run with `literal_mutation` can report fewer mutants. With `--baseline`, refresh the baseline.
