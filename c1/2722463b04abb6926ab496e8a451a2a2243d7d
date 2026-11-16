@@ -1,0 +1,19 @@
+.expectation-fit/ways-of-working.yaml
+  s_1a828fb201280e::t_5d343e0a74187f 58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c12722463b04abb6926ab496e8a451a2a2243d7d",
+  "prompts": {},
+  "sessions": {
+    "s_1a828fb201280e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29001b15-ff0a-4878-a62b-eba6b8a4e21a",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
