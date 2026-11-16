@@ -75,6 +75,14 @@ class LiteralMutationTest < Minitest::Test
     assert_equal 4, op.declined
   end
 
+  # The parts are visited directly, so literals inside an interpolation still
+  # get their own mutants.
+  def test_literals_inside_an_interpolation_still_mutate
+    src = "def f(x)\n  \"a \#{x + 1} b\"\nend\n"
+    mutations = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src)
+    assert_equal ["a ", "1", "1", " b"], mutations.map { |m| src[m.start_offset...m.end_offset] }
+  end
+
   # Every other string form with no quotes of its own is declined too, one
   # decline per non-empty text part, even when the text is `""` itself.
   def test_every_unquoted_string_form_is_declined
