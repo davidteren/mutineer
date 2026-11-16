@@ -27,6 +27,7 @@ locale (#484):
 
 - macOS: add `export LANG=en_US.UTF-8` to `~/.zshrc`.
 - Linux and containers: `export LANG=C.UTF-8`, or `ENV LANG=C.UTF-8` in a Dockerfile.
+- `LC_ALL` overrides `LANG`. If `LC_ALL` is set to another locale, unset it or set it to the same UTF-8 value.
 
 If the suite fails on a clean checkout of `main`, open an issue. Include the
 output, your Ruby version, and your operating system.
