@@ -50,7 +50,8 @@ module Mutineer
       # value when there is no `else`, or the value of the `rescue` clause that
       # ran. Each of those final expressions becomes nil. The `ensure` value is
       # discarded, so it is not a final expression. A final explicit
-      # `begin ... rescue ... end` statement still becomes one `nil` (#470).
+      # `begin ... end` statement is handled the same way, so RuboCop's
+      # Style/RedundantBegin autocorrect does not change the mutants (#470).
       #
       # @param body [Prism::Node, nil] method body node, or a statement list in it.
       # @return [void]
@@ -59,6 +60,7 @@ module Mutineer
         when Prism::StatementsNode
           last = body.body.last
           return if last.nil? || last.is_a?(Prism::ReturnNode) || last.is_a?(Prism::NilNode)
+          return final_expression_nil(last) if last.is_a?(Prism::BeginNode)
 
           emit(last.location)
         when Prism::BeginNode
