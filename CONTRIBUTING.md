@@ -9,7 +9,7 @@ You need Ruby 3.4 or later, on Linux or macOS.
 
 ```sh
 bundle install
-bundle exec rake test          # the full suite, about 6 minutes
+bundle exec rake test          # the zero-dependency suite, about 6 minutes
 bundle exec rake yard:strict   # documentation check, about 15 seconds
 ```
 
@@ -20,8 +20,8 @@ bundle exec ruby -Ilib -Itest test/cli_test.rb
 bundle exec ruby -Ilib -Itest test/cli_test.rb -n test_dry_run_prints_breakdown
 ```
 
-If the suite fails on a clean checkout of `main`, the fault is in this
-repository and not on your machine. Open an issue with the output.
+If the suite fails on a clean checkout of `main`, open an issue. Include the
+output, your Ruby version, and your operating system.
 
 Work in a fork: make a branch there, push it, and open a pull request
 against `main`.
@@ -50,7 +50,8 @@ against `main`.
 
 ## What you can skip
 
-- **Labels.** A maintainer adds them.
+- **Labels, when you cannot set them.** GitHub lets only people with triage
+  access or higher set labels. Without that access, a maintainer adds them.
 - **The release rules** at the end of this file and in [AGENTS.md](AGENTS.md).
 - **The extra local checks** in AGENTS.md (Minitest 6, Prism 2, the Rails
   daemon tests, the website checks). CI runs all of them on your pull request.
@@ -58,8 +59,8 @@ against `main`.
 
 ## After you open the pull request
 
-- GitHub holds CI on your first pull request until a maintainer approves the
-  run. You do not need to do anything.
+- GitHub can hold CI on a pull request from a fork until a maintainer
+  approves the run. You do not need to do anything.
 - Review bots (cubic and Qodo) comment on the code. Fix a finding that is
   right. Reply on the thread with the reason when a finding is wrong.
 - A maintainer merges.
