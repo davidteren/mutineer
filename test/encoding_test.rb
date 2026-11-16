@@ -382,6 +382,16 @@ class EncodingTest < Minitest::Test
     assert_match(/\A[0-9a-f]{12}\z/, id)
   end
 
+  # CI always has a UTF-8 locale, so only this test sees the helper lose its
+  # default. exit! skips minitest/autorun in the child.
+  def test_the_suite_reads_files_as_utf8_under_an_ascii_locale
+    script = 'require "test_helper"; $stdout.write(Encoding.default_external.name); $stdout.flush; exit!(true)'
+    out, err, status = Open3.capture3({ "LC_ALL" => "C", "LANG" => nil }, RUBY,
+                                      "-I#{File.join(ROOT, 'lib')}", "-I#{File.join(ROOT, 'test')}", "-e", script)
+    assert_equal 0, status.exitstatus, err
+    assert_equal "UTF-8", out
+  end
+
   private
 
   def run_json(proj, source, test: nil, framework: nil, env: { "LC_ALL" => "C", "LANG" => nil })

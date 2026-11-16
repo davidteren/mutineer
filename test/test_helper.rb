@@ -80,8 +80,6 @@ module AsciiLocale
     swap_default_external(previous)
   end
 
-  private
-
   # Sets Encoding.default_external without the warning Ruby prints under -w.
   def swap_default_external(encoding)
     verbose = $VERBOSE
@@ -90,8 +88,16 @@ module AsciiLocale
   ensure
     $VERBOSE = verbose
   end
+  # Private in a test, and callable as AsciiLocale.swap_default_external below.
+  module_function :swap_default_external
 end
 Minitest::Test.include(AsciiLocale)
+
+# With LANG and LC_ALL unset (containers, agent sandboxes) Ruby reads files as
+# US-ASCII, and the suite's own File.read calls fail on its UTF-8 fixtures and
+# docs. The suite reads as UTF-8 in every shell. A test that needs the ASCII
+# default asks for it with with_ascii_default_external.
+AsciiLocale.swap_default_external(Encoding::UTF_8) unless Encoding.default_external == Encoding::UTF_8
 
 # Sets environment variables for one block, then restores them.
 module EnvOverride
