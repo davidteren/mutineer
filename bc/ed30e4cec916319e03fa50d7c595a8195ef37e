@@ -1,0 +1,25 @@
+lib/mutineer/mutators/literal_mutation.rb
+  s_d4768bba36413f::t_d2e25787316720 11-20
+  s_d4768bba36413f::t_423539a70ac7d9 39,43-46
+  s_d4768bba36413f::t_010bba30dd692c 54
+CHANGELOG.md
+  s_d4768bba36413f::t_39877093eb4f44 24,296-300
+docs/json-schema.md
+  s_d4768bba36413f::t_12efc917cd9015 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bced30e4cec916319e03fa50d7c595a8195ef37e",
+  "prompts": {},
+  "sessions": {
+    "s_d4768bba36413f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40888e8c-f83d-441f-830f-5833e3c84b2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
