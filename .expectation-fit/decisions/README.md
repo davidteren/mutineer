@@ -27,9 +27,10 @@ the same copy.
 - When a change makes a line false, change the line in the same pull request.
 - When a review teaches a new fact, add the line here first. Then teach the
   review tool, if you use one.
-- `(cubic xxxxxxxx)` at the end of a line is the id of the rule in cubic that
-  the line came from. A line that joins two cubic rules has both ids. A line
-  with no id was written here.
+- ``(cubic `xxxxxxxx`)`` at the end of a line is the id of the rule in cubic
+  that the line came from. A line that joins two cubic rules has both ids:
+  ``(cubic `aaaaaaaa`, `bbbbbbbb`)``. A line with no id was written here.
+- `Not when:` starts the case where the check does not apply.
 
 ## Limits
 
