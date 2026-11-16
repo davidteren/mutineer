@@ -24,7 +24,6 @@ can differ (see Limits).
 
 - One line is one rule. Keep a new line to one check, and put it in the file
   for its topic. Some lines from cubic hold several checks on one subject.
-  Split such a line when you next change it.
 - A line states a check. The code, its tests and the user docs remain the full
   description of the behaviour.
 - When a change makes a line false, change the line in the same pull request.
