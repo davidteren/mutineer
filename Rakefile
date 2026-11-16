@@ -4,8 +4,14 @@ require "rake/testtask"
 
 # With LANG and LC_ALL unset (containers, agent sandboxes) Ruby reads files as
 # US-ASCII, and the docs and site tasks fail on this repo's UTF-8 docs (#484).
-# Every task here reads the repo's own files, so read them as UTF-8 in any shell.
-Encoding.default_external = Encoding::UTF_8 unless Encoding.default_external == Encoding::UTF_8
+# The tasks read UTF-8 text, so read it as UTF-8 in any shell. $VERBOSE hides
+# the warning Ruby prints under -w, as test/test_helper.rb does since #478.
+unless Encoding.default_external == Encoding::UTF_8
+  verbose = $VERBOSE
+  $VERBOSE = nil
+  Encoding.default_external = Encoding::UTF_8
+  $VERBOSE = verbose
+end
 
 # Rails-dependent daemon integration tests: they spawn a daemon under the fixture
 # app's OWN bundle, so they belong with the dogfood job, never the zero-dep suite.
