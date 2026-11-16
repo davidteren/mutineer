@@ -55,6 +55,7 @@ conventions:
       so an unpinned gemfile can test a different version and give false
       coverage (#400).'
   # Product facts and review checks that reviews taught us, one line each.
-  # Every lens reads them as rules, below the notes above. See the README there.
+  # The convention lens reads them as rules, below the notes above. See the
+  # README there.
   sources:
     - '.expectation-fit/decisions/*.md'

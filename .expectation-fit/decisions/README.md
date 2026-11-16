@@ -15,8 +15,8 @@ the same copy.
 - **Authors**, human or agent: read the file for the area you change before
   you open a pull request.
 - **Expectation Fit**: `.expectation-fit/ways-of-working.yaml` lists this
-  folder under `conventions.sources`, so `/fit-review` and
-  `/fit-validate-plan` apply each line as a rule.
+  folder under `conventions.sources`, so the convention lens of `/fit-review`
+  and `/fit-validate-plan` applies each line as a rule.
 - **Other reviewers**, human or bot: apply the files by hand.
 
 ## How to keep it true
@@ -28,7 +28,8 @@ the same copy.
 - When a review teaches a new fact, add the line here first. Then teach the
   review tool, if you use one.
 - `(cubic xxxxxxxx)` at the end of a line is the id of the rule in cubic that
-  the line came from. A line with no id was written here.
+  the line came from. A line that joins two cubic rules has both ids. A line
+  with no id was written here.
 
 ## Limits
 
