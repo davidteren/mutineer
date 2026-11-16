@@ -113,6 +113,20 @@ class ReturnNilTest < Minitest::Test
     assert_equal ["Integer(@x) rescue 0"], tokens(mutations, source)
   end
 
+  # #470: a final explicit begin block gives the same mutants as the
+  # def-level form Style/RedundantBegin rewrites it to.
+  def test_final_explicit_begin_matches_def_level_rescue
+    explicit, explicit_source = run_mutator("def f\n  begin\n    g\n  rescue KeyError\n    :missing\n  else\n    :ok\n  end\nend\n")
+    def_level, def_level_source = run_mutator("def f\n  g\nrescue KeyError\n  :missing\nelse\n  :ok\nend\n")
+    assert_equal [":ok", ":missing"], tokens(explicit, explicit_source)
+    assert_equal tokens(def_level, def_level_source), tokens(explicit, explicit_source)
+  end
+
+  def test_final_plain_begin_mutates_its_last_statement
+    mutations, source = run_mutator("def f\n  begin\n    a = 1\n    g(a)\n  end\nend\n")
+    assert_equal ["g(a)"], tokens(mutations, source)
+  end
+
   def test_dangling_heredoc_drop_counts_as_declined
     source = "def f\n  return <<~X\n    hi\n  X\n  1\nend\n"
     op = Mutineer::Mutators::ReturnNil.new

@@ -57,4 +57,36 @@ class LiteralMutationTest < Minitest::Test
     refute_includes replaced, "<<~X"
     assert_includes replaced, "1"
   end
+
+  # #469: a heredoc line or an interpolated-string part has no quotes of its
+  # own. Writing "" over it broke the parse, so the part is declined instead.
+  def test_heredoc_and_interpolated_parts_are_declined
+    src = <<~'SRC'
+      def prompt(x)
+        <<~PROMPT
+          You are a helper.
+          Answer briefly.
+        PROMPT
+        %(Saved (was: "#{x}"))
+      end
+    SRC
+    op = Mutineer::Mutators::LiteralMutation.new
+    assert_empty op.mutations_for(subject_for(src), src)
+    assert_equal 4, op.declined
+  end
+
+  # In a "..." string, "" closes and reopens the string, so the part empties.
+  def test_double_quoted_interpolated_part_still_mutates
+    src = "def f(name)\n  \"Hello, \#{name}\"\nend\n"
+    mutations = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src)
+    assert_equal ["Hello, "], mutations.map { |m| src[m.start_offset...m.end_offset] }
+    mutated = src.byteslice(0, mutations.first.start_offset) + '""' + src.byteslice(mutations.first.end_offset..)
+    assert Prism.parse(mutated).success?
+  end
+
+  def test_quoted_string_inside_interpolation_still_mutates
+    src = "def f(x)\n  \"a \#{g('b')} c\"\nend\n"
+    mutations = Mutineer::Mutators::LiteralMutation.new.mutations_for(subject_for(src), src)
+    assert_equal ["a ", "'b'", " c"], mutations.map { |m| src[m.start_offset...m.end_offset] }
+  end
 end

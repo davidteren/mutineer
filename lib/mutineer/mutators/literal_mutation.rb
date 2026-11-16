@@ -20,14 +20,32 @@ module Mutineer
         super
       end
 
-      # Visits string literals.
+      # Records the text parts of a `"..."` interpolated string. In those,
+      # `""` closes and reopens the string, so it empties the part.
+      #
+      # @param node [Prism::InterpolatedStringNode] node to inspect.
+      # @return [void]
+      def visit_interpolated_string_node(node)
+        if node.opening_loc&.slice == '"'
+          @double_quoted_parts ||= {}.compare_by_identity
+          node.parts.each { |part| @double_quoted_parts[part] = true }
+        end
+        super
+      end
+
+      # Visits string literals. A text part of a heredoc or a `%(...)` string
+      # has no quotes of its own, so `""` would insert text, not empty it, and
+      # can break the parse (#469). Such a part is declined.
       #
       # @param node [Prism::StringNode] node to inspect.
       # @return [void]
       def visit_string_node(node)
         loc = node.location
         token = @source.byteslice(loc.start_offset...loc.end_offset)
-        emit(loc, '""') unless token == '""' || token == "''" || node.unescaped.empty?
+        unless token == '""' || token == "''" || node.unescaped.empty?
+          quoted = node.opening_loc || @double_quoted_parts&.delete(node)
+          quoted ? emit(loc, '""') : decline
+        end
         super
       end
 
