@@ -2324,6 +2324,45 @@ class CoverageMapTest < Minitest::Test
     assert_operator elapsed, :<, 2.0
   end
 
+  def test_clean_pass_reports_a_timeout_apart_from_a_failure
+    ensure_coverage_running
+    hang = File.join(Dir.mktmpdir, "hang_clean_test.rb")
+    File.write(hang, "sleep 5\n")
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [hang],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
+    )
+    _ok, _report, timed_out = map.send(:fork_clean_pass?, [hang], nil)
+    assert timed_out, "fork clean check past its deadline"
+    _ok, _report, timed_out = map.send(:subprocess_clean_pass?, [hang])
+    assert timed_out, "subprocess clean check past its deadline"
+  end
+
+  # The combined check runs every file in one process, so its deadline follows
+  # the measured capture time, never below --capture-timeout.
+  def test_combined_clean_timeout_scales_with_capture_timings
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.timings.merge!("a_test.rb" => 70.0, "b_test.rb" => 50.2, "skipped_test.rb" => 500.0)
+    assert_equal 181, map.send(:combined_clean_timeout, %w[a_test.rb b_test.rb])
+    assert_equal 120, map.send(:combined_clean_timeout, %w[a_test.rb])
+    assert_equal 120, map.send(:combined_clean_timeout, %w[new_test.rb])
+  end
+
+  def test_combined_clean_check_records_a_timeout_not_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    used = nil
+    map.define_singleton_method(:subprocess_clean_pass?) do |_paths, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 120, used
+    assert_equal ["combined suite"], map.failed_clean_tests
+    assert_equal({ "combined suite" => 120 }, map.clean_timeouts)
+    assert_nil map.failed_clean_details["combined suite"]
+  end
+
   # --- #101 / #129: one deadline for the whole capture ----------------------
 
   def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

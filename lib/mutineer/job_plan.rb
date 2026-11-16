@@ -227,6 +227,12 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
+      # A clean check that hit its deadline is not a red suite: no test failed,
+      # so the seed hint does not apply.
+      timeouts = (coverage_map.clean_timeouts || {}).slice(*files)
+      files -= timeouts.keys
+      raise SmokeCheckError, clean_timeout_message(timeouts) if files.empty?
+
       seed_hint = seed_hint_for(framework)
       # The hint opens with "the unmutated suite is not green", so the files
       # follow it rather than repeat that sentence (#360). Failure names and
@@ -234,6 +240,21 @@ module Mutineer
       detail = clean_failure_detail(coverage_map, files)
       raise SmokeCheckError,
             "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{detail}"
+    end
+
+    # Says which clean checks hit their deadline and how to raise it.
+    #
+    # @api private
+    # @param timeouts [Hash{String => Numeric}] {CoverageMap#clean_timeouts}.
+    # @return [String]
+    def self.clean_timeout_message(timeouts)
+      checks = timeouts.map do |rel, seconds|
+        what = rel == "combined suite" ? "the combined clean check (every captured test file in one process)" : rel
+        "#{what} timed out after #{seconds}s"
+      end
+      "the unmutated suite did not finish: #{checks.join('; ')}. " \
+        "Mutineer stopped it, so no test is reported as failing. " \
+        "Raise --capture-timeout (capture_timeout in the config)."
     end
 
     # Joins capped failure reports for the unclean files (#360).

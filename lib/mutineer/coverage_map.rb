@@ -33,6 +33,11 @@ module Mutineer
     # Seconds per coverage subprocess before the parent kills it.
     DEFAULT_CAPTURE_TIMEOUT = 120
 
+    # The combined clean check runs every captured test file in one process.
+    # Its deadline is this factor times the summed capture seconds of those
+    # files, and never less than the capture timeout.
+    COMBINED_TIMEOUT_FACTOR = 1.5
+
     # File descriptor in a capture subprocess that carries the JSON result to
     # the parent. Stdout stays free for test output, which goes to File::NULL.
     RESULT_FD = 3
@@ -69,6 +74,14 @@ module Mutineer
 
     attr_reader :project_root, :failed_test_files, :failed_clean_tests, :failed_clean_details,
                 :phase_a_ran, :map
+
+    # Clean checks that hit their deadline, keyed like {#failed_clean_tests},
+    # with the deadline in seconds. Each key is also in {#failed_clean_tests},
+    # so the run still stops, but {JobPlan.abort_if_unclean!} reports a
+    # timeout, not a red suite.
+    #
+    # @return [Hash{String => Numeric}]
+    attr_reader :clean_timeouts
 
     # The source lines that ran while the app booted or the sources and the
     # `--require` files loaded, before any test ran, as a Set of "file:line"
@@ -109,10 +122,11 @@ module Mutineer
     # @param load_methods [Array<String>, Set<String>] "file:line:column" keys of methods called at load
     #   ({#load_methods}).
     # @param timings [Hash{String => Float}] capture seconds per test file ({#timings}).
+    # @param clean_timeouts [Hash{String => Numeric}] clean checks that timed out ({#clean_timeouts}).
     # @return [Mutineer::CoverageMap] a query-only map.
     def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [],
                        failed_clean_details: {}, load_lines: [],
-                       load_methods: [], timings: {})
+                       load_methods: [], timings: {}, clean_timeouts: {})
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
       instance.instance_variable_set(:@timings, timings || {})
@@ -121,6 +135,7 @@ module Mutineer
       instance.instance_variable_set(:@failed_test_files, failed_test_files || [])
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
+      instance.instance_variable_set(:@clean_timeouts, clean_timeouts || {})
       instance.instance_variable_set(:@project_root, FsPath.read(project_root))
       instance
     end
@@ -144,6 +159,7 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @failed_clean_details = {}
+      @clean_timeouts = {}
       @load_lines   = Set.new
       @load_methods = Set.new
       @timings      = {}
@@ -573,6 +589,7 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @failed_clean_details = {}
+      @clean_timeouts = {}
       @loaded_dependencies = cached["dependencies"]
       checked = clean_check_test_paths
       verify_cached_clean(after_fork: after_fork, test_paths: checked)
@@ -697,6 +714,7 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @failed_clean_details = {}
+      @clean_timeouts = {}
       @loaded_dependencies = {}
       @paired_in_run = nil
 
@@ -720,6 +738,7 @@ module Mutineer
       @failed_test_files = []
       @failed_clean_tests = []
       @failed_clean_details = {}
+      @clean_timeouts = {}
       @loaded_dependencies = {}
       abs_sources = abs_source_paths
 
@@ -1031,12 +1050,42 @@ module Mutineer
       return if runnable.size < 2
       return unless @failed_clean_tests.empty?
 
-      ok, detail = if @boot_path
-                     fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork)
-                   else
-                     subprocess_clean_pass?(runnable)
-                   end
-      record_failed_clean("combined suite", detail) unless ok
+      timeout = combined_clean_timeout(runnable)
+      ok, detail, timed_out = if @boot_path
+                                fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork, timeout: timeout)
+                              else
+                                subprocess_clean_pass?(runnable, timeout: timeout)
+                              end
+      if timed_out
+        record_clean_timeout("combined suite", timeout)
+      elsif !ok
+        record_failed_clean("combined suite", detail)
+      end
+    end
+
+    # The combined clean check's deadline: {COMBINED_TIMEOUT_FACTOR} times the
+    # summed capture seconds of `test_paths`, and at least `@capture_timeout`.
+    # One process runs them all, so the per-file capture timeout alone stops a
+    # green suite that is just slow.
+    #
+    # @api private
+    # @param test_paths [Array<String>] the tests the combined check runs.
+    # @return [Numeric] seconds.
+    def combined_clean_timeout(test_paths)
+      measured = test_paths.sum { |t| @timings[relativize(t)].to_f }
+      [@capture_timeout, (measured * COMBINED_TIMEOUT_FACTOR).ceil].max
+    end
+
+    # Notes a clean check that hit its deadline. The run still stops, as for a
+    # red suite, but the message says it timed out.
+    #
+    # @api private
+    # @param rel [String] project-relative test path, or `"combined suite"`.
+    # @param seconds [Numeric] the deadline that passed.
+    # @return [void]
+    def record_clean_timeout(rel, seconds)
+      record_failed_clean(rel)
+      @clean_timeouts[rel] = seconds
     end
 
     # Runs test files in a fresh interpreter and returns whether they passed.
@@ -1045,10 +1094,12 @@ module Mutineer
     #
     # @api private
     # @param test_paths [Array<String>] test file paths.
-    # @return [Array(Boolean, String)] pass flag and capped failure report.
-    def subprocess_clean_pass?(test_paths)
-      status, line = spawn_script(clean_check_script(test_paths), result: true)
-      return [false, ""] if status.nil?
+    # @param timeout [Numeric] seconds before the child is killed.
+    # @return [Array(Boolean, String, Boolean)] pass flag, capped failure
+    #   report, and whether the deadline passed.
+    def subprocess_clean_pass?(test_paths, timeout: @capture_timeout)
+      status, line = spawn_script(clean_check_script(test_paths), result: true, timeout: timeout)
+      return [false, "", true] if status.nil?
 
       data = begin
         JSON.parse(line.to_s)
@@ -1069,7 +1120,7 @@ module Mutineer
     # or the result. With `result: true`, the child writes its result as one
     # line to fd {RESULT_FD}, a pipe that only the script uses. The child's
     # stderr is the parent's stderr, so warnings from the script reach the
-    # user. A wall clock of `@capture_timeout` bounds the whole call (see
+    # user. A wall clock of `timeout` bounds the whole call (see
     # {#await_child}), so a hung test cannot wedge the run.
     #
     # The parent reads one line, not until EOF: a process that a test leaves
@@ -1080,11 +1131,12 @@ module Mutineer
     # @api private
     # @param script [String] Ruby script text.
     # @param result [Boolean] whether to open the result pipe on fd {RESULT_FD}.
+    # @param timeout [Numeric] seconds before the child is killed.
     # @return [Array(Process::Status, String)] the exit status and the line the
     #   child wrote to fd {RESULT_FD} (`""` without one); `[nil, ""]` after a
     #   timeout.
-    def spawn_script(script, result: true)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
+    def spawn_script(script, result: true, timeout: @capture_timeout)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       script_rd, script_wr = IO.pipe
       result_rd, result_wr = IO.pipe if result
       options = { in: script_rd, out: File::NULL, pgroup: true }
@@ -1183,14 +1235,16 @@ module Mutineer
 
     # Runs test files in a fork of the booted parent and returns whether they
     # passed, with a capped failure report for a red suite (#360).
-    # Bounded by `@capture_timeout` so a hung child cannot block the CLI.
+    # Bounded by `timeout` so a hung child cannot block the CLI.
     #
     # @api private
     # @param abs_tests [Array<String>] absolute test file paths.
     # @param after_fork [Proc, nil] boot-mode fork hook.
-    # @return [Array(Boolean, String)] pass flag and failure report.
-    def fork_clean_pass?(abs_tests, after_fork)
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @capture_timeout
+    # @param timeout [Numeric] seconds before the child is killed.
+    # @return [Array(Boolean, String, Boolean)] pass flag, failure report, and
+    #   whether the deadline passed.
+    def fork_clean_pass?(abs_tests, after_fork, timeout: @capture_timeout)
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       rd, wr = IO.pipe
       rd.binmode
       wr.binmode
@@ -1213,7 +1267,8 @@ module Mutineer
         end
       end
       wr.close
-      _, payload = await_child(pid, deadline) { read_marshal(rd) }
+      status, payload = await_child(pid, deadline) { read_marshal(rd) }
+      return [false, "", true] if status.nil?
       return [false, ""] unless payload.is_a?(Array)
 
       passed, report = payload
@@ -2028,6 +2083,7 @@ module Mutineer
       @failed_test_files = Array(cached["failed_test_files"])
       @failed_clean_tests = []
       @failed_clean_details = {}
+      @clean_timeouts = {}
       @loaded_dependencies = cached["dependencies"] || {}
     end
 

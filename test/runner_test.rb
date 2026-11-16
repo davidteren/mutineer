@@ -767,6 +767,20 @@ class RunnerTest < Minitest::Test
     assert_includes err.message, "Expected: 3"
   end
 
+  # A combined clean check that hit its deadline is reported as a timeout, not
+  # as a red suite with a seed hint.
+  def test_abort_if_unclean_reports_a_combined_check_timeout
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["combined suite"],
+      clean_timeouts: { "combined suite" => 180 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "combined clean check (every captured test file in one process) timed out after 180s"
+    assert_includes err.message, "--capture-timeout"
+    refute_includes err.message, "not green"
+    refute_includes err.message, "SEED="
+  end
+
   # #360: joined per-file reports are capped so a large unclean suite cannot flood stderr.
   def test_abort_if_unclean_caps_joined_failure_details
     limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT

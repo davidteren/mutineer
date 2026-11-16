@@ -254,7 +254,8 @@ module Mutineer
           failed_test_files: data["failed_test_files"] || [],
           project_root: config.project_root,
           failed_clean_tests: data["failed_clean_tests"],
-          failed_clean_details: data["failed_clean_details"] || {}
+          failed_clean_details: data["failed_clean_details"] || {},
+          clean_timeouts: data["clean_timeouts"] || {}
         ), framework: config.framework)
       end
 
