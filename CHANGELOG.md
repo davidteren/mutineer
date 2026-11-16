@@ -351,7 +351,7 @@ All notable changes to this project are documented here. The format is based on
   With `LANG` and `LC_ALL` unset, a source file, test file, or project
   folder whose name is not ASCII made coverage fail, or the path missed
   its match, so the run stopped or scored those mutants `no_coverage`.
-  Those mutants now get a verdict, so a score can change.
+  Those mutants now get a verdict, so a score can change. With `--baseline`, refresh the baseline.
   Paths are read as UTF-8 when the bytes are UTF-8, and as binary
   otherwise, and compared in that encoding. Minitest is given the path
   in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
