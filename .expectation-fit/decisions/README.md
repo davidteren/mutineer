@@ -7,8 +7,9 @@ check that an author or a reviewer applies to a change.
 
 A review tool learned these rules from our feedback and kept them on its own
 servers. The person or agent that writes a change could not read them, so the
-same findings came back in review. Here every author and every reviewer reads
-the same copy.
+same findings came back in review. Here every author and every reviewer can
+read the same copy. cubic still applies the copy on its servers, so the two
+can differ (see Limits).
 
 ## Who reads it
 
