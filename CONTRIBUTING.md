@@ -20,6 +20,15 @@ bundle exec ruby -Ilib -Itest test/cli_test.rb
 bundle exec ruby -Ilib -Itest test/cli_test.rb -n test_dry_run_prints_breakdown
 ```
 
+The Rake tasks read files as UTF-8 in any shell. Other tools, such as the
+website checks, need a UTF-8 locale. Check it with `ruby -e 'p Encoding.default_external'`, which prints
+`#<Encoding:UTF-8>` when the shell is set up. If it prints anything else, set a
+locale (#484):
+
+- macOS: add `export LANG=en_US.UTF-8` to `~/.zshrc`.
+- Linux and containers: `export LANG=C.UTF-8`, or `ENV LANG=C.UTF-8` in a Dockerfile.
+- `LC_ALL` overrides `LANG`. If `LC_ALL` is set to another locale, unset it or set it to the same UTF-8 value.
+
 If the suite fails on a clean checkout of `main`, open an issue. Include the
 output, your Ruby version, and your operating system.
 
