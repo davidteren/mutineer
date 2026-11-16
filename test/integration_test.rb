@@ -89,6 +89,29 @@ class IntegrationTest < Minitest::Test
     assert_equal [killer], row.kills.killed_by
   end
 
+  # #469 repro: heredoc lines and `%(...)` parts are declined, so no mutant is
+  # skipped (invalid). The `"..."` part still mutates and its test kills it.
+  def test_unquoted_string_parts_are_declined_and_the_quoted_part_is_killed
+    config = Mutineer::Config.new(
+      sources: ["test/fixtures/prompt_text.rb"], tests: ["test/fixtures/prompt_text_test.rb"],
+      operators: ["literal_mutation"], matrix: true, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    result, _, extras = Mutineer::Runner.execute(config)
+
+    assert_equal 4, extras[:declined].fetch("literal_mutation")
+    assert_equal 0, result.results.count { |r| r.status == :skipped }
+    assert_equal 1, result.results.size
+    row = result.results.first
+    assert_equal "greet", row.subject.name.to_s
+    assert_equal :killed, row.status
+    assert_equal "Hello, ", source_token(row)
+    assert_equal '""', row.mutation.replacement
+    killer = ["test/fixtures/prompt_text_test.rb",
+              "PromptTextTest#test_greet_says_hello",
+              "PromptTextTest#test_greet_says_hello"]
+    assert_equal [killer], row.kills.killed_by
+  end
+
   def test_negation_removal_survivor
     assert_sole_survivor(source: "test/fixtures/access.rb", test: "test/fixtures/access_test.rb",
                          operator: :negation_removal, subject: "guest?", token: "!", replacement: "")
