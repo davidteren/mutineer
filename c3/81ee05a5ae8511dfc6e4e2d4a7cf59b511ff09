@@ -1,0 +1,27 @@
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_1a828fb201280e::t_b173c657adef4e 5
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_1a828fb201280e::t_160e0f0d14c812 12
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_1a828fb201280e::t_f30071769b02cc 4
+.expectation-fit/decisions/redaction-and-security.md
+  s_1a828fb201280e::t_6c33a4375922b3 4
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_1a828fb201280e::t_cfce11b4456dc2 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c381ee05a5ae8511dfc6e4e2d4a7cf59b511ff09",
+  "prompts": {},
+  "sessions": {
+    "s_1a828fb201280e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29001b15-ff0a-4878-a62b-eba6b8a4e21a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
