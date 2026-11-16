@@ -54,8 +54,6 @@ Parallel workers with it need Rails 7.1 or later.
 On Rails 7.0, every parallel mutant scores `error`.
 Listing the primary database exits 2.
 
-`shared_databases` is new in 1.8.0.
-
 `tests` is new in 1.9.0. An older version warns that the key is unknown and ignores it.
 
 `allow_empty` is new in 1.7.0.

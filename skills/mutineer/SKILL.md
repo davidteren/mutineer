@@ -67,7 +67,7 @@ and its score and exit code do not cover the full scope.
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and
 report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
-harness failures, and fix them before starting a new run. Also check `summary.unpaired_mutants` (Mutineer 1.9.0 or later). Above 0, a source with no paired test was skipped, and its mutants are not in the score. `unpaired_sources[]` names each skipped source. Add a test for each entry whose `mutants` is above 0, or pass `--test`, then run again. Under `--since`, an entry with `mutants` 0 has no mutant on a changed line. A `null` count means the count failed. A positive threshold fails when nothing can be scored and something
+harness failures, and fix them before starting a new run. Also check `summary.unpaired_mutants` (Mutineer 1.9.0 or later). Above 0, a source with no paired test was skipped, and its mutants are not in the score. `unpaired_sources[]` names each skipped source. Add a test for each entry whose `mutants` is above 0, or pass `--test`, then run again. Under `--since`, an entry with `mutants` 0 has no mutant on a changed line. Also look for an entry whose `mutants` is `null`. That count failed, and `summary.unpaired_mutants` leaves it out. Treat that source as skipped. A positive threshold fails when nothing can be scored and something
 broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
 
