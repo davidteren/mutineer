@@ -776,9 +776,36 @@ class RunnerTest < Minitest::Test
     )
     err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
     assert_includes err.message, "combined clean check (the clean-check test files in one process) timed out after 180s"
-    assert_includes err.message, "--capture-timeout"
+    assert_includes err.message, "Set --capture-timeout (capture_timeout in the config) above 180."
     refute_includes err.message, "not green"
     refute_includes err.message, "SEED="
+  end
+
+  # The advice names the longest deadline that passed: a lower value than the
+  # scaled combined deadline would change nothing.
+  def test_abort_if_unclean_names_the_longest_deadline_to_beat
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["slow_test.rb", "combined suite"],
+      clean_timeouts: { "slow_test.rb" => 120, "combined suite" => 241 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "above 241."
+  end
+
+  # A timed-out check next to a red file: one message names both, so the user
+  # does not fix the red test only to meet the timeout on the next run.
+  def test_abort_if_unclean_reports_a_timeout_next_to_a_red_file
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: %w[slow_test.rb red_test.rb],
+      failed_clean_details: { "red_test.rb" => "Failure:\nRedTest#test_x" },
+      clean_timeouts: { "slow_test.rb" => 120 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "Failed: red_test.rb."
+    refute_includes err.message, "Failed: slow_test.rb"
+    assert_includes err.message, "slow_test.rb timed out after 120s"
+    assert_includes err.message, "above 120."
+    assert_includes err.message, "RedTest#test_x"
   end
 
   # #360: joined per-file reports are capped so a large unclean suite cannot flood stderr.

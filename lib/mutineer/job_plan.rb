@@ -236,13 +236,17 @@ module Mutineer
       seed_hint = seed_hint_for(framework)
       # The hint opens with "the unmutated suite is not green", so the files
       # follow it rather than repeat that sentence (#360). Failure names and
-      # the first error follow when capture stored them.
+      # the first error follow when capture stored them. A check that timed
+      # out next to a red file is named too, so one run reports both.
+      also = timeouts.empty? ? "" : " Also, #{clean_timeout_message(timeouts)}"
       detail = clean_failure_detail(coverage_map, files)
       raise SmokeCheckError,
-            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{detail}"
+            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{also}#{detail}"
     end
 
-    # Says which clean checks hit their deadline and how to raise it.
+    # Says which clean checks hit their deadline and how to raise it. It names
+    # the longest deadline that passed: the combined check's deadline can be
+    # above --capture-timeout, so any lower value would change nothing.
     #
     # @api private
     # @param timeouts [Hash{String => Numeric}] {CoverageMap#clean_timeouts}.
@@ -253,8 +257,8 @@ module Mutineer
         "#{what} timed out after #{seconds}s"
       end
       "the unmutated suite did not finish: #{checks.join('; ')}. " \
-        "Mutineer stopped it, so no test is reported as failing. " \
-        "Raise --capture-timeout (capture_timeout in the config)."
+        "Mutineer stopped it, so it reports no failing test. " \
+        "Set --capture-timeout (capture_timeout in the config) above #{timeouts.values.max}."
     end
 
     # Joins capped failure reports for the unclean files (#360).

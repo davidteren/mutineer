@@ -1112,11 +1112,11 @@ module Mutineer
       end
       # Fail closed: a child that exits 0 without a valid result line must not
       # clear the clean check (mutation honesty).
-      return [false, ""] unless data.is_a?(Hash)
+      return [false, "", false] unless data.is_a?(Hash)
 
       # Require the process exit too: an `at_exit` hook can fail after the
       # child already wrote `passed: true` (#360 warm-cache clean check).
-      [status.success? && data["passed"] == true, data["failure_report"].to_s]
+      [status.success? && data["passed"] == true, data["failure_report"].to_s, false]
     end
 
     # Runs `script` in a fresh `ruby -` that reads the script from stdin. The
@@ -1273,12 +1273,12 @@ module Mutineer
       wr.close
       status, payload = await_child(pid, deadline) { read_marshal(rd) }
       return [false, "", true] if status.nil?
-      return [false, ""] unless payload.is_a?(Array)
+      return [false, "", false] unless payload.is_a?(Array)
 
       passed, report = payload
-      [passed == true, report.to_s]
+      [passed == true, report.to_s, false]
     rescue StandardError
-      [false, ""]
+      [false, "", false]
     ensure
       [rd, wr].compact.each { |io| io.close unless io.closed? }
     end

@@ -2379,6 +2379,46 @@ class CoverageMapTest < Minitest::Test
     assert_equal({ "combined suite" => 241 }, map.clean_timeouts)
   end
 
+  # Boot mode (--daemon builds through build_via_fork) runs the combined check
+  # in a fork, which must get the same scaled deadline.
+  def test_combined_clean_check_forwards_the_scaled_deadline_to_the_fork
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT,
+                                    capture_timeout: 120, boot_path: "boot.rb")
+    map.timings.merge!("a_test.rb" => 100.0, "b_test.rb" => 60.1)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    map.define_singleton_method(:subprocess_clean_pass?) { |*, **| flunk "boot mode must fork" }
+    used = nil
+    map.define_singleton_method(:fork_clean_pass?) do |_abs, _after_fork, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 241, used
+    assert_equal({ "combined suite" => 241 }, map.clean_timeouts)
+  end
+
+  # Every return of the clean-pass helpers has the documented three elements,
+  # with an explicit false when the deadline did not pass.
+  def test_clean_pass_helpers_return_three_elements_on_every_branch
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    status = Object.new
+    def status.success? = true
+    line = "not-json"
+    map.define_singleton_method(:spawn_script) { |*, **| [status, line] }
+    assert_equal [false, "", false], map.send(:subprocess_clean_pass?, [])
+    line = JSON.generate("passed" => true, "failure_report" => "")
+    assert_equal [true, "", false], map.send(:subprocess_clean_pass?, [])
+
+    payload = nil
+    map.define_singleton_method(:fork) { |*| 0 }
+    map.define_singleton_method(:await_child) { |*| [status, payload] }
+    assert_equal [false, "", false], map.send(:fork_clean_pass?, [], nil)
+    payload = [true, ""]
+    assert_equal [true, "", false], map.send(:fork_clean_pass?, [], nil)
+    map.define_singleton_method(:await_child) { |*| raise IOError, "pipe" }
+    assert_equal [false, "", false], map.send(:fork_clean_pass?, [], nil)
+  end
+
   def test_cached_clean_check_records_a_timeout_not_a_failure
     map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
     map.define_singleton_method(:subprocess_clean_pass?) { |paths| paths == ["slow_test.rb"] ? [false, "", true] : [false, "boom", false] }
