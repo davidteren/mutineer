@@ -21,7 +21,7 @@ All notable changes to this project are documented here. The format is based on
   It replaces the final expression of the body, or of the `else` clause when there is one, with `nil`.
   It does the same for each `rescue` clause. The `ensure` value is not a return value, so it is left alone.
   Before this, `return_nil` gave such a method no final-expression mutant.
-  A run with `return_nil` can now report more mutants and new survivors. With `--baseline`, refresh the baseline.
+  A run with `return_nil` can now report a different number of mutants and new survivors. With `--baseline`, refresh the baseline.
   With both operators, a one-statement `rescue` body gives the same edit twice. The run keeps the `return_nil` mutant, lists the `rescue_body` id in its `copies`, and counts that copy in `dropped`.
   A final explicit `begin ... end` block gets the same mutants as the def-level form, so RuboCop's `Style/RedundantBegin` autocorrect does not change them (#470).
 - **`run` says when an `ignore:` entry matches no mutant (#377).**
@@ -293,8 +293,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **`literal_mutation` no longer writes `""` over a heredoc line or a `%(...)` string part (#469).**
-  Those parts have no quotes of their own, so the mutant inserted text and could break the parse. They were counted as skipped (invalid). Such a part is now declined. A text part of a `"..."` string still mutates.
+- **`literal_mutation` no longer writes `""` over a string that has no quotes of its own (#469).**
+  That covers a heredoc line, a part of a `%(...)` or `%Q(...)` string, a `%w[]` or `%W[]` element, and a text part of a regex or a backtick string.
+  The edit inserted text instead of emptying the string. Some of these mutants broke the parse and were counted as skipped (invalid). The others ran as the wrong edit.
+  Each such string is now declined and counts in `summary.declined_by_operator`. A text part of a `"..."` string still mutates, because `""` closes and reopens the string.
+  A run with `literal_mutation` can report fewer mutants. With `--baseline`, refresh the baseline.
 - **A standalone cache hit no longer checks every test just because each
   test loads the sources (#426).** Standalone capture loads every source
   before each test. The class line, the `def` line, and any other line that

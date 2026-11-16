@@ -8,6 +8,16 @@ module Mutineer
     #
     # Mutates integers and strings with the Tier-2 literal rules.
     class LiteralMutation < Base
+      # Resets the per-subject record of `"..."` string parts.
+      #
+      # @param subject [Mutineer::Subject] subject whose body is visited.
+      # @param source [String] full source text for byte-based slicing.
+      # @return [Array<Mutineer::Mutation>] collected mutations.
+      def mutations_for(subject, source)
+        @double_quoted_parts = {}.compare_by_identity
+        super
+      end
+
       # Visits integer literals.
       #
       # @param node [Prism::IntegerNode] node to inspect.
@@ -26,16 +36,14 @@ module Mutineer
       # @param node [Prism::InterpolatedStringNode] node to inspect.
       # @return [void]
       def visit_interpolated_string_node(node)
-        if node.opening_loc&.slice == '"'
-          @double_quoted_parts ||= {}.compare_by_identity
-          node.parts.each { |part| @double_quoted_parts[part] = true }
-        end
+        node.parts.each { |part| @double_quoted_parts[part] = true } if node.opening_loc&.slice == '"'
         super
       end
 
-      # Visits string literals. A text part of a heredoc or a `%(...)` string
-      # has no quotes of its own, so `""` would insert text, not empty it, and
-      # can break the parse (#469). Such a part is declined.
+      # Visits string literals. A string with no quotes of its own (a heredoc
+      # line, a `%(...)` or `%Q(...)` part, a `%w[]` element, a regex or
+      # backtick part) cannot be emptied with `""`: the edit inserts text and
+      # can break the parse (#469). Such a string is declined.
       #
       # @param node [Prism::StringNode] node to inspect.
       # @return [void]
@@ -43,7 +51,7 @@ module Mutineer
         loc = node.location
         token = @source.byteslice(loc.start_offset...loc.end_offset)
         unless token == '""' || token == "''" || node.unescaped.empty?
-          quoted = node.opening_loc || @double_quoted_parts&.delete(node)
+          quoted = node.opening_loc || @double_quoted_parts.delete(node)
           quoted ? emit(loc, '""') : decline
         end
         super
