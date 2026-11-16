@@ -406,6 +406,50 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # A combined clean check that timed out in the daemon reaches the user as a
+  # timeout: the client must pass `clean_timeouts` on to the map, or a
+  # --daemon run reports a red suite with the seed hint again (#476).
+  def test_a_daemon_clean_check_timeout_is_reported_as_a_timeout
+    with_jobs do |_jobs, config, _source_map|
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => {}, "failed_test_files" => [], "failed_clean_tests" => ["combined suite"],
+                           "clean_timeouts" => { "combined suite" => 180 } }
+      err = assert_raises(Mutineer::SmokeCheckError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+          Mutineer::DaemonBackend.build_coverage_map(config, [])
+        end
+      end
+      assert_includes err.message, "timed out after 180s"
+      refute_includes err.message, "not green"
+    end
+  end
+
+  # The daemon side of the same contract: the coverage reply carries the map's
+  # `clean_timeouts`, so the client above has something to read.
+  def test_the_daemon_coverage_reply_carries_clean_timeouts
+    require "coverage"
+    require "mutineer/daemon_server"
+    server = Mutineer::DaemonServer
+    server.instance_variable_set(:@cfg, {})
+    cmap = Object.new
+    def cmap.build_via_fork(**) = self
+    def cmap.map = {}
+    def cmap.failed_test_files = []
+    def cmap.failed_clean_tests = ["combined suite"]
+    def cmap.failed_clean_details = {}
+    def cmap.clean_timeouts = { "combined suite" => 241 }
+    def cmap.load_lines = []
+    def cmap.load_methods = []
+    reply = Coverage.stub(:running?, false) do
+      Mutineer::CoverageMap.stub(:new, ->(**) { cmap }) { server.send(:build_coverage_map) }
+    end
+    assert_equal({ "combined suite" => 241 }, reply["clean_timeouts"])
+  ensure
+    server&.instance_variable_set(:@cfg, nil)
+  end
+
   # An empty test map still falls back to the full --test set, but the boot
   # lines it came with must still classify a survivor on one of them.
   def test_an_empty_map_runs_every_test_and_keeps_the_boot_lines

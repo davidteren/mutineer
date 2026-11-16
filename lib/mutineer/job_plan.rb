@@ -227,13 +227,38 @@ module Mutineer
       files = coverage_map.failed_clean_tests
       return if files.empty?
 
+      # A clean check that hit its deadline is not a red suite: no test failed,
+      # so the seed hint does not apply.
+      timeouts = (coverage_map.clean_timeouts || {}).slice(*files)
+      files -= timeouts.keys
+      raise SmokeCheckError, clean_timeout_message(timeouts) if files.empty?
+
       seed_hint = seed_hint_for(framework)
       # The hint opens with "the unmutated suite is not green", so the files
       # follow it rather than repeat that sentence (#360). Failure names and
-      # the first error follow when capture stored them.
+      # the first error follow when capture stored them. A check that timed
+      # out next to a red file is named too, so one run reports both.
+      also = timeouts.empty? ? "" : " Also, #{clean_timeout_message(timeouts)}"
       detail = clean_failure_detail(coverage_map, files)
       raise SmokeCheckError,
-            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{detail}"
+            "#{ExternalBackend.generic_env_hint}. Failed: #{files.join(', ')}.#{seed_hint}#{also}#{detail}"
+    end
+
+    # Says which clean checks hit their deadline and how to raise it. It names
+    # the longest deadline that passed: the combined check's deadline can be
+    # above --capture-timeout, so any lower value would change nothing.
+    #
+    # @api private
+    # @param timeouts [Hash{String => Numeric}] {CoverageMap#clean_timeouts}.
+    # @return [String]
+    def self.clean_timeout_message(timeouts)
+      checks = timeouts.map do |rel, seconds|
+        what = rel == "combined suite" ? "the combined clean check (the clean-check test files in one process)" : rel
+        "#{what} timed out after #{seconds}s"
+      end
+      "the unmutated suite did not finish: #{checks.join('; ')}. " \
+        "Mutineer stopped it, so it reports no failing test. " \
+        "Set --capture-timeout (capture_timeout in the config) above #{timeouts.values.max}."
     end
 
     # Joins capped failure reports for the unclean files (#360).
