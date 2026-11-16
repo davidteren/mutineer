@@ -331,9 +331,15 @@ trusted publisher makes that old `gem push` fail, because the old job omits
 
 These rules come from a postmortem of issues #252, #253, and #254 and an
 audit of every merged PR. They stop the defect patterns that reached users.
-The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
+The text of these eleven rules lives in one place:
+`.expectation-fit/ways-of-working.yaml`.
 Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
-every other reviewer, human or bot, applies the same file by hand. Score terms
+every other reviewer, human or bot, applies the same file by hand.
+Product facts and checks that reviews taught us live beside it, in
+`.expectation-fit/decisions/`, one line each. Read the file for the area you
+change before you open a pull request. `ways-of-working.yaml` lists that
+folder as a rule source, so the plugin applies those lines too. Other
+reviewers apply those lines by hand. Score terms
 are defined in "Score-model discipline" below. In-process Minitest and RSpec runs
 share one seed (#282). Within a file, that order does not depend on the other
 files. A mutant run still orders its files by coverage (paired, then cheapest),

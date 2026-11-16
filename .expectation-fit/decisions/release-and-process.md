@@ -1,0 +1,6 @@
+# Release and process
+
+- **Floating Tag Command Eligibility.** In the release workflow, verify that the floating-tag move command is printed only when the release is the newest stable tag in its line, and not for older-line patches. Not when: Do not expect a move command for a patch on an older release line; it prints no command. (cubic `b353eea2`)
+- **Urgent Fix Release Policy.** When reviewing the agent release policy, verify that urgent bugs and security fixes are raised with a maintainer for release now without waiting for the next batch, and that the agent does not release without the maintainer's answer. (cubic `a09a7fd6`)
+- **Require Tests for Mutineer Gaps.** When the Mutineer agent skill's survivor review identifies a test gap, require adding or improving a test that fails under that mutation. (cubic `c4650d7b`)
+- **Reject Nonzero No-Verdict Records.** When `fizzy:record` processes a report with positive `summary.no_verdict` (errored, timed-out, or uncapturable mutants), reject the report so an incomplete run cannot become the stored baseline. When documenting or reviewing the Fizzy release workflow, state that a nonzero `no_verdict` count blocks the record-and-merge path; the cause must be fixed and merged, then `bundle exec rake fizzy:sample` rerun on the merged `main`, and it must pass before release step 1. (cubic `bd9b6427`)
