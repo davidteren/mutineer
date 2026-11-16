@@ -1,0 +1,19 @@
+.expectation-fit/decisions/README.md
+  s_1a828fb201280e::t_bc1ffa6b63b0b1 10-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "992d03e4ed3ef8732192de65342e88d057591366",
+  "prompts": {},
+  "sessions": {
+    "s_1a828fb201280e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29001b15-ff0a-4878-a62b-eba6b8a4e21a",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
