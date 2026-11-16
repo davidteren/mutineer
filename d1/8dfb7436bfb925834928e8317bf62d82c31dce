@@ -1,0 +1,23 @@
+.claude/skills/author-self-check/SKILL.md
+  s_6eb03bc000c4b3::t_aed2ed6441c036 17,20-21
+.claude/skills/author-self-check/self_check.rb
+  s_6eb03bc000c4b3::t_5fc66c3a8cd317 52-53,72,83-86,101
+.claude/skills/author-self-check/self_check_test.rb
+  s_6eb03bc000c4b3::t_01a7dd7049ad45 19-23,36,40-41,109-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d18dfb7436bfb925834928e8317bf62d82c31dce",
+  "prompts": {},
+  "sessions": {
+    "s_6eb03bc000c4b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c72736b1-c921-45c5-840d-c2f9446937a1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
