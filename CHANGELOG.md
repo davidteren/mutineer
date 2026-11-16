@@ -293,13 +293,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **A combined clean check that times out is reported as a timeout (#476).**
-  The combined check runs every captured test file in one process.
+- **A clean check that times out is reported as a timeout (#476).**
+  The combined clean check runs the files selected for the clean check in one process.
   It had the same deadline as one file's capture, 120 s by default.
   A green suite that took longer was killed and reported as "the unmutated suite is not green (combined suite)", with the seed hint.
   Now the message says the check timed out after N s, that no test failed, and to raise `--capture-timeout`.
   A real failure still says "not green".
-  The combined check's deadline is now 1.5 times the summed capture seconds of the files it runs, and never less than `--capture-timeout`.
+  The combined check's deadline is now the larger of `--capture-timeout` and 1.5 times the summed capture seconds of the files it runs, rounded up.
+  A per-file clean check on a cache hit that times out is reported the same way.
 - **A standalone cache hit no longer checks every test just because each
   test loads the sources (#426).** Standalone capture loads every source
   before each test. The class line, the `def` line, and any other line that

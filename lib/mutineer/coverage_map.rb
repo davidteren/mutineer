@@ -33,7 +33,7 @@ module Mutineer
     # Seconds per coverage subprocess before the parent kills it.
     DEFAULT_CAPTURE_TIMEOUT = 120
 
-    # The combined clean check runs every captured test file in one process.
+    # The combined clean check runs the clean-check test files in one process.
     # Its deadline is this factor times the summed capture seconds of those
     # files, and never less than the capture timeout.
     COMBINED_TIMEOUT_FACTOR = 1.5
@@ -993,12 +993,16 @@ module Mutineer
         rel = relativize(test_path)
         next if @failed_test_files.include?(rel)
 
-        ok, detail = if @boot_path
-                       fork_clean_pass?([absolute(test_path)], after_fork)
-                     else
-                       subprocess_clean_pass?([test_path])
-                     end
-        record_failed_clean(rel, detail) unless ok
+        ok, detail, timed_out = if @boot_path
+                                  fork_clean_pass?([absolute(test_path)], after_fork)
+                                else
+                                  subprocess_clean_pass?([test_path])
+                                end
+        if timed_out
+          record_clean_timeout(rel, @capture_timeout)
+        elsif !ok
+          record_failed_clean(rel, detail)
+        end
       end
     end
 

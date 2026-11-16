@@ -249,7 +249,7 @@ module Mutineer
     # @return [String]
     def self.clean_timeout_message(timeouts)
       checks = timeouts.map do |rel, seconds|
-        what = rel == "combined suite" ? "the combined clean check (every captured test file in one process)" : rel
+        what = rel == "combined suite" ? "the combined clean check (the clean-check test files in one process)" : rel
         "#{what} timed out after #{seconds}s"
       end
       "the unmutated suite did not finish: #{checks.join('; ')}. " \

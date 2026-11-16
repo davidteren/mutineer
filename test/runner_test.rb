@@ -775,7 +775,7 @@ class RunnerTest < Minitest::Test
       clean_timeouts: { "combined suite" => 180 }, project_root: ROOT
     )
     err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-    assert_includes err.message, "combined clean check (every captured test file in one process) timed out after 180s"
+    assert_includes err.message, "combined clean check (the clean-check test files in one process) timed out after 180s"
     assert_includes err.message, "--capture-timeout"
     refute_includes err.message, "not green"
     refute_includes err.message, "SEED="

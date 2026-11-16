@@ -2363,6 +2363,31 @@ class CoverageMapTest < Minitest::Test
     assert_nil map.failed_clean_details["combined suite"]
   end
 
+  # Summed timings above --capture-timeout: the check must get 1.5 times the
+  # sum, rounded up, so a wrong factor or a missing file's timing fails here.
+  def test_combined_clean_check_forwards_the_scaled_deadline
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.timings.merge!("a_test.rb" => 100.0, "b_test.rb" => 60.1)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    used = nil
+    map.define_singleton_method(:subprocess_clean_pass?) do |_paths, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 241, used
+    assert_equal({ "combined suite" => 241 }, map.clean_timeouts)
+  end
+
+  def test_cached_clean_check_records_a_timeout_not_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.define_singleton_method(:subprocess_clean_pass?) { |paths| paths == ["slow_test.rb"] ? [false, "", true] : [false, "boom", false] }
+    map.send(:verify_cached_clean, test_paths: %w[slow_test.rb red_test.rb])
+    assert_equal %w[slow_test.rb red_test.rb], map.failed_clean_tests
+    assert_equal({ "slow_test.rb" => 120 }, map.clean_timeouts)
+    assert_equal "boom", map.failed_clean_details["red_test.rb"]
+  end
+
   # --- #101 / #129: one deadline for the whole capture ----------------------
 
   def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
