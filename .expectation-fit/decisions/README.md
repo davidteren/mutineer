@@ -15,9 +15,10 @@ can differ (see Limits).
 
 - **Authors**, human or agent: read the file for the area you change before
   you open a pull request.
-- **Expectation Fit**: `.expectation-fit/ways-of-working.yaml` lists this
-  folder under `conventions.sources`, so the convention lens of `/fit-review`
-  and `/fit-validate-plan` applies each line as a rule.
+- **Expectation Fit**: `.expectation-fit/ways-of-working.yaml` lists the topic
+  files of this folder under `conventions.sources`, so the convention lens of
+  `/fit-review` and `/fit-validate-plan` applies each line as a rule. This
+  README is not a source.
 - **Other reviewers**, human or bot: apply the files by hand.
 
 ## How to keep it true
