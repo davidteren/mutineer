@@ -219,7 +219,7 @@ All notable changes to this project are documented here. The format is based on
   is still skipped. `defined?` does not evaluate its operand, so an `each` or
   `map` inside it is skipped, including a `lazy` chain and an interpolation.
   A hash key still swaps, because insertion calls `hash` and `eql?`.
-  The last line of a `rescue` clause is kept or discarded as its `begin` is.
+  The last line of each `rescue` clause, including a later clause, is kept or discarded as its `begin` is.
   A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
   runs the block and `Lazy#map` does not.
   A lazy enumerator stored in a variable is still skipped.
@@ -469,8 +469,9 @@ All notable changes to this project are documented here. The format is based on
   the queue, not the thread that finishes first. A serial failure still
   decides, because those classes run first. A mutant that mixed a database
   error and an assertion in one parallel class no longer flips between
-  `killed` and `error` across runs. The JSON report names an in-test
-  database error in `no_verdict[].details` (#417). Active Record 7.2
+  `killed` and `error` across runs. The JSON report names a Minitest
+  in-test database error in `no_verdict[].details` (#417). It does not name
+  an RSpec example's database error (#480). Active Record 7.2
   reports SQLite `database is locked` as `StatementInvalid`, so that mutant
   still scores `killed` (#347).
 - **`--strategy redefine` no longer false-kills path anchors in a read-only
