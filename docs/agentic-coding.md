@@ -54,7 +54,7 @@ mutineer run lib --no-fail-fast
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and
 report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
-harness failures, and fix them before starting a new run. A
+harness failures, and fix them before starting a new run. Also check `unpaired_sources[]` (Mutineer 1.9.0 or later): a source with no paired test is skipped, and its mutants are not in the score. A
 positive threshold fails when nothing can be scored and something broke, or when
 more than one mutant has no verdict and they exceed 10% of those attempted; it
 does not require zero errors. Keep the threshold in the command equal to your target.
