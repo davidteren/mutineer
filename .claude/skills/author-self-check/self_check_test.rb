@@ -16,7 +16,7 @@ class SelfCheckTest < Minitest::Test
     "docs/rails.html" => "<p>Install the gem in the <b>test</b> group.</p>\n"
   }.freeze
 
-  def run_in_repo(subdir: ".", extra_base: {}, uncommitted: {})
+  def run_in_repo(subdir: ".", extra_base: {}, uncommitted: {}, env: {})
     # shortcut: a late git write can make mktmpdir's strict cleanup raise ENOTEMPTY;
     # rm_rf tolerates it. Find the writer if a test leaves files behind.
     dir = Dir.mktmpdir
@@ -34,7 +34,7 @@ class SelfCheckTest < Minitest::Test
         sh.("git", "add", ".")
         sh.("git", "commit", "-qm", "change (#42)")
         uncommitted.each { |p, body| File.write(p, body) }
-        out, status = Open3.capture2e("ruby", SCRIPT, "main", chdir: subdir)
+        out, status = Open3.capture2e(env, "ruby", SCRIPT, "main", chdir: subdir)
         return [out, status.exitstatus]
       end
     ensure
@@ -100,7 +100,7 @@ class SelfCheckTest < Minitest::Test
 
   def test_runs_from_a_subdirectory_and_keeps_non_ascii_paths
     cafe = { "docs/caf\u00e9.md" => "Mutineer runs on Linux or macOS with Ruby 3.4.\n" }
-    out, = run_in_repo(subdir: "docs", extra_base: cafe) do
+    out, = run_in_repo(subdir: "docs", extra_base: cafe, env: { "LANG" => nil, "LC_ALL" => nil }) do
       File.write("docs/caf\u00e9.md", "Mutineer runs anywhere.\n")
     end
     assert_includes out, "docs/caf\u00e9.md: \"Mutineer runs on Linux or macOS with Ruby 3.4.\" still in"
@@ -127,6 +127,20 @@ class SelfCheckTest < Minitest::Test
       File.write("docs/index.md", "Mutineer runs on any platform.\n")
     end
     assert_includes out, "twin not changed (0)"
+  end
+
+  def test_keeps_a_changed_line_that_starts_with_two_minuses
+    out, = run_in_repo(extra_base: { "NOTES.md" => "-- a dash line\n" }) do
+      File.write("NOTES.md", "-- not yet supported\n")
+    end
+    assert_includes out, "NOTES.md: -- not yet supported"
+  end
+
+  def test_doc_sync_matches_a_list_item_against_its_html_copy
+    page = { "docs/list.md" => "- Each mutant runs in a forked child process here.\n",
+             "docs/list.html" => "<ul><li>Each mutant runs in a forked child process here.</li></ul>\n" }
+    out, = run_in_repo(extra_base: page) { File.write("docs/list.md", "- Changed.\n") }
+    assert_includes out, "docs/list.md: \"Each mutant runs in a forked child process here.\" still in docs/list.html"
   end
 
   def test_doc_sync_quiet_when_all_copies_change

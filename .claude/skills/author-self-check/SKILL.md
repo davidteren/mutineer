@@ -32,8 +32,8 @@ lists before you go on:
   a `docs/X.md` whose `docs/X.html` twin you did not change. Answer every
   line in the receipt: "updated", or "differs because ...". A copy marked
   "named in rake/" may be built by that task: rebuild it, do not edit it.
-  Do not dismiss the list as noise. It is the only check that finds a stale
-  copy in a file the diff does not touch.
+  Do not dismiss the list as noise. It finds stale copies in files the diff
+  does not touch, which a reading of the diff misses.
 
 ## 2. Hand the judgment checks to a fresh reviewer
 

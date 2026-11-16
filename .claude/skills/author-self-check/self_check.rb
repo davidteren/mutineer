@@ -36,11 +36,16 @@ end
 # Returns [[path, line], ...] for added (+) or removed (-) lines.
 def diff_lines(base, sign)
   path = nil
+  header = false # true between "diff --git" and the first "@@" hunk line
   git("diff", "--unified=0", "#{base}...HEAD").scrub.each_line.filter_map do |l|
-    path = l[6..].strip if l.start_with?("+++ b/")
-    path = l[6..].strip if l.start_with?("--- a/") && sign == "-"
-    next if l.start_with?("+++", "---")
+    header = true if l.start_with?("diff --git ")
+    header = false if l.start_with?("@@")
+    next unless !header || l.start_with?("+++ b/", "--- a/")
 
+    if header
+      path = l[6..].strip if l.start_with?("+++ b/") || sign == "-"
+      next
+    end
     [path, l[1..].rstrip] if l.start_with?(sign)
   end
 end
@@ -48,7 +53,8 @@ end
 # Plain words of a doc line or file: no tags, link targets, markup or entities,
 # so an .md sentence matches its .html copy.
 def plain(text)
-  t = text.gsub(/<[^>]*>/, " ").gsub(/\[([^\]]*)\]\([^)]*\)/, '\1')
+  # List markers at a line start do not exist in the HTML copy.
+  t = text.gsub(/^\s*(?:[-+]|\d+\.)\s+/, "").gsub(/<[^>]*>/, " ").gsub(/\[([^\]]*)\]\([^)]*\)/, '\1')
   # A removed tag leaves a space before punctuation; drop it so "guide." matches.
   CGI.unescapeHTML(t).tr("’‘“”", "''\"\"").gsub(/[`*_#>|]/, " ").split.join(" ").gsub(/ ([.,;:!?)])/, '\1')
 end
@@ -82,7 +88,9 @@ weakened.each { |p, l| puts "  #{p}: #{l[0, 140]}" }
 
 # Doc sync reads HEAD, the same commit the diff checks, not the working tree.
 head_file = ->(p) { git("show", "HEAD:#{p}").scrub }
-docs = git("ls-tree", "-r", "--name-only", "HEAD").lines.map(&:strip).select { |p| p.match?(DOC) && p != "CHANGELOG.md" }
+# -z keeps paths with quotes or backslashes unquoted.
+tree = ->(*paths) { git("ls-tree", "-r", "-z", "--name-only", "HEAD", *paths).split("\0") }
+docs = tree.().select { |p| p.match?(DOC) && p != "CHANGELOG.md" }
 corpus = docs.to_h { |p| [p, plain(head_file.(p))] }
 stale = removed.filter_map do |p, l|
   next unless p.to_s.match?(DOC) && p != "CHANGELOG.md"
@@ -98,7 +106,7 @@ twins = changed.select { |p| p.start_with?("docs/") && p.match?(/\.(md|html)\z/)
   "#{p} changed, #{twin} did not" if corpus.key?(twin) && !changed.include?(twin)
 end
 # An .html or .txt copy that a rake task names is probably built by it.
-rake_text = git("ls-tree", "-r", "--name-only", "HEAD", "Rakefile", "rake").lines.map(&:strip).map(&head_file).join
+rake_text = tree.("Rakefile", "rake").map(&head_file).join
 mark = ->(p) { p.match?(/\.(html|txt)\z/) && rake_text.include?(File.basename(p)) ? "#{p} (named in rake/, rebuild if generated)" : p }
 puts "== Doc sync: removed text still in another doc, or twin not changed (#{stale.size + twins.size})"
 puts "   Answer each line: updated, or differs because ..." unless stale.empty? && twins.empty?
