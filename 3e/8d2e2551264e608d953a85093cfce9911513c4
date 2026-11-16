@@ -1,0 +1,23 @@
+CONTRIBUTING.md
+  s_1b1648b5e968e4::t_67847ca4335ad5 23-28
+  s_1b1648b5e968e4::t_2de4a503f86cce 33-34,36-39
+  s_1b1648b5e968e4::t_10db09d8a11b32 70-71
+AGENTS.md
+  s_1b1648b5e968e4::t_6c2555a1e23d23 96-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e8d2e2551264e608d953a85093cfce9911513c4",
+  "prompts": {},
+  "sessions": {
+    "s_1b1648b5e968e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b6ba6d97-2e09-4897-96e1-f5d6122453c1",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
