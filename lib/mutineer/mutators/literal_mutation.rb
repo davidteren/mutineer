@@ -55,11 +55,12 @@ module Mutineer
       # @param quoted [Object] truthy when `""` empties the string.
       # @return [void]
       def mutate_string(node, quoted:)
+        return if node.unescaped.empty?
+        return decline unless quoted
+
         loc = node.location
         token = @source.byteslice(loc.start_offset...loc.end_offset)
-        return if token == '""' || token == "''" || node.unescaped.empty?
-
-        quoted ? emit(loc, '""') : decline
+        emit(loc, '""') unless token == '""' || token == "''"
       end
 
       # Emits a literal mutation.

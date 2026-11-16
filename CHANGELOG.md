@@ -298,6 +298,7 @@ All notable changes to this project are documented here. The format is based on
   The edit inserted text instead of emptying the string. Some of these mutants broke the parse and were counted as skipped (invalid). The others ran as the wrong edit.
   Each such string is now declined and counts in `summary.declined_by_operator`. A text part of a `"..."` string still mutates, because `""` closes and reopens the string.
   A run with `literal_mutation` can report fewer mutants. With `--baseline`, refresh the baseline.
+  On Fizzy at `f220e4832` (392 files in `app/` and `lib/`), `literal_mutation` made 1290 `""` mutants before this change, and 6 of them did not parse. It now declines 147 of them (11.4%) and makes 1143, none invalid.
 - **A standalone cache hit no longer checks every test just because each
   test loads the sources (#426).** Standalone capture loads every source
   before each test. The class line, the `def` line, and any other line that

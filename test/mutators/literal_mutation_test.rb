@@ -75,6 +75,20 @@ class LiteralMutationTest < Minitest::Test
     assert_equal 4, op.declined
   end
 
+  # Every other string form with no quotes of its own is declined too, one
+  # decline per non-empty text part, even when the text is `""` itself.
+  def test_every_unquoted_string_form_is_declined
+    {
+      '%Q(a #{x})' => 1, "%w[a b]" => 2, '%W[a#{x} b]' => 2, '/a#{x}/' => 1,
+      '`echo #{x}`' => 1, ':"a#{x}"' => 1, '%I[a#{x}]' => 1, '%w[""]' => 1
+    }.each do |expr, count|
+      src = "def f(x)\n  #{expr}\nend\n"
+      op = Mutineer::Mutators::LiteralMutation.new
+      assert_empty op.mutations_for(subject_for(src), src), expr
+      assert_equal count, op.declined, expr
+    end
+  end
+
   # In a "..." string, "" closes and reopens the string, so the part empties.
   def test_double_quoted_interpolated_part_still_mutates
     src = "def f(name)\n  \"Hello, \#{name}\"\nend\n"
