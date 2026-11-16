@@ -1,0 +1,48 @@
+.expectation-fit/decisions/redaction-and-security.md
+  s_1a828fb201280e::t_19b8699dad7234 1-21
+.expectation-fit/decisions/pairing-of-sources-and-tests.md
+  s_1a828fb201280e::t_19b8699dad7234 1-10
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_1a828fb201280e::t_19b8699dad7234 1-14
+.expectation-fit/decisions/github-action-and-ci.md
+  s_1a828fb201280e::t_19b8699dad7234 1-10
+.expectation-fit/ways-of-working.yaml
+  s_1a828fb201280e::t_b2fcb563b7f4bb 57-60
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_1a828fb201280e::t_19b8699dad7234 1-16
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_1a828fb201280e::t_19b8699dad7234 1-17
+AGENTS.md
+  s_1a828fb201280e::t_64ef30d7ed768b 337-338
+  s_1a828fb201280e::t_b2fcb563b7f4bb 335-336
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_1a828fb201280e::t_19b8699dad7234 1-19
+.expectation-fit/decisions/docs-and-changelog.md
+  s_1a828fb201280e::t_19b8699dad7234 1-8
+.expectation-fit/decisions/README.md
+  s_1a828fb201280e::t_b2fcb563b7f4bb 1-37
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_1a828fb201280e::t_19b8699dad7234 1-16
+.expectation-fit/decisions/cli-contract-and-exit-codes.md
+  s_1a828fb201280e::t_19b8699dad7234 1-11
+.expectation-fit/decisions/release-and-process.md
+  s_1a828fb201280e::t_19b8699dad7234 1-6
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_1a828fb201280e::t_19b8699dad7234 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c05ac4f95c581d764b6d80466b2b98d69af2af7",
+  "prompts": {},
+  "sessions": {
+    "s_1a828fb201280e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29001b15-ff0a-4878-a62b-eba6b8a4e21a",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
