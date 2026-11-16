@@ -345,7 +345,8 @@ row_output() {
   run_step t STUB_EXIT=0 OUTPUT="$1/$1"
   [ -s "./$1/$1" ] || why "report not delivered to output" || return
   local got
-  got="$(ruby -e 'print File.read(ARGV[0])[/^report<<(\S+)\n(.*)\n\1$/m, 2], "."' "$SCRATCH/t/gh-output.txt")"
+  # -Eutf-8: with no locale Ruby reads the file as US-ASCII and the match raises on the unicode row.
+  got="$(ruby -Eutf-8 -e 'print File.read(ARGV[0])[/^report<<(\S+)\n(.*)\n\1$/m, 2], "."' "$SCRATCH/t/gh-output.txt")"
   [ "${got%.}" = "$(pwd -P)/$1/$1" ] || why "report= is not the output path"
 }
 # output under a missing cache folder that .mutineer.yml names.

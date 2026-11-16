@@ -5,6 +5,12 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "minitest/autorun"
 require "mutineer"
 
+# With LANG and LC_ALL unset (containers, agent sandboxes) Ruby reads files as
+# US-ASCII, and the suite's own File.read calls fail on its UTF-8 fixtures and
+# docs. The suite reads as UTF-8 in every shell. A test that needs the ASCII
+# default asks for it with with_ascii_default_external (below).
+Encoding.default_external = Encoding::UTF_8 unless Encoding.default_external == Encoding::UTF_8
+
 # A commit can start git's auto-maintenance as a detached background process.
 # In a test's temp repo it can still write into .git while Dir.mktmpdir deletes
 # the directory, which fails the test with ENOTEMPTY (#174). Turn it off for
