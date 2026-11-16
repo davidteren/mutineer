@@ -16,21 +16,21 @@ class SelfCheckTest < Minitest::Test
     "docs/rails.html" => "<p>Install the gem in the <b>test</b> group.</p>\n"
   }.freeze
 
-  def run_in_repo
+  def run_in_repo(subdir: ".", extra_base: {})
     Dir.mktmpdir do |dir|
       Dir.chdir(dir) do
         sh = ->(*a) { system(*a, out: File::NULL, err: File::NULL) or raise a.join(" ") }
         sh.("git", "init", "-q", "-b", "main")
         sh.("git", "config", "user.email", "t@example.com")
         sh.("git", "config", "user.name", "t")
-        BASE_FILES.each { |p, body| FileUtils.mkdir_p(File.dirname(p)) && File.write(p, body) }
+        BASE_FILES.merge(extra_base).each { |p, body| FileUtils.mkdir_p(File.dirname(p)) && File.write(p, body) }
         sh.("git", "add", ".")
         sh.("git", "commit", "-qm", "base")
         sh.("git", "checkout", "-qb", "feature")
         yield
         sh.("git", "add", ".")
         sh.("git", "commit", "-qm", "change (#42)")
-        out, status = Open3.capture2e("ruby", SCRIPT, "main")
+        out, status = Open3.capture2e("ruby", SCRIPT, "main", chdir: subdir)
         return [out, status.exitstatus]
       end
     end
@@ -71,13 +71,33 @@ class SelfCheckTest < Minitest::Test
     assert_includes out, "Answer each line"
   end
 
-  def test_doc_sync_marks_a_copy_a_rake_task_names
+  def test_doc_sync_skips_the_mark_for_a_md_file
     out, = run_in_repo do
       Dir.mkdir("rake")
       File.write("rake/site.rb", "BUILD = %w[index.md]\n")
       File.write("README.md", "Mutineer runs on any platform.\n")
     end
-    assert_includes out, "still in docs/index.md (named in rake/, rebuild if generated)"
+    assert_includes out, "README.md: \"Mutineer runs on Linux or macOS with Ruby 3.4.\" still in docs/index.md"
+    refute_includes out, "docs/index.md (named in rake/"
+  end
+
+  def test_marks_a_generated_txt_copy
+    out, = run_in_repo do
+      Dir.mkdir("rake")
+      File.write("rake/site.rb", "OUT = 'llms-full.txt'\n")
+      File.write("docs/llms-full.txt", "Install the gem in the test group.\n")
+      File.write("docs/rails.md", "Install the gem in the development group.\n")
+      File.write("docs/rails.html", "<p>Install the gem in the development group.</p>\n")
+    end
+    assert_includes out, "docs/llms-full.txt (named in rake/, rebuild if generated)"
+  end
+
+  def test_runs_from_a_subdirectory_and_keeps_non_ascii_paths
+    cafe = { "docs/caf\u00e9.md" => "Mutineer runs on Linux or macOS with Ruby 3.4.\n" }
+    out, = run_in_repo(subdir: "docs", extra_base: cafe) do
+      File.write("docs/caf\u00e9.md", "Mutineer runs anywhere.\n")
+    end
+    assert_includes out, "docs/caf\u00e9.md: \"Mutineer runs on Linux or macOS with Ruby 3.4.\" still in"
   end
 
   def test_doc_sync_quiet_when_all_copies_change

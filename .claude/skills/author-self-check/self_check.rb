@@ -15,6 +15,9 @@
 require "open3"
 require "cgi"
 
+# Git output and docs are UTF-8 even when LANG is unset.
+Encoding.default_external = Encoding::UTF_8
+
 LIMIT = /\b(not yet|limitation|deferred|cannot yet|known gap|out of scope|follow-up|TODO|FIXME)\b/i
 ISSUE = /#\d+|issues\/\d+/
 ASSERT = /\b(assert\w*|refute\w*|expect\(|must_\w+|wont_\w+)/
@@ -24,7 +27,8 @@ DOC = /\.(md|html|txt|yml)\z/
 MIN_WORDS = 6
 
 def git(*args)
-  out, err, status = Open3.capture3("git", *args)
+  # quotePath=false keeps non-ASCII paths as they are, not quoted.
+  out, err, status = Open3.capture3("git", "-c", "core.quotePath=false", *args)
   abort "git #{args.join(' ')} failed: #{err}" unless status.success?
   out
 end
@@ -32,7 +36,7 @@ end
 # Returns [[path, line], ...] for added (+) or removed (-) lines.
 def diff_lines(base, sign)
   path = nil
-  git("diff", "--unified=0", "#{base}...HEAD").each_line.filter_map do |l|
+  git("diff", "--unified=0", "#{base}...HEAD").scrub.each_line.filter_map do |l|
     path = l[6..].strip if l.start_with?("+++ b/")
     path = l[6..].strip if l.start_with?("--- a/") && sign == "-"
     next if l.start_with?("+++", "---")
@@ -49,12 +53,15 @@ def plain(text)
 end
 
 base = ARGV[0] || "origin/main"
+# Paths in git output are relative to the top level, so run from there.
+Dir.chdir(git("rev-parse", "--show-toplevel").strip)
+puts "Checking committed changes #{base}...HEAD (#{git("rev-parse", "--short", "HEAD").strip}). Uncommitted edits are not checked."
 added = diff_lines(base, "+")
 removed = diff_lines(base, "-")
 changed = git("diff", "--name-only", "#{base}...HEAD").lines.map(&:strip)
 
 # The skill's own files quote the keywords, so they are not limitations.
-own_dir = File.realpath(__dir__).delete_prefix("#{File.realpath(git('rev-parse', '--show-toplevel').strip)}/")
+own_dir = File.realpath(__dir__).delete_prefix("#{File.realpath(Dir.pwd)}/")
 untracked = added.select { |p, l| l.match?(LIMIT) && !l.match?(ISSUE) && !p.to_s.start_with?("#{own_dir}/") }
 puts "== Limitations with no issue number (#{untracked.size})"
 untracked.each { |p, l| puts "  #{p}: #{l.strip[0, 140]}" }
@@ -88,9 +95,9 @@ twins = changed.select { |p| p.start_with?("docs/") && p.match?(/\.(md|html)\z/)
   twin = p.sub(/\.(md|html)\z/) { Regexp.last_match(1) == "md" ? ".html" : ".md" }
   "#{p} changed, #{twin} did not" if corpus.key?(twin) && !changed.include?(twin)
 end
-# Docs a rake task names are probably built by it.
+# An .html or .txt copy that a rake task names is probably built by it.
 rake_text = git("ls-files", "Rakefile", "rake").lines.map(&:strip).select { |p| File.file?(p) }.map { |p| File.read(p) }.join
-mark = ->(p) { rake_text.include?(File.basename(p)) ? "#{p} (named in rake/, rebuild if generated)" : p }
+mark = ->(p) { p.match?(/\.(html|txt)\z/) && rake_text.include?(File.basename(p)) ? "#{p} (named in rake/, rebuild if generated)" : p }
 puts "== Doc sync: removed text still in another doc, or twin not changed (#{stale.size + twins.size})"
 puts "   Answer each line: updated, or differs because ..." unless stale.empty? && twins.empty?
 stale.each { |p, t, o| puts "  #{p}: \"#{t[0, 100]}\" still in #{o.map(&mark).join(', ')}" }

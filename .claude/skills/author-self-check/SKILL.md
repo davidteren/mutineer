@@ -17,7 +17,8 @@ Base: `origin/main`, or the lower pull request in a stack.
 ruby .claude/skills/author-self-check/self_check.rb <base>
 ```
 
-Deal with each item it lists before you go on:
+It checks committed changes only, so commit first. Deal with each item it
+lists before you go on:
 
 - An added line that names a limitation ("not yet", "deferred", "TODO") with
   no issue number. Add the issue, or create one. The script exits 1 until
