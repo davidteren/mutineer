@@ -20,15 +20,23 @@ bundle exec ruby -Ilib -Itest test/cli_test.rb
 bundle exec ruby -Ilib -Itest test/cli_test.rb -n test_dry_run_prints_breakdown
 ```
 
+If the suite fails on a clean checkout of `main`, the fault is in this
+repository and not on your machine. Open an issue with the output.
+
+Work in a fork: make a branch there, push it, and open a pull request
+against `main`.
+
 ## Choose what to do
 
 - **You reported an issue.** You can fix it yourself. Say so on the issue
   before you start, so two people do not fix the same thing.
-- **You want a first change.** Look for the `good first issue` and
-  `help wanted` labels.
+- **You want a first change.** An issue with the `good first issue` or
+  `help wanted` label is a good start, when one is open.
 - **You want to add a mutation operator.** Each operator is one file in
-  `lib/mutineer/mutators/`, with its test in `test/mutators/`. An existing
-  operator of similar size is the best template.
+  `lib/mutineer/mutators/`, with its test in `test/mutators/`. It also needs
+  a `require_relative` line in `lib/mutineer.rb` and its entries in
+  `lib/mutineer/mutator_registry.rb`. An existing operator of similar size is
+  the best template: search for its name to find every place.
 
 ## What a pull request needs
 
@@ -59,8 +67,8 @@ bundle exec ruby -Ilib -Itest test/cli_test.rb -n test_dry_run_prints_breakdown
 ## Working with a coding agent
 
 [AGENTS.md](AGENTS.md) holds the rules for agents that change this gem.
-More than half of that file is the "Releasing" section. A contributor's agent
-can skip that section.
+Its longest section is "Releasing". A contributor's agent can skip that
+section.
 
 ## Releases
 

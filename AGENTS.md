@@ -93,9 +93,10 @@ After another commit, repeat these checks on the new head.
 
 ### Labels
 
-Label every pull request, except the release pull requests that
-`release-pr.yml` opens. GitHub lets only people with triage access or higher
-set labels. A maintainer labels a pull request from a contributor who cannot:
+GitHub lets only people with triage access or higher set labels, so a
+maintainer labels a pull request from a contributor who cannot. Everyone else
+labels every pull request, except the release pull requests that
+`release-pr.yml` opens:
 
 | Category | Required |
 |---|---|
