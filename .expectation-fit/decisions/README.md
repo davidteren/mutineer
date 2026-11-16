@@ -1,7 +1,7 @@
 # Decision records
 
 Facts and checks that code review taught us about Mutineer. Each line is one
-check that an author or a reviewer applies to a change.
+rule that an author or a reviewer applies to a change.
 
 ## Why this folder exists
 
@@ -22,7 +22,9 @@ can differ (see Limits).
 
 ## How to keep it true
 
-- One line is one check. Put it in the file for its topic.
+- One line is one rule. Keep a new line to one check, and put it in the file
+  for its topic. Some lines from cubic hold several checks on one subject.
+  Split such a line when you next change it.
 - A line states a check. The code, its tests and the user docs remain the full
   description of the behaviour.
 - When a change makes a line false, change the line in the same pull request.
