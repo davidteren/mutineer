@@ -1,0 +1,36 @@
+CHANGELOG.md
+  s_66fd1fac152819::t_2ca5a58e5e9652 83,165,561
+  s_66fd1fac152819::t_1a2e990f36692f 109
+  s_66fd1fac152819::t_6362370650f2b6 29,93,108,115-131,222,233-234,290,346,391,489-490,506
+  s_66fd1fac152819::t_9f6246be4f8592 40,51,145-146,389,464-465
+.expectation-fit/ways-of-working.yaml
+  s_66fd1fac152819::t_f59c0369ad234c 34
+README.md
+  s_66fd1fac152819::t_f59c0369ad234c 239
+AGENTS.md
+  s_66fd1fac152819::t_f59c0369ad234c 339
+docs/agentic-coding.html
+  s_66fd1fac152819::t_f59c0369ad234c 91
+skills/mutineer/SKILL.md
+  s_66fd1fac152819::t_f59c0369ad234c 70
+docs/agentic-coding.md
+  s_66fd1fac152819::t_f59c0369ad234c 57
+docs/cli.md
+  s_66fd1fac152819::t_f59c0369ad234c 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b44f165dc42b14bfa8767264f3cebf56f7fc166d",
+  "prompts": {},
+  "sessions": {
+    "s_66fd1fac152819": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "617b3ba1-a273-4d67-955b-fe0a9b25b677",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
