@@ -293,6 +293,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A clean check that times out is reported as a timeout (#476).**
+  The combined clean check runs the files selected for the clean check in one process.
+  It had the same deadline as one file's capture, 120 s by default.
+  A green suite that took longer was killed and reported as "the unmutated suite is not green (combined suite)", with the seed hint.
+  Now the message says the check timed out after N s, that no test failed, and to set `--capture-timeout` above the longest deadline that passed.
+  A real failure still says "not green". When one check times out and another file fails, the message names both.
+  The combined check's deadline is now the larger of `--capture-timeout` and 1.5 times the summed capture seconds of the files it runs, rounded up.
+  A per-file clean check on a cache hit that times out is reported the same way.
 - **`literal_mutation` no longer writes `""` over a string that has no quotes of its own (#469).**
   That covers a heredoc line, a part of a `%(...)` or `%Q(...)` string, a `%w[]` or `%W[]` element, and a text part of a regex, a backtick string or an interpolated symbol (`:"a#{x}"`, a `%I[]` element).
   The edit inserted text instead of emptying the string. Some of these mutants broke the parse and were counted as skipped (invalid). The others ran as the wrong edit.

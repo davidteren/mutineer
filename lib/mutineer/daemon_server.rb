@@ -320,6 +320,7 @@ module Mutineer
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
           "failed_clean_tests" => cmap.failed_clean_tests,
           "failed_clean_details" => cmap.failed_clean_details,
+          "clean_timeouts" => cmap.clean_timeouts,
           "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException

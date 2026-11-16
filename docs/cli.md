@@ -21,7 +21,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--strategy reload\|redefine` | Reload file or redefine mutated method | `reload`; `redefine` under `--rails` without `--daemon` |
 | `--test-command CMD` | Run tests in another Ruby subprocess; include `%{files}`. Forces one worker and sets `PARALLEL_WORKERS=1`; a wrapper can reset it. Run the tests in a fixed order: for Minitest, put `SEED=1` before the `mutineer` command (not inside `CMD`); for RSpec, add `--order defined` to `CMD` and keep `--order rand` out of `SPEC_OPTS` | None |
 | `--timeout SECONDS` | Per-mutant limit, in-process | `10` |
-| `--capture-timeout SECONDS` | Coverage capture and clean-run limit | `120` |
+| `--capture-timeout SECONDS` | In-process and `--daemon` coverage capture and clean-run limit; `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times the summed capture time of its files, rounded up | `120` |
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |
 | `--coverage-from FILE` | Reuse previous `coverage.json` (CLI only) | None |
 | `--format human\|json\|html` | Report format (CLI only) | `human` |
@@ -109,7 +109,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `test_command` | External Ruby test command containing `%{files}`; see [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34) |
 | `daemon` | Boolean; persistent app daemon with separate worker databases |
 | `timeout` | Positive integer; seconds per mutant (default 10) |
-| `capture_timeout` | Positive integer; coverage capture seconds (default 120) |
+| `capture_timeout` | Positive integer; coverage capture and clean-run seconds (default 120); `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times its files' summed capture time, rounded up |
 | `cache_dir` | Coverage cache directory (default `.mutineer`) |
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
