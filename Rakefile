@@ -32,7 +32,7 @@ Rake::TestTask.new(:test) do |t|
   # Fixtures include *_test.rb files that are loaded into forked children by
   # the runner — they are not part of Mutineer's own suite. The daemon tests need
   # the Rails fixture bundle, so they run via `test:daemon` (rails-integration job).
-  t.test_files = FileList["test/**/*_test.rb"].exclude("test/fixtures/**/*", *DAEMON_TESTS)
+  t.test_files = FileList["test/**/*_test.rb", ".claude/skills/**/*_test.rb"].exclude("test/fixtures/**/*", *DAEMON_TESTS)
   t.warning = false
 end
 

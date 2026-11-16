@@ -88,6 +88,11 @@ On the exact pull request head commit:
 2. Review your diff against the pull request base (`main`, or the lower pull
    request in a stack). Verify every claim and number against its source.
 3. Never push or open a pull request with a red suite.
+4. Before the first push, run the author self-check skill
+   (`.claude/skills/author-self-check/SKILL.md`; Codex and Grok see the same
+   copy under `.agents/skills/` and `.grok/skills/`). It catches the defect
+   kinds review bots found most often here, such as doc sentences that hold
+   only in the common case and doc copies left stale.
 
 After another commit, repeat these checks on the new head.
 
