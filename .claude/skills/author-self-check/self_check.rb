@@ -53,7 +53,9 @@ added = diff_lines(base, "+")
 removed = diff_lines(base, "-")
 changed = git("diff", "--name-only", "#{base}...HEAD").lines.map(&:strip)
 
-untracked = added.select { |_, l| l.match?(LIMIT) && !l.match?(ISSUE) }
+# The skill's own files quote the keywords, so they are not limitations.
+own_dir = File.realpath(__dir__).delete_prefix("#{File.realpath(git('rev-parse', '--show-toplevel').strip)}/")
+untracked = added.select { |p, l| l.match?(LIMIT) && !l.match?(ISSUE) && !p.to_s.start_with?("#{own_dir}/") }
 puts "== Limitations with no issue number (#{untracked.size})"
 untracked.each { |p, l| puts "  #{p}: #{l.strip[0, 140]}" }
 
