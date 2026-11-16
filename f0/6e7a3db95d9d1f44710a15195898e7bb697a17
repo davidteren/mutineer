@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_d4768bba36413f::t_d3faf7149eefa8 297
+docs/json-schema.md
+  s_d4768bba36413f::t_900705081dd069 71
+lib/mutineer/mutators/literal_mutation.rb
+  s_d4768bba36413f::t_d004fa7dce4abf 50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f06e7a3db95d9d1f44710a15195898e7bb697a17",
+  "prompts": {},
+  "sessions": {
+    "s_d4768bba36413f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40888e8c-f83d-441f-830f-5833e3c84b2b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
