@@ -25,7 +25,7 @@ class ActionHarnessTest < Minitest::Test
     assert status.success?, "harness exited #{status.exitstatus}\nstdout:\n#{out}\nstderr:\n#{err}"
     refute_match(/FAIL:/, out, "harness reported failures:\n#{out}")
 
-    { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
+    { "case1" => 1, "case1c" => 0, "case1d" => 0, "case1e" => 0, "case1f" => 0, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,

@@ -63,8 +63,10 @@ module Mutineer
   #
   # `seconds` is the wall-clock time of the mutant's run step, set by the
   # backend after the verdict is final (#495). It is nil when no time was
-  # measured: a verdict made without a run (skipped, a coverage-selection
+  # measured: a verdict made before any run (skipped, a coverage-selection
   # verdict, unplaceable, ignored), or a worker that crashed before it reported.
+  # A verdict changed after the run (a survivor made no_coverage or ran_at_load)
+  # keeps the run's time.
   #
   # A Result crosses a process boundary only through WorkerPool's Marshal pipe,
   # from a fork back to the process that forked it, so both ends always run the

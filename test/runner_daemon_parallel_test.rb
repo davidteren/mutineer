@@ -59,11 +59,12 @@ class RunnerDaemonParallelTest < Minitest::Test
     assert_operator serial.killed_count, :>, 0
   end
 
-  # #495: the serial and the parallel daemon path each time the boots, the
-  # coverage build and the mutant runs, and each request that ran a mutant.
+  # #495: the serial and the parallel daemon paths each report boot, coverage
+  # and mutant-run phase seconds, and each killed mutant reports its run seconds.
   def test_both_paths_report_phase_and_mutant_seconds
     [1, 2].each do |jobs|
-      aggregate, _map, extras = Mutineer::Runner.execute(config_for("order_test.rb", jobs))
+      aggregate = extras = nil
+      capture_io { aggregate, _map, extras = Mutineer::Runner.execute(config_for("order_test.rb", jobs)) }
       timing = extras.fetch(:timing)
       %i[boot_seconds coverage_seconds mutants_seconds].each do |key|
         assert_kind_of Float, timing[key], "--jobs #{jobs} #{key}"

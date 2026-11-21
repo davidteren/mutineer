@@ -29,7 +29,7 @@ Suggested model and effort for the build: Opus 5.5, medium.
 
 ### Summary
 
-`killed[]`, `unplaceable[]` and `ran_at_load[]` entries carry the same `diff` string as `survivors[]` entries, by default. Every report carries a top-level `timing` object, and each `survivors[]`, `killed[]` and `no_verdict[]` entry carries `seconds`. The human summary prints one `Time:` line. The Action step summary prints one `Unpaired:` line below the table when `summary.unpaired_sources` is above 0.
+`killed[]`, `unplaceable[]` and `ran_at_load[]` entries carry the same `diff` string as `survivors[]` entries, by default. Every CLI report carries a top-level `timing` object (`null` only when a program calls the reporter without timing, R7), and each `survivors[]`, `killed[]` and `no_verdict[]` entry carries `seconds`. The human summary prints one `Time:` line. The Action step summary prints one `Unpaired:` line below the table when `summary.unpaired_sources` is above 0.
 
 ### Problem Frame
 
@@ -45,7 +45,7 @@ Since 1.9.0 (#381), the report counts sources with no paired test (`summary.unpa
 
 - R1. Each `killed[]`, `unplaceable[]` and `ran_at_load[]` entry has a `diff` key with the same text `survivors[]` gives for that mutant. The key is in every report, with no flag (KTD2).
 - R2. An entry whose result has no subject or mutation (a stub result) has `diff: null`, as its other fields are null today.
-- R3. The lean lists that the issue does not name keep their shape: `no_coverage[]`, `uncapturable[]`, `ignored[]`, `no_verdict[]`, `baseline.new_survivors[]` and the dry-run `mutants[]`.
+- R3. The lean lists that the issue does not name gain no `diff` key: `no_coverage[]`, `uncapturable[]`, `ignored[]`, `no_verdict[]`, `baseline.new_survivors[]` and the dry-run `mutants[]`.
 
 **#495: timing**
 

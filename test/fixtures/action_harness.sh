@@ -99,7 +99,7 @@ cat > "$SCRATCH/report-unpaired-nil.json" <<'JSON'
 {"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":2,"unpaired_mutants":4},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":null}]}
 JSON
 run_step case1d STUB_REPORT="$SCRATCH/report-unpaired-nil.json" STUB_EXIT=0
-grep -qF 'Unpaired: 4 mutant(s) not run; 2 source(s) have no paired test; 1 source(s) not counted.' "$SCRATCH/case1d/summary.md" && echo "  OK: unpaired line names the uncounted source" || echo "  FAIL: unpaired line misses the uncounted source"
+grep -qF 'Unpaired: 4 mutant(s) not run; 2 source(s) have no paired test; 1 source(s) not counted, so the mutant count is a lower bound.' "$SCRATCH/case1d/summary.md" && echo "  OK: unpaired line names the uncounted source" || echo "  FAIL: unpaired line misses the uncounted source"
 cat > "$SCRATCH/report-unpaired-zero.json" <<'JSON'
 {"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":0,"unpaired_mutants":0},"survivors":[],"unpaired_sources":[]}
 JSON
