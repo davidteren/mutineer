@@ -1,0 +1,21 @@
+lib/mutineer/coverage_map.rb
+  s_d37da4289dd811::t_4c2234322d1ae0 21,42
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_d37da4289dd811::t_4e34ef326f1c7e 1-427
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2c3155b064bc538cb5eff74f10ce1e6b74c4d8a",
+  "prompts": {},
+  "sessions": {
+    "s_d37da4289dd811": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "049f4638-b0a6-41c3-9e27-b38c5046711b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
