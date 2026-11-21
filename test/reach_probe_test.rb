@@ -91,6 +91,14 @@ class ReachProbeTest < Minitest::Test
         flag && (/(?<year>\d+)/ =~ s ? year : nil)
       end
     RUBY
+    # A wrapper in place of an assignment target would stop the setter.
+    ["assignment target", <<~'RUBY', "x.name", "C.f(true)", "C.f(false)"],
+      Pair = Struct.new(:name, :kind)
+      def self.f(flag, x = Pair.new)
+        flag && (x.name, x.kind = 1, 2)
+        x.name
+      end
+    RUBY
     # A namespace can hold its own Thread constant.
     ["own Thread constant", <<~'RUBY', "a + 1", "C.f(true)", "C.f(false)"],
       Thread = Class.new
@@ -223,7 +231,7 @@ class ReachProbeTest < Minitest::Test
     end
 
     # A literal raise or throw leaves the expression in the same way.
-    %w[raise\ ArgumentError throw\ :stop fail].each do |call|
+    %w[raise\ ArgumentError throw\ :stop fail Kernel.raise].each do |call|
       text = "class C\n  def self.f(x)\n    #{call} if  x.ok?\n  end\nend\n"
       point = text.index("if  x") + 3
       probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)

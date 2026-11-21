@@ -104,7 +104,8 @@ module Mutineer
     # Jumps that leave an expression before it returns.
     JUMPS = [Prism::NextNode, Prism::BreakNode, Prism::ReturnNode, Prism::RedoNode, Prism::RetryNode].freeze
 
-    # Calls with no receiver that leave an expression before it returns.
+    # Calls that leave an expression before it returns. The receiver is not
+    # checked: `Kernel.raise` leaves too, and too wide is safe.
     EXITS = %i[raise fail throw exit exit! abort].freeze
 
     # Whether a silent probe in `code` shows that the mutated expression did
@@ -161,7 +162,7 @@ module Mutineer
     # @return [Boolean]
     def self.jump?(node)
       return true if JUMPS.any? { |klass| node.is_a?(klass) }
-      return true if node.is_a?(Prism::CallNode) && node.receiver.nil? && EXITS.include?(node.name)
+      return true if node.is_a?(Prism::CallNode) && EXITS.include?(node.name)
 
       node.compact_child_nodes.any? { |child| jump?(child) }
     end
@@ -172,6 +173,10 @@ module Mutineer
     # Returns nil when no expression holds it, or no wrap is sound ({sound?}):
     # a wrap that does not parse, or that parses as something else, is not
     # used.
+    #
+    # The wrap never goes around an assignment target (`x.name, y = 1, 2`,
+    # `for x.name in xs`): the wrapper would be the target, and the setter
+    # would not run. It goes around the whole assignment.
     #
     # The wrap never goes around a block or a lambda literal. That literal
     # runs when the block is made, not when its body runs, so a probe there
@@ -200,7 +205,7 @@ module Mutineer
         break if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
 
         parent = parents[node]
-        unless named_capture_part?(parents, node)
+        unless named_capture_part?(parents, node) || node.class.name.end_with?("TargetNode")
           wrapped = splice(source, node, path, key)
           return wrapped if sound?(wrapped, node.location.start_offset)
         end

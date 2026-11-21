@@ -25,7 +25,7 @@ All notable changes to this project are documented here. The format is based on
   A mutant of #345 in that state is `no_coverage`, as is each mutant of #345 with no probe.
   Effects on a run after the upgrade:
   `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
-  The moved mutants leave the denominator, so a score can rise and cannot fall. A `--threshold` gate that failed on the score can pass.
+  The moved mutants leave the denominator, so this move can raise a score and cannot lower it. A `--threshold` gate that failed on the score can pass.
   When each scored mutant moves, the score is `null`. `--threshold` passes a `null` score when no mutant broke, so exit 1 can become exit 0.
   With `--baseline` and no `--since`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
   The completeness gate can go from pass to fail. `attempted` gets smaller with each moved survivor.
@@ -47,7 +47,10 @@ All notable changes to this project are documented here. The format is based on
   Three more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
   A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
   The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
+  A wrapper in place of an assignment target (`x.name, y = 1, 2`) stopped the setter. The probe now goes around the whole assignment.
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
+  A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
+  A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
 
 ## [1.9.0] - 2026-11-16
 
