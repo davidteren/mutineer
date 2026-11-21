@@ -1,0 +1,48 @@
+CHANGELOG.md
+  s_1b2233f0809a1b::t_47e6e135744461 9-12,14-17,23
+  s_1b2233f0809a1b::t_f2b74c37bbf439 18-19,21-22
+  s_1b2233f0809a1b::t_eb3f088fa9e587 13
+  s_1b2233f0809a1b::t_1b99c0adbd3840 20
+test/daemon_seed_test.rb
+  s_1b2233f0809a1b::t_12ca9dd25bd86a 9-11,14,33-62
+lib/mutineer/daemon_server.rb
+  s_1b2233f0809a1b::t_12ca9dd25bd86a 574-576,581
+docs/rails-setup.md
+  s_1b2233f0809a1b::t_ea281e3d3a75e5 137
+  s_1b2233f0809a1b::t_07818a48d05538 140
+test/daemon_client_env_test.rb
+  s_1b2233f0809a1b::t_532715dc30c260 244-261,274-283,288-289
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 284-287
+  s_1b2233f0809a1b::t_e0a9a3194bdf0b 8,290-303
+  s_1b2233f0809a1b::t_dd47fa1a7add0a 304-305
+  s_1b2233f0809a1b::t_07818a48d05538 268,270-273
+  s_1b2233f0809a1b::t_1b99c0adbd3840 262-267,269
+lib/mutineer/daemon_client.rb
+  s_1b2233f0809a1b::t_8e82fb2112e5ed 56-60,163,243,251-260,265-266,270-282
+  s_1b2233f0809a1b::t_68d4e22688cd5e 283
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 267
+  s_1b2233f0809a1b::t_6de7836b39e468 268
+  s_1b2233f0809a1b::t_07818a48d05538 261-264
+  s_1b2233f0809a1b::t_1b99c0adbd3840 61-65,269
+docs/json-schema.md
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 196,198
+  s_1b2233f0809a1b::t_c914c9af2fe1fb 197
+README.md
+  s_1b2233f0809a1b::t_e0a9a3194bdf0b 189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "045cb33923ce0e4fafcd0e81ee082464f61185b4",
+  "prompts": {},
+  "sessions": {
+    "s_1b2233f0809a1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d22b9ce-8184-4336-8931-65442226dcd3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
