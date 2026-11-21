@@ -339,7 +339,7 @@ No person confirmed these. Each one has a check.
 
 ## Verification Contract
 
-Set `LANG=en_US.UTF-8` and `LC_ALL=en_US.UTF-8` for every local command.
+Run every local command in a UTF-8 locale, as `CONTRIBUTING.md` describes: `LANG=en_US.UTF-8` on macOS, `LANG=C.UTF-8` on Linux, and `LC_ALL` unset or set to the same value.
 
 | Check | When | Command or method | Proves |
 |---|---|---|---|
