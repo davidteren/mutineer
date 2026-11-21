@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format is based on
   This can change verdicts, not only speed.
   Before, a mutant that its first test killed scored `timeout` when all its covering tests took longer than the daemon's 60-second limit per mutant.
   It now scores `killed`, as with `--no-daemon`. `timeout` is outside the score, so the mutation score can change.
-  `--matrix` still runs every covering test. It runs in-process only and was never combined with `--daemon`.
+  `--matrix` still runs every covering test in-process. `--matrix` with `--daemon` still exits 2.
 - **A `--daemon` mutant that cannot load a file now says why (#491).**
   The daemon does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing.
   When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and links the `boot:` workaround in `docs/rails-setup.md`.

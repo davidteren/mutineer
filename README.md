@@ -186,7 +186,7 @@ This gap is common in rushed tests and tests written by AI agents.
    Without a boot file, `require:` files load after the sources.
    Children run in parallel on Linux and macOS.
    Each loads the changed file (`reload`) or replaces the changed method (`redefine`).
-   Only covering test files run: paired tests first, then fastest to slowest. In-process and `--daemon` mutant runs stop at the first failure unless `--matrix` requests every covering test (in-process only).
+   Only covering test files run: paired tests first, then fastest to slowest. In-process runs stop at the first failure unless `--matrix` requests every covering test. `--daemon` mutant runs always stop at the first failure: `--matrix` with `--daemon` exits 2.
    The clean check and each mutant run share one seed: Minitest uses `SEED` or `1`, and a random RSpec order uses seed `1` unless the suite sets one. See the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order).
 5. **Score.** A failing test kills the mutant; all tests passing means it survived.
    Score: `killed / (killed + survived)`. In coverage-guided runs, timeouts, errors, and uncovered lines count as neither; `--test-command` has no coverage, so a mutant no test reaches survives.
