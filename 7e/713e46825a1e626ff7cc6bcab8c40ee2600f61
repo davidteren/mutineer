@@ -1,0 +1,28 @@
+CHANGELOG.md
+  s_d37da4289dd811::t_262ab8bd0c9f7b 16
+test/mutators/collection_method_test.rb
+  s_d37da4289dd811::t_262ab8bd0c9f7b 1317-1322
+lib/mutineer/mutators/collection_method.rb
+  s_d37da4289dd811::t_262ab8bd0c9f7b 175-176,184,190-195
+  s_d37da4289dd811::t_51d267ac27b64e 196-197
+docs/equivalent-skips.html
+  s_d37da4289dd811::t_0792d7014411ef 133
+docs/equivalent-skips.md
+  s_d37da4289dd811::t_923c92891d4f7c 184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7e713e46825a1e626ff7cc6bcab8c40ee2600f61",
+  "prompts": {},
+  "sessions": {
+    "s_d37da4289dd811": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "049f4638-b0a6-41c3-9e27-b38c5046711b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
