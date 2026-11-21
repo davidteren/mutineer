@@ -787,7 +787,26 @@ module Mutineer
               "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
               "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
       }
+      # The diff is UTF-8, as JSON is. Name the source's encoding so a consumer
+      # can transcode the hunk lines back to the file's bytes (#510).
+      encoding = diff_encoding(source)
+      row[:diff_encoding] = encoding if encoding
       attach_copies(row, result.id)
+    end
+
+    # The encoding the {#survivor_json} diff was transcoded from: the source's
+    # own, when it is valid and not UTF-8. Nil for a UTF-8 source, which needs
+    # no transcoding, and for an invalid one, whose bad bytes print as `\xNN`
+    # and cannot be restored.
+    #
+    # @api private
+    # @param source [String] source text, tagged with its encoding.
+    # @return [String, nil] the Ruby encoding name, e.g. "EUC-JP".
+    def diff_encoding(source)
+      enc = source.encoding
+      return nil if enc == Encoding::UTF_8 || enc == Encoding::US_ASCII || !source.valid_encoding?
+
+      enc.name
     end
 
     # One side of the diff as the file holds it: the {#diff_for} block plus the

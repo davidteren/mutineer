@@ -68,6 +68,46 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # #510: the JSON diff is UTF-8. For a source in another encoding the entry
+  # names that encoding in `diff_encoding`; a consumer transcodes the hunk
+  # lines (not the two path headers) back to it, and then git applies the
+  # patch to the file's own bytes.
+  NON_UTF8_SOURCES = [
+    ["EUC-JP", "\u3042\u3044"], ["Shift_JIS", "\u3042\u3044"], ["ISO-8859-1", "caf\u00e9"], ["ISO-8859-1", "cafe"]
+  ].freeze
+
+  def test_diff_applies_with_git_after_transcoding_to_diff_encoding
+    NON_UTF8_SOURCES.each do |name, text|
+      label = "#{name} #{text}"
+      enc = Encoding.find(name)
+      src = "# encoding: #{name}\nclass Foo\n  def bar(x) # #{text}\n    x >= 1 ? \"#{text}\" : 0\n  end\nend\n"
+      src = src.encode(enc, undef: :replace).force_encoding(enc)
+      tok = src.byteindex(">=")
+      mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+      subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                   def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                             { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+      row = JSON.parse(out.string)["survivors"].first
+      assert_equal name, row["diff_encoding"], label
+      header, hunk = row["diff"].split(/^(?=@@)/, 2)
+      assert row["diff"].valid_encoding?, label
+      patch = header.b + hunk.encode(enc).b
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, "foo.rb"), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, "git apply rejected #{label}: #{err}"
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
+      end
+    end
+  end
+
+  def test_utf8_source_has_no_diff_encoding
+    refute render([survivor])["survivors"].first.key?("diff_encoding")
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
     assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
