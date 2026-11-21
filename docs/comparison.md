@@ -78,7 +78,7 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
 
 Then output:
 - Verdict: FIT, FIT WITH LIMITS (list them), or NO FIT (give the reason).
-- A first command, e.g. RAILS_ENV=test bundle exec mutineer run app/models/<small_file>.rb --rails --dry-run (a dry run needs no --test; for a real run add --test, and --daemon for Minitest with a supported database).
+- A first command, e.g. RAILS_ENV=test bundle exec mutineer run app/models/<small_file>.rb --rails --dry-run (a dry run needs no --test; a real run needs a test found by convention, a `tests:` map entry or --test; add --daemon for Minitest with a supported database).
 - Next steps: add gem "mutineer", group: :test, require: false; run mutineer init --rails; fix or ignore one file's survivors; save a full --format json baseline on main with --no-since --no-fail-fast, and with only:, baseline: and fail_fast unset in .mutineer.yml; commit it only if the run exits 0, summary.score is not null and no_verdict is empty; keep only: and baseline: unset for the PR gate too, and pass the saved report as the Action's baseline input; add the GitHub Action so pull requests are checked on changed lines, and run a full scan (since: none) on any pull request that changes tests.
 Do not guess. Mark anything you could not verify as UNKNOWN.
 ```

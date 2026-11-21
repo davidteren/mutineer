@@ -575,7 +575,7 @@ class CliTest < Minitest::Test
       out, err, status = mutineer("run", src, "--dry-run", *flags)
       assert_equal 0, status.exitstatus, "#{flags.inspect}: #{err}"
       refute_includes err, "requires at least one --test file"
-      assert_match(/\d+ unpaired \(1 source has no paired test/, out, flags.inspect)
+      assert_match(/[1-9]\d* unpaired \(1 source has no paired test/, out, flags.inspect)
     end
   end
 
