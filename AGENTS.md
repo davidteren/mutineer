@@ -75,6 +75,15 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 `yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `test (ruby 3.4, prism 2)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
+Today branch protection on `main` requires only `test` (×2 OS), `yard:strict`
+and `rails dogfood`, and admins can merge past it. The proposed ruleset
+`.github/rulesets/main-merge-gate.json` requires every `ci.yml` job plus
+Socket and GitGuardian on an up-to-date head, and resolved review threads,
+with no bypass. A maintainer applies it by hand (issue #355):
+`docs/plans/2026-11-22-355-merge-gate-ruleset.md`. When you rename or add a
+`ci.yml` job, update that file in the same pull request. Once the ruleset is
+applied, a maintainer re-applies that file before the merge (see the doc).
+
 ## PR review gate (before any merge)
 
 Every pull request must meet this gate on its current head, including stacks, docs-only, and "small" changes.
