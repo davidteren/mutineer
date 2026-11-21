@@ -72,6 +72,30 @@ module Mutineer
       end
     end
 
+    # The superclass a reloaded class statement reopens with (#492).
+    #
+    # `class X < Data.define(:a)` builds a new superclass each time Ruby runs
+    # it, so a second load raises "superclass mismatch". The reload text wraps
+    # such a superclass in a call to this method ({JobPlan.keep_live_superclasses}).
+    # When `scope` already has a class `name`, this returns that class's
+    # superclass, so the class reopens as the same object: its instances,
+    # subclasses and callback chains stay valid. Otherwise it runs the block,
+    # as the original text would.
+    #
+    # @param scope [Module, nil] the module the class statement defines in;
+    #   nil at the top level.
+    # @param name [Symbol] the class name.
+    # @yieldreturn [Class] the superclass the original text builds.
+    # @return [Class]
+    def self.kept_superclass(scope, name)
+      scope ||= Object
+      if scope.const_defined?(name, false)
+        klass = scope.const_get(name, false)
+        return klass.superclass if klass.is_a?(Class)
+      end
+      yield
+    end
+
     # True while a mutant file loads.
     #
     # @return [Boolean]

@@ -359,6 +359,78 @@ module Mutineer
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
 
+    # The whole-file text the reload strategy loads for one mutant, shared by
+    # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
+    # def in a concern's hook block gets {hook_mutant}; any other mutant gets
+    # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
+    # Then each class statement with a call superclass keeps its live
+    # superclass ({keep_live_superclasses}, #492).
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject being mutated.
+    # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @return [Array(String, Hash{Symbol => Object}, nil)] the text to load, and
+    #   the hook-def values of {hook_mutant}, or nil.
+    def self.reload_code(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
+      if subject&.reload_hook_call
+        code, hook_def = hook_mutant(mutated, mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
+      else
+        code = ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
+      end
+      [keep_live_superclasses(code), hook_def]
+    end
+
+    # Wraps the superclass of each class statement whose superclass is not a
+    # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
+    # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
+    # file over its classes reopens each one instead of raising "superclass
+    # mismatch" (#492). The superclass text stays as it is, inside the block,
+    # and on its own lines, so line numbers do not move. A wrap puts one
+    # expression in a block, so the text parses wherever it parsed. A bad wrap
+    # is not checked here: the child's `load` raises `SyntaxError`, and the
+    # mutant scores `error`. Text with no such class comes back unchanged.
+    #
+    # @param code [String] the reload text.
+    # @return [String]
+    def self.keep_live_superclasses(code)
+      nodes = []
+      queue = [Parser.parse_string(code).value]
+      while (node = queue.shift)
+        nodes << node if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
+        queue.concat(node.compact_child_nodes)
+      end
+      return code if nodes.empty?
+
+      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
+        loc = node.superclass.location
+        inner = text.byteslice(loc.start_offset, loc.length)
+        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
+                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
+      end
+    end
+
+    # @param node [Prism::Node, nil] a class statement's superclass.
+    # @return [Boolean] true when it is there and is not a constant.
+    def self.call_superclass?(node)
+      !node.nil? && !node.is_a?(Prism::ConstantReadNode) && !node.is_a?(Prism::ConstantPathNode)
+    end
+
+    # The module a class statement defines its constant in, as Ruby text that
+    # runs where the superclass runs: `Module.nesting.first` for `class X`,
+    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    #
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @return [String]
+    def self.superclass_scope(path)
+      return "Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
+
+      path.parent ? path.parent.slice : "::Object"
+    end
+
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon
     # paths so both narrow identically (score parity). Returns
     # `[:run, abs_test_paths]` when some test covers the mutant's line, in the

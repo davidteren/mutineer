@@ -472,14 +472,12 @@ module Mutineer
             while (s = s.enclosing_subject)
               Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
             end
-          elsif subject&.reload_hook_call
-            # #297: a def in a concern's hook block reaches each class that has it.
-            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
-                                                 reach_key: reach_key)
-            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
           else
-            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
-                                        source_file)
+            # The same text the daemon loads: a hook-block def placed (#297), a
+            # call superclass kept (#492).
+            code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                                                    reach_key: reach_key)
+            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
           end
           # A reload can run the expression while the file loads. That is not
           # a test reaching it (#345).

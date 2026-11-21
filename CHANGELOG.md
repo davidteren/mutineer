@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
+  `class X < Data.define(:a)` builds a new superclass each time Ruby runs it.
+  `--strategy reload` and `--daemon` load the mutant file over the class, so Ruby raised `TypeError: superclass mismatch` and every mutant of the file scored `error`.
+  Now the reload reopens the class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
+  This covers every superclass that is not a constant, such as `Struct.new`, `Class.new` and `DelegateClass`.
+  A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, as it already was under `redefine`, because that block does not run again.
+  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503).
+
 ## [1.9.0] - 2026-11-16
 
 ### Added

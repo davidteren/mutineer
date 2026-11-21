@@ -229,6 +229,7 @@ module Mutineer
         @enclosing_subject = nil     # the subject of the def being visited, for a nested def (#290)
         @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
         @hook_uses = Set.new         # the names that block calls outside its def bodies
+        @in_superclass_block = false # inside a class statement's superclass expression (#492)
         super()
       end
 
@@ -250,12 +251,27 @@ module Mutineer
         end
       end
 
-      # Visits class nodes and tracks namespace nesting.
+      # Visits class nodes and tracks namespace nesting. A def inside the
+      # superclass expression (`class X < Struct.new(:a) do ... end`) is marked
+      # {Subject#in_superclass_block}: a reload keeps the live superclass, so
+      # that block does not run again (#492).
       #
       # @param node [Prism::ClassNode] class node.
       # @return [void]
       def visit_class_node(node)
-        with_namespace(node.constant_path) { super }
+        with_namespace(node.constant_path) do
+          visit(node.constant_path)
+          if node.superclass
+            saved = @in_superclass_block
+            @in_superclass_block = true
+            begin
+              visit(node.superclass)
+            ensure
+              @in_superclass_block = saved
+            end
+          end
+          visit(node.body) if node.body
+        end
       end
 
       # Visits module nodes and tracks namespace nesting.
@@ -404,6 +420,7 @@ module Mutineer
           owner_unknown: @owner_unknown,
           hook_block: @hook_block,
           reload_hook_call: reload_hook_call_for(node),
+          in_superclass_block: @in_superclass_block == true,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node,
