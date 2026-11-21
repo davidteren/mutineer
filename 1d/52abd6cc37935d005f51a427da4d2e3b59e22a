@@ -1,0 +1,72 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_bfd9a4e918f7ae::t_10b06ffedff0a1 6
+docs/json-schema.md
+  s_bfd9a4e918f7ae::t_80e08ca2028dd6 182-184,189
+  s_bfd9a4e918f7ae::t_4b0ae9922b78df 191,194
+  s_bfd9a4e918f7ae::t_10b06ffedff0a1 48,69,170,174-181,185-188,190,192-193
+  s_bfd9a4e918f7ae::t_8046e451b71b19 195
+lib/mutineer/runner.rb
+  s_bfd9a4e918f7ae::t_890ae86b7de614 512-515,517-518
+  s_bfd9a4e918f7ae::t_81c1c390c009c4 458-461,463-467,504-506,516,519-533
+  s_bfd9a4e918f7ae::t_35c6574195205d 534-536
+test/fixtures/load_time/spec/language_product_spec.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-20
+lib/mutineer/statement_lines.rb
+  s_bfd9a4e918f7ae::t_7040a8dd7064e6 50-51,121-123,145-179,187
+test/statement_lines_test.rb
+  s_bfd9a4e918f7ae::t_b6a297152831a6 362-399
+test/fixtures/load_time/lib/language_record.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-27
+test/fixtures/load_time/language_lazy_boot.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-6
+test/runner_test.rb
+  s_bfd9a4e918f7ae::t_b6a297152831a6 466-506,508-509,572-587,589-634
+  s_bfd9a4e918f7ae::t_8081333cae59c7 507,588
+  s_bfd9a4e918f7ae::t_b6ff38d0ce32f8 510-571
+test/reach_probe_test.rb
+  s_bfd9a4e918f7ae::t_b6a297152831a6 154-166
+lib/mutineer/job_plan.rb
+  s_bfd9a4e918f7ae::t_4b0ae9922b78df 512
+  s_bfd9a4e918f7ae::t_7040a8dd7064e6 460-461,497-507,513-523,525-554
+  s_bfd9a4e918f7ae::t_890ae86b7de614 508-511,524
+  s_bfd9a4e918f7ae::t_87f9483684ed76 555
+test/fixtures/load_time/language_eager_boot.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-6
+test/fixtures/load_time/lib/language_product.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-11
+test/fixtures/load_time/test/language_product_test.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-22
+test/class_macro_load_test.rb
+  s_bfd9a4e918f7ae::t_1416c18ca5c099 7,153-256,258-266,270-377,442-452
+  s_bfd9a4e918f7ae::t_81c1c390c009c4 257,267-269
+  s_bfd9a4e918f7ae::t_863f4d51f3bbd4 378-441,453-454
+CHANGELOG.md
+  s_bfd9a4e918f7ae::t_4b0ae9922b78df 31-32
+  s_bfd9a4e918f7ae::t_0d9278e76f0112 28
+  s_bfd9a4e918f7ae::t_edd99c6ca58ff0 9-27,29-30,33-34
+docs/rails-setup.md
+  s_bfd9a4e918f7ae::t_4b0ae9922b78df 71
+  s_bfd9a4e918f7ae::t_10b06ffedff0a1 66,72,74
+lib/mutineer/daemon_backend.rb
+  s_bfd9a4e918f7ae::t_b6ff38d0ce32f8 440-443,470-475
+test/fixtures/load_time/test/apply_each_empty_test.rb
+  s_bfd9a4e918f7ae::t_74e5383dcda538 1-11
+lib/mutineer/reach_probe.rb
+  s_bfd9a4e918f7ae::t_7040a8dd7064e6 100-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d52abd6cc37935d005f51a427da4d2e3b59e22a",
+  "prompts": {},
+  "sessions": {
+    "s_bfd9a4e918f7ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec518233-17e9-4044-ba05-b81f3785ca8d",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
