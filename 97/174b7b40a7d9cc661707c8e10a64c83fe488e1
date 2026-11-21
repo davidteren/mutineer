@@ -1,0 +1,27 @@
+docs/rails-setup.md
+  s_1b2233f0809a1b::t_07818a48d05538 140
+lib/mutineer/daemon_client.rb
+  s_1b2233f0809a1b::t_07818a48d05538 61-62,260-263
+test/daemon_client_env_test.rb
+  s_1b2233f0809a1b::t_07818a48d05538 262-267
+CHANGELOG.md
+  s_1b2233f0809a1b::t_07818a48d05538 20
+docs/json-schema.md
+  s_1b2233f0809a1b::t_c914c9af2fe1fb 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97174b7b40a7d9cc661707c8e10a64c83fe488e1",
+  "prompts": {},
+  "sessions": {
+    "s_1b2233f0809a1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d22b9ce-8184-4336-8931-65442226dcd3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
