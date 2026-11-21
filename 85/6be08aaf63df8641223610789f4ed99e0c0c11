@@ -1,0 +1,27 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_bfd9a4e918f7ae::t_5f0fcfa752415b 6
+CHANGELOG.md
+  s_bfd9a4e918f7ae::t_cd54204935b4aa 15,37,47
+docs/json-schema.md
+  s_bfd9a4e918f7ae::t_380e12d0dca54b 196-197,201-202
+docs/rails-setup.md
+  s_bfd9a4e918f7ae::t_4674dc810c5c14 71
+test/class_macro_load_test.rb
+  s_bfd9a4e918f7ae::t_a99a54de6b0d39 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "856be08aaf63df8641223610789f4ed99e0c0c11",
+  "prompts": {},
+  "sessions": {
+    "s_bfd9a4e918f7ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec518233-17e9-4044-ba05-b81f3785ca8d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
