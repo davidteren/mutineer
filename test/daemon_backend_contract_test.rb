@@ -29,6 +29,20 @@ class DaemonBackendContractTest < Minitest::Test
                                       .clean_check_seconds
   end
 
+  # A reply whose map is empty (no test covers the sources) still ran the
+  # clean check, so its seconds reach the timing even though no map returns.
+  def test_an_empty_coverage_reply_keeps_its_clean_check_seconds
+    config = Struct.new(:project_root, :framework).new(Dir.pwd, "minitest")
+    reply = { "map" => {}, "failed_test_files" => [], "clean_check_seconds" => 2.5 }
+    timing = {}
+    map = nil
+    capture_io do
+      map = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(reply), config, timing)
+    end
+    assert_nil map
+    assert_in_delta 2.5, timing[:clean_check_seconds]
+  end
+
   # The JobPlan methods DaemonBackend calls across the module boundary.
   SHARED = %i[collect_jobs filter_since scope_since coverage_selection load_verdict test_load_roots source_dirs
               sweep_orphans abort_if_unclean!].freeze

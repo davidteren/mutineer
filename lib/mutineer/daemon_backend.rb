@@ -193,9 +193,8 @@ module Mutineer
         client.provision(worker_count)
         timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
         coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        coverage_map = coverage_map_from_client(client, config)
+        coverage_map = coverage_map_from_client(client, config, timing)
         # The daemon runs the clean checks inside its map build; report them apart.
-        timing[:clean_check_seconds] = coverage_map&.clean_check_seconds
         timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
         [coverage_map, worker_count, client]
       rescue Exception # rubocop:disable Lint/RescueException
@@ -255,9 +254,12 @@ module Mutineer
     #
     # @param client [Mutineer::DaemonClient]
     # @param config [Mutineer::Config]
+    # @param timing [Hash] phase seconds; this sets the clean check from the reply.
     # @return [Mutineer::CoverageMap, nil]
-    def self.coverage_map_from_client(client, config)
+    def self.coverage_map_from_client(client, config, timing = {})
       data = client.coverage
+      # #495: read it here, so a reply with an empty map keeps it too.
+      timing[:clean_check_seconds] = data["clean_check_seconds"] if data.is_a?(Hash)
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
@@ -382,6 +384,7 @@ module Mutineer
       timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
 
       mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      finished = Queue.new
       clients.each_with_index do |client, worker|
         threads << Thread.new do
           loop do
@@ -393,6 +396,8 @@ module Mutineer
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
             progress.tick
           end
+          # #495: before the quit in `ensure`, as run_serial stops its timer.
+          finished << Process.clock_gettime(Process::CLOCK_MONOTONIC)
         rescue Exception => e # rubocop:disable Lint/RescueException
           # The daemon gave up for good, or a defect escaped. Stop feeding the
           # other workers, so they stop after their current mutant, and hand the
@@ -406,7 +411,8 @@ module Mutineer
       # Join every worker before raising, so all daemons have quit and the
       # end-of-run sweep sees each child gone.
       threads.each(&:join)
-      timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
+      last = Array.new(finished.size) { finished.pop }.max
+      timing[:mutants_seconds] = last - mutants_started if last
       raise errors.pop unless errors.empty?
 
       # Every job was popped by some worker and every pop assigns, so no slot can
