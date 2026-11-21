@@ -56,8 +56,8 @@ David, the maintainer, decided on 2026-11-21 that this split merges first, befor
 
 **Behavior does not change**
 
-- R4. The public API does not change. This covers the public methods, the readers and the nine constant paths such as `Mutineer::CoverageMap::RESULT_FD`. The eight new module constants, such as `Mutineer::CoverageMap::Cache`, are an intended addition. They are `@api private`, and they get API pages. The U10 inventory comparison expects them.
-- R5. The coverage cache format does not change. A `coverage.json` that the 1.9.0 code writes loads as a cache hit when Mutineer is outside the project root, as with a normal gem install. When Mutineer is inside the project root and not under `vendor/bundle/`, the cache fingerprints `coverage_map.rb`, so the changed file causes one rebuild, as any release that edits a loaded file does.
+- R4. The public API does not change. This covers the public methods, the readers and the nine constant paths such as `Mutineer::CoverageMap::RESULT_FD`. The eight new module constants, such as `Mutineer::CoverageMap::Cache`, are an intended addition. They are `@api private`, and they get API pages. The U10 inventory comparison allows them and no other new constant.
+- R5. The coverage cache format does not change. A `coverage.json` that the 1.9.0 code writes loads as a cache hit when Mutineer is outside the project root, as with a normal gem install. The cache fingerprints `coverage_map.rb` only when the capture loads it from inside the project root, outside `vendor/bundle/`, as the boot-mode fork capture does. Then the changed file causes one rebuild, as any release that edits a loaded file does. The default subprocess scripts do not load it.
 - R6. No existing test file changes. `test/coverage_map_test.rb` still calls 22 private methods with `send` and passes as it is.
 - R7. Each generated child script is the same text as before the move.
 - R8. CLI output and the JSON report do not change.
@@ -327,7 +327,7 @@ No person confirmed these. Each one has a check.
   2. Commit the entry. Then run every row of the Verification Contract on that commit.
   3. Run the cache check. Build the U1 Minitest map again with the U1 `project_root` and the U1 `cache_dir`, and call `build_or_load`. Pass: `@phase_a_ran` is not `true`, and `tests_for` gives the same tests as on `main` for a covered line.
   4. Run the format check. Write a new cache into an empty directory with the head code. Pass: it has the same keys as the U1 file, and every value except `timings` is equal.
-  5. Compare the method inventory and the YARD output with U1. The inventory must be equal. The YARD output must have no new warning.
+  5. Compare the method inventory and the YARD output with U1. The inventory must be equal, except for the eight new module constants (R4). The YARD output must have no new warning.
   6. Run the author self-check skill (`.claude/skills/author-self-check/SKILL.md`) before the first push. Then follow "PR review gate" in `AGENTS.md`.
   7. Open one pull request. The body says `Refs #201` and lists the eight modules. It states the three methods that did not move (KTD4). It gives the result of each manual check. It tells reviewers to read each seam commit with `git show --color-moved=dimmed-zebra --color-moved-ws=allow-indentation-change`.
   8. Add the four labels from the Goal Capsule.
@@ -352,7 +352,7 @@ Run every local command in a UTF-8 locale, as `CONTRIBUTING.md` describes: `LANG
 | Fizzy sample | U1 and U10 | `bundle exec rake fizzy:sample` on the base commit, then on the head with every change committed. Compare the two outputs. | R8: the counts on a real Rails 8 app are the same before and after the move |
 | Cache check | U10 | U10 steps 3 and 4 | R5 |
 | Script texts | U9 and U10 | Build the four texts as in U1 step 5 and compare | R7 |
-| Method inventory | U10 | Build the inventory as in U1 step 3 and compare | R2, R4: same names, visibility, parameters and constants |
+| Method inventory | U10 | Build the inventory as in U1 step 3 and compare | R2, R4: same names, visibility, parameters and constants; the only new constants are the eight modules |
 | YARD warnings | U10 | Compare the `bundle exec rake yard:strict` output with U1 | Doc comment links still resolve |
 | Site build | U10 | `bundle exec rake site:build`, then `node --test test/site_test.js` | The eight new API pages build |
 | CI gates | pull request head | The gates in `AGENTS.md`, "CI gates that block merge" | Linux and macOS, `rails dogfood`, `website browser tests` |
