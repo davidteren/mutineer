@@ -56,8 +56,8 @@ David, the maintainer, decided on 2026-11-21 that this split merges first, befor
 
 **Behavior does not change**
 
-- R4. The public API does not change. This covers the public methods, the readers and the nine constant paths such as `Mutineer::CoverageMap::RESULT_FD`.
-- R5. The coverage cache format does not change. A `coverage.json` that the 1.9.0 code writes loads as a cache hit.
+- R4. The public API does not change. This covers the public methods, the readers and the nine constant paths such as `Mutineer::CoverageMap::RESULT_FD`. The eight new module constants, such as `Mutineer::CoverageMap::Cache`, are an intended addition. They are `@api private`, and they get API pages. The U10 inventory comparison expects them.
+- R5. The coverage cache format does not change. A `coverage.json` that the 1.9.0 code writes loads as a cache hit when Mutineer is outside the project root, as with a normal gem install. When Mutineer is inside the project root and not under `vendor/bundle/`, the cache fingerprints `coverage_map.rb`, so the changed file causes one rebuild, as any release that edits a loaded file does.
 - R6. No existing test file changes. `test/coverage_map_test.rb` still calls 22 private methods with `send` and passes as it is.
 - R7. Each generated child script is the same text as before the move.
 - R8. CLI output and the JSON report do not change.
