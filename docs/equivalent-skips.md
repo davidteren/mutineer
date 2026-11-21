@@ -179,9 +179,11 @@ Some of these swapped mutants are still equivalent. A variable that holds an Arr
 
 The `collection_method` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`. The `--operators` list replaces the default set, so name the default operators too.
 
-The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. It skips `each` and `map` when the call's result is discarded. For `Enumerable`, `each` returns the receiver and `map` returns a new array, so a discarded value is the same. A method of either name on another class can still differ, and the check does not see the class, so the skip can hide that difference. Each skipped call counts as declined.
+The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. When the call's result is discarded, it skips every swap except `all?` / `any?`, with the exceptions below. For `Enumerable`, `each` returns the receiver and `map` returns a new array. `select` and `reject` walk every element. `first` / `last` and `min` / `max` differ only in the value they return. A discarded value is the same, so no test can tell the mutant from the original. A method of one of these names on another class can still differ, and the check does not see the class, so the skip can hide that difference. For example, `first` on a Hash, a Set, or an Enumerator has no `last`, and the swap raises `NoMethodError`. On an endless Range, `first` works and `last` raises `RangeError` (#501). Each skipped call counts as declined.
 
-The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. One receiver is visible in the tree: a chain that calls `lazy`, as in `xs.lazy.each` or `xs.lazy.map { }.each`. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not, so that chain is still swapped. A lazy enumerator stored in a variable has no `lazy` call left in the chain, so a discarded statement on that variable is still skipped (#468).
+`select`, `reject`, `first`, `last`, `min`, and `max` are skipped only when the call is a statement of its own. Inside `&&` / `||` / `and` / `or`, parentheses, a rescue modifier, or `defined?`, the swap stays: the value can decide whether the right side runs, and `defined?` asks whether the method exists (`defined?({}.last)` is `nil`). A `min` or `max` with a block also stays, because the block compares different pairs after the swap. So does a `select` or `reject` with arguments, because `IO.select(readers)` is not `Enumerable#select`.
+
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. A lazy enumerator is visible in two ways, and both are still swapped. One is a receiver with a `lazy` call in it, as in `xs.lazy.each`, `xs.lazy.map { }.each`, or `(xs.lazy).each`. The other is a local variable that the same method assigns from such a chain (`enum = xs.lazy`, `enum ||= xs.lazy.map { }`, `enum &&= xs.lazy`, a `for` index (`for enum in [xs.lazy]`), a copy such as `other = enum`, or multiple assignment such as `enum, n = xs.lazy, 1`). The value counts when a `lazy` call or a lazy local sits anywhere in it: in parentheses, a ternary, `begin`, `case`, a rescue modifier, or a chained assignment. That can include `xs.lazy.to_a`, and the swap then stays. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not. The tree shows no order, so one such assignment anywhere in the method counts for every read of that name. The boundary is a lazy enumerator that the method receives or reads from somewhere else: a parameter, an instance variable, the result of another call, a rightward assignment (`xs.lazy => enum`), or a pattern capture, as in `enum.each { }` with `enum` a parameter. The tree shows no `lazy` call, so that discarded statement is still skipped (#501).
 
 The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
 
@@ -189,7 +191,7 @@ The result is discarded, and the swap is skipped, when the call is a statement a
 - It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
 - It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
 - A `while`, `until`, or `for` body discards its value, including the last line. `for` returns the collection, not the body. An `ensure` body discards its value too. `defined?` does not evaluate its operand, so an `each` or `map` inside it is skipped. That includes a `lazy` chain and an interpolation.
-- A `begin`, parentheses, an array, a hash value, a range, or `and` / `or` / `&&` / `||` keeps the value only when the outer expression keeps it. A hash key is always kept: insertion calls `hash` and `eql?`.
+- A `begin`, parentheses, an array, a hash value, a range, the right side of `&&` / `and`, or either side of `||` / `or` keeps the value only when the outer expression keeps it. The left side of `&&` / `and` is read for truthiness only, see below. A hash key is always kept: insertion calls `hash` and `eql?`.
 - The value that string interpolation, symbol interpolation, a backtick or `%x` command, or an interpolated regexp (`/.../` or `%r{}`) reads is kept, even when that expression's result is thrown away. Interpolation calls `to_s` on that value. The command runs. The regexp is compiled. An earlier statement inside the interpolation is still discarded. `defined?` does not read it.
 
 The result is kept, and the swap still runs, when the call is any of these:
@@ -200,9 +202,18 @@ The result is kept, and the swap still runs, when the call is any of these:
 - The receiver of another call, as in `users.each { }.size` or `!users.each`. The next call may use the object. The swap stays even when that next call's own result is discarded.
 - Returned with `return`, `break`, or `next`.
 - The object of `class << obj`.
-- A condition of `if`, `unless`, `while`, `until`, or `case`, or a `when` value. Both results are true for an ordinary receiver, so some of these mutants are equivalent. The syntax reads the value, so the operator still emits them.
+- The subject of a `case`, and a `when` value of a `case` that has a subject. `when Hash` calls `Hash === value`, and a Hash receiver gives a Hash from `each` and an Array from `map`.
+- The left side of `||` / `or`, when the `||` result is kept. That operator returns the value.
 
-`all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are swapped even when the result is discarded. `all?` and `any?` can stop on different elements. A block can show that change.
+The swap of `each` or `map` is also skipped when only the truthiness of the value is read (#468):
+
+- The condition of `if`, `unless`, `while`, or `until`, including the modifier forms, `elsif`, and the ternary.
+- The left side of `&&` / `and`, when the result of that expression is kept. A successful `each` or `map` is never false, so the left side never becomes the result. The left side of `||` / `or` is different: that operator returns the value.
+- A `when` condition of a `case` that has no subject.
+
+Both results are true for an ordinary receiver, so the branch cannot change. A custom `each`, or a core `Enumerator` such as `xs.cycle(2).each { }`, can return `nil` where `map` returns an Array, so the swap can still change the branch. A Hash passed a two-argument lambda, as in `h.map(&fmt)`, works with `map` and raises with `each` (#501). A lazy chain or a lazy local is still swapped here too. A call nested in a larger condition is still swapped: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a` (#501). `select`, `reject`, `first`, `last`, `min`, and `max` are not skipped in a condition: `first`, `last`, `min`, and `max` can return `nil`, and a `select` or `reject` swap is equivalent there (#501).
+
+`all?` and `any?` are swapped even when the result is discarded. They can stop on different elements. A block can show that change.
 
 The report that opened this skip found the `each` to `map` mutant in 4 of 23 ignore entries.
 
