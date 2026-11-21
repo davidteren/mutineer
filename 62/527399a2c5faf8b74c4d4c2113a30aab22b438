@@ -1,0 +1,25 @@
+.github/workflows/release-pr.yml
+  s_a5f73b7874bfdc::t_f52f49d4465531 19-28,370-372
+.github/workflows/ci.yml
+  s_a5f73b7874bfdc::t_f52f49d4465531 9-11
+AGENTS.md
+  s_a5f73b7874bfdc::t_f52f49d4465531 209-212,275-282,287-292
+  s_a5f73b7874bfdc::t_a7d144fefb9f06 283-285
+  s_a5f73b7874bfdc::t_652fc830b21c15 286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62527399a2c5faf8b74c4d4c2113a30aab22b438",
+  "prompts": {},
+  "sessions": {
+    "s_a5f73b7874bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fba5a0ce-537b-43af-8b4e-562be727f217",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
