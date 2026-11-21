@@ -206,9 +206,10 @@ The release procedure. A maintainer owns every step. An agent may do steps
    `release/vX.Y.Z` from current `main` only when `main` has moved. A run
    that finds the branch already based on current `main` leaves that branch
    as it is. It still dispatches `ci.yml` when
-   the push used `GITHUB_TOKEN` (issue #234). That dispatch runs tests only.
-2. Review and merge that PR. Merging leaves the gem unpublished.
-   Leave repository auto-merge off.
+   the push used `GITHUB_TOKEN`. That dispatch runs tests only.
+2. Approve the release PR's parked CI run (see "CI on the release PR"
+   below), then review and merge that PR. Merging leaves the gem
+   unpublished. Leave repository auto-merge off.
 3. Tag the merged commit and push the tag:
    ```sh
    git tag vX.Y.Z && git push origin vX.Y.Z
@@ -271,13 +272,24 @@ Safety nets:
   differs from the latest tag, the run warns and opens nothing. If the
   computed `vX.Y.Z` tag already exists on origin, it fails and a maintainer
   resolves it by hand.
-- **CI on the release PR** still needs a dispatch when the branch was pushed
-  with the default `GITHUB_TOKEN`: that push starts no other workflow, so the
-  job dispatches `ci.yml` on the release branch and those runs report the
-  required checks on the PR's head commit. With an optional `RELEASE_PR_TOKEN`
-  PAT secret, the push triggers CI itself and the dispatch is skipped. If the
-  checks are missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`. That
-  command runs CI only.
+- **CI on the release PR needs one approval click** while the optional
+  `RELEASE_PR_TOKEN` secret is unset (issue #234). Without the secret, the
+  job pushes and opens the PR with the default `GITHUB_TOKEN`. That push
+  starts no other workflow, so the job dispatches `ci.yml` on the release
+  branch. The dispatched run is an early signal only. Branch protection
+  counts only checks from runs tied to the PR, and the dispatched run is not
+  tied to it. GitHub does create the PR's own `pull_request` CI run, but it
+  parks that run as "action required" because a bot opened the PR. The PR
+  stays blocked until a maintainer approves that run. Find it with
+  `gh run list --workflow ci.yml --branch release/vX.Y.Z --event pull_request`,
+  open it, and click the approve button that GitHub shows on a waiting run.
+  The required checks then report on the PR's head commit.
+  Do not merge past protection instead. If the dispatched run is missing,
+  run `gh workflow run ci.yml --ref release/vX.Y.Z`. That command runs CI
+  only. With a `RELEASE_PR_TOKEN` secret (a fine-grained PAT or GitHub App
+  token with Contents, Pull requests and Workflows write), the push and the
+  PR come from that identity, CI runs without approval, and the dispatch is
+  skipped. The secret stays optional.
 
 **Settings a maintainer applies by hand.** They live in GitHub and on
 RubyGems, not in this repo. Apply them in this order. The

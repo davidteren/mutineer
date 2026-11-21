@@ -16,14 +16,16 @@ name: Release PR
 # gem unpublished. A maintainer then runs release.yml on that tag and approves
 # the rubygems environment. That approval is what publishes.
 #
-# Note: a push or PR made with the default GITHUB_TOKEN does NOT trigger other
-# workflows (GitHub's recursion guard), so ci.yml would never run on the release PR
-# and its required checks would leave it BLOCKED. A workflow_dispatch is the one
-# event GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches
-# ci.yml on the release branch; those runs report the required check names on the
-# PR's head commit. With a PAT in the optional `RELEASE_PR_TOKEN` secret (repo +
-# workflow scope) the push itself triggers CI and the dispatch is skipped. The
-# dispatch runs CI only. It does not tag or publish.
+# Note: a push made with the default GITHUB_TOKEN does NOT trigger other
+# workflows (GitHub's recursion guard). A workflow_dispatch is the one event
+# GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches ci.yml
+# on the release branch as an early signal. Those runs do not unblock the PR:
+# branch protection counts only runs tied to the PR. The PR's own pull_request
+# run waits in action_required until a maintainer approves it, because a bot
+# opened the PR (#234; AGENTS.md, "CI on the release PR"). With a token in the
+# optional `RELEASE_PR_TOKEN` secret the push itself triggers CI, no approval is
+# needed, and the dispatch is skipped. The dispatch runs CI only. It does not
+# tag or publish.
 on:
   workflow_dispatch: # a maintainer prepares a release PR: gh workflow run release-pr.yml --ref main
 
@@ -153,7 +155,7 @@ jobs:
               --json databaseId --jq length || echo 0)"
             [ "$dispatched" = 0 ] || return 0
             if gh workflow run ci.yml --ref "$1"; then
-              echo "Dispatched ci.yml on $1 for the release PR's required checks."
+              echo "Dispatched ci.yml on $1 as an early signal. Approve the release PR's parked pull_request run for its required checks."
             else
               echo "::error::Could not dispatch ci.yml on $1. Run: gh workflow run ci.yml --ref $1"
               return 1
@@ -365,9 +367,9 @@ jobs:
             fi
           done <<< "$olds"
 
-          # A GITHUB_TOKEN push starts no CI, so the required checks would never report
-          # and the PR would stay BLOCKED. Dispatch ci.yml on the release branch: its
-          # jobs report the same check names on the PR's head commit. Skipped with a
+          # A GITHUB_TOKEN push starts no CI. Dispatch ci.yml on the release branch as an
+          # early signal. Its checks do not count for branch protection; a maintainer
+          # still approves the PR's parked pull_request run (#234). Skipped with a
           # PAT (its push already triggered CI) and when a dispatched CI run already
           # exists for this head commit, so a run that stopped before dispatching is
           # caught up next time. (A pull_request run waiting in action_required does
