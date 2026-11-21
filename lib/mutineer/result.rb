@@ -35,7 +35,9 @@ module Mutineer
   #                  loaded. That run happened before the mutant was applied,
   #                  so a test can check a value the original code computed.
   #                  A survivor on such a line, and a line that ran only at
-  #                  load, get this status; a kill stays killed. Excluded from
+  #                  load, get this status; a kill stays killed. So does a
+  #                  survivor in a block whose call ran at load, when no test
+  #                  ran the mutated code (#493). Excluded from
   #                  the denominator and from the no-verdict gate, like
   #                  unplaceable. `--test-command` verifies these mutants.
   #   ignored      - a known-equivalent mutant the user suppressed, via an
@@ -49,7 +51,8 @@ module Mutineer
   # crash. Never conflate them via `details` string parsing. `uncapturable` and
   # `unplaceable` are pre-fork results, and `no_coverage` and `ran_at_load` are
   # pre-fork or a reclassified result (JobPlan.selection_verdict,
-  # JobPlan.load_verdict): all excluded from the score denominator.
+  # JobPlan.load_verdict, JobPlan.stored_block_verdict): all excluded from the
+  # score denominator.
   #
   # `subject`, `mutation`, and `id` are nil when the Result is built by
   # Isolation/Runner (which only know the outcome); the orchestrator attaches
