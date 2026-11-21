@@ -420,7 +420,7 @@ module Mutineer
           owner_unknown: @owner_unknown,
           hook_block: @hook_block,
           reload_hook_call: reload_hook_call_for(node),
-          in_superclass_block: @in_superclass_block == true,
+          in_superclass_block: @in_superclass_block,
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node,

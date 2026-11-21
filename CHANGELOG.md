@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format is based on
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
-  After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class, with its file, and says how to check those kills.
+  After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
   The warning changes no verdict, no score, no JSON field and no exit code.
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
   `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
