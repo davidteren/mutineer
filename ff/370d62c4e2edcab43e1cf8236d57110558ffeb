@@ -1,0 +1,53 @@
+CHANGELOG.md
+  s_591d9522922b8f::t_ff53422d15dc02 24,26
+docs/json-schema.md
+  s_591d9522922b8f::t_ff53422d15dc02 125-128
+test/reload_guards_test.rb
+  s_591d9522922b8f::t_17e3455075d145 336-365
+lib/mutineer/job_plan.rb
+  s_591d9522922b8f::t_2854f2a35e3b91 428-435
+  s_591d9522922b8f::t_69b791ea7760e0 417-420
+  s_591d9522922b8f::t_7162197bb3686f 390
+test/call_superclass_reload_test.rb
+  s_591d9522922b8f::t_17e3455075d145 87-95
+lib/mutineer/reload_guards.rb
+  s_591d9522922b8f::t_6adbad1c366282 154-157,165-166,171-175
+  s_591d9522922b8f::t_ee7e95ffab7873 118,123,129-140
+  s_151bdda9795887::t_eb0edccbe37635 141-142,176
+docs/rails-setup.md
+  s_591d9522922b8f::t_ff53422d15dc02 69
+lib/mutineer/cli.rb
+  s_591d9522922b8f::t_426bc523786881 1250-1252
+lib/mutineer/runner.rb
+  s_591d9522922b8f::t_2f1b2c3a4ea4b7 69-71
+  s_151bdda9795887::t_033918898c1621 115
+test/cli_test.rb
+  s_591d9522922b8f::t_af45a577402bd1 3286-3287
+  s_591d9522922b8f::t_17e3455075d145 3279-3285,3288-3299,3314-3316
+test/runner_test.rb
+  s_591d9522922b8f::t_7453f900250f03 1694,1699-1700,1710
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff370d62c4e2edcab43e1cf8236d57110558ffeb",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_591d9522922b8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0c4dfba-9a2f-4528-9ddf-f5920127b7ba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
