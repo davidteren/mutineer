@@ -100,7 +100,9 @@ module Mutineer
     # Why the last {#request} answered `"error"`: the redacted `Class: message`
     # line from the daemon's child (#388), or `daemon crashed` / `daemon
     # stopped answering` when no reply came. nil when the reply carried no
-    # cause, or the last request answered anything else. Read it right after
+    # cause, or the last request answered anything else. A missing-file
+    # `LoadError` line can end with a note on dropped load variables
+    # ({#with_load_env_hint}, #491). Read it right after
     # {#request}: a client serves one worker thread at a time
     # ({DaemonBackend} gives each thread its own), so no other request can
     # replace it in between.
