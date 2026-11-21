@@ -49,6 +49,8 @@ module Mutineer
     # How many blind or redundant tests the human report lists before it points
     # to `--format json` for the rest.
     MATRIX_LIST_LIMIT = 20
+    # Shown for an errored mutant whose run recorded no cause (#480).
+    ERRORED_NO_CAUSE = "no cause recorded; stderr of the run may name it"
 
     # @param aggregate [Mutineer::AggregateResult] the run's results.
     # @param source_map [Hash{String => String}] source file path => source text.
@@ -92,7 +94,7 @@ module Mutineer
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
                unmatched_ignores: [], declined: {},
-               subjects: nil, unmutated_subjects: nil, copies: {})
+               subjects: nil, unmutated_subjects: nil, copies: {}, verbose: false)
       @copies = copies || {}
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
@@ -106,7 +108,8 @@ module Mutineer
         else
           sio = StringIO.new
           human_report(sio, err, threshold, declined: declined, scoped: scoped,
-                                            subjects: subjects, unmutated: unmutated_subjects&.size)
+                                            subjects: subjects, unmutated: unmutated_subjects&.size,
+                                            verbose: verbose)
           baseline_section(sio, baseline) if baseline
           sio.string
         end
@@ -195,8 +198,10 @@ module Mutineer
     # @param scoped [Boolean] the run was diff-scoped (`--since`).
     # @param subjects [Integer, nil] methods discovered; nil when unknown.
     # @param unmutated [Integer, nil] methods the selected operators did not mutate; nil when unknown.
+    # @param verbose [Boolean] also list each errored mutant and its cause (#480).
     # @return [void]
-    def human_report(out, err, threshold, declined: {}, scoped: false, subjects: nil, unmutated: nil)
+    def human_report(out, err, threshold, declined: {}, scoped: false, subjects: nil, unmutated: nil,
+                     verbose: false)
       # The CLI explains an empty run for every format (CLI.warn_empty_run).
       # A saved report still carries the unpaired counts.
       if @agg.total.zero?
@@ -213,6 +218,7 @@ module Mutineer
       per_source(out)
 
       survivors(out)
+      errored(out) if verbose
       matrix_section(out) if @matrix
       verdict(out, threshold) if threshold && threshold.positive?
     end
@@ -438,6 +444,7 @@ module Mutineer
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
         #{ignored_html}
+        #{errored_html}
         #{matrix_html}
         </body>
         </html>
@@ -537,6 +544,27 @@ module Mutineer
         CARD
       end.join("\n")
       "<h2>Ignored mutants</h2>\n#{cards}"
+    end
+
+    # Errored mutants, each with its id and the cause the run recorded
+    # (#480). The JSON report has the same rows under `no_verdict`.
+    #
+    # @api private
+    # @return [String] HTML, or "" when no mutant errored.
+    def errored_html
+      rows = errored_rows
+      return "" if rows.empty?
+
+      cards = rows.map do |row|
+        <<~CARD.chomp
+          <div class="survivor">
+          <h3>#{esc(row[:subject] || "unknown method")}</h3>
+          <div class="meta">#{esc(errored_place(row))} &middot; #{esc(row[:operator].to_s)} &middot; <span class="id">#{esc(row[:id].to_s)}</span></div>
+          <pre class="diff">#{esc(row[:details] || ERRORED_NO_CAUSE)}</pre>
+          </div>
+        CARD
+      end.join("\n")
+      "<h2>Errored mutants</h2>\n#{cards}"
     end
 
     # The kill-matrix section of the HTML report: the counts, then the blind and
@@ -1366,6 +1394,45 @@ module Mutineer
         out.puts printable(file)
         group.sort_by { |r| tie_key(r) }.each { |r| survivor(out, file, r) }
       end
+    end
+
+    # Writes the errored-mutants block: one entry per errored mutant, with
+    # the cause the run recorded (#480). Only with `--verbose`.
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @return [void]
+    def errored(out)
+      rows = errored_rows
+      return if rows.empty?
+
+      out.puts
+      out.puts "Errored Mutants"
+      out.puts "---------------"
+      rows.each do |row|
+        out.puts "  #{printable(row[:subject] || 'unknown method')} (#{printable(errored_place(row))}) " \
+                 "#{row[:operator]} #{row[:id]}".rstrip
+        out.puts "    #{printable(row[:details] || ERRORED_NO_CAUSE)}"
+      end
+    end
+
+    # The errored mutants as {#no_verdict_json} rows, in file and line order.
+    #
+    # @api private
+    # @return [Array<Hash>]
+    def errored_rows
+      @agg.results.select(&:error?).map { |r| no_verdict_json(r) }
+          .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] }
+    end
+
+    # `file:line` of an errored row, or a note when the error came before a
+    # mutant was placed.
+    #
+    # @api private
+    # @param row [Hash] one {#errored_rows} row.
+    # @return [String]
+    def errored_place(row)
+      row[:file] ? "#{row[:file]}:#{row[:line]}" : "no mutant location"
     end
 
     # Writes one survivor entry.

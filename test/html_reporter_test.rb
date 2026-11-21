@@ -194,6 +194,36 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "<span><strong>2</strong> timeout</span>"
   end
 
+  # #480: the HTML report lists each errored mutant and its cause; the
+  # human report does so under --verbose only.
+  def errored_mutant(details)
+    Mutineer::Result.error(details).with(subject: subject, id: "abc123def456",
+                                         mutation: mutation_at(">=", ">", :comparison))
+  end
+
+  def test_errored_section_lists_each_mutant_and_its_cause
+    html = render([errored_mutant("LoadError: <x>"), Mutineer::Result.error(nil)])
+    assert_includes html, "<h2>Errored mutants</h2>"
+    assert_includes html, "#{FILE}:3 &middot; comparison &middot; <span class=\"id\">abc123def456</span>"
+    assert_includes html, "<pre class=\"diff\">LoadError: &lt;x&gt;</pre>"
+    assert_includes html, "no mutant location"
+    assert_includes html, Mutineer::Reporter::ERRORED_NO_CAUSE
+    refute_includes render([survivor]), "Errored mutants"
+  end
+
+  def test_human_errored_list_needs_verbose
+    report = lambda do |verbose|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([errored_mutant("RuntimeError: boom")]), { FILE => SRC })
+                        .report(out: out, err: StringIO.new, format: "human", verbose: verbose)
+      out.string
+    end
+    assert_includes report.call(true),
+                    "Errored Mutants\n---------------\n  Pricing#total (#{FILE}:3) comparison abc123def456\n" \
+                    "    RuntimeError: boom\n"
+    refute_includes report.call(false), "Errored Mutants"
+  end
+
   def test_no_matrix_section_without_the_flag
     refute_includes render([survivor]), "Kill matrix"
   end

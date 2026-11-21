@@ -55,6 +55,18 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #480: an errored --test-command run names the last non-blank output
+  # line, without colour codes and redacted, so every report shows a cause.
+  def test_errored_run_names_the_last_output_line
+    out = "first\n\e[31mpostgres://u:hunter2@db/x refused\e[0m\n\n"
+    with_script(%(STDOUT.write #{out.dump}\nexit 3\n)) do |path|
+      details = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30).details
+      assert_match(/; last output line: postgres:\/\/u:\S+@db\/x refused\z/, details)
+      refute_includes details, "hunter2"
+      refute_includes details, "\e["
+    end
+  end
+
   # #292: with summary checking on, exit 1 is a kill only when a Minitest or
   # RSpec summary line reports a failing test.
   def run_exit_one(output, check_summary: true)

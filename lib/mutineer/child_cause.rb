@@ -103,11 +103,27 @@ module Mutineer
     def write_text(text)
       return unless armed_here?
 
-      body = Redaction.text(text.to_s)
-      body = body.length > LIMIT ? "#{body[0, LIMIT - 3]}..." : body
-      write_to(@armed_io, body)
+      write_to(@armed_io, clip(text))
     rescue StandardError
       nil
+    end
+
+    # Writes the cause line for a test that failed with a database error.
+    # Minitest and RSpec write the same text (#347, #480).
+    #
+    # @param error [Exception] the database error.
+    # @return [void]
+    def write_database_error(error)
+      write_text("a test failed with a database error: #{line(error)}")
+    end
+
+    # `text` redacted, then cut to {LIMIT} characters like {line}.
+    #
+    # @param text [#to_s]
+    # @return [String]
+    def clip(text)
+      body = Redaction.text(text.to_s)
+      body.length > LIMIT ? "#{body[0, LIMIT - 3]}..." : body
     end
 
     # The last complete line in the pipe now, as UTF-8, or nil. Reads without

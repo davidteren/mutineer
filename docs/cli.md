@@ -30,7 +30,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--[no-]fail-fast` | Stop at first survivor | Off |
 | `--[no-]matrix` | Run all covering tests; report blind and redundant tests. In-process only | Off |
 | `--[no-]allow-empty` | Suppress warnings for runs without mutants | Off |
-| `--verbose` (alias `--debug`) | Full error details | Off |
+| `--verbose` (alias `--debug`) | Full error details. The human report also lists each errored mutant and its cause | Off |
 | `--list-operators`, `--version`, `--help` | Print and exit | |
 
 `--test` takes a file, a directory, or a quoted glob.
