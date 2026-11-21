@@ -1314,6 +1314,12 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["min with forwarded arguments stays when discarded", <<~RUBY, [%w[min max]], 0],
+        def m(...)
+          xs.min(...)
+          :done
+        end
+      RUBY
     ]
   end
 end

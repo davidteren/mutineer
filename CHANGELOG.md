@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format is based on
   It also declines `each` / `map` when only its truthiness is read: an `if`, `unless`, `while`, `until`, or subjectless `when` condition, or the left side of `&&` / `and`.
   A local variable that the same method assigns from a `lazy` chain keeps its `each` / `map` swap.
   Declined swaps count in `summary.declined_by_operator`.
-  On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after).
+  On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after, and none of the six other names gained a decline).
   A run with `collection_method` can report fewer mutants. Mutant ids number only the emitted swaps, so the id of a later swap of the same name in the same method can change. A baseline or `ignore:` list can need a refresh.
   The limits that remain are in #501. See `docs/equivalent-skips.md`, "Collection method".
 

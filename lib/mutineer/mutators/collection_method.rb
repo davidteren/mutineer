@@ -172,7 +172,8 @@ module Mutineer
       # Only a statement of its own counts. A call inside `&&`, `||`,
       # parentheses, a rescue modifier, or `defined?` is kept: its value can
       # decide a branch, and `defined?` asks whether the method exists. A
-      # `min` or `max` with a block is kept: the block sees different pairs.
+      # `min` or `max` with a block, or with `...` that may forward one, is kept:
+      # the block sees different pairs.
       # So is a `select` or `reject` with arguments, because
       # `Enumerable#select` takes none and `IO.select(readers)` is another
       # method.
@@ -180,10 +181,18 @@ module Mutineer
       # @param node [Prism::CallNode] call to inspect.
       # @return [Boolean] true when the swap would be equivalent.
       def discarded_statement?(node)
-        return false if node.block && %i[min max].include?(node.name)
+        return false if %i[min max].include?(node.name) && (node.block || forwards_arguments?(node))
         return false if %i[select reject].include?(node.name) && node.arguments
 
         statement_of_its_own?(node) && !result_used?(node)
+      end
+
+      # Returns whether the call forwards `...`, which can carry a comparator block.
+      #
+      # @param node [Prism::CallNode] call to inspect.
+      # @return [Boolean] true when an argument is `...`.
+      def forwards_arguments?(node)
+        node.arguments&.arguments&.any?(Prism::ForwardingArgumentsNode) || false
       end
 
       # Returns whether every ancestor, up to a block, a lambda, or the method
