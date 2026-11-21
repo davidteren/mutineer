@@ -1,0 +1,58 @@
+test/action_harness_test.rb
+  s_151bdda9795887::t_148e304c9c02fe 66-70
+CHANGELOG.md
+  s_151bdda9795887::t_fe1b1d60a21748 9-10,15-20
+  s_151bdda9795887::t_cbd644d4fc8d1a 11-14
+test/fixtures/action_harness.sh
+  s_151bdda9795887::t_a2437b23aa87f1 90-107,113
+action.yml
+  s_151bdda9795887::t_3901082427e8bc 536-537,541-542,544
+test/cli_test.rb
+  s_151bdda9795887::t_58fd77018e7294 1121,1123-1126
+  s_151bdda9795887::t_63e3528aea2fef 1122
+STABILITY.md
+  s_151bdda9795887::t_84c520bb0777c6 16,118
+test/json_reporter_test.rb
+  s_151bdda9795887::t_21a53597bef2ba 108,118-167
+  s_151bdda9795887::t_908b4a1b0b6d5b 73
+docs/json-schema.md
+  s_151bdda9795887::t_a63e36d00de498 123-125
+  s_151bdda9795887::t_656295d5265893 107-108,113-118
+  s_151bdda9795887::t_26c7a07adef2f5 16,41,44,47-48,373
+  s_151bdda9795887::t_688278ecab2b5b 366-367
+  s_d37da4289dd811::t_6ab5d5081c17a5 119
+lib/mutineer/reporter.rb
+  s_151bdda9795887::t_c7797d5859cfea 346
+  s_151bdda9795887::t_60dcdc7971f6b9 39,333,343,347
+  s_151bdda9795887::t_05ab6b17f25f28 330
+  s_151bdda9795887::t_6673e5789df0bf 878-880
+  s_151bdda9795887::t_4fb0ac9d1499c3 772,782,787-824
+  s_151bdda9795887::t_216a0abd7006f4 342
+  s_151bdda9795887::t_04ff848014ffe9 825
+test/baseline_test.rb
+  s_151bdda9795887::t_908b4a1b0b6d5b 257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2b1024fec3b19c181d94efb087d8181b1740eaa",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_d37da4289dd811": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "049f4638-b0a6-41c3-9e27-b38c5046711b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
