@@ -1726,6 +1726,20 @@ class RunnerTest < Minitest::Test
     assert_equal [], Mutineer::JobPlan.callback_growth_rows(nil, "/")
   end
 
+  # A non-ASCII class name and path must not raise in the parent when the
+  # default external encoding is US-ASCII (LANG unset, #346).
+  def test_callback_growth_rows_read_non_ascii_bytes_under_us_ascii
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "caf\xC3\xA9.rb")
+      File.write(model, "class Cafe; end\n")
+      File.binwrite(log, "Caf\xC3\xA9\t#{model}\n".b)
+      rows = with_ascii_default_external { Mutineer::JobPlan.callback_growth_rows(log, root) }
+      assert_equal [["Café", "café.rb"]], rows
+      assert_equal [Encoding::UTF_8, Encoding::UTF_8], rows.first.map(&:encoding)
+    end
+  end
+
   private
 
   def in_project

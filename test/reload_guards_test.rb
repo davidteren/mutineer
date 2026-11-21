@@ -366,7 +366,17 @@ class ReloadGuardsTest < Minitest::Test
   # Without a log, during_load counts nothing and writes nothing.
   def test_during_load_without_a_log_writes_nothing
     Mutineer::ReloadGuards.callback_growth_log = nil
-    assert_equal :ran, Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+    skipped = ->(*) { flunk "no log: the growth check must not run" }
+    result = nil
+    _out, err = capture_io do
+      Mutineer::ReloadGuards::RepeatedCallbacks.stub(:sizes, skipped) do
+        Mutineer::ReloadGuards::RepeatedCallbacks.stub(:grown_classes, skipped) do
+          result = Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+        end
+      end
+    end
+    assert_equal :ran, result
+    assert_empty err
   end
 
   def assert_same_list(expected, actual, message = nil)

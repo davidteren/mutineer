@@ -394,7 +394,8 @@ module Mutineer
     end
 
     # The classes the mutant loads logged, each once, with a project-relative
-    # file, in the order they were first logged.
+    # file, in the order they were first logged. The log is read as bytes, so
+    # a non-ASCII name or path does not raise when `LANG` is unset (#346).
     #
     # @param path [String, nil] the log file, or nil when the run had none.
     # @param project_root [String] the run's project root.
@@ -402,9 +403,9 @@ module Mutineer
     def self.callback_growth_rows(path, project_root)
       return [] unless path && File.exist?(path)
 
-      File.readlines(path, chomp: true).filter_map do |line|
-        name, file = line.split("\t", 2)
-        [name, ProjectPath.relative(file, project_root)] if file
+      File.binread(path).split("\n".b).filter_map do |line|
+        name, file = line.split("\t".b, 2)
+        [FsPath.read(name), ProjectPath.relative(file, project_root)] if file
       end.uniq
     end
 
