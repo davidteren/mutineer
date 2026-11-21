@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The GitHub Action step summary shows unpaired sources (#481).**
+  When `summary.unpaired_sources` is above 0, a line below the score table gives the unpaired mutants, the sources with no paired test, and the sources whose mutants were not counted.
+  Those mutants are not in the score, so a high score no longer hides them.
+  A report from a CLI older than 1.9.0 has no such key, and the line stays out.
+  No Action input or default changes.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added
