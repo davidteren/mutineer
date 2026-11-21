@@ -133,7 +133,8 @@ includes or prepends the concern, so loading the file again does not reach a cla
 For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
 host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
 again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
-mutant's method is one of these:
+mutant's method is inside the block of a class statement's superclass call (#492, see above), or is a
+hook-block method that is one of these:
 
 - a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
 - a method inside another method, or inside a block that does not build a class (such as `[1].each do`);
