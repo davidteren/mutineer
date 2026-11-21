@@ -1,0 +1,25 @@
+docs/json-schema.md
+  s_ec7a19960d3c97::t_533525d0a6fbe7 102
+test/json_reporter_test.rb
+  s_ec7a19960d3c97::t_533525d0a6fbe7 122
+  s_ec7a19960d3c97::t_5bc4b50a3065d9 111-121,123-124
+lib/mutineer/reporter.rb
+  s_ec7a19960d3c97::t_533525d0a6fbe7 799-800
+  s_ec7a19960d3c97::t_5bc4b50a3065d9 807
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30f729afdf9fa6e83aaf464f4f62063513233527",
+  "prompts": {},
+  "sessions": {
+    "s_ec7a19960d3c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "acac6b16-261d-4288-b65c-2d48c097f829",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
