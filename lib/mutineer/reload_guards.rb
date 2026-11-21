@@ -115,15 +115,29 @@ module Mutineer
       load_original(source_file)
       install!
       before = RepeatedCallbacks.snapshot
-      sizes = callback_growth_log && RepeatedCallbacks.sizes(before)
+      sizes = callback_growth_log && growth_check { RepeatedCallbacks.sizes(before) }
       @enums_before_load = {}
       @loading = true
       result = yield
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
-      log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) if sizes
+      growth_check { log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) } if sizes
       result
     ensure
       @loading = false
+    end
+
+    # Runs one step of the callback-growth check (#479). The check only
+    # reports, so an error in it must not fail the load or change the
+    # verdict. It prints one line on stderr instead, so the check is not lost
+    # without a word.
+    #
+    # @yield the step.
+    # @return [Object, nil] what the step returns, or nil when it raised.
+    def self.growth_check
+      yield
+    rescue StandardError => e
+      warn "[mutineer] could not check callback counts after the reload: #{e.class}: #{e.message}"
+      nil
     end
 
     class << self
@@ -137,9 +151,10 @@ module Mutineer
       attr_accessor :callback_growth_log
     end
 
-    # Appends one line for each class to {callback_growth_log}. A write that
-    # fails does not fail the load or change the verdict. It prints one line
-    # on stderr instead, so the check is not lost without a word.
+    # Appends one line for each class to {callback_growth_log}. The name
+    # comes from `Module#name` itself, so a class that defines its own `name`
+    # cannot change it. A write that fails does not fail the load or change
+    # the verdict. It prints one line on stderr instead.
     #
     # @param classes [Array<Class>] from {RepeatedCallbacks.grown_classes}.
     # @param source_file [String] the file the mutant replaces.
@@ -147,11 +162,17 @@ module Mutineer
     def self.log_callback_growth(classes, source_file)
       return if classes.empty?
 
-      lines = classes.map { |klass| "#{klass.name || klass.inspect}\t#{source_file}\n" }.join
-      File.write(callback_growth_log, lines, mode: "a")
+      lines = classes.map { |klass| "#{MODULE_NAME.bind_call(klass) || MODULE_TO_S.bind_call(klass)}\t#{source_file}\n" }
+      File.write(callback_growth_log, lines.join, mode: "a")
     rescue SystemCallError => e
       warn "[mutineer] could not write the callback-growth log: #{e.message}"
     end
+
+    # `Module#name`, unbound, for a class that defines its own `name`.
+    MODULE_NAME = Module.instance_method(:name)
+
+    # `Module#to_s`, unbound, the label of a class with no name.
+    MODULE_TO_S = Module.instance_method(:to_s)
 
     # Puts back one copy of each callback and validator that a second run of a
     # class body added again (#390).

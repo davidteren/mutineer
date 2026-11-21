@@ -84,6 +84,15 @@ class CallSuperclassReloadTest < Minitest::Test
     end
   end
 
+  # A class inside a wrapped superclass is skipped with it, so the two wraps
+  # never overlap and the text still parses.
+  def test_a_class_inside_a_superclass_block_is_not_wrapped_twice
+    code = "class Outer < Class.new(Struct.new(:a)) {\n  class Inner < Struct.new(:b); end\n}\nend\n"
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    assert_equal 1, rewritten.scan("kept_superclass").size
+    refute Mutineer::Parser.invalid?(rewritten)
+  end
+
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in
     code = "class X < Data.define(:a)\nend\nclass A::B::Y < Struct.new(:b)\nend\nclass ::Z < Class.new\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)

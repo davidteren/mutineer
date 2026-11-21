@@ -1691,13 +1691,13 @@ class RunnerTest < Minitest::Test
     Mutineer::Config.new(sources: [CALC], tests: [STRONG_TEST], operators: ["arithmetic"], jobs: 1,
                          strategy: strategy, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT)
   end
-  
+
   # #479: a reload run sets the log for its children, returns the rows in
   # extras, and removes the log after. With no ActiveSupport, nothing grows.
   def test_a_reload_run_returns_callback_growth_rows_and_removes_the_log
     seen = nil
-    original = Mutineer::JobPlan.method(:callback_growth_log)
-    Mutineer::JobPlan.stub(:callback_growth_log, -> { seen = original.call }) do
+    original = Mutineer::JobPlan.method(:create_callback_growth_log)
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { seen = original.call }) do
       _agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
       assert_equal [], extras[:callback_growth]
     end
@@ -1707,7 +1707,7 @@ class RunnerTest < Minitest::Test
   end
 
   def test_a_redefine_run_has_no_callback_growth_log
-    Mutineer::JobPlan.stub(:callback_growth_log, -> { flunk "redefine must not make a log" }) do
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { flunk "redefine must not make a log" }) do
       _agg, _map, extras = Mutineer::Runner.execute(growth_config("redefine"))
       assert_equal [], extras[:callback_growth]
     end

@@ -333,6 +333,36 @@ class ReloadGuardsTest < Minitest::Test
     Mutineer::ReloadGuards.callback_growth_log = nil
   end
 
+  # The check only reports: an error in it warns, and the load still returns.
+  def test_an_error_in_the_growth_check_warns_and_keeps_the_load
+    Dir.mktmpdir do |dir|
+      Mutineer::ReloadGuards.callback_growth_log = File.join(dir, "growth.log")
+      result = nil
+      _out, err = capture_io do
+        Mutineer::ReloadGuards::RepeatedCallbacks.stub(:grown_classes, ->(_) { raise ArgumentError, "boom" }) do
+          result = Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+        end
+      end
+      assert_equal :ran, result
+      assert_match(/\[mutineer\] could not check callback counts after the reload: ArgumentError: boom/, err)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
+  # A class that defines its own `name` still logs its real name.
+  def test_the_log_uses_the_real_class_name
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      odd = Class.new { def self.name = "Fake" }
+      Mutineer::ReloadGuards.log_callback_growth([odd], "/a.rb")
+      assert_match(/\A#<Class:0x\h+>\t\/a\.rb\z/, File.read(log).chomp)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
   # Without a log, during_load counts nothing and writes nothing.
   def test_during_load_without_a_log_writes_nothing
     Mutineer::ReloadGuards.callback_growth_log = nil

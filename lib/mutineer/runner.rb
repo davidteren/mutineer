@@ -66,7 +66,9 @@ module Mutineer
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
     # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
-    # whose callback count grew after a reload (#479), empty under redefine.
+    # whose callback count grew after a reload (#479), empty under redefine. A
+    # `--test-command` run and a run that returns before any mutant leave that key
+    # out, so read it with `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -110,7 +112,7 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       # #479: each reload child logs a class whose callback count grew, and
       # the run returns them once each in extras[:callback_growth].
-      growth_log = JobPlan.callback_growth_log if config.daemon || config.strategy == "reload"
+      growth_log = JobPlan.create_callback_growth_log if config.daemon || config.strategy == "reload"
       ReloadGuards.callback_growth_log = growth_log
 
       if config.daemon

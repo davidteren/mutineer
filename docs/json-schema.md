@@ -122,9 +122,10 @@ that does not build a class, a method in an `included` or `prepended` block, whi
 includer, or a method in a `class_methods` block that is not in the body of a module known as a concern (see
 `subject` above), such as one inside Rails' `concerning` or an unassigned `Module.new`); `--strategy reload`
 runs these, except some methods in an `included` or `prepended` block, and a method inside the block of a
-class statement's superclass call, such as `class X < Struct.new(:a) do ... end` (#492). Reload reopens such a
-class with the superclass it already has, so the same class object keeps its instances and subclasses, and the
-superclass call and its block do not run again. A `Data.define`, `Struct.new`, `Class.new` or other call
+class statement's superclass call, such as `class X < Struct.new(:a) do ... end` (#492). When such a class is
+already loaded, reload reopens it with the superclass it already has, so the same class object keeps its
+instances and subclasses, and the superclass call and its block do not run again. A class that is not loaded yet
+runs its superclass call as written. A `Data.define`, `Struct.new`, `Class.new` or other call
 superclass with no method in its block reloads as usual.
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first

@@ -387,7 +387,7 @@ module Mutineer
     # caller deletes it after the run.
     #
     # @return [String] its path.
-    def self.callback_growth_log
+    def self.create_callback_growth_log
       file = Tempfile.create(["mutineer-callback-growth", ".log"])
       file.close
       file.path
@@ -414,9 +414,10 @@ module Mutineer
     # file over its classes reopens each one instead of raising "superclass
     # mismatch" (#492). The superclass text stays as it is, inside the block,
     # and on its own lines, so line numbers do not move. A wrap puts one
-    # expression in a block, so the text parses wherever it parsed. A bad wrap
-    # is not checked here: the child's `load` raises `SyntaxError`, and the
-    # mutant scores `error`. Text with no such class comes back unchanged.
+    # expression in a block, and a class inside a wrapped superclass is not
+    # wrapped again. A bad wrap is not checked here: the child's `load` raises
+    # `SyntaxError`, and the mutant scores `error`. Text with no such class
+    # comes back unchanged.
     #
     # @param code [String] the reload text.
     # @return [String]
@@ -424,8 +425,14 @@ module Mutineer
       nodes = []
       queue = [Parser.parse_string(code).value]
       while (node = queue.shift)
-        nodes << node if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
-        queue.concat(node.compact_child_nodes)
+        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
+          nodes << node
+          # The wrap skips the whole superclass expression, so a class inside it
+          # is not wrapped again: two splices in one range would not parse.
+          queue.concat([node.constant_path, node.body].compact)
+        else
+          queue.concat(node.compact_child_nodes)
+        end
       end
       return code if nodes.empty?
 

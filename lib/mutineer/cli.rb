@@ -1247,8 +1247,9 @@ module Mutineer
     def self.warn_callback_growth(rows)
       return if rows.empty?
 
-      noun = rows.size == 1 ? "class runs" : "classes run"
-      warn "[mutineer] after a reload, #{rows.size} #{noun} a callback more than once (#479). " \
+      count = rows.map(&:first).uniq.size # one class can be logged from two files
+      noun = count == 1 ? "class runs" : "classes run"
+      warn "[mutineer] after a reload, #{count} #{noun} a callback more than once (#479). " \
            "A test that counts callback runs or errors can then kill mutants falsely. " \
            "This warning does not change the score or the exit code. To check those kills, " \
            "run the file with --no-daemon --strategy redefine, or with --test-command."
