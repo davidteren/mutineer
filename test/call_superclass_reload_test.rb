@@ -96,9 +96,27 @@ class CallSuperclassReloadTest < Minitest::Test
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in
     code = "class X < Data.define(:a)\nend\nclass A::B::Y < Struct.new(:b)\nend\nclass ::Z < Class.new\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
-    assert_includes rewritten, "kept_superclass(Module.nesting.first, :X) { Data.define(:a) }"
+    assert_includes rewritten, "kept_superclass(::Module.nesting.first, :X) { Data.define(:a) }"
     assert_includes rewritten, "kept_superclass(A::B, :Y) { Struct.new(:b) }"
     assert_includes rewritten, "kept_superclass(::Object, :Z) { Class.new }"
+  end
+
+  # The scope lookup is rooted, so a namespace constant named `Module` cannot
+  # shadow it. The second load reopens the class instead of raising.
+  def test_a_namespace_constant_named_module_does_not_shadow_the_scope_lookup
+    code = "module CallSuperShadow\n  class Module < Struct.new(:title)\n    def label = title\n  end\nend\n"
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, "shadow.rb")
+      File.write(file, rewritten)
+      load file
+      first = CallSuperShadow::Module
+      load file
+      assert_same first, CallSuperShadow::Module
+      assert_equal "t", CallSuperShadow::Module.new("t").label
+    end
+  ensure
+    Object.send(:remove_const, :CallSuperShadow) if Object.const_defined?(:CallSuperShadow, false)
   end
 
   # The reach probe and the hook-def insert come first, then the rewrite.
@@ -111,7 +129,7 @@ class CallSuperclassReloadTest < Minitest::Test
     code, hook_def = Mutineer::JobPlan.reload_code(mutation.apply(source), mutation, subject, source,
                                                    reach_path: "/tmp/x", reach_key: "mutineer_r0123456789abcdef")
     assert_nil hook_def
-    assert_includes code, "kept_superclass(Module.nesting.first, :InclusionValue)"
+    assert_includes code, "kept_superclass(::Module.nesting.first, :InclusionValue)"
     assert_includes code, "mutineer_r0123456789abcdef"
     refute Mutineer::Parser.invalid?(code)
   end

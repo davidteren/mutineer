@@ -367,7 +367,7 @@ class DaemonBackendContractTest < Minitest::Test
       end
     end
 
-    assert_includes sent.first["code"], "kept_superclass(Module.nesting.first, :InclusionValue)"
+    assert_includes sent.first["code"], "kept_superclass(::Module.nesting.first, :InclusionValue)"
     refute sent.first.key?("callback_growth_log")
     assert_equal "/tmp/growth.log", sent.last["callback_growth_log"]
   ensure

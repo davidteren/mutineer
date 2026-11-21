@@ -453,13 +453,13 @@ module Mutineer
     end
 
     # The module a class statement defines its constant in, as Ruby text that
-    # runs where the superclass runs: `Module.nesting.first` for `class X`,
+    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
     # the written parent for `class A::X`, and `Object` for `class ::X`.
     #
     # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
     # @return [String]
     def self.superclass_scope(path)
-      return "Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
+      return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
 
       path.parent ? path.parent.slice : "::Object"
     end
