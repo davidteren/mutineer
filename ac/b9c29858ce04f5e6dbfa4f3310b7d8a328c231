@@ -1,0 +1,19 @@
+lib/mutineer/result.rb
+  s_bfd9a4e918f7ae::t_43a9ecb46b4e1c 38-40,54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acb9c29858ce04f5e6dbfa4f3310b7d8a328c231",
+  "prompts": {},
+  "sessions": {
+    "s_bfd9a4e918f7ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec518233-17e9-4044-ba05-b81f3785ca8d",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
