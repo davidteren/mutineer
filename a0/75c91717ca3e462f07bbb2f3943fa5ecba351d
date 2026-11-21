@@ -1,0 +1,87 @@
+lib/mutineer/daemon_server.rb
+  s_151bdda9795887::t_4fbc38e6db3566 324-325
+lib/mutineer/reporter.rb
+  s_151bdda9795887::t_464811371dbd52 68
+  s_151bdda9795887::t_dbf1b63bf4201b 93-95,99,101,338,383-386,790-792,802,805,809,1023-1024,1144-1156
+test/cli_test.rb
+  s_151bdda9795887::t_36d5dae50d47d7 1187
+  s_151bdda9795887::t_beb78ff4f565d1 1140-1185
+  s_151bdda9795887::t_65eb4dbb7ef7c5 1186
+  s_151bdda9795887::t_bb7e894bc2ed52 96-105,217,2639
+test/runner_external_test.rb
+  s_151bdda9795887::t_f531648dd45cf5 64,65
+  s_151bdda9795887::t_beb78ff4f565d1 48-63
+test/runner_daemon_parallel_test.rb
+  s_151bdda9795887::t_cd6ab825592e67 62-76
+CHANGELOG.md
+  s_151bdda9795887::t_1340f70b0ca47e 15-17,19
+  s_151bdda9795887::t_47e252f8ec18ca 18
+rake/docs_contract.rb
+  s_151bdda9795887::t_e8c1a5bcc439f4 22,37,53
+lib/mutineer/runner.rb
+  s_151bdda9795887::t_79eceed3663373 156-158,194,196,235-237,259,266,278,341-342,371,383-384,403-404,407,481,514,517
+lib/mutineer/cli.rb
+  s_151bdda9795887::t_dbf1b63bf4201b 1012,1054-1057,1064
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_151bdda9795887::t_1340f70b0ca47e 6
+test/reporter_test.rb
+  s_151bdda9795887::t_9a566c59c6e8e1 731
+  s_151bdda9795887::t_beb78ff4f565d1 717-730
+docs/json-schema.md
+  s_151bdda9795887::t_1340f70b0ca47e 6-7,55,106,110,193-194,248-256,259,261-262,264
+  s_151bdda9795887::t_4fd125ae169900 265
+  s_151bdda9795887::t_47e252f8ec18ca 105,257-258,260,263
+test/coverage_map_test.rb
+  s_151bdda9795887::t_31396e251a8307 782-783
+  s_151bdda9795887::t_615de8b09f0940 790-792
+lib/mutineer/daemon_backend.rb
+  s_151bdda9795887::t_029aae148764dc 85-86,88,92,94,102,171-172,174,185,194-200,317,320,323,328,335,356-357,372,382,384,409,455,483,488,500
+  s_151bdda9795887::t_4fbc38e6db3566 289-290
+  s_151bdda9795887::t_b216c54f042d13 315,354
+lib/mutineer/result.rb
+  s_151bdda9795887::t_b6ee899b865ee4 64,68,73,84-86
+  s_151bdda9795887::t_47e252f8ec18ca 65-67
+lib/mutineer/coverage_map.rb
+  s_151bdda9795887::t_070a3f59ec01c5 86-93,134,138,148,173,1007-1013,1058-1070,1084-1090
+test/json_reporter_test.rb
+  s_151bdda9795887::t_285352285b9fcf 118
+  s_151bdda9795887::t_af9b53838e6bcf 205
+  s_151bdda9795887::t_9a566c59c6e8e1 191
+  s_151bdda9795887::t_50f96ef426176a 212
+  s_151bdda9795887::t_beb78ff4f565d1 146-190
+docs/ci.md
+  s_151bdda9795887::t_c5b138936a67ef 76
+action.yml
+  s_151bdda9795887::t_732a472dfb2f28 538-540
+  s_151bdda9795887::t_2de6b371dda032 518-520
+  s_151bdda9795887::t_df8de146be8b10 543
+test/action_harness_test.rb
+  s_151bdda9795887::t_0f2b0845908498 71
+test/fixtures/action_harness.sh
+  s_151bdda9795887::t_01f70481bc22ab 108-112
+test/daemon_backend_contract_test.rb
+  s_151bdda9795887::t_eeafe1a2423acc 20-31
+  s_151bdda9795887::t_debe3cc5585aec 455,462-463
+docs/llms.txt
+  s_151bdda9795887::t_b7a5eeeb8bf4d6 29
+rake/site_docs.rb
+  s_151bdda9795887::t_5bd46a4e26e952 29
+test/runner_test.rb
+  s_151bdda9795887::t_a6b38a08b0898c 277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a075c91717ca3e462f07bbb2f3943fa5ecba351d",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

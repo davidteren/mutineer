@@ -1,0 +1,30 @@
+docs/plans/2026-11-21-498-495-481-feat-report-fields-plan.md
+  s_151bdda9795887::t_0e2c53975b40ce 120
+  s_151bdda9795887::t_c358442901f7a7 194-195
+  s_151bdda9795887::t_a06eb0820e6b62 267-268
+  s_151bdda9795887::t_07ae41b85f578b 217
+  s_151bdda9795887::t_3ec9110846f25c 117-119
+  s_151bdda9795887::t_52dfe5403ed88e 326
+  s_151bdda9795887::t_2102675964fe45 22
+  s_151bdda9795887::t_a221fcd6956089 53
+  s_151bdda9795887::t_b720c4c2a1ffa6 125-127
+  s_151bdda9795887::t_be0c712df581b3 1-21,23-52,54-116,121-124,128,131-150,152-193,196-216,218-266,269-325,327
+  s_151bdda9795887::t_743e8eb071cd8c 151
+  s_151bdda9795887::t_c943415c97c6af 129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c0ea91ce57a2006989b23fdd3231d3ab2765bc5",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
