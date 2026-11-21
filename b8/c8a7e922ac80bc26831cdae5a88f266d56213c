@@ -1,0 +1,19 @@
+docs/json-schema.md
+  s_591d9522922b8f::t_b28562a91972d2 136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8c8a7e922ac80bc26831cdae5a88f266d56213c",
+  "prompts": {},
+  "sessions": {
+    "s_591d9522922b8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0c4dfba-9a2f-4528-9ddf-f5920127b7ba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
