@@ -65,6 +65,7 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: old report has no dropped line"
     assert_includes out, "OK: unpaired summary line"
     assert_includes out, "OK: no not-counted part when every source is counted"
+    assert_includes out, "OK: unpaired hint keeps pairing for the other sources"
     assert_includes out, "OK: unpaired line names the uncounted source"
     assert_includes out, "OK: no unpaired line at zero"
     assert_includes out, "OK: old report has no unpaired line"

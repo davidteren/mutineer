@@ -540,7 +540,7 @@ runs:
                   + " not run; \(.summary.unpaired_sources) source(s) have no paired test"
                   + ([.unpaired_sources[]? | select(.mutants == null)] | length
                      | if . > 0 then "; \(.) source(s) not counted" else "" end)
-                  + ". They are not in the score. To run them, add a test at the conventional path, map one with `tests:` in `.mutineer.yml`, or run those sources in a separate step with the `test` input. See `unpaired_sources` in the JSON report.")
+                  + ". They are not in the score. To run them, add a test at the conventional path, map one with `tests:` in `.mutineer.yml`, or run those sources in a separate step that sets the `sources` and `test` inputs. The JSON report lists them under `unpaired_sources`.")
                else empty end),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"

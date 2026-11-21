@@ -94,6 +94,7 @@ JSON
 run_step case1c STUB_REPORT="$SCRATCH/report-unpaired.json" STUB_EXIT=0
 grep -qF 'Unpaired: 12 mutant(s) not run; 3 source(s) have no paired test. They are not in the score.' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired summary line" || echo "  FAIL: unpaired summary line"
 grep -q 'not counted' "$SCRATCH/case1c/summary.md" && echo "  FAIL: counted sources named as not counted" || echo "  OK: no not-counted part when every source is counted"
+grep -qF 'run those sources in a separate step that sets the `sources` and `test` inputs' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired hint keeps pairing for the other sources" || echo "  FAIL: unpaired hint lost the separate-step advice"
 cat > "$SCRATCH/report-unpaired-nil.json" <<'JSON'
 {"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":2,"unpaired_mutants":4},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":null}]}
 JSON
