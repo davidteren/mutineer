@@ -108,6 +108,20 @@ class JsonReporterTest < Minitest::Test
     refute render([survivor])["survivors"].first.key?("diff_encoding")
   end
 
+  def test_binary_source_has_no_diff_encoding
+    src = "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    row = JSON.parse(out.string)["survivors"].first
+    refute row.key?("diff_encoding")
+    assert_includes row["diff"], "\u3042" # read as UTF-8, so it applies as it is
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
     assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined

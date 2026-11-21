@@ -796,15 +796,15 @@ module Mutineer
 
     # The encoding the {#survivor_json} diff was transcoded from: the source's
     # own, when it is valid and not UTF-8. Nil for a UTF-8 source, which needs
-    # no transcoding, and for an invalid one, whose bad bytes print as `\xNN`
-    # and cannot be restored.
+    # no transcoding, for a binary one, whose bytes {#utf8_text} reads as UTF-8,
+    # and for an invalid one, whose bad bytes print as `\xNN` and cannot be restored.
     #
     # @api private
     # @param source [String] source text, tagged with its encoding.
     # @return [String, nil] the Ruby encoding name, e.g. "EUC-JP".
     def diff_encoding(source)
       enc = source.encoding
-      return nil if enc == Encoding::UTF_8 || enc == Encoding::US_ASCII || !source.valid_encoding?
+      return nil if [Encoding::UTF_8, Encoding::US_ASCII, Encoding::BINARY].include?(enc) || !source.valid_encoding?
 
       enc.name
     end
