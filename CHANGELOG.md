@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. It now shows the unpaired source and mutant counts (#410). A real run still needs a test.
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 
 ## [1.9.0] - 2026-11-16
 
