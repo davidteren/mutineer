@@ -1,0 +1,22 @@
+docs/plans/2026-11-21-201-refactor-coverage-map-split-plan.md
+  s_3b8456994cb9fa::t_42adfc82fd07b8 87,116,332,376
+  s_3b8456994cb9fa::t_a2bc93e96638ff 16,23,88,199-200,203,352,360
+  s_3b8456994cb9fa::t_f6aa91b72cb806 1-15,17-22,24-44,48-73,75-86,89-101,103-115,117-194,201-202,204-327,329-331,333-351,353,355-359,361-375,377-406
+  s_3b8456994cb9fa::t_a7c63dd93213f6 45-47,74,102,195-198,328,354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83e761aa3979607ef817fc89b99587a15fa43397",
+  "prompts": {},
+  "sessions": {
+    "s_3b8456994cb9fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f586a1ef-2109-4db5-83c1-b87ae07bf80c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
