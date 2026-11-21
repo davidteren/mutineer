@@ -1,0 +1,26 @@
+AGENTS.md
+  s_a5f73b7874bfdc::t_21b2d3b6c068e7 78-85
+docs/plans/2026-11-22-355-merge-gate-ruleset.md
+  s_a5f73b7874bfdc::t_270e818dab9dd5 1-101
+.github/rulesets/main-merge-gate.json
+  s_a5f73b7874bfdc::t_0f9f2245435db9 1-97
+test/merge_gate_ruleset_test.rb
+  s_a5f73b7874bfdc::t_1fd543bb69700c 58
+  s_a5f73b7874bfdc::t_04878cb5e76380 1-57,59-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "758b103d564563e0ad80faed42f759584f1dc7eb",
+  "prompts": {},
+  "sessions": {
+    "s_a5f73b7874bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fba5a0ce-537b-43af-8b4e-562be727f217",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
