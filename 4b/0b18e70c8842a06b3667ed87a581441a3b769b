@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_bfd9a4e918f7ae::t_f76ef306e98c44 28,50,52-53
+docs/rails-setup.md
+  s_bfd9a4e918f7ae::t_f76ef306e98c44 66
+lib/mutineer/reach_probe.rb
+  s_bfd9a4e918f7ae::t_f76ef306e98c44 107-108,165,177-180,208
+test/reach_probe_test.rb
+  s_bfd9a4e918f7ae::t_f76ef306e98c44 94-101,234
+docs/json-schema.md
+  s_bfd9a4e918f7ae::t_f76ef306e98c44 69,174,183-184,192-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b0b18e70c8842a06b3667ed87a581441a3b769b",
+  "prompts": {},
+  "sessions": {
+    "s_bfd9a4e918f7ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec518233-17e9-4044-ba05-b81f3785ca8d",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
