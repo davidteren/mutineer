@@ -1,0 +1,40 @@
+CHANGELOG.md
+  s_1b2233f0809a1b::t_47e6e135744461 9-12,14-17,23
+  s_1b2233f0809a1b::t_f2b74c37bbf439 18-19,21-22
+  s_1b2233f0809a1b::t_eb3f088fa9e587 13
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 20
+test/daemon_seed_test.rb
+  s_1b2233f0809a1b::t_12ca9dd25bd86a 9-11,14,33-62
+lib/mutineer/daemon_server.rb
+  s_1b2233f0809a1b::t_12ca9dd25bd86a 574-576,581
+docs/rails-setup.md
+  s_1b2233f0809a1b::t_ea281e3d3a75e5 137
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 140
+test/daemon_client_env_test.rb
+  s_1b2233f0809a1b::t_532715dc30c260 243-270,275-276
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 271-274
+lib/mutineer/daemon_client.rb
+  s_1b2233f0809a1b::t_8e82fb2112e5ed 56-60,160,240,248-260,264-276
+  s_1b2233f0809a1b::t_68d4e22688cd5e 277
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 61-62,261-263
+README.md
+  s_1b2233f0809a1b::t_f6783d5dd3b585 189
+docs/json-schema.md
+  s_1b2233f0809a1b::t_c5413ebcafd7b3 196-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5d5bb97911eda776c9a56550b40a31a302f4edf",
+  "prompts": {},
+  "sessions": {
+    "s_1b2233f0809a1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6d22b9ce-8184-4336-8931-65442226dcd3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
