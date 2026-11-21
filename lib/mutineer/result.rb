@@ -27,7 +27,9 @@ module Mutineer
   #                  `prepended` block is one (#256). Under `--strategy reload`
   #                  only some methods in such a block are: those it cannot
   #                  load into each class that has them (#297; the cases are
-  #                  listed in docs/json-schema.md).
+  #                  listed in docs/json-schema.md). A method inside the block
+  #                  of a class statement's superclass call is one too
+  #                  (`class X < Struct.new(:a) do ... end`, #492).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.
