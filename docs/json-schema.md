@@ -3,14 +3,15 @@
 `mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
 whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
 fixed sort order, independent of `--jobs` worker completion order. For the same
-inputs and results, JSON output is byte-identical, except the wall-clock values:
-`timing` and each entry's `seconds` (schema `1.11`, #495). Results can still vary if
+inputs and results, JSON output is byte-identical, except as noted at the end of this
+paragraph. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
-`unpaired_sources[]` by `file`; `unmutated_subjects[]` by `(file, line, subject)`. One exception:
-`details` of an errored mutant can quote run-specific text (see `no_verdict[]`).
+`unpaired_sources[]` by `file`; `unmutated_subjects[]` by `(file, line, subject)`. Two exceptions:
+`details` of an errored mutant can quote run-specific text (see `no_verdict[]`), and the
+wall-clock values `timing` and each entry's `seconds` change from run to run (schema `1.11`, #495).
 
 ## Versioning contract
 
@@ -115,8 +116,8 @@ unscored category from a full id list.
 
 `diff` is the same text a `survivors[]` entry gives for that mutant, so a
 consumer can match a killed mutant by its change, for example against a
-declared equivalent mutant. It is `null` only on an entry whose other fields are
-`null` (a result with no subject). Additive key (schema `1.11`, #498).
+declared equivalent mutant. It is `null` only on an entry with no subject, whose `subject`, `file`, `line`,
+`operator` and `token` are `null` too. Additive key (schema `1.11`, #498).
 A report whose mutants are mostly killed is about twice as large with it:
 on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
 

@@ -54,8 +54,8 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
       doc = JSON.parse(out)
       timing = doc.fetch("timing")
-      assert_nil timing["boot_seconds"]
-      assert_nil timing["coverage_seconds"]
+      # Hash equality also fails when a key is missing: a null phase stays a key.
+      assert_equal({ "boot_seconds" => nil, "coverage_seconds" => nil }, timing.slice("boot_seconds", "coverage_seconds"))
       %w[clean_check_seconds mutants_seconds total_seconds].each { |k| assert_kind_of Numeric, timing[k], k }
       assert_operator timing["total_seconds"], :>=, timing["mutants_seconds"]
       refute_empty doc["killed"]

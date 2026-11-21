@@ -377,10 +377,11 @@ module Mutineer
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
           end
+          # Before the cleanup below, so recovery time is not mutant time.
+          timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         ensure
           FileSwap.restore_orphans(dirs)
         end
-        timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         extras[:timing] = timing
 
         [AggregateResult.new(results + ignored_results), source_map, extras]
