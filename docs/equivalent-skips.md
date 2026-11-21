@@ -208,7 +208,7 @@ The result is kept, and the swap still runs, when the call is any of these:
 The swap of `each` or `map` is also skipped when only the truthiness of the value is read (#468):
 
 - The condition of `if`, `unless`, `while`, or `until`, including the modifier forms, `elsif`, and the ternary.
-- The left side of `&&` / `and`, when the result of that expression is kept. A successful `each` or `map` is never false, so the left side never becomes the result. The left side of `||` / `or` is different: that operator returns the value.
+- The left side of `&&` / `and`, when the result of that expression is kept. For an `Enumerable` receiver a successful `each` or `map` is never false, so the left side never becomes the result. A custom `each` that returns `nil` can differ (#501). The left side of `||` / `or` is different: that operator returns the value.
 - A `when` condition of a `case` that has no subject.
 
 Both results are true for an ordinary receiver, so the branch cannot change. A custom `each`, or a core `Enumerator` such as `xs.cycle(2).each { }`, can return `nil` where `map` returns an Array, so the swap can still change the branch. A Hash passed a two-argument lambda, as in `h.map(&fmt)`, works with `map` and raises with `each` (#501). A lazy chain or a lazy local is still swapped here too. A call nested in a larger condition is still swapped: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a` (#501). `select`, `reject`, `first`, `last`, `min`, and `max` are not skipped in a condition: `first`, `last`, `min`, and `max` can return `nil`, and a `select` or `reject` swap is equivalent there (#501).

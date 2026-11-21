@@ -78,7 +78,7 @@ module Mutineer
         Prism::StatementsNode, Prism::IfNode, Prism::UnlessNode, Prism::ElseNode,
         Prism::WhileNode, Prism::UntilNode, Prism::ForNode, Prism::CaseNode,
         Prism::CaseMatchNode, Prism::WhenNode, Prism::InNode, Prism::BeginNode,
-        Prism::RescueNode, Prism::EnsureNode
+        Prism::RescueNode, Prism::EnsureNode, Prism::SingletonClassNode
       ].freeze
 
       # Records parents, then walks the body. The result check needs the

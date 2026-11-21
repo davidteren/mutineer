@@ -1189,7 +1189,7 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
-      ["first on the right of && stays, its value may decide a branch", <<~RUBY, [%w[first last]], 0],
+      ["first on the right of a discarded && stays, only a statement of its own is declined", <<~RUBY, [%w[first last]], 0],
         def m
           flag && warn("hit") && xs.first
           :done
@@ -1317,6 +1317,15 @@ class CollectionMethodTest < Minitest::Test
       ["min with forwarded arguments stays when discarded", <<~RUBY, [%w[min max]], 0],
         def m(...)
           xs.min(...)
+          :done
+        end
+      RUBY
+      ["first in a singleton class body is declined", <<~RUBY, [], 1],
+        def m
+          class << obj
+            xs.first
+            :x
+          end
           :done
         end
       RUBY
