@@ -45,6 +45,24 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #495: --test-command has no boot and no coverage phase. The clean run is
+  # the clean check, and each mutant's seconds is its command run.
+  def test_timing_has_no_boot_or_coverage_phase
+    with_project("calculator_strong_test.rb") do |proj|
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                                  "--test-command", "#{RUBY} %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      timing = doc.fetch("timing")
+      assert_nil timing["boot_seconds"]
+      assert_nil timing["coverage_seconds"]
+      %w[clean_check_seconds mutants_seconds total_seconds].each { |k| assert_kind_of Numeric, timing[k], k }
+      assert_operator timing["total_seconds"], :>=, timing["mutants_seconds"]
+      refute_empty doc["killed"]
+      doc["killed"].each { |entry| assert_kind_of Numeric, entry["seconds"], entry["id"] }
+    end
+  end
+
   # Weak suite: 2 of 6 arithmetic mutants survive -> 66.7%. Threshold defaults to
   # 0 so exit stays 0; survivors are reported.
   def test_weak_suite_reports_survivors

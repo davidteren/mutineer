@@ -83,6 +83,14 @@ module Mutineer
     # @return [Hash{String => Numeric}]
     attr_reader :clean_timeouts
 
+    # Seconds the separate clean checks ran tests ({#verify_cached_clean},
+    # {#verify_combined_clean}), or nil when neither ran a test (#495). On a
+    # cache miss each test also ran alone during capture; that time is in the
+    # capture, not here.
+    #
+    # @return [Float, nil]
+    attr_reader :clean_check_seconds
+
     # The source lines that ran while the app booted or the sources and the
     # `--require` files loaded, before any test ran, as a Set of "file:line"
     # keys like {#map}'s (#187, #217).
@@ -123,10 +131,11 @@ module Mutineer
     #   ({#load_methods}).
     # @param timings [Hash{String => Float}] capture seconds per test file ({#timings}).
     # @param clean_timeouts [Hash{String => Numeric}] clean checks that timed out ({#clean_timeouts}).
+    # @param clean_check_seconds [Float, nil] seconds the clean checks ran ({#clean_check_seconds}).
     # @return [Mutineer::CoverageMap] a query-only map.
     def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [],
                        failed_clean_details: {}, load_lines: [],
-                       load_methods: [], timings: {}, clean_timeouts: {})
+                       load_methods: [], timings: {}, clean_timeouts: {}, clean_check_seconds: nil)
       instance = allocate
       instance.instance_variable_set(:@map, map || {})
       instance.instance_variable_set(:@timings, timings || {})
@@ -136,6 +145,7 @@ module Mutineer
       instance.instance_variable_set(:@failed_clean_tests, failed_clean_tests || [])
       instance.instance_variable_set(:@failed_clean_details, failed_clean_details || {})
       instance.instance_variable_set(:@clean_timeouts, clean_timeouts || {})
+      instance.instance_variable_set(:@clean_check_seconds, clean_check_seconds)
       instance.instance_variable_set(:@project_root, FsPath.read(project_root))
       instance
     end
@@ -160,6 +170,7 @@ module Mutineer
       @failed_clean_tests = []
       @failed_clean_details = {}
       @clean_timeouts = {}
+      @clean_check_seconds = nil
       @load_lines   = Set.new
       @load_methods = Set.new
       @timings      = {}
@@ -993,11 +1004,13 @@ module Mutineer
         rel = relativize(test_path)
         next if @failed_test_files.include?(rel)
 
-        ok, detail, timed_out = if @boot_path
-                                  fork_clean_pass?([absolute(test_path)], after_fork)
-                                else
-                                  subprocess_clean_pass?([test_path])
-                                end
+        ok, detail, timed_out = timed_clean do
+          if @boot_path
+            fork_clean_pass?([absolute(test_path)], after_fork)
+          else
+            subprocess_clean_pass?([test_path])
+          end
+        end
         if timed_out
           record_clean_timeout(rel, @capture_timeout)
         elsif !ok
@@ -1042,6 +1055,19 @@ module Mutineer
       end
     end
 
+    # Runs one clean check and adds its wall-clock seconds to
+    # {#clean_check_seconds} (#495).
+    #
+    # @api private
+    # @yieldreturn [Array] the clean check's answer.
+    # @return [Array] the block's value.
+    def timed_clean
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      yield
+    ensure
+      @clean_check_seconds = (@clean_check_seconds || 0.0) + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
+    end
+
     # Runs every successfully captured test of {#clean_check_test_paths}
     # together. Per-file capture can miss a failure that only appears when
     # covering files share one process.
@@ -1055,11 +1081,13 @@ module Mutineer
       return unless @failed_clean_tests.empty?
 
       timeout = combined_clean_timeout(runnable)
-      ok, detail, timed_out = if @boot_path
-                                fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork, timeout: timeout)
-                              else
-                                subprocess_clean_pass?(runnable, timeout: timeout)
-                              end
+      ok, detail, timed_out = timed_clean do
+        if @boot_path
+          fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork, timeout: timeout)
+        else
+          subprocess_clean_pass?(runnable, timeout: timeout)
+        end
+      end
       if timed_out
         record_clean_timeout("combined suite", timeout)
       elsif !ok

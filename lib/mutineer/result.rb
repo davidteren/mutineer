@@ -61,11 +61,16 @@ module Mutineer
   # carries the {Kills} its child reported. It annotates the verdict and never
   # decides it.
   #
+  # `seconds` is the wall-clock time of the mutant's run step, set by the
+  # backend after the verdict is final (#495). It is nil when no time was
+  # measured: a verdict made without a run (skipped, a coverage-selection
+  # verdict, unplaceable, ignored), or a worker that crashed before it reported.
+  #
   # A Result crosses a process boundary only through WorkerPool's Marshal pipe,
   # from a fork back to the process that forked it, so both ends always run the
   # same code. Nothing persists a marshaled Result (reports, baselines and the
   # coverage cache are JSON), so a new field needs no Marshal compatibility.
-  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason) do
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason, :seconds) do
     # Every field but `status` defaults to nil. `reason` is the text a user
     # gave for an ignored mutant, from an inline marker or an `ignore:` mapping.
     #
@@ -76,7 +81,9 @@ module Mutineer
     # @param id [String, nil] the stable mutant id.
     # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
     # @param reason [String, nil] why an ignored mutant was suppressed.
-    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil)
+    # @param seconds [Float, nil] wall-clock seconds of the mutant's run step.
+    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil,
+                   seconds: nil)
       super
     end
 

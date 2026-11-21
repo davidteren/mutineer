@@ -115,7 +115,7 @@ class JsonReporterTest < Minitest::Test
     entry = doc["killed"].find { |h| h["id"] == "killedlit0001" }
     assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
     assert_equal %w[literal_mutation 100 killedlit0001], entry.values_at("operator", "token", "id")
-    assert_equal %w[subject file line operator token id diff], entry.keys
+    assert_equal %w[subject file line operator token id diff seconds], entry.keys
   end
 
   # #498: killed[], unplaceable[] and ran_at_load[] carry the diff that the
@@ -143,6 +143,52 @@ class JsonReporterTest < Minitest::Test
     assert_nil entry["file"]
   end
 
+  # #495: timing is null when the caller gives none, and each phase rounds to
+  # three decimals with a nil phase kept as null.
+  def test_timing_is_null_without_a_caller_value
+    doc = render([killed_mutant])
+    assert doc.key?("timing")
+    assert_nil doc["timing"]
+  end
+
+  def test_timing_rounds_and_keeps_null_phases
+    out = StringIO.new
+    timing = { total_seconds: 1.23456, boot_seconds: nil, coverage_seconds: 0.0004,
+               clean_check_seconds: 2.0, mutants_seconds: 0.5 }
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", timing: timing)
+    assert_equal({ "total_seconds" => 1.235, "boot_seconds" => nil, "coverage_seconds" => 0.0,
+                   "clean_check_seconds" => 2.0, "mutants_seconds" => 0.5 }, JSON.parse(out.string)["timing"])
+  end
+
+  # #495: seconds on survivors, killed and no_verdict entries, rounded; null
+  # when the result has none. Checked for each list.
+  def test_seconds_on_survivors_killed_and_no_verdict
+    m = mutation_at("100", "0", :literal_mutation)
+    { "survivors" => Mutineer::Result.survived, "killed" => Mutineer::Result.killed,
+      "no_verdict" => Mutineer::Result.timeout }.each do |list, base|
+      timed = render([base.with(subject: subject, mutation: m, id: "t1", seconds: 0.12345)])[list].first
+      assert_equal 0.123, timed["seconds"], list
+      untimed = render([base.with(subject: subject, mutation: m, id: "t2")])[list].first
+      assert untimed.key?("seconds"), list
+      assert_nil untimed["seconds"], list
+    end
+  end
+
+  # The other lists do not carry seconds (#495 names three).
+  def test_other_lists_have_no_seconds
+    m = mutation_at("100", "0", :literal_mutation)
+    rows = [Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load, Mutineer::Result.no_coverage,
+            Mutineer::Result.ignored].each_with_index.map do |r, i|
+      r.with(subject: subject, mutation: m, id: "noseconds#{i}", seconds: 1.0)
+    end
+    doc = render(rows)
+    %w[unplaceable ran_at_load no_coverage ignored].each do |list|
+      refute_empty doc[list], list
+      doc[list].each { |entry| refute entry.key?("seconds"), list }
+    end
+  end
+
   # #498 names three lists. The other lean lists keep their shape.
   def test_other_lean_lists_have_no_diff
     rows = [Mutineer::Result.no_coverage, Mutineer::Result.uncapturable, Mutineer::Result.ignored,
@@ -156,14 +202,14 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
-  # copies stays the last key on a row that gains diff.
+  # copies stays the last key on a row that gains diff and seconds.
   def test_copies_follow_the_diff_on_a_killed_row
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant(id: "kept00000003")]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json",
                               copies: { "kept00000003" => ["drop00000003"] })
     entry = JSON.parse(out.string)["killed"].first
-    assert_equal %w[diff copies], entry.keys.last(2)
+    assert_equal %w[diff seconds copies], entry.keys.last(3)
     assert_equal ["drop00000003"], entry["copies"]
   end
 

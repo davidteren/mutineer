@@ -3,7 +3,8 @@
 `mutineer run --format json` emits a single JSON object (one line, newline-terminated) describing the
 whole run. Use it for CI checks, dashboards, and AI coding agents. Arrays have a
 fixed sort order, independent of `--jobs` worker completion order. For the same
-inputs and results, JSON output is byte-identical. Results can still vary if
+inputs and results, JSON output is byte-identical, except the wall-clock values:
+`timing` and each entry's `seconds` (schema `1.11`, #495). Results can still vary if
 the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
 add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
@@ -51,6 +52,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "per_source":   [ /* per-file roll-up */ ],
   "unpaired_sources": [ /* sources with no paired test, sorted by file */ ],
   "unmutated_subjects": [ /* methods the selected operators did not mutate */ ],
+  "timing":       { /* wall-clock seconds of the run and its phases (#495) */ },
   "matrix":       { /* present ONLY with --matrix: which tests kill which mutants */ },
   "baseline":     { /* present ONLY with --baseline: the delta vs a prior run */ }
 }
@@ -100,11 +102,12 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
 | `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. Ready to hand to an agent as "write a test that fails under this change." |
 | `copies` | array of string | Present only when at least one other copy of this edit was dropped. Each string is that copy's id. The copies are the same change: same line, same mutated source, from this operator again or from another. Order is the order they were dropped, which follows `mutineer --list-operators` and then position in the method. An `ignore:` entry still ignores only its own id, so paste every id to ignore the edit. `mutineer triage` prints one entry per id. Absent when there are none. The same key appears on `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]` and `baseline.new_survivors[]` when that row's mutant has a dropped copy. Additive key (schema `1.10`, #374). |
+| `seconds` | float \| null | Wall-clock seconds of this mutant's run step, rounded to 3 decimals. `null` when no time was measured: a verdict made without a run, or a worker that crashed before it reported. The run step differs by backend: in process, the fork, the load of the mutant and its tests; with `--daemon`, the request round trip, including a daemon respawn (an app boot) after a crash; with `--test-command`, the whole command, including its app boot. So values do not compare across backends. Under `--jobs` above 1 mutants run at the same time, so the sum of `seconds` can exceed `timing.mutants_seconds`. A timeout shows the time until the kill. The same key is on `killed[]` and `no_verdict[]` entries. Not byte-stable. Additive key (schema `1.11`, #495). |
 
 ### `killed[]` (array of object)
 
 Additive key (schema `1.10`, #361). Every killed mutant as
-`{ subject, file, line, operator, token, id, diff }`, sorted by
+`{ subject, file, line, operator, token, id, diff, seconds }`, sorted by
 `(file, line, operator, id)`.
 `killed.length` equals `summary.killed`. Use this to join two runs by id
 (for example Minitest vs RSpec on the same source) without subtracting every
@@ -187,7 +190,8 @@ The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` 
 ### `no_verdict[]` (array of object)
 
 Every mutant that was attempted and produced no verdict:
-`{ subject, file, line, operator, token, id, status, details }`.
+`{ subject, file, line, operator, token, id, status, details, seconds }`.
+`seconds` is as in `survivors[]` (additive key, schema `1.11`, #495).
 `status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
 Filter on `status` `"error"` for the errored mutants: their count equals `summary.errored`.
 `operator` and `token` name the change, as in `no_coverage[]` (additive keys, schema `1.10`, #388).
@@ -240,6 +244,24 @@ gates on completeness as well (see Exit codes).
 ### `ignored[]` (array of object)
 
 Suppressed (equivalent) mutants, so you can audit what's silenced: `{ subject, file, line, operator, token, id }`. `reason` (string) is present only when the user wrote one, on an inline `# mutineer:disable-line ... -- reason` marker or on an `ignore:` mapping. Added in schema `1.8`. Under `--since`, only those on changed lines. `copies` (schema `1.10`, #374) lists ids dropped as repeats of this mutant. An `ignore:` entry for one of those ids matches no row on its own. It is not a dead entry: removing it brings the edit back, because an entry ignores only its own copy.
+
+### `timing` (object)
+
+Wall-clock seconds of the run and its phases, each rounded to 3 decimals. Additive key (schema `1.11`, #495).
+The values change from run to run, so two reports of the same run differ here.
+`timing` is `null` only when a program calls the reporter without timing; the CLI always fills it.
+A phase the run did not have is `null`, never `0.0`.
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `total_seconds` | float | From the start of the run, after the options, the test pairing and the `--baseline` file are checked, to just before the report is rendered. It leaves out Ruby and gem load, those checks, and rendering and writing the report, so it is less than a shell `time` of the same command. |
+| `boot_seconds` | float \| null | Loading the app before any test: the boot file or the sources, then `require:` files. With `--daemon`, every daemon boot at the start of the run, the worker daemons and the copy of the worker databases included; a daemon restart after a crash counts in that mutant's `seconds` instead. `null` with `--test-command`, where each command boots the app itself. |
+| `coverage_seconds` | float \| null | Building the coverage map, minus `clean_check_seconds`. On a cache miss each test file runs alone here, and that run is also its clean check. `null` with `--test-command`. |
+| `clean_check_seconds` | float \| null | The separate clean checks of the unmutated suite: each covering test alone on a cache hit or with `--coverage-from`, then the covering tests together. With `--test-command`, the clean run of the command. `null` when no such check ran a test, for example a cache miss with one covering test file, and with `--daemon` when the coverage map is unavailable. So this value and `coverage_seconds` shift between a cold and a warm cache. |
+| `mutants_seconds` | float \| null | Running the mutants, across all workers. `null` when no mutant was scheduled. |
+
+The phases do not add up to `total_seconds`: the unpaired-source count, job collection, the `--since` scope and the baseline diff count only in the total.
+`--threshold` and `--baseline` do not read `timing`.
 
 ### `per_source[]` (array of object)
 

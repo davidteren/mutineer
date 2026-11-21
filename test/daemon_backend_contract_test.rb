@@ -17,6 +17,18 @@ require "mutineer/daemon_backend"
 # daemon-free on purpose: they run in the default suite and fail the moment the
 # contract moves.
 class DaemonBackendContractTest < Minitest::Test
+  # #495: the daemon's clean check seconds reach the map from its coverage
+  # reply. A reply without the key reads as nil, never 0.0.
+  def test_coverage_reply_carries_clean_check_seconds
+    config = Struct.new(:project_root, :framework).new(Dir.pwd, "minitest")
+    reply = { "map" => { "a.rb:1" => ["t.rb"] }, "failed_test_files" => [], "clean_check_seconds" => 1.5 }
+    map = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(reply), config)
+    assert_in_delta 1.5, map.clean_check_seconds
+    old = reply.except("clean_check_seconds")
+    assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(old), config)
+                                      .clean_check_seconds
+  end
+
   # The JobPlan methods DaemonBackend calls across the module boundary.
   SHARED = %i[collect_jobs filter_since scope_since coverage_selection load_verdict test_load_roots source_dirs
               sweep_orphans abort_if_unclean!].freeze
@@ -440,12 +452,15 @@ class DaemonBackendContractTest < Minitest::Test
     def cmap.failed_clean_tests = ["combined suite"]
     def cmap.failed_clean_details = {}
     def cmap.clean_timeouts = { "combined suite" => 241 }
+    def cmap.clean_check_seconds = 0.5
     def cmap.load_lines = []
     def cmap.load_methods = []
     reply = Coverage.stub(:running?, false) do
       Mutineer::CoverageMap.stub(:new, ->(**) { cmap }) { server.send(:build_coverage_map) }
     end
     assert_equal({ "combined suite" => 241 }, reply["clean_timeouts"])
+    # #495: and the clean check seconds, which the tool reports as timing.
+    assert_in_delta 0.5, reply["clean_check_seconds"]
   ensure
     server&.instance_variable_set(:@cfg, nil)
   end
