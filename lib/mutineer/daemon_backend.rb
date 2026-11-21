@@ -469,10 +469,11 @@ module Mutineer
             # no_coverage, as in-process (#254, #345).
             reached = ReachProbe.reached?(sentinel)
             selected = JobPlan.selection_verdict(sel && sel[0], loaded, reached: reached)
-            # A survivor in a block whose call ran at load, that no test ran,
-            # as in-process (#493). No probe in the sent text means no change.
+            # A survivor in a block whose call ran at load, whose mutated
+            # expression did not return in a test, as in-process (#493). No
+            # conclusive probe in the sent text means no change.
             JobPlan.stored_block_verdict(selected, candidate: candidate, reached: reached,
-                                                   probed: ReachProbe.installed?(payload["code"], reach_key))
+                                                   probed: ReachProbe.conclusive?(payload["code"], reach_key))
           ensure
             ReachProbe.close_sentinel(sentinel)
           end

@@ -15,6 +15,10 @@ module Mutineer
   # writes a sentinel when that expression runs, so a survivor that ran counts
   # as `survived` and one that did not stays `no_coverage` (#345).
   #
+  # A `:run` mutant in a block whose call ran at load carries the same wrapper
+  # ({JobPlan.stored_block_candidate?}, #493). There a silent probe moves a
+  # survivor to `ran_at_load`, so the caller first asks {conclusive?}.
+  #
   # The inserted text is stdlib only (`File`). The daemon loads it as source,
   # so the app process needs no Prism and no Mutineer constant.
   module ReachProbe
@@ -82,8 +86,8 @@ module Mutineer
     # The mutated source with a probe around the expression that holds the
     # replacement, or `source` when `path` is nil. The original source when
     # the expression cannot be wrapped without changing how it parses: the
-    # caller then has no evidence the expression ran, and a survivor stays
-    # `no_coverage`.
+    # caller then has no evidence the expression ran. A `:maybe` survivor stays
+    # `no_coverage` (#345), and a stored-block candidate keeps its verdict (#493).
     #
     # @param source [String] mutated source.
     # @param mutation [Mutineer::Mutation] the edit, already applied to `source`.
@@ -97,23 +101,69 @@ module Mutineer
       wrap(source, start, start + mutation.replacement.bytesize, path, key) || source
     end
 
-    # Whether `code` holds the probe for `key`. {wrap_mutation} and
-    # {Isolation.mutated_def} return the text with no probe when the wrap does
-    # not parse. A caller that reads "the probe did not fire" as evidence
-    # checks this first (#493). Plain text, so the tool process can ask it
-    # about the text it sends to the daemon.
+    # Jumps that leave an expression before it returns.
+    JUMPS = [Prism::NextNode, Prism::BreakNode, Prism::ReturnNode, Prism::RedoNode, Prism::RetryNode].freeze
+
+    # Whether a silent probe in `code` shows that the mutated expression did
+    # not return during a test (#493). True when `code` holds the probe for
+    # `key`, and the wrapped expression holds no `next`, `break`, `return`,
+    # `redo` or `retry`. {wrap_mutation} and {Isolation.mutated_def} return the
+    # text with no probe when the wrap does not parse. A probe around
+    # `next if x` stays silent each time the jump is taken, though a test ran
+    # the mutated code. In both cases there is no evidence, so the caller keeps
+    # the verdict. A raise cannot be seen in the text, so it is not checked.
+    # Plain text plus one parse, so the tool process can ask it about the text
+    # it sends to the daemon.
     #
     # @param code [String] the mutant text that the child loads.
     # @param key [String, nil] fiber-local key from {reach_key}.
     # @return [Boolean]
-    def self.installed?(code, key)
-      key.to_s.match?(KEY_FORMAT) && code.include?(key)
+    def self.conclusive?(code, key)
+      return false unless key.to_s.match?(KEY_FORMAT)
+
+      at = code.byteindex("(Thread.current[:#{key}]")
+      wrapped = at && wrapped_node(Parser.parse_string(code).value, at)
+      !wrapped.nil? && !jump?(wrapped)
     end
+
+    # The expression that the probe at byte offset `mark` wraps: the first
+    # element of the two-element array that {splice} builds.
+    #
+    # @param node [Prism::Node]
+    # @param mark [Integer] byte offset of the mark, the second element.
+    # @return [Prism::Node, nil]
+    def self.wrapped_node(node, mark)
+      if node.is_a?(Prism::ArrayNode) && node.elements.size == 2 && node.elements[1].location.start_offset == mark
+        return node.elements[0]
+      end
+
+      node.compact_child_nodes.each do |child|
+        found = wrapped_node(child, mark)
+        return found if found
+      end
+      nil
+    end
+    private_class_method :wrapped_node
+
+    # Whether `node` is or holds one of {JUMPS}. A jump in a nested lambda
+    # counts too: too wide is safe, because the verdict then stays.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.jump?(node)
+      JUMPS.any? { |klass| node.is_a?(klass) } || node.compact_child_nodes.any? { |child| jump?(child) }
+    end
+    private_class_method :jump?
 
     # Wraps the smallest expression that holds the byte range `[start_offset,
     # end_offset)`. An empty range is the point where a deletion used to be.
     # Returns nil when no expression holds it, or the wrapped text does not
     # parse: a wrap that does not parse is not used.
+    #
+    # The wrap never goes around a block or a lambda literal. That literal
+    # runs when the block is made, not when its body runs, so a probe there
+    # says nothing about the mutated expression in the body (#493). A wrap
+    # that cannot stay inside the block gives nil.
     #
     # The wrapper returns the expression's value. It writes the sentinel only
     # after that value has come back, so a raise inside the expression — an
@@ -134,6 +184,8 @@ module Mutineer
 
       parents = parent_map(root)
       while node
+        break if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
+
         wrapped = splice(source, node, path, key)
         return wrapped unless Parser.invalid?(wrapped)
 
@@ -214,9 +266,10 @@ module Mutineer
 
     # Replaces `node` with an expression that writes `path` only when `node`
     # returns. The mark is the second element of an array, so it does not run
-    # when `node` raises. A one-line node stays one line. A node that spans
-    # lines keeps its text and puts the array on the following lines, so the
-    # indent warning stays quiet.
+    # when `node` raises. The array starts where `node` started, on the same
+    # line. A line break before it would end a `return`, `next`, `break` or a
+    # command call with no parentheses that takes `node` as its value, and the
+    # text would still parse (#493).
     #
     # @param source [String]
     # @param node [Prism::Node]
@@ -230,12 +283,7 @@ module Mutineer
       # The fiber-local skips the write after the first return on this
       # fiber. A stat on every later pass would hit a loop.
       mark = "(Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
-      replacement = if inner.include?("\n")
-                      "\n[(#{inner}), #{mark}][0]"
-                    else
-                      "[(#{inner}), #{mark}][0]"
-                    end
-      source.byteslice(0, loc.start_offset) + replacement + source.byteslice(loc.end_offset..)
+      source.byteslice(0, loc.start_offset) + "[(#{inner}), #{mark}][0]" + source.byteslice(loc.end_offset..)
     end
     private_class_method :splice
   end

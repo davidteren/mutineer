@@ -51,6 +51,32 @@ class ReachProbeTest < Minitest::Test
         TEXT
       end
     RUBY
+    # #493: the value of return, next or a command call. A line break before
+    # the wrapper would end that statement and drop the value.
+    ["return value", <<~'RUBY', ".first", "C.f(true)", "C.f(false)"],
+      def self.f(flag, x = 5)
+        return 0 unless flag
+        return [x]
+          .select { |v| v > 1 }
+          .first
+      end
+    RUBY
+    ["next value", <<~'RUBY', ">", "C.f([2])", "C.f([])"],
+      def self.f(xs)
+        xs.map do |x|
+          next x >
+            1
+        end
+      end
+    RUBY
+    ["command call argument", <<~'RUBY', "+", "C.f(true)", "C.f(false)"],
+      def self.keep(v) = v
+      def self.f(flag, x = 1)
+        return unless flag
+        keep x +
+          1
+      end
+    RUBY
   ].freeze
 
   def test_the_probe_records_a_run_and_keeps_the_value
@@ -151,17 +177,55 @@ class ReachProbeTest < Minitest::Test
     assert_equal "\"AB\"", probed.fetch("value")
   end
 
-  # #493: a caller that reads "the probe did not fire" checks first that the
-  # probe is in the text. A wrap that does not parse leaves the text alone.
-  def test_installed_tells_if_the_text_holds_the_probe
+  # #493: a caller that reads "the probe did not fire" as evidence asks first
+  # if the probe can speak. No probe in the text, or a probe around a jump
+  # that leaves the expression before it returns, is not evidence.
+  def test_conclusive_needs_the_probe_and_no_jump_in_the_wrapped_expression
     source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
     wrapped = wrap_snippet(source, "a + 1")
 
-    assert Mutineer::ReachProbe.installed?(wrapped, probe_key)
-    refute Mutineer::ReachProbe.installed?(source, probe_key)
-    refute Mutineer::ReachProbe.installed?(wrapped, Mutineer::ReachProbe.reach_key), "the key of another mutant"
-    refute Mutineer::ReachProbe.installed?(wrapped, nil)
-    refute Mutineer::ReachProbe.installed?("class C; end", "C"), "a key of another shape is not a probe"
+    assert Mutineer::ReachProbe.conclusive?(wrapped, probe_key)
+    refute Mutineer::ReachProbe.conclusive?(source, probe_key)
+    refute Mutineer::ReachProbe.conclusive?(wrapped, Mutineer::ReachProbe.reach_key), "the key of another mutant"
+    refute Mutineer::ReachProbe.conclusive?(wrapped, nil)
+    refute Mutineer::ReachProbe.conclusive?("class C; end", "C"), "a key of another shape is not a probe"
+
+    # The deletion point of `not` is in the whole modifier statement. Each
+    # test that takes the jump leaves the probe silent.
+    %w[next break return].each do |jump|
+      body = jump == "return" ? "return if  x.ok?" : "xs.each { |x| #{jump} if  x.ok? }"
+      text = "class C\n  def self.f(xs, x = nil)\n    #{body}\n  end\nend\n"
+      point = text.index("if  x") + 3
+      probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
+      assert_includes probed, "[(#{jump} if  x.ok?), ", jump
+      refute Mutineer::ReachProbe.conclusive?(probed, probe_key), jump
+    end
+
+    # A jump outside the wrapped expression does not matter.
+    guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"
+    assert Mutineer::ReachProbe.conclusive?(wrap_snippet(guard, "x > 1"), probe_key)
+  end
+
+  # #493: a probe around a block or lambda literal fires when the block is
+  # made, not when its body runs. A wrap that cannot stay in the body gives
+  # no probe, so the caller has no evidence and keeps the verdict.
+  def test_the_wrap_does_not_leave_a_block_or_a_lambda
+    {
+      "class C\n  def self.f(xs)\n    xs.each { |x| next }\n  end\nend\n" => "next",
+      "class C\n  def self.f(h)\n    h[:a] = ->(v) { return v }\n  end\nend\n" => "return v",
+      "class C\n  def self.f(c)\n    c << proc do |r|\n      break\n    end\n  end\nend\n" => "break"
+    }.each do |source, snippet|
+      assert_nil wrap_snippet(source, snippet), snippet
+    end
+
+    # An empty body: the deletion point is in the literal itself.
+    empty = "class C\n  def self.f(h)\n    h[:a] = ->(v) {}\n  end\nend\n"
+    point = empty.index("{}") + 1
+    assert_nil Mutineer::ReachProbe.wrap(empty, point, point, sentinel_path, probe_key)
+
+    # A wrap that stays in the body is still made.
+    inside = "class C\n  def self.f(xs)\n    xs.each { |x| x + 1 }\n  end\nend\n"
+    assert_includes wrap_snippet(inside, "x + 1"), "xs.each { |x| [(x + 1), "
   end
 
   def wrap_snippet(source, snippet)

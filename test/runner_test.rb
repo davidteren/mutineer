@@ -528,10 +528,11 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  # #493: the parent decides "probed" from the text it builds before the
-  # fork. Under redefine the child builds its own text, so the two must be
-  # the same: with a probe, and when the wrap fails and leaves none.
-  def test_the_text_the_parent_checks_is_the_text_the_redefine_child_loads
+  # #493: under redefine the parent decides "probed" from the def text that
+  # Isolation.mutated_def builds, and the child builds its own text in
+  # apply_surgical. The child's text must hold the parent's text: with a
+  # probe, and when the wrap fails and leaves none.
+  def test_the_def_text_the_parent_checks_is_in_the_text_the_redefine_child_loads
     source = "class ProbeTextHost\n  def self.fields(xs)\n    xs.each { |x| x + 1 }\n  end\nend\n"
     Dir.mktmpdir("mutineer-probe-text") do |dir|
       path = File.join(dir, "probe_text_host.rb")
@@ -542,7 +543,8 @@ class RunnerTest < Minitest::Test
       mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
       key = Mutineer::ReachProbe.reach_key
       sentinel = File.join(dir, "reach.touch")
-      loaded = lambda do
+      parent = -> { Mutineer::Isolation.mutated_def(mutation, subject, source, reach_path: sentinel, reach_key: key) }
+      child = lambda do
         text = nil
         Mutineer::Isolation.stub(:write_beside, ->(code, *, **) { text = code }) do
           Mutineer::Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel, reach_key: key)
@@ -550,19 +552,13 @@ class RunnerTest < Minitest::Test
         text
       end
 
-      parent = Mutineer::Runner.probe_text("redefine", mutation.apply(source), mutation, subject, source, sentinel, key)
-      assert Mutineer::ReachProbe.installed?(parent, key)
-      assert_includes loaded.call, parent
+      assert Mutineer::ReachProbe.conclusive?(parent.call, key)
+      assert_includes child.call, parent.call
 
       Mutineer::ReachProbe.stub(:wrap, nil) do
-        parent = Mutineer::Runner.probe_text("redefine", mutation.apply(source), mutation, subject, source, sentinel,
-                                             key)
-        child = loaded.call
-        refute Mutineer::ReachProbe.installed?(parent, key)
-        refute Mutineer::ReachProbe.installed?(child, key)
-        assert_includes child, parent
-        reload = Mutineer::Runner.probe_text("reload", mutation.apply(source), mutation, subject, source, sentinel, key)
-        assert_equal mutation.apply(source), reload
+        refute Mutineer::ReachProbe.conclusive?(parent.call, key)
+        refute Mutineer::ReachProbe.conclusive?(child.call, key)
+        assert_includes child.call, parent.call
       end
     end
   ensure

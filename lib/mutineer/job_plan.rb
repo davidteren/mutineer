@@ -541,9 +541,9 @@ module Mutineer
     #
     # @param result [Mutineer::Result] the mutant's verdict.
     # @param candidate [Boolean] the answer of {stored_block_candidate?}.
-    # @param probed [Boolean] true when the code the child loaded holds the
-    #   probe ({ReachProbe.installed?}). Without a probe there is no evidence,
-    #   so the verdict stays.
+    # @param probed [Boolean] true when the code the child loaded holds a
+    #   probe that can speak ({ReachProbe.conclusive?}). Without one there is
+    #   no evidence, so the verdict stays.
     # @param reached [Boolean] true when the mutated expression returned
     #   during a test ({ReachProbe.reached?}).
     # @return [Mutineer::Result]

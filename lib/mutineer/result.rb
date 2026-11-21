@@ -35,9 +35,10 @@ module Mutineer
   #                  loaded. That run happened before the mutant was applied,
   #                  so a test can check a value the original code computed.
   #                  A survivor on such a line, and a line that ran only at
-  #                  load, get this status; a kill stays killed. So does a
-  #                  survivor in a block whose call ran at load, when no test
-  #                  ran the mutated code (#493). Excluded from
+  #                  load, get this status; a kill stays killed. A survivor
+  #                  in a block whose call ran at load gets it too, when the
+  #                  mutated expression did not return during a test (#493).
+  #                  Excluded from
   #                  the denominator and from the no-verdict gate, like
   #                  unplaceable. `--test-command` verifies these mutants.
   #   ignored      - a known-equivalent mutant the user suppressed, via an

@@ -19,18 +19,31 @@ All notable changes to this project are documented here. The format is based on
   A kill, an error and a timeout do not change. The rule holds for in-process `redefine`, in-process `reload` and `--daemon`.
   `--test-command` does not use it: that backend runs the load again for each mutant.
   On the reported shape (a macro with a lambda and a block, 17 mutants), 5 false survivors moved and the score went from 60.0 to 90.0.
+  Three runs on other code moved no mutant: this gem's own gate (3 files, 269 mutants), the checks of the bundled Rails app, and the Fizzy sample (63 mutants, `--daemon`).
+  In the first two, no mutant carried the new probe. The Fizzy counts and survivor ids equal the recorded sample.
+  The probe now stays inside a block or lambda literal. When it cannot, the mutant gets no probe and keeps its verdict.
+  A mutant of #345 in that state is `no_coverage`, as is each mutant of #345 with no probe.
   Effects on a run after the upgrade:
   `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
   The moved mutants leave the denominator, so a score can rise and cannot fall. A `--threshold` gate that failed on the score can pass.
-  With `--baseline`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
+  When each scored mutant moves, the score is `null`. `--threshold` passes a `null` score when no mutant broke, so exit 1 can become exit 0.
+  With `--baseline` and no `--since`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
   The completeness gate can go from pass to fail. `attempted` gets smaller with each moved survivor.
   A `--threshold` run fails when more than 1 mutant and more than 10% of the attempted mutants have no verdict.
   Example: 14 killed, 5 survived and 2 errored passes `--threshold 70`. With the 5 survivors as `ran_at_load` it fails, and the message gives the count of mutants with no verdict.
   Limits, all in `docs/json-schema.md`:
   a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
-  A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict (#507).
-  In-process `redefine` cannot kill these mutants when the macro and its caller are both sources. `--daemon` with lazy loading can (#507).
+  A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict, and so does a block whose call runs only sometimes (#507).
+  So does a mutant whose probed expression holds `next`, `break`, `return`, `redo` or `retry`: the probe cannot speak for it (#507).
+  When the macro and its caller are both sources, in-process `redefine` does not kill a mutant that only the stored block runs. `--daemon` with lazy loading can (#507).
   A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
+- **The reach probe keeps the value of `return`, `next`, `break`, `yield` and a command call (#345, found in the review of #493).**
+  For a mutated expression that spans lines, the probe text started on a new line.
+  After `return`, `next`, `break`, `yield` or a command call with no parentheses, that line break ended the statement.
+  The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
+  Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
+  The probe text now starts on the line of the expression.
+  Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
 
 ## [1.9.0] - 2026-11-16
 

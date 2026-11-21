@@ -39,7 +39,7 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
-  #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
+  #              (a mutant with a reach probe, #345 and #493, also sends "reach_path" and "reach_key" inside
   #               "payload". The child clears that file, and the fiber-local
   #               named by reach_key, after load and before tests, so a
   #               load-time call is not a test reaching the expression, #345)

@@ -460,10 +460,18 @@ module Mutineer
       candidate = JobPlan.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
       sentinel = kind == :maybe || candidate ? ReachProbe.sentinel : nil
       reach_key = sentinel && ReachProbe.reach_key
-      # Decided before the fork, from the text the child loads. No probe in
-      # that text means no evidence, so the verdict stays.
-      probed = candidate && ReachProbe.installed?(
-        probe_text(strategy, mutated, mutation, subject, source, sentinel.path, reach_key), reach_key
+      # The reload text is built once, before the fork, so the parent checks
+      # the text that the child loads. Under redefine the child builds the
+      # def text itself ({Isolation.apply_surgical}), from the same values.
+      unless strategy == "redefine" || subject&.reload_hook_call
+        reload_code = ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key)
+      end
+      # No conclusive probe in that text means no evidence, so the verdict
+      # stays. A candidate is never a hook-block def, so its reload text is
+      # `reload_code`.
+      probed = candidate && ReachProbe.conclusive?(
+        reload_code || Isolation.mutated_def(mutation, subject, source, reach_path: sentinel.path,
+                                                                        reach_key: reach_key), reach_key
       )
 
       begin
@@ -485,8 +493,7 @@ module Mutineer
                                                  reach_key: reach_key)
             Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
           else
-            Isolation.apply_whole_file(ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key),
-                                        source_file)
+            Isolation.apply_whole_file(reload_code, source_file)
           end
           # A reload can run the expression while the file loads. That is not
           # a test reaching it (#345).
@@ -506,31 +513,6 @@ module Mutineer
         JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached)
       ensure
         ReachProbe.close_sentinel(sentinel)
-      end
-    end
-
-    # The mutant text that the child of {run} loads for a
-    # {JobPlan.stored_block_candidate?}, with the reach probe: the mutated def
-    # under redefine ({Isolation.apply_surgical} wraps this text in the
-    # namespace), or the mutated file under reload. The child builds the same
-    # text from the same values. {run} asks {ReachProbe.installed?} about it
-    # before the fork (#493). A def in a concern's hook block is never a
-    # candidate, so its text ({JobPlan.hook_mutant}) is not built here.
-    #
-    # @api private
-    # @param strategy [String] mutation strategy.
-    # @param mutated [String] the mutated source text.
-    # @param mutation [Mutineer::Mutation] the mutation.
-    # @param subject [Mutineer::Subject] the subject.
-    # @param source [String] the original source text.
-    # @param reach_path [String] sentinel path.
-    # @param reach_key [String] fiber-local key for `reach_path`.
-    # @return [String]
-    def self.probe_text(strategy, mutated, mutation, subject, source, reach_path, reach_key)
-      if strategy == "redefine"
-        Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
-      else
-        ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
       end
     end
 
