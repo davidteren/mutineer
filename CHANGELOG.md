@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format is based on
   A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
   A class that calls the macro while it loads keeps the original blocks.
   A mutant inside such a block then passed every test, because no test ran the mutated code, and it counted as a survivor.
-  An in-process `redefine` run with a boot file loads the class of each source before the mutants, so lazy loading did not prevent this.
+  An in-process `redefine` run with a boot file loads the class of each method in the sources before the mutants, so lazy loading did not prevent this.
   `reload` and `--daemon` gave the same false survivors when the class loaded at boot (Rails eager load).
   The run now adds the reach probe of #345 to a mutant in a block or lambda literal whose call ran at load.
   A survivor that the probe did not see return during a test is `ran_at_load`. A survivor that the probe saw stays `survived`.
@@ -34,7 +34,7 @@ All notable changes to this project are documented here. The format is based on
   Limits, all in `docs/json-schema.md`:
   a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
   A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict, and so does a block whose call runs only sometimes (#507).
-  So does a mutant whose probe cannot speak (#507). That is a probed expression that holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit` or `abort`.
+  So does a mutant whose probe cannot speak (#507). That is a probed expression that holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit`, `exit!` or `abort`.
   It is also a probe in the operand of `defined?`.
   When the macro and its caller are both sources, in-process `redefine` does not kill a mutant that only the stored block runs. `--daemon` with lazy loading can (#507).
   A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
@@ -44,7 +44,7 @@ All notable changes to this project are documented here. The format is based on
   The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
   Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
   The probe text now starts on the line of the expression.
-  Three more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
+  Four more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
   A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
   The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
   A wrapper in place of an assignment target (`x.name, y = 1, 2`) stopped the setter. The probe now goes around the whole assignment.

@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "json"
+require "minitest/mock"
 require "open3"
 require "rbconfig"
 require "fileutils"

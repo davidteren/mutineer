@@ -193,12 +193,13 @@ score is `null`. `--threshold` passes a `null` score when no mutant broke. The r
   the condition is checked. So the rule can apply when that call did not run at load (#507).
 - The rule leaves these mutants with the status they had in 1.9.0. Four kinds are in #507. The first is a
   mutant whose expression cannot hold the probe inside the block. The second is a mutant whose probe cannot speak: the probed
-  expression holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit` or
-  `abort`, or the probe is in the operand of `defined?`. The third is a block whose call runs only sometimes
+  expression holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit`,
+  `exit!` or `abort`, or the probe is in the operand of `defined?`. The third is a block whose call runs only sometimes
   (`validate { ... } if strict`). The fourth is a `def` that reload places from a concern's `included` or
   `prepended` block. The other kinds are a mutant whose tests are the tests of another line of its statement
   (#254, #289), and a block in a one-line or endless `def` (#389).
-- An in-process `redefine` run with a boot file loads the class of each source before the mutants. When the macro and
+- An in-process `redefine` run with a boot file loads the class of each method in the sources before the mutants. A
+  class that only calls the macro and defines no method still loads after the mutant. When the macro and
   the class that calls it are both sources, a mutant that only the stored block runs is `ran_at_load` there.
   `--daemon` with lazy loading can kill it (#507).
 
