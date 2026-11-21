@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `--daemon` mutant run now stops at the first failing test (#490).**
+  Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
+  One failing test already kills the mutant, so the daemon now stops there too.
+  This can change verdicts, not only speed.
+  Before, a mutant that its first test killed scored `timeout` when all its covering tests took longer than the daemon's 60-second limit per mutant.
+  It now scores `killed`, as with `--no-daemon`. `timeout` is outside the score, so the mutation score can change.
+  `--matrix` still runs every covering test. It runs in-process only and was never combined with `--daemon`.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added

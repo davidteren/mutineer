@@ -134,6 +134,7 @@ RAILS_ENV=test bundle exec mutineer run \
 | Feature | Behaviour |
 | --- | --- |
 | Shared boot | Boots once, then forks per mutant. |
+| Mutant run | Stops at the first failing test, as the in-process run does. |
 | Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. If coverage is unavailable, each mutant runs the full test set and the score is not comparable. |
 | Worker databases | Separate databases prevent fixture interference. Only single-database apps run in parallel; more than one database forces one worker, unless `shared_databases` lists the other ones ([More than one database](#more-than-one-database)). Initial copies include rows written during boot by initializers or `require:` files. |
 | Backend choice | Requires `--rails` or `--boot`. Cannot combine with `--test-command`. |
