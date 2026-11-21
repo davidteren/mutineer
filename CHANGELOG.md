@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format is based on
   public API, the coverage cache format, CLI output and the JSON report do not
   change.
 
+### Fixed
+
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. It now shows the unpaired source and mutant counts (#410). A real run still needs a test.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added
