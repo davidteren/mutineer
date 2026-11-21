@@ -1,0 +1,23 @@
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_cd452776404a3a::t_6b11a64488f4e2 8-10
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_cd452776404a3a::t_19dc222223fe8d 5-8
+CHANGELOG.md
+  s_cd452776404a3a::t_779d550171f9dd 11,15-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c313987f2ffda9d46d80c777abd5397ba1baf6b4",
+  "prompts": {},
+  "sessions": {
+    "s_cd452776404a3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "53ed2864-b663-4c1e-b9a3-00da25e0bde8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
