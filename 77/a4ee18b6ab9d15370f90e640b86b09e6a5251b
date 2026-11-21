@@ -1,0 +1,23 @@
+lib/mutineer/job_plan.rb
+  s_591d9522922b8f::t_bd6e4b10111171 449-453,455,457-473
+test/call_superclass_reload_test.rb
+  s_591d9522922b8f::t_33e2549438db06 96-107
+CHANGELOG.md
+  s_591d9522922b8f::t_d5cec4b735fa6c 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77a4ee18b6ab9d15370f90e640b86b09e6a5251b",
+  "prompts": {},
+  "sessions": {
+    "s_591d9522922b8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0c4dfba-9a2f-4528-9ddf-f5920127b7ba",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
