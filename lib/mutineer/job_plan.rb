@@ -446,10 +446,31 @@ module Mutineer
       end
     end
 
+    # A superclass the reload text wraps: one that is not a constant, and
+    # that sets no local variable of the file. The wrap is a block, so such a
+    # local would not be set for a later line (`class Q < (base = ...)`).
+    # Those keep the text as written, as before #492 (#512).
+    #
     # @param node [Prism::Node, nil] a class statement's superclass.
-    # @return [Boolean] true when it is there and is not a constant.
+    # @return [Boolean]
     def self.call_superclass?(node)
-      !node.nil? && !node.is_a?(Prism::ConstantReadNode) && !node.is_a?(Prism::ConstantPathNode)
+      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+
+      !writes_local?(node)
+    end
+
+    # Whether `node` assigns a local variable in the scope it runs in. A block,
+    # lambda or def has its own scope, so the walk does not enter one.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.writes_local?(node)
+      return true if node.is_a?(Prism::LocalVariableWriteNode) || node.is_a?(Prism::LocalVariableTargetNode) ||
+                     node.is_a?(Prism::LocalVariableOperatorWriteNode) ||
+                     node.is_a?(Prism::LocalVariableOrWriteNode) || node.is_a?(Prism::LocalVariableAndWriteNode)
+      return false if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) || node.is_a?(Prism::DefNode)
+
+      node.compact_child_nodes.any? { |child| writes_local?(child) }
     end
 
     # The module a class statement defines its constant in, as Ruby text that

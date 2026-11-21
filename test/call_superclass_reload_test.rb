@@ -93,6 +93,18 @@ class CallSuperclassReloadTest < Minitest::Test
     refute Mutineer::Parser.invalid?(rewritten)
   end
 
+  # #512: a superclass that sets a local of the file keeps its text, so a later
+  # line still reads the local. A local set inside a block of the superclass
+  # belongs to that block, so that superclass is still wrapped.
+  def test_a_superclass_that_sets_a_local_is_not_wrapped
+    %w[(base\ =\ Struct.new(:a)) (base\ ||=\ Struct.new(:a)) (base,\ =\ Struct.new(:a))].each do |superclass|
+      code = "class Q < #{superclass}\nend\nbase.new(1)\n"
+      assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), superclass
+    end
+    code = "class R < Struct.new(:a) { x = 1 }\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "kept_superclass"
+  end
+
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in
     code = "class X < Data.define(:a)\nend\nclass A::B::Y < Struct.new(:b)\nend\nclass ::Z < Class.new\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)

@@ -24,7 +24,7 @@ All notable changes to this project are documented here. The format is based on
   Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
   This covers every superclass that is not a constant, such as `Struct.new`, `Class.new` and `DelegateClass`.
   A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
-  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). A local variable that the superclass expression assigns (`class Q < (base = Struct.new(:a))`) is not set for a later line of the file, so that file still errors (#512).
+  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). A superclass expression that sets a local variable (`class Q < (base = Struct.new(:a))`) keeps its text, so that file still errors when the call builds a new class (#512).
 
 ## [1.9.0] - 2026-11-16
 
