@@ -103,6 +103,11 @@ class CallSuperclassReloadTest < Minitest::Test
     end
     code = "class R < Struct.new(:a) { x = 1 }\nend\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "kept_superclass"
+    # The same block write reaches the file's local when the file set it first.
+    code = "x = 0\nclass R < Struct.new(:a) { x = 1 }\nend\nx\n"
+    assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
+    code = "x = 0\nclass R < Struct.new(:a) { -> { x += 1 } }\nend\n"
+    assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
   end
 
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in

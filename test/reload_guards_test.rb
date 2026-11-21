@@ -279,33 +279,37 @@ class ReloadGuardsTest < Minitest::Test
     end
   end
 
-  # #479: a class whose own chain grew is named. One whose entries all
+  # #479: a class whose own entries grew is named. An entry a subclass shares
+  # with its parent (the same object) is the parent's. A class whose entries all
   # paired, a subclass that only inherited the growth, and a class the load
-  # created are not.
-  def test_grown_classes_names_only_a_class_whose_own_count_grew
-    one = Callback.new(:before, :a)
+  # created are not named. A subclass that skipped the parent's entry and grew
+  # by the same count still is: equal counts must not hide it.
+  def test_grown_classes_names_only_a_class_whose_own_entries_grew
+    p1, p2, c1, c2, x = Array.new(5) { |i| Callback.new(:before, :"e#{i}") }
     parent = callback_class
     child = callback_class(parent)
+    skipped = callback_class(parent)
     paired = callback_class
-    own = callback_class(parent)
-    parent.__callbacks = { save: Chain.new(one, one, one) }
-    child.__callbacks = { save: Chain.new(one, one, one) }
-    paired.__callbacks = { save: Chain.new(one) }
-    own.__callbacks = { save: Chain.new(one, one, one, one) }
     created = callback_class
-    created.__callbacks = { save: Chain.new(one, one) }
-    sizes = { parent => { save: 2 }, child => { save: 2 }, paired => { save: 1 }, own => { save: 2 } }
+    parent.__callbacks = { save: Chain.new(p1, p2) }
+    child.__callbacks = { save: Chain.new(p1, p2) }
+    skipped.__callbacks = { save: Chain.new(c1, c2) }
+    paired.__callbacks = { save: Chain.new(x) }
+    created.__callbacks = { save: Chain.new(x, x) }
+    sizes = { parent => { save: 1 }, child => { save: 0 }, skipped => { save: 1 }, paired => { save: 1 } }
 
     grown = Mutineer::ReloadGuards::RepeatedCallbacks.grown_classes(sizes)
 
-    assert_equal [parent, own].map(&:object_id), grown.map(&:object_id)
+    assert_equal [parent, skipped].map(&:object_id), grown.map(&:object_id)
   end
 
-  def test_sizes_counts_each_chain_before_the_load
-    one = Callback.new(:before, :a)
-    klass = callback_class
-    before = { klass => { save: Chain.new(one, one), validate: Chain.new } }
-    assert_equal({ klass => { save: 2, validate: 0 } }, Mutineer::ReloadGuards::RepeatedCallbacks.sizes(before))
+  def test_sizes_counts_each_class_own_entries_before_the_load
+    shared, own = Callback.new(:before, :a), Callback.new(:before, :b)
+    parent = callback_class
+    klass = callback_class(parent)
+    before = { parent => { save: Chain.new(shared) }, klass => { save: Chain.new(shared, own, own), validate: Chain.new } }
+    assert_equal({ parent => { save: 1 }, klass => { save: 2, validate: 0 } },
+                 Mutineer::ReloadGuards::RepeatedCallbacks.sizes(before))
   end
 
   def test_log_callback_growth_appends_one_line_for_each_class
@@ -317,7 +321,7 @@ class ReloadGuardsTest < Minitest::Test
       Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
       Mutineer::ReloadGuards.log_callback_growth([], "/app/models/b.rb")
       Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
-      assert_equal ["ReloadGuardsGrowthNamed	/app/models/a.rb"] * 2, File.readlines(log, chomp: true)
+      assert_equal [%("ReloadGuardsGrowthNamed"\t"/app/models/a.rb")] * 2, File.readlines(log, chomp: true)
     ensure
       Object.send(:remove_const, :ReloadGuardsGrowthNamed) if Object.const_defined?(:ReloadGuardsGrowthNamed)
       Mutineer::ReloadGuards.callback_growth_log = nil
@@ -357,7 +361,7 @@ class ReloadGuardsTest < Minitest::Test
       Mutineer::ReloadGuards.callback_growth_log = log
       odd = Class.new { def self.name = "Fake" }
       Mutineer::ReloadGuards.log_callback_growth([odd], "/a.rb")
-      assert_match(/\A#<Class:0x\h+>\t\/a\.rb\z/, File.read(log).chomp)
+      assert_match(/\A"#<Class:0x\h+>"\t"\/a\.rb"\z/, File.read(log).chomp)
     ensure
       Mutineer::ReloadGuards.callback_growth_log = nil
     end

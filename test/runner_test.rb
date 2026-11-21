@@ -1719,7 +1719,8 @@ class RunnerTest < Minitest::Test
       model = File.join(root, "app/models/doubled.rb")
       FileUtils.mkdir_p(File.dirname(model))
       File.write(model, "class Doubled; end\n")
-      File.write(log, "Doubled\t#{model}\nDoubled\t#{model}\nOnce\t#{model}\nbroken line\n")
+      rows = [%w[Doubled], %w[Doubled], %w[Once]].map { |(name)| "#{name.dump}\t#{model.dump}\n" }
+      File.write(log, rows.join + "broken line\n" + "\"unterminated\t\"x\n")
       assert_equal [["Doubled", "app/models/doubled.rb"], ["Once", "app/models/doubled.rb"]],
                    Mutineer::JobPlan.callback_growth_rows(log, root)
     end
@@ -1733,11 +1734,49 @@ class RunnerTest < Minitest::Test
       log = File.join(root, "growth.log")
       model = File.join(root, "caf\xC3\xA9.rb")
       File.write(model, "class Cafe; end\n")
-      File.binwrite(log, "Caf\xC3\xA9\t#{model}\n".b)
+      File.binwrite(log, "#{"Caf\xC3\xA9".dump}\t#{model.dump}\n".b)
       rows = with_ascii_default_external { Mutineer::JobPlan.callback_growth_rows(log, root) }
       assert_equal [["Café", "café.rb"]], rows
       assert_equal [Encoding::UTF_8, Encoding::UTF_8], rows.first.map(&:encoding)
     end
+  end
+
+  # A newline or tab in a path stays in its field: the log dumps each field.
+  def test_callback_growth_rows_keep_a_path_with_a_newline
+    Dir.mktmpdir do |root|
+      model = File.join(root, "odd\ndir\tname", "doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      log = File.join(root, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      klass = Class.new
+      Object.const_set(:RunnerGrowthDoubled, klass)
+      Mutineer::ReloadGuards.log_callback_growth([klass], model)
+      assert_equal [["RunnerGrowthDoubled", "odd\ndir\tname/doubled.rb"]], Mutineer::JobPlan.callback_growth_rows(log, root)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+      Object.send(:remove_const, :RunnerGrowthDoubled) if Object.const_defined?(:RunnerGrowthDoubled)
+    end
+  end
+
+  # The check only reports: a temp directory that refuses the log warns once,
+  # and the run goes on with no check.
+  def test_a_log_the_temp_directory_refuses_warns_and_the_run_goes_on
+    agg = extras = nil
+    _out, err = capture_io do
+      real = Tempfile.method(:create)
+    refuse = lambda do |basename = "", *rest, **kw, &blk|
+      raise Errno::EACCES, "tmp" if Array(basename).first == "mutineer-callback-growth"
+
+      real.call(basename, *rest, **kw, &blk)
+    end
+    Tempfile.stub(:create, refuse) do
+        agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      end
+    end
+    assert_match(/\[mutineer\] could not create the callback-growth log, so this run does not check/, err)
+    assert_equal [], extras[:callback_growth]
+    assert_operator agg.killed_count, :>, 0
   end
 
   private

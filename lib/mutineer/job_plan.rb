@@ -391,6 +391,11 @@ module Mutineer
       file = Tempfile.create(["mutineer-callback-growth", ".log"])
       file.close
       file.path
+    rescue SystemCallError => e
+      # Report only (#479): a temp directory that refuses the file must not stop the run.
+      warn "[mutineer] could not create the callback-growth log, so this run does not check " \
+           "callback counts after a reload (#479): #{e.message}"
+      nil
     end
 
     # The classes the mutant loads logged, each once, with a project-relative
@@ -403,9 +408,15 @@ module Mutineer
     def self.callback_growth_rows(path, project_root)
       return [] unless path && File.exist?(path)
 
+      # Each field is written with `String#dump`, so a newline or tab in a name
+      # or a path cannot split a record.
       File.binread(path).split("\n".b).filter_map do |line|
         name, file = line.split("\t".b, 2)
-        [FsPath.read(name), ProjectPath.relative(file, project_root)] if file
+        next unless file
+
+        [FsPath.read(name.undump), ProjectPath.relative(FsPath.read(file.undump), project_root)]
+      rescue RuntimeError # a line that is not two dumped strings
+        nil
       end.uniq
     end
 
@@ -459,19 +470,27 @@ module Mutineer
       !writes_local?(node)
     end
 
-    # Whether `node` assigns a local variable in the scope it runs in. A block,
-    # lambda or def has its own scope, so the walk does not enter one.
+    # Whether `node` sets a local variable of the scope it runs in. A block or
+    # lambda can set an outer local, so the walk enters it and counts only
+    # writes that reach past it. A def has its own scope and is not entered.
     #
     # @param node [Prism::Node]
+    # @param level [Integer] the blocks and lambdas between `node` and that scope.
     # @return [Boolean]
-    def self.writes_local?(node)
-      return true if node.is_a?(Prism::LocalVariableWriteNode) || node.is_a?(Prism::LocalVariableTargetNode) ||
-                     node.is_a?(Prism::LocalVariableOperatorWriteNode) ||
-                     node.is_a?(Prism::LocalVariableOrWriteNode) || node.is_a?(Prism::LocalVariableAndWriteNode)
-      return false if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) || node.is_a?(Prism::DefNode)
+    def self.writes_local?(node, level = 0)
+      # Prism's `depth` counts the scopes between the write and its variable,
+      # so a write inside `level` blocks reaches the file's scope at that depth.
+      return node.depth >= level if LOCAL_WRITES.any? { |type| node.is_a?(type) }
+      return false if node.is_a?(Prism::DefNode)
 
-      node.compact_child_nodes.any? { |child| writes_local?(child) }
+      inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
+      node.compact_child_nodes.any? { |child| writes_local?(child, inner) }
     end
+
+    # The Prism nodes that set a local variable.
+    LOCAL_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableTargetNode,
+                    Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
+                    Prism::LocalVariableAndWriteNode].freeze
 
     # The module a class statement defines its constant in, as Ruby text that
     # runs where the superclass runs: `::Module.nesting.first` for `class X`,

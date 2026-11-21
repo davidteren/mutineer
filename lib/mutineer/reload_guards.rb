@@ -162,7 +162,10 @@ module Mutineer
     def self.log_callback_growth(classes, source_file)
       return if classes.empty?
 
-      lines = classes.map { |klass| "#{MODULE_NAME.bind_call(klass) || MODULE_TO_S.bind_call(klass)}\t#{source_file}\n" }
+      # Dumped, so a newline or tab in the name or the path stays in its field.
+      lines = classes.map do |klass|
+        "#{(MODULE_NAME.bind_call(klass) || MODULE_TO_S.bind_call(klass)).dump}\t#{source_file.to_s.dump}\n"
+      end
       File.write(callback_growth_log, lines.join, mode: "a")
     rescue SystemCallError => e
       warn "[mutineer] could not write the callback-growth log: #{e.message}"
@@ -220,43 +223,46 @@ module Mutineer
         classes.to_h { |klass| [klass, klass.__callbacks.dup] }
       end
 
-      # The number of entries in each chain of each class, read before the
-      # load. A later restore can change a chain object in place, so the
-      # counts are taken while they are still the old ones.
+      # Each class's own entries in each chain, counted before the load: the
+      # entries that are not the same objects as its parent's. A later restore
+      # can change a chain object in place, so they are counted while they are
+      # still the old ones.
       #
       # @param before [Hash{Class => Hash{Symbol => Object}}] a {.snapshot}.
       # @return [Hash{Class => Hash{Symbol => Integer}}]
       def self.sizes(before)
-        before.transform_values { |chains| chains.transform_values { |chain| chain.to_a.size } }
+        before.to_h do |klass, chains|
+          parent = before.fetch(klass.superclass, {})
+          [klass, chains.to_h { |name, chain| [name, own_count(chain.to_a, parent[name].to_a)] }]
+        end
       end
 
-      # The classes whose own callback count grew in the load, after
-      # {.remove} kept one copy of each entry it could pair (#479). A chain
-      # that grew by more than the parent's same chain is the class's own
-      # growth. A subclass that only inherited its parent's growth is left
-      # out, and so is a class that did not exist before the load. The full
-      # fix is the full-reload strategy (#389).
+      # The classes that have more own entries in a chain after the load than
+      # before, after {.remove} kept one copy of each entry it could pair
+      # (#479). An entry a subclass shares with its parent is the parent's, so
+      # a subclass that only inherited the growth is left out, and one that
+      # skipped the parent's entry still shows its own. A class that did not
+      # exist before the load is left out. The full fix is the full-reload
+      # strategy (#389).
       #
       # @param sizes [Hash{Class => Hash{Symbol => Integer}}] from {.sizes}.
       # @return [Array<Class>]
       def self.grown_classes(sizes)
         sizes.keys.select do |klass|
+          parent = klass.superclass
+          parent_now = parent.respond_to?(:__callbacks) ? parent.__callbacks : {}
           klass.__callbacks.any? do |name, chain|
-            growth = chain.to_a.size - sizes[klass].fetch(name, 0)
-            growth.positive? && growth > parent_growth(klass.superclass, name, sizes)
+            own_count(chain.to_a, parent_now[name].to_a) > sizes[klass].fetch(name, 0)
           end
         end
       end
 
-      # @param parent [Class, nil] a class's superclass.
-      # @param name [Symbol] the chain name.
-      # @param sizes [Hash{Class => Hash{Symbol => Integer}}] from {.sizes}.
-      # @return [Integer] how much the parent's chain grew, or 0.
-      def self.parent_growth(parent, name, sizes)
-        was = sizes.dig(parent, name)
-        return 0 unless was
-
-        parent.__callbacks[name].to_a.size - was
+      # @param entries [Array] a class's chain entries.
+      # @param parent_entries [Array] its parent's entries in the same chain.
+      # @return [Integer] the entries that are not the same object as one of the parent's.
+      def self.own_count(entries, parent_entries)
+        shared = identity_set(parent_entries)
+        entries.count { |entry| !shared.include?(entry) }
       end
 
       # Keeps one copy of each entry the load added again.
