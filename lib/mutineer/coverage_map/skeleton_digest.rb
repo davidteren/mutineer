@@ -2,9 +2,10 @@
 
 module Mutineer
   class CoverageMap
-    # Computes the skeleton digest of each source and the digest of the run
-    # inputs. Also reads and writes the cache file ({#cache_path}, {#read_cache},
-    # {#save}) and prints the cache warnings.
+    # Computes the skeleton digest of each source, the method body digests and
+    # the cache digest ({#compute_digest}). Also reads and writes the cache file
+    # ({#cache_path}, {#read_cache}, {#save}) and prints three warnings
+    # ({#warn_recaptured}, {#warn_external_sources}, {#warn_incomplete}).
     #
     # These are private methods of {Mutineer::CoverageMap}. They read and write
     # its instance variables.

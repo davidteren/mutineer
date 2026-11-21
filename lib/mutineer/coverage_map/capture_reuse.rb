@@ -5,8 +5,9 @@ module Mutineer
     # Loads the coverage cache or builds the map, and reuses a capture.
     #
     # Every run uses the cache flow: {#cached_or}, {#clean_check_test_paths}
-    # and {#warn_unchecked}. The other methods check a `--coverage-from`
-    # capture and accept it only when it fits this run.
+    # and {#warn_unchecked}. Most other methods check a `--coverage-from`
+    # capture and accept it only when it fits this run. {#source_fingerprints}
+    # and {#key_source} are helpers that the cache checks also call.
     #
     # These are private methods of {Mutineer::CoverageMap}. They read and write
     # its instance variables.
