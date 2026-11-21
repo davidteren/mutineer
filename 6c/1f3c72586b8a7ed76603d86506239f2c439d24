@@ -1,0 +1,41 @@
+docs/plans/2026-11-22-496-494-feat-since-capture-and-pack-pairing-plan.md
+  s_b15640c1f9603e::t_4bfdac6310f973 100
+  s_b15640c1f9603e::t_3b369c72da7559 105,109-113
+  s_b15640c1f9603e::t_d67b9c88237403 93
+  s_b15640c1f9603e::t_cdd244863e1148 161-163
+  s_b15640c1f9603e::t_5a1e57dcc2bb17 1-50,54-58,61-92,98-99,101-104,106-108,114-136,141-159,164-206
+  s_b15640c1f9603e::t_e54d1a17331418 137-140
+  s_b15640c1f9603e::t_bf991834082116 160
+  s_b15640c1f9603e::t_359584a4411936 51-53
+  s_b15640c1f9603e::t_54e30bb72b34c2 94-97
+  s_b15640c1f9603e::t_61cc8d70257486 59-60
+docs/plans/2026-11-22-416-fix-run-lock-gaps-plan.md
+  s_b15640c1f9603e::t_d959e0511fe31f 90
+  s_b15640c1f9603e::t_dce5866abb05e1 1-49,52-54,56-59,61-65,68-89,91-100,104-115,118-125,127,130-136,138-153,155,157-160,162
+  s_b15640c1f9603e::t_39932ca67ad270 101-103
+  s_b15640c1f9603e::t_7e3bff53f8bcac 137
+  s_b15640c1f9603e::t_82e7da7d3d3ea3 60
+  s_b15640c1f9603e::t_4b4def353e09f2 116-117
+  s_b15640c1f9603e::t_5efcfdca1ec9c7 126,128-129
+  s_b15640c1f9603e::t_6662c25b85d4bb 154,156
+  s_b15640c1f9603e::t_2914a99192ee7d 161
+  s_b15640c1f9603e::t_76d784d9a3d33f 66-67
+  s_b15640c1f9603e::t_3075a8ac21ead3 50-51
+  s_b15640c1f9603e::t_c111f6dc910fc5 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c1f3c72586b8a7ed76603d86506239f2c439d24",
+  "prompts": {},
+  "sessions": {
+    "s_b15640c1f9603e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc6b87b1-cb31-4dcc-a019-9baf2978f40c",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
