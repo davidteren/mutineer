@@ -279,6 +279,66 @@ class ReloadGuardsTest < Minitest::Test
     end
   end
 
+  # #479: a class whose own chain grew is named. One whose entries all
+  # paired, a subclass that only inherited the growth, and a class the load
+  # created are not.
+  def test_grown_classes_names_only_a_class_whose_own_count_grew
+    one = Callback.new(:before, :a)
+    parent = callback_class
+    child = callback_class(parent)
+    paired = callback_class
+    own = callback_class(parent)
+    parent.__callbacks = { save: Chain.new(one, one, one) }
+    child.__callbacks = { save: Chain.new(one, one, one) }
+    paired.__callbacks = { save: Chain.new(one) }
+    own.__callbacks = { save: Chain.new(one, one, one, one) }
+    created = callback_class
+    created.__callbacks = { save: Chain.new(one, one) }
+    sizes = { parent => { save: 2 }, child => { save: 2 }, paired => { save: 1 }, own => { save: 2 } }
+
+    grown = Mutineer::ReloadGuards::RepeatedCallbacks.grown_classes(sizes)
+
+    assert_equal [parent, own].map(&:object_id), grown.map(&:object_id)
+  end
+
+  def test_sizes_counts_each_chain_before_the_load
+    one = Callback.new(:before, :a)
+    klass = callback_class
+    before = { klass => { save: Chain.new(one, one), validate: Chain.new } }
+    assert_equal({ klass => { save: 2, validate: 0 } }, Mutineer::ReloadGuards::RepeatedCallbacks.sizes(before))
+  end
+
+  def test_log_callback_growth_appends_one_line_for_each_class
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      named = Class.new
+      Object.const_set(:ReloadGuardsGrowthNamed, named)
+      Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
+      Mutineer::ReloadGuards.log_callback_growth([], "/app/models/b.rb")
+      Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
+      assert_equal ["ReloadGuardsGrowthNamed	/app/models/a.rb"] * 2, File.readlines(log, chomp: true)
+    ensure
+      Object.send(:remove_const, :ReloadGuardsGrowthNamed) if Object.const_defined?(:ReloadGuardsGrowthNamed)
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
+  # A log that cannot be written must not fail the load or hide the failure.
+  def test_a_log_that_cannot_be_written_warns_and_does_not_raise
+    Mutineer::ReloadGuards.callback_growth_log = File.join(Dir.tmpdir, "no-such-dir-#{Process.pid}", "growth.log")
+    _out, err = capture_io { Mutineer::ReloadGuards.log_callback_growth([Class.new], "/a.rb") }
+    assert_match(/\[mutineer\] could not write the callback-growth log: /, err)
+  ensure
+    Mutineer::ReloadGuards.callback_growth_log = nil
+  end
+
+  # Without a log, during_load counts nothing and writes nothing.
+  def test_during_load_without_a_log_writes_nothing
+    Mutineer::ReloadGuards.callback_growth_log = nil
+    assert_equal :ran, Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+  end
+
   def assert_same_list(expected, actual, message = nil)
     assert_equal expected.map(&:object_id), actual.to_a.map(&:object_id), message
   end

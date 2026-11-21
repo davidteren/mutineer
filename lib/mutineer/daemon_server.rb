@@ -45,6 +45,8 @@ module Mutineer
   #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
+  #              (a reload run adds "callback_growth_log":"/tmp/...", the file
+  #               the child appends a class whose callback count grew to, #479)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #              (an "error" adds "details" when the child sent a cause line:
   #               a raise → "Class: message" (#388); an in-test database error →
@@ -549,6 +551,7 @@ module Mutineer
       def apply_payload(payload)
         hook = payload["hook_def"]
         hook &&= { line: hook.fetch("line"), name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton") }
+        ReloadGuards.callback_growth_log = payload["callback_growth_log"] # #479
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).

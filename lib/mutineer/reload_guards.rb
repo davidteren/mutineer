@@ -115,13 +115,42 @@ module Mutineer
       load_original(source_file)
       install!
       before = RepeatedCallbacks.snapshot
+      sizes = callback_growth_log && RepeatedCallbacks.sizes(before)
       @enums_before_load = {}
       @loading = true
       result = yield
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
+      log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) if sizes
       result
     ensure
       @loading = false
+    end
+
+    class << self
+      # The file each mutant load appends to, one `class name<TAB>source
+      # file` line for each class whose own callback count grew (#479).
+      # {Runner.execute} sets it in the parent for a reload run, so each
+      # forked child has it. The daemon child gets it from the payload. Nil
+      # turns the check off.
+      #
+      # @return [String, nil]
+      attr_accessor :callback_growth_log
+    end
+
+    # Appends one line for each class to {callback_growth_log}. A write that
+    # fails does not fail the load or change the verdict. It prints one line
+    # on stderr instead, so the check is not lost without a word.
+    #
+    # @param classes [Array<Class>] from {RepeatedCallbacks.grown_classes}.
+    # @param source_file [String] the file the mutant replaces.
+    # @return [void]
+    def self.log_callback_growth(classes, source_file)
+      return if classes.empty?
+
+      lines = classes.map { |klass| "#{klass.name || klass.inspect}\t#{source_file}\n" }.join
+      File.write(callback_growth_log, lines, mode: "a")
+    rescue SystemCallError => e
+      warn "[mutineer] could not write the callback-growth log: #{e.message}"
     end
 
     # Puts back one copy of each callback and validator that a second run of a
@@ -168,6 +197,45 @@ module Mutineer
         # Asks the module: a class can define its own `<` (`extend Comparable`).
         classes = ObjectSpace.each_object(Class).select { |klass| ::ActiveSupport::Callbacks > klass }
         classes.to_h { |klass| [klass, klass.__callbacks.dup] }
+      end
+
+      # The number of entries in each chain of each class, read before the
+      # load. A later restore can change a chain object in place, so the
+      # counts are taken while they are still the old ones.
+      #
+      # @param before [Hash{Class => Hash{Symbol => Object}}] a {.snapshot}.
+      # @return [Hash{Class => Hash{Symbol => Integer}}]
+      def self.sizes(before)
+        before.transform_values { |chains| chains.transform_values { |chain| chain.to_a.size } }
+      end
+
+      # The classes whose own callback count grew in the load, after
+      # {.remove} kept one copy of each entry it could pair (#479). A chain
+      # that grew by more than the parent's same chain is the class's own
+      # growth. A subclass that only inherited its parent's growth is left
+      # out, and so is a class that did not exist before the load. The full
+      # fix is the full-reload strategy (#389).
+      #
+      # @param sizes [Hash{Class => Hash{Symbol => Integer}}] from {.sizes}.
+      # @return [Array<Class>]
+      def self.grown_classes(sizes)
+        sizes.keys.select do |klass|
+          klass.__callbacks.any? do |name, chain|
+            growth = chain.to_a.size - sizes[klass].fetch(name, 0)
+            growth.positive? && growth > parent_growth(klass.superclass, name, sizes)
+          end
+        end
+      end
+
+      # @param parent [Class, nil] a class's superclass.
+      # @param name [Symbol] the chain name.
+      # @param sizes [Hash{Class => Hash{Symbol => Integer}}] from {.sizes}.
+      # @return [Integer] how much the parent's chain grew, or 0.
+      def self.parent_growth(parent, name, sizes)
+        was = sizes.dig(parent, name)
+        return 0 unless was
+
+        parent.__callbacks[name].to_a.size - was
       end
 
       # Keeps one copy of each entry the load added again.

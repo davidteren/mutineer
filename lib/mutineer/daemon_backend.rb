@@ -449,6 +449,8 @@ module Mutineer
             if hook_def
               payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
             end
+            # #479: Runner.execute set the log for this run; the child appends to it.
+            payload["callback_growth_log"] = ReloadGuards.callback_growth_log if ReloadGuards.callback_growth_log
             # The daemon clears these after load and before tests (#345).
             if sentinel
               payload["reach_path"] = sentinel.path

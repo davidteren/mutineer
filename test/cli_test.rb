@@ -3275,4 +3275,25 @@ class CliTest < Minitest::Test
       refute_includes err, "unknown command"
     end
   end
+
+  # #479: one header, then one line for each class; nothing when no class grew.
+  def test_callback_growth_warning_prints_one_header_and_one_line_for_each_class
+    out, err = capture_io do
+      Mutineer::CLI.warn_callback_growth([%w[Doubled app/models/doubled.rb], ["Once\e[2J", "app/models/once.rb"]])
+    end
+    assert_empty out
+    lines = err.lines
+    assert_equal 3, lines.size
+    assert_match(/\A\[mutineer\] after a reload, 2 classes run a callback more than once \(#479\)\./, lines[0])
+    assert_includes lines[0], "This warning does not change the score or the exit code."
+    assert_includes lines[0], "--no-daemon --strategy redefine, or with --test-command"
+    assert_equal "[mutineer]   Doubled (app/models/doubled.rb)\n", lines[1]
+    assert_equal "[mutineer]   Once\\e[2J (app/models/once.rb)\n", lines[2], "a control character is escaped"
+
+    _out, err = capture_io { Mutineer::CLI.warn_callback_growth([%w[Doubled a.rb]]) }
+    assert_includes err, "1 class runs a callback"
+
+    _out, err = capture_io { Mutineer::CLI.warn_callback_growth([]) }
+    assert_empty err
+  end
 end

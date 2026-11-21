@@ -1686,6 +1686,46 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # The calculator with its strong test, one operator, and a throwaway cache.
+  def growth_config(strategy)
+    Mutineer::Config.new(sources: [CALC], tests: [STRONG_TEST], operators: ["arithmetic"], jobs: 1,
+                         strategy: strategy, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT)
+  end
+  
+  # #479: a reload run sets the log for its children, returns the rows in
+  # extras, and removes the log after. With no ActiveSupport, nothing grows.
+  def test_a_reload_run_returns_callback_growth_rows_and_removes_the_log
+    seen = nil
+    original = Mutineer::JobPlan.method(:callback_growth_log)
+    Mutineer::JobPlan.stub(:callback_growth_log, -> { seen = original.call }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      assert_equal [], extras[:callback_growth]
+    end
+    refute_nil seen
+    refute File.exist?(seen), "the run removes its log"
+    assert_nil Mutineer::ReloadGuards.callback_growth_log
+  end
+
+  def test_a_redefine_run_has_no_callback_growth_log
+    Mutineer::JobPlan.stub(:callback_growth_log, -> { flunk "redefine must not make a log" }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("redefine"))
+      assert_equal [], extras[:callback_growth]
+    end
+  end
+
+  def test_callback_growth_rows_are_unique_and_project_relative
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "app/models/doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      File.write(log, "Doubled\t#{model}\nDoubled\t#{model}\nOnce\t#{model}\nbroken line\n")
+      assert_equal [["Doubled", "app/models/doubled.rb"], ["Once", "app/models/doubled.rb"]],
+                   Mutineer::JobPlan.callback_growth_rows(log, root)
+    end
+    assert_equal [], Mutineer::JobPlan.callback_growth_rows(nil, "/")
+  end
+
   private
 
   def in_project

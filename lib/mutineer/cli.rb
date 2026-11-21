@@ -1058,6 +1058,7 @@ module Mutineer
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
                       copies: extras.fetch(:copies, {}))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
+      warn_callback_growth(extras.fetch(:callback_growth, []))
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -1231,6 +1232,27 @@ module Mutineer
         (merged[old] ||= []).concat(hits)
       end
       merged
+    end
+
+    # Warns when a reload left a class with more callbacks than it had (#479):
+    # one header, then one line for each class. Reload keeps both copies of a
+    # callback when it cannot tell which old one a new one repeats, so the
+    # class runs it twice and a test that counts runs can kill falsely. Report
+    # only: no verdict, score, JSON field or exit code changes. Names and paths
+    # are escaped, so a control character cannot reach the terminal.
+    #
+    # @param rows [Array<Array(String, String)>] each class name and its file,
+    #   from {JobPlan.callback_growth_rows}.
+    # @return [void]
+    def self.warn_callback_growth(rows)
+      return if rows.empty?
+
+      noun = rows.size == 1 ? "class runs" : "classes run"
+      warn "[mutineer] after a reload, #{rows.size} #{noun} a callback more than once (#479). " \
+           "A test that counts callback runs or errors can then kill mutants falsely. " \
+           "This warning does not change the score or the exit code. To check those kills, " \
+           "run the file with --no-daemon --strategy redefine, or with --test-command."
+      rows.each { |name, file| warn "[mutineer]   #{name.inspect[1...-1]} (#{file.inspect[1...-1]})" }
     end
 
     # Warns once per `ignore:` entry that matched no mutant (#377). The text

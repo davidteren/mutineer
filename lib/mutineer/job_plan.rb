@@ -383,6 +383,31 @@ module Mutineer
       [keep_live_superclasses(code), hook_def]
     end
 
+    # A new empty file for {ReloadGuards.callback_growth_log} (#479). The
+    # caller deletes it after the run.
+    #
+    # @return [String] its path.
+    def self.callback_growth_log
+      file = Tempfile.create(["mutineer-callback-growth", ".log"])
+      file.close
+      file.path
+    end
+
+    # The classes the mutant loads logged, each once, with a project-relative
+    # file, in the order they were first logged.
+    #
+    # @param path [String, nil] the log file, or nil when the run had none.
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>] each class name and its source file.
+    def self.callback_growth_rows(path, project_root)
+      return [] unless path && File.exist?(path)
+
+      File.readlines(path, chomp: true).filter_map do |line|
+        name, file = line.split("\t", 2)
+        [name, ProjectPath.relative(file, project_root)] if file
+      end.uniq
+    end
+
     # Wraps the superclass of each class statement whose superclass is not a
     # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
     # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the

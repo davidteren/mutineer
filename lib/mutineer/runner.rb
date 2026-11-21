@@ -65,7 +65,8 @@ module Mutineer
     # [AggregateResult, source_map, extras], where extras is the hash
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
     # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
-    # `:unscoped_mutants` under `--since`.
+    # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
+    # whose callback count grew after a reload (#479), empty under redefine.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -107,12 +108,19 @@ module Mutineer
       # Daemon backend: boot the app ONCE in a persistent subprocess under the
       # app's bundle and fork per mutant. Tool-side we only discover jobs + build
       # payloads (Prism), so branch before any in-process boot.
+      # #479: each reload child logs a class whose callback count grew, and
+      # the run returns them once each in extras[:callback_growth].
+      growth_log = JobPlan.callback_growth_log if config.daemon || config.strategy == "reload"
+      ReloadGuards.callback_growth_log = growth_log
+
       if config.daemon
         # The daemon loads these files itself and would report a missing one as
         # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
         # as it is in process.
         check_boot_files!(config)
-        return DaemonBackend.execute(config, operator_classes)
+        result = DaemonBackend.execute(config, operator_classes)
+        result[2][:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+        return result
       end
 
       # Both strategies (whole-file reload and redefine, #279) write
@@ -265,8 +273,11 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
+      extras[:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
+      ReloadGuards.callback_growth_log = nil
+      File.delete(growth_log) if growth_log && File.exist?(growth_log)
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
       OutputFilter.uninstall if filter_owned
