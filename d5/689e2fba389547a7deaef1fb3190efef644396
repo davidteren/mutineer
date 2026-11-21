@@ -1,0 +1,23 @@
+test/cli_test.rb
+  s_151bdda9795887::t_bb7e894bc2ed52 96-105,217,2639
+test/daemon_backend_contract_test.rb
+  s_151bdda9795887::t_debe3cc5585aec 455,462-463
+test/runner_test.rb
+  s_151bdda9795887::t_a6b38a08b0898c 277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5689e2fba389547a7deaef1fb3190efef644396",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
