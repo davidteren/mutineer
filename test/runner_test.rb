@@ -463,6 +463,175 @@ class RunnerTest < Minitest::Test
     assert_equal :ran_at_load, Mutineer::JobPlan.selection_verdict(:maybe, loaded).status
   end
 
+  # #493: the fixture of the reported case. Line 2 holds a lambda, lines 4 to
+  # 6 a multi-line block. The macro's lines 2 to 4 run when a class calls it.
+  STORED_BLOCKS = <<~'RUBY'
+    def self.language_field
+      normalizers[:language] = ->(value) { value.strip }
+      limits[:language] = 35
+      checks << proc do |record|
+        record.errors << :invalid unless record.language == record.language.downcase
+      end
+    end
+  RUBY
+
+  def block_candidate?(source, snippet, load_lines:, kind: :run, load_methods: [], map: true)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    coverage = map ? FakeCoverageMap.new({}, "/root", load_lines, false, load_methods) : nil
+    [Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, subject, source, coverage),
+     Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, nil, source, coverage)]
+  end
+
+  # #493: a candidate is a :run mutant in a block or lambda whose call ran at
+  # load. It only decides which mutants carry the probe.
+  def test_a_mutant_in_a_block_whose_call_ran_at_load_is_a_candidate
+    assert_equal [true, false], block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2])
+    assert_equal [true, false], block_candidate?(STORED_BLOCKS, "downcase", load_lines: [4])
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], kind: :maybe)[0], "a :maybe selection"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], kind: nil)[0], "no selection"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [3, 4])[0], "only other lines ran at load"
+    refute block_candidate?(STORED_BLOCKS, "35", load_lines: [2, 3, 4])[0], "not in a block"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], map: false)[0], "no coverage map"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [])[0], "the call did not run at load"
+
+    # A body on the def line counts when the method is defined (#389).
+    one_line = "def f(xs) = xs.map { |x| x + 1 }.size\n"
+    called = { load_lines: [1], load_methods: [[1, 0]] }
+    refute block_candidate?(one_line, "x + 1", **called)[0], "in a block of a one-line def"
+    refute block_candidate?(one_line, "size", **called)[0], "outside the block of a one-line def"
+    opener = "def f(xs); xs.each do |x|\n  keep(x)\nend; end\n"
+    refute block_candidate?(opener, "keep", load_lines: [1])[0], "the def line is never a load line"
+  end
+
+  # #493: reload places a def of a concern's hook block with the probe, and a
+  # class that includes the concern in a test gets a def with no probe. So
+  # the probe is not evidence there, and such a def is not a candidate.
+  def test_a_def_that_reload_places_from_a_hook_block_is_not_a_candidate
+    source = "module Tagged\n  extend ActiveSupport::Concern\n  included do\n" \
+             "    def tags(xs)\n      xs.each { |x| keep(x) }\n    end\n  end\nend\n"
+    Dir.mktmpdir("mutineer-hook-candidate") do |dir|
+      path = File.join(dir, "tagged.rb")
+      File.write(path, source)
+      subject = Mutineer::Project.discover([path]).find { |s| s.name == :tags }
+      refute_nil subject.reload_hook_call
+      start = source.index("keep")
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 4, replacement: "nil", operator: :test)
+      map = FakeCoverageMap.new({}, "/root", [5], false, [])
+
+      refute Mutineer::JobPlan.stored_block_candidate?(:run, path, mutation, subject, source, map)
+      subject.reload_hook_call = nil
+      assert Mutineer::JobPlan.stored_block_candidate?(:run, path, mutation, subject, source, map)
+    end
+  end
+
+  # #493: the parent decides "probed" from the text it builds before the
+  # fork. Under redefine the child builds its own text, so the two must be
+  # the same: with a probe, and when the wrap fails and leaves none.
+  def test_the_text_the_parent_checks_is_the_text_the_redefine_child_loads
+    source = "class ProbeTextHost\n  def self.fields(xs)\n    xs.each { |x| x + 1 }\n  end\nend\n"
+    Dir.mktmpdir("mutineer-probe-text") do |dir|
+      path = File.join(dir, "probe_text_host.rb")
+      File.write(path, source)
+      load path
+      subject = Mutineer::Project.discover([path]).first
+      start = source.index("+ 1")
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
+      key = Mutineer::ReachProbe.reach_key
+      sentinel = File.join(dir, "reach.touch")
+      loaded = lambda do
+        text = nil
+        Mutineer::Isolation.stub(:write_beside, ->(code, *, **) { text = code }) do
+          Mutineer::Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel, reach_key: key)
+        end
+        text
+      end
+
+      parent = Mutineer::Runner.probe_text("redefine", mutation.apply(source), mutation, subject, source, sentinel, key)
+      assert Mutineer::ReachProbe.installed?(parent, key)
+      assert_includes loaded.call, parent
+
+      Mutineer::ReachProbe.stub(:wrap, nil) do
+        parent = Mutineer::Runner.probe_text("redefine", mutation.apply(source), mutation, subject, source, sentinel,
+                                             key)
+        child = loaded.call
+        refute Mutineer::ReachProbe.installed?(parent, key)
+        refute Mutineer::ReachProbe.installed?(child, key)
+        assert_includes child, parent
+        reload = Mutineer::Runner.probe_text("reload", mutation.apply(source), mutation, subject, source, sentinel, key)
+        assert_equal mutation.apply(source), reload
+      end
+    end
+  ensure
+    Object.send(:remove_const, :ProbeTextHost) if Object.const_defined?(:ProbeTextHost, false)
+  end
+
+  # #493: only a candidate with the probe in its code, that survived and that
+  # the probe did not see, changes. All 16 combinations, then the other
+  # statuses. A --matrix row is kept.
+  def test_stored_block_verdict_moves_only_an_unreached_probed_candidate_survivor
+    [true, false].product([true, false], [true, false], %i[survived killed]).each do |candidate, probed, reached, status|
+      result = Mutineer::Result.new(status: status)
+      after = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached)
+      moved = candidate && probed && !reached && status == :survived
+      assert_equal (moved ? :ran_at_load : status), after.status,
+                   "candidate=#{candidate} probed=#{probed} reached=#{reached} #{status}"
+    end
+    %i[killed error timeout no_coverage ran_at_load].each do |status|
+      result = Mutineer::Result.new(status: status)
+      assert_same result, Mutineer::JobPlan.stored_block_verdict(result, candidate: true, probed: true, reached: false)
+    end
+
+    kills = Mutineer::Kills.new(killed_by: [], ran: ["t_test.rb"], complete: true)
+    row = Mutineer::Result.new(status: :survived, kills: kills)
+    assert_same kills, Mutineer::JobPlan.stored_block_verdict(row, candidate: true, probed: true, reached: false).kills
+  end
+
+  # #493: the new step runs last and reads only a :run selection, so a :maybe
+  # mutant keeps the verdict of #254 and #345. A define_method mutant keeps
+  # the verdict of #435 when the probe fired and when it did not.
+  def test_the_three_verdict_steps_keep_the_maybe_and_define_method_verdicts
+    source = "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n"
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index("u + 1")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 5, replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [2], false, [])
+    kind, = Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source, map)
+    assert_equal :maybe, kind
+    candidate = Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, subject, source, map)
+    refute candidate, "a :maybe mutant is not a candidate"
+
+    { false => :no_coverage, true => :survived }.each do |reached, expected|
+      result = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              source, map)
+      result = Mutineer::JobPlan.selection_verdict(kind, result, reached: reached)
+      result = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: true, reached: reached)
+      assert_equal expected, result.status, "reached=#{reached}"
+    end
+
+    stored = "def greets(name)\n  define_method(\"greet_\#{name}\") do\n    \"Hello\"\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(stored).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :greets, singleton: false, def_node: def_node)
+    start = stored.index("Hello")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 5, replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ 3 => ["t_test.rb"] }, "/root", [2], false, [])
+    assert Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, stored, map)
+    candidate = Mutineer::JobPlan.stored_block_candidate?(:run, "x.rb", mutation, subject, stored, map)
+    assert candidate, "a define_method block can carry the probe; nothing reads its answer"
+    [true, false].each do |reached|
+      result = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              stored, map)
+      assert_equal :ran_at_load, result.status
+      result = Mutineer::JobPlan.selection_verdict(:run, result, reached: reached)
+      result = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: true, reached: reached)
+      assert_equal :ran_at_load, result.status, "reached=#{reached}"
+    end
+  end
+
   # #289: a #254 :maybe selection also gets the tests of a first line that it
   # shares with other code.
   def test_coverage_selection_adds_the_shared_first_line_to_a_maybe_selection

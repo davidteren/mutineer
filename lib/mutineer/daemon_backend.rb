@@ -437,8 +437,10 @@ module Mutineer
           # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
           sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
-          # Same probe as in-process (#345): the daemon child loads this text.
-          sentinel = sel && sel[0] == :maybe ? ReachProbe.sentinel : nil
+          # Same probe as in-process (#345, #493): the daemon child loads this text.
+          candidate = JobPlan.stored_block_candidate?(sel && sel[0], subject.file, mutation, subject, source,
+                                                      coverage_map)
+          sentinel = (sel && sel[0] == :maybe) || candidate ? ReachProbe.sentinel : nil
           reach_key = sentinel && ReachProbe.reach_key
           begin
             payload = { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) }
@@ -465,7 +467,12 @@ module Mutineer
                                            coverage_map)
             # A :maybe survivor the probe saw run counts; one it did not stays
             # no_coverage, as in-process (#254, #345).
-            JobPlan.selection_verdict(sel && sel[0], loaded, reached: ReachProbe.reached?(sentinel))
+            reached = ReachProbe.reached?(sentinel)
+            selected = JobPlan.selection_verdict(sel && sel[0], loaded, reached: reached)
+            # A survivor in a block whose call ran at load, that no test ran,
+            # as in-process (#493). No probe in the sent text means no change.
+            JobPlan.stored_block_verdict(selected, candidate: candidate, reached: reached,
+                                                   probed: ReachProbe.installed?(payload["code"], reach_key))
           ensure
             ReachProbe.close_sentinel(sentinel)
           end

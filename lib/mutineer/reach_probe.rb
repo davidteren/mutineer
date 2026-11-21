@@ -97,6 +97,19 @@ module Mutineer
       wrap(source, start, start + mutation.replacement.bytesize, path, key) || source
     end
 
+    # Whether `code` holds the probe for `key`. {wrap_mutation} and
+    # {Isolation.mutated_def} return the text with no probe when the wrap does
+    # not parse. A caller that reads "the probe did not fire" as evidence
+    # checks this first (#493). Plain text, so the tool process can ask it
+    # about the text it sends to the daemon.
+    #
+    # @param code [String] the mutant text that the child loads.
+    # @param key [String, nil] fiber-local key from {reach_key}.
+    # @return [Boolean]
+    def self.installed?(code, key)
+      key.to_s.match?(KEY_FORMAT) && code.include?(key)
+    end
+
     # Wraps the smallest expression that holds the byte range `[start_offset,
     # end_offset)`. An empty range is the point where a deletion used to be.
     # Returns nil when no expression holds it, or the wrapped text does not

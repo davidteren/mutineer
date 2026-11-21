@@ -45,7 +45,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "no_coverage":  [ /* mutants on lines no test exercises, or a continuation whose sentinel the tests did not write (#254, #289, #345) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
-  "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
+  "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded, or in a block whose call did (#493); no verdict */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
@@ -66,7 +66,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant on a later line of a multi-line statement (#254, #289) — the right side of `a &&` on its own line, or a call inside a one-line block — when the tests of that statement did not kill it and the probe did not see the mutated expression return during a test (#345). The probe is a sentinel the child writes the first time that expression returns during a test; a load-time call and a raise inside the expression do not write it. Mutineer ran the tests that ran the statement's other lines (for a one-line block, the first or last line, never the `def` line). A survivor the probe saw return is `survived` and counts in the score. The probe covers a trailing operator, a method chain, a multi-line argument, a hash entry, and a heredoc interpolation. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
 | `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block. The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
-| `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
+| `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. From 1.10.0, an in-process or `--daemon` run also counts a survivor in a block or lambda literal here when the call that holds the block ran at load and no test ran the mutated code. The line of such a mutant need not have run at load (#493). Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, a string with no quotes of its own (a heredoc line, a `%(...)` part, a `%w[]` element, a regex, backtick or interpolated-symbol part) that `literal_mutation` cannot empty (#469), or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
 | `declined_by_operator` | object | The same count per operator name, operator name => int, only operators above zero, keys sorted. `{}` when none. Additive key (schema `1.9`, #291). |
@@ -167,9 +167,31 @@ file's class body again, but not an initializer or another file's code); run `--
 A one-line or endless `def` keeps its body on the `def` line, which counts when the method is defined, so its method call
 count at load is used instead. A block on that `def` line is not classified from the line (#389).
 A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
-stores (#435). Another block on that line stays scored. `each` with an empty array can count the line without running
+stores (#435). `each` with an empty array can count the line without running
 its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
 Code that runs only sometimes, such as the body of `x if c`, does not.
+
+From 1.10.0, an in-process or `--daemon` run also gives this status to a survivor in another block or lambda literal,
+when the call that holds the block ran at load and no test ran the mutated code (#493). A class macro stores such a
+block when the class that calls it loads. That class keeps the original block, so its tests do not run the mutant.
+Mutineer adds a probe to such a mutant. The probe counts when the mutated expression returns during a test. A raise
+inside the expression, or a load-time call, does not count. When the probe counted, the survivor stays `survived`: an
+`each` block that a test ran is still scored. A kill, an error and a timeout stay what they are. The rule has these
+limits:
+
+- A mutated expression in such a block that no test reaches, on a line that tests cover, is `ran_at_load`. Before
+  1.10.0 it was `survived`. The cases are a block that no test runs, a branch in the block that no test takes, and
+  the right side of `&&` or `||` that no test reaches (#286).
+- A mutant whose expression raises in each test that reaches it is `ran_at_load` when the code rescues the error and
+  the tests pass (#286).
+- A test can run a new copy of the block and check the result of the old copy. The probe counts, so that mutant
+  stays `survived`, and it can be a false survivor (#286, #389).
+- The rule leaves these mutants with the status they had before 1.10.0: a mutant whose expression cannot hold the
+  probe, a mutant whose tests are the tests of another line of its statement (#254, #289), a block in a one-line or
+  endless `def` (#389), and a `def` that reload places from a concern's `included` or `prepended` block (#507).
+- An in-process `redefine` run with a boot file loads the class of each source before the mutants. When the macro and
+  the class that calls it are both sources, these mutants are `ran_at_load` there. `--daemon` with lazy loading can
+  kill them (#507).
 
 Several mutants can share a line, so `operator` and `token` name the change and `id` identifies the mutant.
 The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` these entries were

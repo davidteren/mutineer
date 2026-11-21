@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
+  A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
+  A class that calls the macro while it loads keeps the original blocks.
+  A mutant inside such a block then passed every test, because no test ran the mutated code, and it counted as a survivor.
+  An in-process `redefine` run with a boot file loads the class of each source before the mutants, so lazy loading did not prevent this.
+  `reload` and `--daemon` gave the same false survivors when the class loaded at boot (Rails eager load).
+  The run now adds the reach probe of #345 to a mutant in a block or lambda literal whose call ran at load.
+  A survivor that the probe did not see return during a test is `ran_at_load`. A survivor that the probe saw stays `survived`.
+  A kill, an error and a timeout do not change. The rule holds for in-process `redefine`, in-process `reload` and `--daemon`.
+  `--test-command` does not use it: that backend runs the load again for each mutant.
+  On the reported shape (a macro with a lambda and a block, 17 mutants), 5 false survivors moved and the score went from 60.0 to 90.0.
+  Effects on a run after the upgrade:
+  `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
+  The moved mutants leave the denominator, so a score can rise and cannot fall. A `--threshold` gate that failed on the score can pass.
+  With `--baseline`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
+  The completeness gate can go from pass to fail. `attempted` gets smaller with each moved survivor.
+  A `--threshold` run fails when more than 1 mutant and more than 10% of the attempted mutants have no verdict.
+  Example: 14 killed, 5 survived and 2 errored passes `--threshold 70`. With the 5 survivors as `ran_at_load` it fails, and the message gives the count of mutants with no verdict.
+  Limits, all in `docs/json-schema.md`:
+  a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
+  A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict (#507).
+  In-process `redefine` cannot kill these mutants when the macro and its caller are both sources. `--daemon` with lazy loading can (#507).
+  A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added

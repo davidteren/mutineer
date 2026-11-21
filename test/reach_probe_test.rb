@@ -151,6 +151,19 @@ class ReachProbeTest < Minitest::Test
     assert_equal "\"AB\"", probed.fetch("value")
   end
 
+  # #493: a caller that reads "the probe did not fire" checks first that the
+  # probe is in the text. A wrap that does not parse leaves the text alone.
+  def test_installed_tells_if_the_text_holds_the_probe
+    source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
+    wrapped = wrap_snippet(source, "a + 1")
+
+    assert Mutineer::ReachProbe.installed?(wrapped, probe_key)
+    refute Mutineer::ReachProbe.installed?(source, probe_key)
+    refute Mutineer::ReachProbe.installed?(wrapped, Mutineer::ReachProbe.reach_key), "the key of another mutant"
+    refute Mutineer::ReachProbe.installed?(wrapped, nil)
+    refute Mutineer::ReachProbe.installed?("class C; end", "C"), "a key of another shape is not a probe"
+  end
+
   def wrap_snippet(source, snippet)
     start = source.byteindex(snippet)
     Mutineer::ReachProbe.wrap(source, start, start + snippet.bytesize, sentinel_path, probe_key)

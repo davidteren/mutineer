@@ -455,9 +455,16 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
-      # A :maybe mutant records whether the mutated expression ran (#345).
-      sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      # A :maybe mutant records whether the mutated expression ran (#345). So
+      # does a mutant in a block whose call ran at load (#493).
+      candidate = JobPlan.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
+      sentinel = kind == :maybe || candidate ? ReachProbe.sentinel : nil
       reach_key = sentinel && ReachProbe.reach_key
+      # Decided before the fork, from the text the child loads. No probe in
+      # that text means no evidence, so the verdict stays.
+      probed = candidate && ReachProbe.installed?(
+        probe_text(strategy, mutated, mutation, subject, source, sentinel.path, reach_key), reach_key
+      )
 
       begin
         result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
@@ -494,9 +501,36 @@ module Mutineer
         end
         result = relative_kills(result, coverage_map.project_root)
         result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-        JobPlan.selection_verdict(kind, result, reached: ReachProbe.reached?(sentinel))
+        reached = ReachProbe.reached?(sentinel)
+        result = JobPlan.selection_verdict(kind, result, reached: reached)
+        JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached)
       ensure
         ReachProbe.close_sentinel(sentinel)
+      end
+    end
+
+    # The mutant text that the child of {run} loads for a
+    # {JobPlan.stored_block_candidate?}, with the reach probe: the mutated def
+    # under redefine ({Isolation.apply_surgical} wraps this text in the
+    # namespace), or the mutated file under reload. The child builds the same
+    # text from the same values. {run} asks {ReachProbe.installed?} about it
+    # before the fork (#493). A def in a concern's hook block is never a
+    # candidate, so its text ({JobPlan.hook_mutant}) is not built here.
+    #
+    # @api private
+    # @param strategy [String] mutation strategy.
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject] the subject.
+    # @param source [String] the original source text.
+    # @param reach_path [String] sentinel path.
+    # @param reach_key [String] fiber-local key for `reach_path`.
+    # @return [String]
+    def self.probe_text(strategy, mutated, mutation, subject, source, reach_path, reach_key)
+      if strategy == "redefine"
+        Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
+      else
+        ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
       end
     end
 
