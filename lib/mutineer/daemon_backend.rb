@@ -249,14 +249,19 @@ module Mutineer
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
-        JobPlan.abort_if_unclean!(CoverageMap.from_data(
-          map: data["map"] || {},
-          failed_test_files: data["failed_test_files"] || [],
-          project_root: config.project_root,
-          failed_clean_tests: data["failed_clean_tests"],
-          failed_clean_details: data["failed_clean_details"] || {},
-          clean_timeouts: data["clean_timeouts"] || {}
-        ), framework: config.framework)
+        begin
+          JobPlan.abort_if_unclean!(CoverageMap.from_data(
+            map: data["map"] || {},
+            failed_test_files: data["failed_test_files"] || [],
+            project_root: config.project_root,
+            failed_clean_tests: data["failed_clean_tests"],
+            failed_clean_details: data["failed_clean_details"] || {},
+            clean_timeouts: data["clean_timeouts"] || {}
+          ), framework: config.framework)
+        rescue SmokeCheckError => e
+          # After the cut of the failure report, so the note is never cut off (#500).
+          raise SmokeCheckError, DaemonClient.with_load_env_hint(e.message)
+        end
       end
 
       unless data && !(data["map"] || {}).empty?
@@ -288,7 +293,8 @@ module Mutineer
     # @param reason [String] short cause (boot error message, empty map, …).
     # @return [void]
     def self.warn_coverage_fallback(reason = "unknown")
-      warn "[mutineer] daemon coverage map unavailable (#{reason}); running every " \
+      # A missing file gets the dropped RUBYOPT/RUBYLIB note, as a mutant does (#500).
+      warn "[mutineer] daemon coverage map unavailable (#{DaemonClient.with_load_env_hint(reason)}); running every " \
            "mutant against the full --test set (score not comparable to an in-process run)."
     end
     private_class_method :warn_coverage_fallback

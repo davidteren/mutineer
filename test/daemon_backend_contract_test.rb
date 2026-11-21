@@ -426,6 +426,35 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #500: the coverage build and the clean check get the same RUBYOPT/RUBYLIB
+  # note as a mutant (#491), for the Minitest and the RSpec error layouts.
+  def test_daemon_coverage_load_errors_name_the_dropped_load_variables
+    load_env = { "RUBYLIB" => "test/support", "BUNDLER_ORIG_RUBYLIB" => nil,
+                 "RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil }
+    with_jobs do |_jobs, config, _source_map|
+      { "minitest" => "1) Error:\nRedTest#test_x:\nLoadError: cannot load such file -- helpers",
+        "rspec" => "An error occurred while loading ./spec/x_spec.rb.\nFailure/Error: require \"helpers\"\n\n" \
+                   "LoadError:\n  cannot load such file -- helpers" }.each do |kind, detail|
+        reply = { "map" => {}, "failed_test_files" => [], "failed_clean_tests" => ["red_test.rb"],
+                  "failed_clean_details" => { "red_test.rb" => detail } }
+        cov = Object.new
+        cov.define_singleton_method(:coverage) { reply }
+        err = with_env(load_env) do
+          assert_raises(Mutineer::SmokeCheckError) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
+        end
+        assert_includes err.message, "does not pass RUBYLIB to the app", kind
+        refute_includes err.message, "test/support", kind
+      end
+
+      cov = Object.new
+      def cov.coverage = { "map" => {}, "failed_test_files" => [], "error" => "LoadError: cannot load such file -- helpers" }
+      _out, warned = capture_io do
+        with_env(load_env) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
+      end
+      assert_match(/cannot load such file -- helpers \(the daemon does not pass RUBYLIB/, warned)
+    end
+  end
+
   # The daemon side of the same contract: the coverage reply carries the map's
   # `clean_timeouts`, so the client above has something to read.
   def test_the_daemon_coverage_reply_carries_clean_timeouts

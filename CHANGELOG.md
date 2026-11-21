@@ -66,6 +66,11 @@ All notable changes to this project are documented here. The format is based on
   `docs/rails-setup.md` lists each one and its result. The code comments cite #342.
   The limits that can score a crash as `killed` are tracked in #515, and the one that can score `survived` wrongly in #516.
   No scoring changed.
+- **The `--daemon` coverage build and clean check name a dropped load path
+  too (#500).** When the coverage build fails, or the clean check is red,
+  with `LoadError: cannot load such file`, the message ends with the same
+  `RUBYOPT`/`RUBYLIB` note as a mutant (#491). Before this, those paths
+  printed the bare `LoadError`.
 
 ## [1.9.0] - 2026-11-16
 
