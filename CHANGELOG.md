@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A red clean check under `--rails` names the failing test and its error
+  (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
+  The clean check built its failure report on one, so under `--rails` the
+  "not green" message named the test file but no test, message or backtrace.
+  The report now comes from `Mutineer::MinitestFailureReport`, which that
+  plugin leaves in place. It applies to the per-file and the combined clean
+  check, in-process, `--boot` and `--daemon`.
+
 ### Changed
 
 - **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**

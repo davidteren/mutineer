@@ -416,6 +416,38 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # #497: Rails' Minitest plugin removes every SummaryReporter, so a report
+  # built on one came back empty. Both clean-check paths must still name the
+  # failing test, its error, and the first backtrace line.
+  def test_clean_check_report_survives_a_plugin_that_drops_summary_reporters
+    Dir.mktmpdir("mutineer-497") do |dir|
+      test = File.join(dir, "red_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        # Mirrors railties' plugin_rails_init, which rejects SummaryReporter.
+        Minitest.extensions << "fake_rails" unless Minitest.extensions.include?("fake_rails")
+        def Minitest.plugin_fake_rails_init(options)
+          reporter.reporters.reject! { |r| r.is_a?(Minitest::SummaryReporter) }
+          reporter << Minitest::SummaryReporter.new(File.open(File::NULL, "w"), options)
+        end
+        class RedFor497Test < Minitest::Test
+          def test_boom
+            raise ArgumentError, "boom 497"
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir)
+      fork_ok, fork_detail, = map.send(:fork_clean_pass?, [test], nil)
+      sub_ok, sub_detail, = map.send(:subprocess_clean_pass?, [test])
+      [[fork_ok, fork_detail], [sub_ok, sub_detail]].each do |ok, detail|
+        refute ok
+        assert_match(/RedFor497Test#test_boom/, detail, detail)
+        assert_match(/ArgumentError: boom 497/, detail, detail)
+        assert_match(/red_test\.rb:\d+/, detail, detail)
+      end
+    end
+  end
+
   # #96: a warm cache cannot certify a suite that now fails without a file-content
   # change (the digest still matches).
   def test_warm_cache_records_failed_clean_when_suite_turns_red

@@ -250,8 +250,8 @@ module Mutineer
           require "minitest"
           require "stringio"
           report = StringIO.new
-          Minitest.define_singleton_method(:plugin_mutineer_clean_report_init) do |options|
-            reporter << Minitest::SummaryReporter.new(report, options)
+          Minitest.define_singleton_method(:plugin_mutineer_clean_report_init) do |_options|
+            reporter << MinitestFailureReport.new(report)
           end
           Minitest.extensions << "mutineer_clean_report" unless Minitest.extensions.include?("mutineer_clean_report")
           code = TestRunners.for(@framework).run(abs_tests)
