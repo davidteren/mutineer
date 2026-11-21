@@ -1,0 +1,26 @@
+test/json_reporter_test.rb
+  s_151bdda9795887::t_beb78ff4f565d1 146-190
+test/reporter_test.rb
+  s_151bdda9795887::t_beb78ff4f565d1 717-730
+test/cli_test.rb
+  s_151bdda9795887::t_beb78ff4f565d1 1130-1175
+  s_151bdda9795887::t_65eb4dbb7ef7c5 1176
+test/runner_external_test.rb
+  s_151bdda9795887::t_beb78ff4f565d1 48-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f6a26f45fc65276eb930573db9ed28cbff82c3a6",
+  "prompts": {},
+  "sessions": {
+    "s_151bdda9795887": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1e9eac7-4567-4585-ac57-510368d70706",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
