@@ -34,7 +34,8 @@ All notable changes to this project are documented here. The format is based on
   Limits, all in `docs/json-schema.md`:
   a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
   A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict, and so does a block whose call runs only sometimes (#507).
-  So does a mutant whose probed expression holds `next`, `break`, `return`, `redo` or `retry`: the probe cannot speak for it (#507).
+  So does a mutant whose probe cannot speak (#507). That is a probed expression that holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit` or `abort`.
+  It is also a probe in the operand of `defined?`.
   When the macro and its caller are both sources, in-process `redefine` does not kill a mutant that only the stored block runs. `--daemon` with lazy loading can (#507).
   A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
 - **The reach probe keeps the value of `return`, `next`, `break`, `yield` and a command call (#345, found in the review of #493).**
@@ -43,6 +44,9 @@ All notable changes to this project are documented here. The format is based on
   The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
   Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
   The probe text now starts on the line of the expression.
+  Three more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
+  A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
+  The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
 
 ## [1.9.0] - 2026-11-16

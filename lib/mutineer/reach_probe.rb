@@ -104,16 +104,21 @@ module Mutineer
     # Jumps that leave an expression before it returns.
     JUMPS = [Prism::NextNode, Prism::BreakNode, Prism::ReturnNode, Prism::RedoNode, Prism::RetryNode].freeze
 
+    # Calls with no receiver that leave an expression before it returns.
+    EXITS = %i[raise fail throw exit exit! abort].freeze
+
     # Whether a silent probe in `code` shows that the mutated expression did
     # not return during a test (#493). True when `code` holds the probe for
-    # `key`, and the wrapped expression holds no `next`, `break`, `return`,
-    # `redo` or `retry`. {wrap_mutation} and {Isolation.mutated_def} return the
-    # text with no probe when the wrap does not parse. A probe around
-    # `next if x` stays silent each time the jump is taken, though a test ran
-    # the mutated code. In both cases there is no evidence, so the caller keeps
-    # the verdict. A raise cannot be seen in the text, so it is not checked.
-    # Plain text plus one parse, so the tool process can ask it about the text
-    # it sends to the daemon.
+    # `key`, the probe is not in a `defined?` operand, and the wrapped
+    # expression holds none of {JUMPS} and no call of {EXITS}.
+    # {wrap_mutation} and {Isolation.mutated_def} return the text with no
+    # probe when the wrap does not parse. A probe around `next if x` or
+    # `raise E if x` stays silent each time that exit is taken, though a test
+    # ran the mutated code. Ruby never runs the operand of `defined?`. In each
+    # case there is no evidence, so the caller keeps the verdict. A raise
+    # inside a method that the expression calls cannot be seen in the text, so
+    # it is not checked. Plain text plus one parse, so the tool process can
+    # ask it about the text it sends to the daemon.
     #
     # @param code [String] the mutant text that the child loads.
     # @param key [String, nil] fiber-local key from {reach_key}.
@@ -121,18 +126,21 @@ module Mutineer
     def self.conclusive?(code, key)
       return false unless key.to_s.match?(KEY_FORMAT)
 
-      at = code.byteindex("(Thread.current[:#{key}]")
+      at = code.byteindex("(::Thread.current[:#{key}]")
       wrapped = at && wrapped_node(Parser.parse_string(code).value, at)
       !wrapped.nil? && !jump?(wrapped)
     end
 
     # The expression that the probe at byte offset `mark` wraps: the first
-    # element of the two-element array that {splice} builds.
+    # element of the two-element array that {splice} builds. Nil when no such
+    # array is there, or when it is in the operand of `defined?`.
     #
     # @param node [Prism::Node]
     # @param mark [Integer] byte offset of the mark, the second element.
     # @return [Prism::Node, nil]
     def self.wrapped_node(node, mark)
+      return nil if node.is_a?(Prism::DefinedNode)
+
       if node.is_a?(Prism::ArrayNode) && node.elements.size == 2 && node.elements[1].location.start_offset == mark
         return node.elements[0]
       end
@@ -145,20 +153,25 @@ module Mutineer
     end
     private_class_method :wrapped_node
 
-    # Whether `node` is or holds one of {JUMPS}. A jump in a nested lambda
-    # counts too: too wide is safe, because the verdict then stays.
+    # Whether `node` is or holds one of {JUMPS} or a call of {EXITS}. One in a
+    # nested lambda counts too: too wide is safe, because the verdict then
+    # stays.
     #
     # @param node [Prism::Node]
     # @return [Boolean]
     def self.jump?(node)
-      JUMPS.any? { |klass| node.is_a?(klass) } || node.compact_child_nodes.any? { |child| jump?(child) }
+      return true if JUMPS.any? { |klass| node.is_a?(klass) }
+      return true if node.is_a?(Prism::CallNode) && node.receiver.nil? && EXITS.include?(node.name)
+
+      node.compact_child_nodes.any? { |child| jump?(child) }
     end
     private_class_method :jump?
 
     # Wraps the smallest expression that holds the byte range `[start_offset,
     # end_offset)`. An empty range is the point where a deletion used to be.
-    # Returns nil when no expression holds it, or the wrapped text does not
-    # parse: a wrap that does not parse is not used.
+    # Returns nil when no expression holds it, or no wrap is sound ({sound?}):
+    # a wrap that does not parse, or that parses as something else, is not
+    # used.
     #
     # The wrap never goes around a block or a lambda literal. That literal
     # runs when the block is made, not when its body runs, so a probe there
@@ -186,16 +199,62 @@ module Mutineer
       while node
         break if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
 
-        wrapped = splice(source, node, path, key)
-        return wrapped unless Parser.invalid?(wrapped)
-
         parent = parents[node]
+        unless named_capture_part?(parents, node)
+          wrapped = splice(source, node, path, key)
+          return wrapped if sound?(wrapped, node.location.start_offset)
+        end
         break if parent.nil? || climb_stops?(parent, node)
 
         node = parent
       end
       nil
     end
+
+    # Whether the wrapped text parses, and the wrapper at `offset` is the
+    # two-element array that {splice} wrote. A wrap can parse as something
+    # else: after a string that a backslash continues, `[` reads as an index
+    # call on that string, and inside a string literal it is plain text. Such
+    # a wrap changes the program, so it is not used (#493).
+    #
+    # @param wrapped [String] the text from {splice}.
+    # @param offset [Integer] byte offset where the wrapper starts.
+    # @return [Boolean]
+    def self.sound?(wrapped, offset)
+      return false if Parser.invalid?(wrapped)
+
+      array_at?(Parser.parse_string(wrapped).value, offset)
+    end
+    private_class_method :sound?
+
+    # Whether a two-element array literal starts at byte `offset`.
+    #
+    # @param node [Prism::Node]
+    # @param offset [Integer]
+    # @return [Boolean]
+    def self.array_at?(node, offset)
+      return true if node.is_a?(Prism::ArrayNode) && node.location.start_offset == offset && node.elements.size == 2
+
+      node.compact_child_nodes.any? { |child| array_at?(child, offset) }
+    end
+    private_class_method :array_at?
+
+    # Whether `node` is a part of a match that assigns named captures
+    # (`/(?<year>\d+)/ =~ s`): the regexp literal on the left, or a capture
+    # target, which has the span of that literal. Ruby assigns the captures to
+    # local variables only when the literal itself is the receiver, so the
+    # wrap goes around the whole match (#493).
+    #
+    # @param parents [Hash{Prism::Node => Prism::Node}] from {parent_map}.
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.named_capture_part?(parents, node)
+      parent = parents[node]
+      return true if parent.is_a?(Prism::MatchWriteNode)
+
+      parent.is_a?(Prism::CallNode) && parent.receiver.equal?(node) && parents[parent].is_a?(Prism::MatchWriteNode)
+    end
+    private_class_method :named_capture_part?
 
     # True when wrapping `parent` would record a run of code that can run
     # without `child`: a conditional child, or a node that is a whole def,
@@ -282,7 +341,8 @@ module Mutineer
       quoted = path.dump
       # The fiber-local skips the write after the first return on this
       # fiber. A stat on every later pass would hit a loop.
-      mark = "(Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
+      # `::Thread` and `::File`: a namespace can hold its own constant of that name.
+      mark = "(::Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
       source.byteslice(0, loc.start_offset) + "[(#{inner}), #{mark}][0]" + source.byteslice(loc.end_offset..)
     end
     private_class_method :splice

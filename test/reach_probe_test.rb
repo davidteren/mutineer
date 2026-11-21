@@ -77,6 +77,27 @@ class ReachProbeTest < Minitest::Test
           1
       end
     RUBY
+    # #493: a wrapper that parses as something else is not used. After a
+    # string that a backslash continues, `[` would be an index call on it.
+    ["last piece of a backslash string", <<~'RUBY', '""', "C.f(true)", "C.f(false)"],
+      def self.f(flag, a = "n")
+        flag && a + " is " \
+          ""
+      end
+    RUBY
+    # Ruby assigns named captures only when the regexp literal is the receiver.
+    ["named capture", <<~'RUBY', '\d+', "C.f(true)", "C.f(false)"],
+      def self.f(flag, s = "in 2026")
+        flag && (/(?<year>\d+)/ =~ s ? year : nil)
+      end
+    RUBY
+    # A namespace can hold its own Thread constant.
+    ["own Thread constant", <<~'RUBY', "a + 1", "C.f(true)", "C.f(false)"],
+      Thread = Class.new
+      def self.f(flag, a = 1)
+        flag && a + 1
+      end
+    RUBY
   ].freeze
 
   def test_the_probe_records_a_run_and_keeps_the_value
@@ -200,6 +221,21 @@ class ReachProbeTest < Minitest::Test
       assert_includes probed, "[(#{jump} if  x.ok?), ", jump
       refute Mutineer::ReachProbe.conclusive?(probed, probe_key), jump
     end
+
+    # A literal raise or throw leaves the expression in the same way.
+    %w[raise\ ArgumentError throw\ :stop fail].each do |call|
+      text = "class C\n  def self.f(x)\n    #{call} if  x.ok?\n  end\nend\n"
+      point = text.index("if  x") + 3
+      probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
+      assert_includes probed, "[(#{call} if  x.ok?), ", call
+      refute Mutineer::ReachProbe.conclusive?(probed, probe_key), call
+    end
+
+    # Ruby never runs the operand of defined?, so a probe there cannot fire.
+    operand = "class C\n  def self.f(x)\n    defined?(x.size)\n  end\nend\n"
+    probed = wrap_snippet(operand, "x.size")
+    assert_includes probed, "defined?([(x.size), "
+    refute Mutineer::ReachProbe.conclusive?(probed, probe_key)
 
     # A jump outside the wrapped expression does not matter.
     guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"

@@ -192,8 +192,9 @@ score is `null`. `--threshold` passes a `null` score when no mutant broke. The r
 - The line of `elsif c then call { ... }` counts when `c` is checked. So the rule can apply when that call did not
   run at load (#507).
 - The rule leaves these mutants with the status they had before 1.10.0. Four kinds are in #507. The first is a
-  mutant whose expression cannot hold the probe inside the block. The second is a mutant whose probed expression
-  holds `next`, `break`, `return`, `redo` or `retry`. The third is a block whose call runs only sometimes
+  mutant whose expression cannot hold the probe inside the block. The second is a mutant whose probe cannot speak: the probed
+  expression holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit` or
+  `abort`, or the probe is in the operand of `defined?`. The third is a block whose call runs only sometimes
   (`validate { ... } if strict`). The fourth is a `def` that reload places from a concern's `included` or
   `prepended` block. The other kinds are a mutant whose tests are the tests of another line of its statement
   (#254, #289), and a block in a one-line or endless `def` (#389).
