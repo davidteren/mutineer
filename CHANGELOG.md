@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
+  It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
+  It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
+  The JSON `schema_version` is now `1.11`.
 - **The GitHub Action step summary shows unpaired sources (#481).**
   When `summary.unpaired_sources` is above 0, a line below the score table gives the unpaired mutants, the sources with no paired test, and the sources whose mutants were not counted.
   Those mutants are not in the score, so a high score no longer hides them.

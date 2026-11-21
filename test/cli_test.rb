@@ -1118,6 +1118,12 @@ class CliTest < Minitest::Test
       assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
       assert_equal doc["summary"]["killed"], doc["killed"].size
+      # #498: each killed diff applies to the source it names.
+      system("git", "init", "-q", chdir: proj, exception: true) unless File.directory?(File.join(proj, ".git"))
+      doc["killed"].each do |entry|
+        _, err, st = Open3.capture3("git", "apply", "--unidiff-zero", "--check", stdin_data: entry["diff"], chdir: proj)
+        assert st.success?, "#{entry["id"]}: #{err}"
+      end
     end
   end
 

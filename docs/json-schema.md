@@ -13,7 +13,7 @@ add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, 
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.10"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.11"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -38,14 +38,14 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.10",
+  "schema_version": "1.11",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
-  "killed":       [ /* mutants a test caught; lean ids for joining runs (#361) */ ],
+  "killed":       [ /* mutants a test caught; ids for joining runs (#361) and the diff (#498) */ ],
   "no_coverage":  [ /* mutants on lines no test exercises, or a continuation whose sentinel the tests did not write (#254, #289, #345) */ ],
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
-  "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run */ ],
-  "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict */ ],
+  "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run; with the diff (#498) */ ],
+  "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded; no verdict; with the diff (#498) */ ],
   "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
@@ -104,16 +104,25 @@ Each surviving mutant — the records an agent or reviewer acts on:
 ### `killed[]` (array of object)
 
 Additive key (schema `1.10`, #361). Every killed mutant as
-`{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. Same lean shape as `no_coverage[]` (no `diff`).
+`{ subject, file, line, operator, token, id, diff }`, sorted by
+`(file, line, operator, id)`.
 `killed.length` equals `summary.killed`. Use this to join two runs by id
 (for example Minitest vs RSpec on the same source) without subtracting every
 unscored category from a full id list.
 
+`diff` is the same text a `survivors[]` entry gives for that mutant, so a
+consumer can match a killed mutant by its change, for example against a
+declared equivalent mutant. It is `null` only on an entry whose other fields are
+`null` (a result with no subject). Additive key (schema `1.11`, #498).
+A report whose mutants are mostly killed is about twice as large with it:
+on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
+
 ### `no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)
 
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
-`(file, line, operator, id)`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
+`(file, line, operator, id)`. `unplaceable[]` and `ran_at_load[]` entries also carry `diff`, as
+`killed[]` does, so a consumer can run those mutants itself (additive key, schema `1.11`, #498).
+`no_coverage[]` and `uncapturable[]` entries have no `diff`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
@@ -354,13 +363,14 @@ completeness is the one worth retrying rather than blaming on the tests.
 
 ## Dry-run JSON (`--dry-run --format json`)
 
-Additive (schema `1.10`, #362). `mutineer run … --dry-run --format json` prints a candidate list
+Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it.
+`mutineer run … --dry-run --format json` prints a candidate list
 instead of the human breakdown. `--output` writes that document the same way a completed run's
 report does. `--format html` under `--dry-run` stays human and warns that the format is unused.
 
 ```jsonc
 {
-  "schema_version": "1.10",
+  "schema_version": "1.11",
   "summary": {
     "id_format": 2,
     "total": 0,

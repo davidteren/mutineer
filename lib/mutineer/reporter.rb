@@ -36,7 +36,7 @@ module Mutineer
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.10"
+    SCHEMA_VERSION = "1.11"
 
     # The unrun-share hint for mutants in sources with no paired test.
     # The CLI keeps a shorter copy for the empty-run message.
@@ -327,9 +327,10 @@ module Mutineer
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         # Additive (1.10, #361): every killed mutant's lean identity so two runs
         # can be joined by id without subtracting every unscored category.
+        # Additive (1.11, #498): its diff, as on survivors.
         # to_s/to_i: lean_mutant_json can leave null fields when a stub result
         # lacks a subject (same rule as no_verdict[]).
-        killed: @agg.results.select(&:killed?).map { |r| mutant_json(r) }
+        killed: @agg.results.select(&:killed?).map { |r| mutant_with_diff_json(r) }
                     .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
         # id extends the key to a total order: several mutants share a line.
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| mutant_json(r) }
@@ -338,10 +339,12 @@ module Mutineer
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| mutant_json(r) }
                           .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7): owner-unknown mutants redefine did not run. Not in no_verdict.
-        unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_json(r) }
+        # Additive (1.11, #498): the diff, so a consumer can run them itself.
+        unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_with_diff_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
-        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_json(r) }
+        # Additive (1.11, #498): the diff, as on unplaceable.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -766,14 +769,7 @@ module Mutineer
     def survivor_json(result)
       m = result.mutation
       file = result.subject.file
-      source = source_for(file)
-      start_line, original_block, mutated_block, token = diff_for(m, source)
-      # A block at the end of the file has no newline after it; elsewhere the
-      # file's next byte is one. Each side's own text decides its marker.
-      at_eof = source.byteindex("\n", m.end_offset).nil?
-      old_lines = side_lines(original_block, at_eof)
-      new_lines = side_lines(mutated_block, at_eof)
-      shown_file = utf8_text(file)
+      start_line, _orig, _mut, token = diff_for(m, source_for(file))
       row = {
         subject: utf8_text(result.subject.qualified_name.to_s),
         file: file,
@@ -783,11 +779,48 @@ module Mutineer
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: utf8_text(token),
-        diff: "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
-              "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
-              "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
+        diff: unified_diff(result)
       }
       attach_copies(row, result.id)
+    end
+
+    # A lean mutant row plus the same `diff` a survivor gets (#498): for the
+    # killed, unplaceable and ran-at-load lists, whose consumers act on the change.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [Hash] {#mutant_json} with `diff`; `diff` is nil when the result
+    #   has no subject or mutation.
+    def mutant_with_diff_json(result)
+      row = mutant_json(result)
+      copies = row.delete(:copies)
+      row[:diff] = unified_diff(result)
+      row[:copies] = copies if copies
+      row
+    end
+
+    # The unified diff of one mutant, with no context lines.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [String, nil] the diff, or nil when the result has no subject or
+    #   mutation (a stub result).
+    def unified_diff(result)
+      m = result.mutation
+      return nil if result.subject.nil? || m.nil?
+
+      file = result.subject.file
+      source = source_for(file)
+      start_line, original_block, mutated_block, = diff_for(m, source)
+      # A block at the end of the file has no newline after it; elsewhere the
+      # file's next byte is one. Each side's own text decides its marker.
+      at_eof = source.byteindex("\n", m.end_offset).nil?
+      old_lines = side_lines(original_block, at_eof)
+      new_lines = side_lines(mutated_block, at_eof)
+      shown_file = utf8_text(file)
+      "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
+        "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
+        "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
     end
 
     # One side of the diff as the file holds it: the {#diff_for} block plus the
@@ -842,8 +875,9 @@ module Mutineer
     end
 
     # The fields that name one mutant, for the lists that point at mutants:
-    # `killed`, `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`,
-    # `ignored` and `baseline.new_survivors`.
+    # `no_coverage`, `uncapturable`, `ignored` and `baseline.new_survivors`,
+    # and the base of `killed`, `unplaceable` and `ran_at_load`
+    # ({#mutant_with_diff_json}).
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.

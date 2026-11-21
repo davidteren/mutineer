@@ -70,7 +70,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
-    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.11 = diff on killed, unplaceable, ran_at_load; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -105,7 +105,7 @@ class JsonReporterTest < Minitest::Test
 
   # #361: killed[] lists every killed mutant so two runs can be joined by id
   # without subtracting every unscored category from the full id set.
-  def test_killed_array_matches_summary_count_and_lean_shape
+  def test_killed_array_matches_summary_count_and_shape
     a = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "killedlit0001")
     b = killed_mutant(token: ">=", replacement: ">", operator: :comparison, id: "killedcmp0001")
     doc = render([a, b, survivor])
@@ -115,7 +115,56 @@ class JsonReporterTest < Minitest::Test
     entry = doc["killed"].find { |h| h["id"] == "killedlit0001" }
     assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
     assert_equal %w[literal_mutation 100 killedlit0001], entry.values_at("operator", "token", "id")
-    refute entry.key?("diff"), "killed[] is lean like no_coverage[], not survivors[]"
+    assert_equal %w[subject file line operator token id diff], entry.keys
+  end
+
+  # #498: killed[], unplaceable[] and ran_at_load[] carry the diff that the
+  # same mutant gets as a survivor. Checked for each mutation of each list.
+  def test_diff_lists_match_the_survivor_diff_of_the_same_mutant
+    mutations = [mutation_at("100", "0", :literal_mutation), mutation_at(">=", ">", :comparison),
+                 mutation_at("    if price >= 100\n    end\n", "", :statement_removal)]
+    { "killed" => Mutineer::Result.killed, "unplaceable" => Mutineer::Result.unplaceable,
+      "ran_at_load" => Mutineer::Result.ran_at_load }.each do |list, base|
+      mutations.each_with_index do |m, i|
+        id = "id#{list}#{i}"
+        listed = render([base.with(subject: subject, mutation: m, id: id)])[list].first
+        survived = render([Mutineer::Result.survived.with(subject: subject, mutation: m, id: id)])["survivors"].first
+        assert_equal survived["diff"], listed["diff"], "#{list} #{m.operator}"
+        assert listed["diff"].start_with?("--- a/#{FILE}\n"), "#{list} #{m.operator}"
+      end
+    end
+  end
+
+  # A stub result with no subject keeps null fields, and its diff is null too.
+  def test_diff_is_null_for_a_result_with_no_subject
+    entry = render([Mutineer::Result.killed.with(id: "stub00000001")])["killed"].first
+    assert entry.key?("diff")
+    assert_nil entry["diff"]
+    assert_nil entry["file"]
+  end
+
+  # #498 names three lists. The other lean lists keep their shape.
+  def test_other_lean_lists_have_no_diff
+    rows = [Mutineer::Result.no_coverage, Mutineer::Result.uncapturable, Mutineer::Result.ignored,
+            Mutineer::Result.error("boom")].each_with_index.map do |r, i|
+      r.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation), id: "lean0000000#{i}")
+    end
+    doc = render(rows)
+    %w[no_coverage uncapturable ignored no_verdict].each do |list|
+      refute_empty doc[list], list
+      doc[list].each { |entry| refute entry.key?("diff"), list }
+    end
+  end
+
+  # copies stays the last key on a row that gains diff.
+  def test_copies_follow_the_diff_on_a_killed_row
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant(id: "kept00000003")]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000003" => ["drop00000003"] })
+    entry = JSON.parse(out.string)["killed"].first
+    assert_equal %w[diff copies], entry.keys.last(2)
+    assert_equal ["drop00000003"], entry["copies"]
   end
 
   def test_killed_array_sorted_by_file_line_operator_id
