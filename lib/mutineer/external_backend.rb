@@ -63,8 +63,9 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
-    # The seed line Minitest prints before every run. Captures the seed.
-    MINITEST_SEED = /^Run options:.*--seed (\d+)/
+    # The seed line Minitest prints before every run ("Run options:"), or that
+    # minitest-reporters prints ("Started with run options"). Captures the seed.
+    MINITEST_SEED = /^(?:Run options:|Started with run options).*--seed (\d+)/
     # The seed line RSpec prints when it shuffles the tests. Captures the seed.
     RSPEC_SEED = /^Randomized with seed (\d+)/
     # A Minitest seed given on the command or in TESTOPTS (`SEED=N`, `--seed N`
@@ -74,6 +75,9 @@ module Mutineer
     # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
     # `--order rand:N`). RSpec ignores SEED.
     RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
+    # RSpec option files in the working directory. RSpec reads them as well,
+    # so a seed there is a fixed seed ({RSPEC_SEED_GIVEN} matches their lines).
+    RSPEC_OPTION_FILES = %w[.rspec .rspec-local].freeze
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -301,13 +305,14 @@ module Mutineer
 
     # The runner and seed of a random test order the output shows, or nil.
     # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
-    # or the command sets one; for RSpec, SPEC_OPTS or the command does. RSpec
-    # `--order defined` prints no seed line. Each runner is checked on its
-    # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
-    # that the same command runs. Ceiling: a seed set in a wrapper script or
-    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
-    # prints; a seed-like argument meant for a wrapper hides it (#338, limits
-    # tracked in #368).
+    # or the command sets one; for RSpec, SPEC_OPTS, `.rspec`, `.rspec-local`
+    # or the command does. RSpec `--order defined` prints no seed line. Each
+    # runner is checked on its own, so a seeded Minitest suite does not hide
+    # an unseeded RSpec suite that the same command runs. Mutineer only warns:
+    # it cannot know the seed flag of an arbitrary command, so it sets no seed.
+    # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
+    # `test_order` is not seen, so the warning still prints; a seed-like
+    # argument meant for a wrapper hides it (#338, #368).
     #
     # @api private
     # @param command [String] the --test-command template.
@@ -321,7 +326,15 @@ module Mutineer
       end
 
       rspec = text[RSPEC_SEED, 1]
-      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"], *rspec_option_files].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+    end
+
+    # The text of the RSpec option files that exist in the working directory.
+    #
+    # @api private
+    # @return [Array<String>]
+    def self.rspec_option_files
+      RSPEC_OPTION_FILES.select { |f| File.file?(f) }.map { |f| File.read(f, encoding: "BINARY") }
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)

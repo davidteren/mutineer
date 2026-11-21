@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
+  It reads the minitest-reporters seed line, so a random order there now gets the warning.
+  It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
+  Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added

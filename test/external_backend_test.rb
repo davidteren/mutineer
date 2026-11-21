@@ -299,6 +299,38 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #368: minitest-reporters prints its own seed line; a plain "seed" word in other output is no seed line.
+  def test_random_order_reads_the_minitest_reporters_seed_line
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      reporters = "Started with run options --seed 4242\n"
+      assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", reporters)
+      assert_nil Backend.random_order("ruby %{files} --seed 7", reporters)
+      assert_nil Backend.random_order("ruby %{files}", "the seed 4242 is fixed\n")
+    end
+  end
+
+  # #368: a seed in .rspec or .rspec-local is a fixed seed, in any spelling RSpec takes.
+  def test_random_order_sees_a_seed_in_the_rspec_option_files
+    rspec = "Randomized with seed 4242\n"
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
+          File.write(".rspec", "--require spec_helper\n--color\n")
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
+          ["--seed 7", "--order rand:7", "--order random:7"].each do |line|
+            File.write(".rspec", "#{line}\n")
+            assert_nil Backend.random_order("rspec %{files}", rspec), line
+            File.delete(".rspec")
+            File.write(".rspec-local", "#{line}\n")
+            assert_nil Backend.random_order("rspec %{files}", rspec), "local #{line}"
+            File.delete(".rspec-local")
+          end
+        end
+      end
+    end
+  end
+
   # A command that runs a seeded Minitest suite and then an unseeded RSpec
   # suite still reports the RSpec order.
   def test_random_order_checks_each_runner_in_a_combined_run
