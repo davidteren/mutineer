@@ -1,0 +1,21 @@
+.expectation-fit/decisions/README.md
+  s_4a7781ab5727b8::t_4fff12cbe1170b 35-36
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_4a7781ab5727b8::t_bfb9a8cebf93df 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b3d49cbfb37d85878376aaf09afe46b1a6c66d18",
+  "prompts": {},
+  "sessions": {
+    "s_4a7781ab5727b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38f3ef70-f052-4138-b80f-524dcc81a47b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
