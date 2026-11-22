@@ -289,6 +289,13 @@ module Mutineer
                                    "(the suite or the mutant crashed before tests ran; --verbose shows the output)", output)
         end
 
+        # "# Running:" starts a line, then only passing summary text away from
+        # a line start: a real summary a wrapper moved, or a -v test name
+        # before a stop. The output cannot tell, so no verdict, as in 1.9.0.
+        if line && !failure_reported?(text) && summary_after_running?(text)
+          return moved_summary_error(code, output, "passing")
+        end
+
         Result.killed
       end
     end
@@ -421,6 +428,19 @@ module Mutineer
 
       summary_at = summary_patterns(line).filter_map { |pattern| text.rindex(pattern) }.max
       summary_at.nil? || summary_at < running_at
+    end
+
+    # True when a Minitest or RSpec summary, at any position, follows the
+    # last `# Running:` line that starts a line (#515).
+    #
+    # @api private
+    # @param text [String] output from {summary_text}.
+    # @return [Boolean]
+    def self.summary_after_running?(text)
+      running_at = text.rindex(MINITEST_RUNNING_AT_LINE_START)
+      return false unless running_at
+
+      summary_patterns(false).any? { |pattern| (at = text.rindex(pattern)) && at > running_at }
     end
 
     # True when a recognized summary line is present and none shows a failing

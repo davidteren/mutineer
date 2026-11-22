@@ -157,8 +157,9 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
-  # #515, the rule on every table row: under :line, a summary line that does
-  # not start a line counts as no summary; under true it counts as before.
+  # #515, the rule on every table row: under :line, moving a summary off the
+  # line start gives the verdict of the output without it, or no verdict
+  # (error), never another kill or survivor; under true it changes nothing.
   def test_line_mode_reads_a_moved_summary_line_as_no_summary
     summary = ->(line) { Backend.summary_line?(Backend.summary_text(line)) }
     rows = EXIT_ONE_KILLED.map { |o| [o, 1] } + EXIT_ONE_ERROR.map { |o| [o, 1] } + GATE_OUTPUTS.keys.map { |o| [o, 2] }
@@ -167,8 +168,8 @@ class ExternalBackendTest < Minitest::Test
       without = lines.reject(&summary).join
       ["  ", "app | "].each do |prefix|
         moved = lines.map { |l| summary.call(l) ? "#{prefix}#{l}" : l }.join
-        assert_equal verdict(without, code, :line).status, verdict(moved, code, :line).status,
-                     ":line #{prefix.inspect} #{output.inspect}"
+        assert_includes [verdict(without, code, :line).status, :error], verdict(moved, code, :line).status,
+                        ":line #{prefix.inspect} #{output.inspect}"
         assert_equal verdict(output, code, true).status, verdict(moved, code, true).status,
                      "true #{prefix.inspect} #{output.inspect}"
       end
@@ -242,12 +243,18 @@ class ExternalBackendTest < Minitest::Test
     assert_predicate run_exit_one(output, check_summary: true), :killed?
   end
 
-  # A run that stopped during a Minitest -v test: the name line holds a
-  # passing summary, and no real summary follows "# Running:".
-  def test_line_mode_sees_a_run_that_stopped_during_a_verbose_test
-    output = "# Running:\n\nFakeTest#test_1 runs, 1 assertions, 0 failures, 0 errors = "
-    assert_predicate run_exit_one(output, check_summary: :line), :killed?
-    assert_predicate run_exit_one(output, check_summary: true), :error?
+  # After "# Running:" only passing summary text away from a line start
+  # follows: a -v test name before a stop, or a real summary a wrapper
+  # moved. The output cannot tell them apart, so neither scores killed.
+  def test_line_mode_does_not_kill_on_passing_summary_text_away_from_a_line_start
+    ["# Running:\n\nFakeTest#test_1 runs, 1 assertions, 0 failures, 0 errors = ",
+     "# Running:\n\n...app | 3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n"].each do |output|
+      result = run_exit_one(output, check_summary: :line)
+      assert_predicate result, :error?, output
+      assert_includes result.details, "a passing summary is in its output, but not at the start of a line"
+      assert_predicate run_exit_one(output, check_summary: true), :error?, output
+    end
+    assert_predicate run_exit_one("# Running:\n\n.", check_summary: :line), :killed?, "a stop with no summary text"
   end
 
   # SimpleCov's minimum_coverage gate replaces the exit code (exit 2). Under
