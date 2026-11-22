@@ -46,8 +46,9 @@ class MergeGateRulesetTest < Minitest::Test
     axes = matrix.except("include", "exclude")
     rows = axes.reduce([{}]) { |acc, (key, values)| acc.product(values).map { |row, v| row.merge(key => v) } }
     rows.reject! { |row| Array(matrix["exclude"]).any? { |ex| ex.all? { |k, v| row[k] == v } } }
+    original = rows.dup # an include never fits a row that another include added
     Array(matrix["include"]).each do |inc|
-      fits = rows.select { |row| inc.all? { |k, v| !axes.key?(k) || row[k] == v } }
+      fits = original.select { |row| inc.all? { |k, v| !axes.key?(k) || row[k] == v } }
       fits.empty? ? rows << inc : fits.each { |row| row.merge!(inc) }
     end
     rows
@@ -65,8 +66,8 @@ class MergeGateRulesetTest < Minitest::Test
 
   # GitHub's matrix rules: exclude drops rows, an include extends or adds a row.
   def test_matrix_rows_follow_github_include_and_exclude
-    matrix = { "os" => %w[a b], "include" => [{ "os" => "a", "extra" => 1 }, { "os" => "c" }], "exclude" => [{ "os" => "b" }] }
-    assert_equal [{ "os" => "a", "extra" => 1 }, { "os" => "c" }], matrix_rows(matrix)
+    matrix = { "os" => %w[a b], "include" => [{ "os" => "a", "extra" => 1 }, { "os" => "c" }, { "os" => "c", "x" => 2 }], "exclude" => [{ "os" => "b" }] }
+    assert_equal [{ "os" => "a", "extra" => 1 }, { "os" => "c" }, { "os" => "c", "x" => 2 }], matrix_rows(matrix)
   end
 
   # The gate needs an up-to-date head and resolved threads, on main, for everyone.
