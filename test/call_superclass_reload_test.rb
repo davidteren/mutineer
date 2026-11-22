@@ -258,14 +258,18 @@ class CallSuperclassReloadTest < Minitest::Test
   end
 
   # #503: AE8. These come back as the same String: no class statement names
-  # the constant, the value is a constant, or the write is `||=` (#529).
+  # the constant, the value is a constant or a variable read, the write is
+  # `||=` (#529) or a multiple assignment (#527), or the names differ in path.
   def test_the_rewrite_leaves_other_constant_writes_alone
     ["Other = Struct.new(:v)\nclass Row < BaseRow\nend\n",
      "BaseRow = Parent\nclass Row < BaseRow\nend\n",
      "BaseRow = Parent::Kid\nclass Row < BaseRow\nend\n",
      "BaseRow ||= Struct.new(:v)\nclass Row < BaseRow\nend\n",
      "base = Struct.new(:v)\nBaseRow = base\nclass Row < BaseRow\nend\n",
-     "A, BaseRow = 1, Struct.new(:v)\nclass Row < BaseRow\nend\n"].each do |code|
+     "A, BaseRow = 1, Struct.new(:v)\nclass Row < BaseRow\nend\n",
+     # A bare write does not match a path superclass, nor a path spelled otherwise.
+     "Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n",
+     "Other::Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n"].each do |code|
       assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), code
     end
   end

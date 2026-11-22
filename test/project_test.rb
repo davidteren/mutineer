@@ -1605,16 +1605,16 @@ class ProjectTest < Minitest::Test
       assert by_name[:in_block?].in_kept_constant
       assert by_name[:in_block?].unplaceable?("reload")
       refute by_name[:in_block?].unplaceable?("redefine")
-      assert by_name[:path_block].in_kept_constant, "a path write matches by its last name"
+      assert by_name[:path_block].in_kept_constant, "a path write matches a path superclass spelled the same"
       refute by_name[:three?].in_kept_constant
       refute by_name[:three?].unplaceable?("reload")
       refute by_name[:other].in_kept_constant, "no class statement names Other"
     end
   end
 
-  def test_superclass_constant_names_reads_the_last_name_of_each_constant_superclass
+  def test_superclass_constant_names_reads_each_constant_superclass
     program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
                                             "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n").value
-    assert_equal Set[:B, :E, :I], Mutineer::Project.superclass_constant_names(program)
+    assert_equal Set[:B, "D::E", :I], Mutineer::Project.superclass_constant_names(program)
   end
 end

@@ -28,8 +28,8 @@ module Mutineer
   # superclass expression, such as `class X < Struct.new(:a) do ... end`. A
   # reload keeps the live superclass, so that block does not run again (#492).
   # `in_kept_constant` is true for a def inside the value of a constant
-  # assignment whose name is the last name of a class statement's superclass in
-  # the same file, such as `BaseRow = Struct.new(:v) do ... end` with
+  # assignment that a class statement in the same file inherits from
+  # ({Project.kept_constant_write?}), such as `BaseRow = Struct.new(:v) do ... end` with
   # `class Row < BaseRow`. A reload keeps that constant's class, so the value
   # does not run again (#503).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,

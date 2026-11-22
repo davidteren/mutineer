@@ -119,7 +119,7 @@ All notable changes to this project are documented here. The format is based on
 - **Reload scores a class whose superclass is a constant that the same file assigns, such as `BaseRow = Struct.new(:v)` then `class Row < BaseRow` (#503).**
   `--strategy reload` and `--daemon` load the mutant file over its classes. The assignment built a new `BaseRow`, so Ruby raised `TypeError: superclass mismatch` for `Row`, and every mutant of the file scored `error`.
   Now the reload keeps the class that `BaseRow` already has, so `Row` reopens with the same parent, and an instance or a subclass in another file still sees the mutant.
-  The match uses the constant's last name: `class Row < Billing::BaseRow` matches `BaseRow = ...` in any scope of the file.
+  A bare superclass (`< BaseRow`) matches an assignment of that name in any scope of the file. A path superclass (`< Billing::BaseRow`) matches only an assignment spelled the same, so `Base = ...` beside `class User < ActiveRecord::Base` is not kept. `BaseRow = ...` inside `module Billing` with `class Row < Billing::BaseRow` still errors (#527).
   A method inside the kept value, such as one in the block of `BaseRow = Struct.new(:v) do ... end`, is now `unplaceable` under reload, because that block does not run again. `--strategy redefine` runs it.
   After the upgrade, `summary.errored` can fall for such a file, and `killed`, `survived` and `unplaceable` can rise, so a score can change.
   The shape is in 0 of 392 Ruby files of the Fizzy sample app, 0 of 90 files of Mutineer's `lib/`, and 0 of 1,218 files of seven Rails 7.2 gems.

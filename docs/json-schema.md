@@ -144,11 +144,14 @@ superclass with no method in its block reloads as usual. So does a plain local w
 `class Q < (base = Struct.new(:a))`: the local is set to the live superclass (#512).
 
 Reload also cannot place a method inside the value of a constant assignment when a class statement in the
-same file has a superclass whose last name is that constant's name, such as the block of
-`BaseRow = Struct.new(:v) do ... end` with `class Row < BaseRow` (#503). Reload keeps the class that
-`BaseRow` already has, so `Row` reopens with the same parent, and the value and its block do not run again.
-The match uses the last name only: `class Row < Billing::BaseRow` matches `BaseRow = ...` in any scope of
-the file. `--strategy redefine` runs these methods. Three shapes are open. The value of a `||=` assignment
+same file inherits from that constant, such as the block of `BaseRow = Struct.new(:v) do ... end` with
+`class Row < BaseRow` (#503). Reload keeps the class that `BaseRow` already has, so `Row` reopens with the
+same parent, and the value and its block do not run again. A bare superclass (`< BaseRow`) matches an
+assignment of that name in any scope of the file (`BaseRow = ...` or `Billing::BaseRow = ...`). A path
+superclass (`< Billing::BaseRow`) matches only an assignment spelled the same (`Billing::BaseRow = ...`), so
+`Base = ...` beside `class User < ActiveRecord::Base` is not kept. A file that assigns `BaseRow = ...` inside
+`module Billing` and inherits from `Billing::BaseRow` still errors on reload (#527). `--strategy redefine`
+runs these methods. Three shapes are open. The value of a `||=` assignment
 does not run again on reload, and its methods are not marked, so a mutant there can survive falsely (#529).
 A constant with no class statement for it in the same file is built again, so a subclass in another file
 keeps the old class (#528). A kept value that reads another class the file builds again, such as

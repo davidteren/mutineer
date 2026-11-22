@@ -26,15 +26,17 @@ module Mutineer
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
 
-    # The last name of each class statement's superclass that is a constant,
-    # inside any parentheses, such as `:BaseRow` for `class Row < BaseRow`
-    # and for `class Row < Billing::BaseRow`. Reload keeps the value of a constant
-    # assignment with one of these names, and discovery marks a def inside that
-    # value (#503). Both read the names here, so discovery marks at least every
-    # value the reload text keeps ({JobPlan.keep_live_superclasses}).
+    # Each class statement's superclass that is a constant, inside any
+    # parentheses: the name for a bare constant (`:BaseRow` for
+    # `class Row < BaseRow`), and the text as written for a path
+    # (`"Billing::BaseRow"`). Reload keeps the value of a constant assignment
+    # that {kept_constant_write?} matches to one of these, and discovery marks
+    # a def inside that value (#503). Both read the names here, so discovery
+    # marks at least every value the reload text keeps
+    # ({JobPlan.keep_live_superclasses}).
     #
     # @param program [Prism::ProgramNode] the parsed file.
-    # @return [Set<Symbol>]
+    # @return [Set<Symbol, String>]
     def self.superclass_constant_names(program)
       names = Set.new
       nodes = [program]
@@ -45,7 +47,11 @@ module Mutineer
         superclass = node.superclass
         # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
         superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
-        names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) || superclass.is_a?(Prism::ConstantPathNode)
+        if superclass.is_a?(Prism::ConstantReadNode)
+          names << superclass.name
+        elsif superclass.is_a?(Prism::ConstantPathNode)
+          names << superclass.slice
+        end
       end
       names
     end
@@ -61,10 +67,7 @@ module Mutineer
     end
 
     # The constant name a plain `=` assigns (`X = ...`, `A::X = ...`), or
-    # nil for any other node. Reload keeps such a value when the name is in
-    # {superclass_constant_names} (#503). {JobPlan.kept_constant_splice} and
-    # discovery both ask here, so they agree on which writes count. `||=` is
-    # #529.
+    # nil for any other node. `||=` is #529.
     #
     # @param node [Prism::Node]
     # @return [Symbol, nil]
@@ -74,6 +77,26 @@ module Mutineer
       elsif node.is_a?(Prism::ConstantPathWriteNode)
         node.target.name
       end
+    end
+
+    # Whether reload keeps the value of this constant write (#503): a plain
+    # `=` whose name a bare superclass of the file reads (`BaseRow = ...` or
+    # `A::BaseRow = ...` with `class Row < BaseRow`), or a path write spelled
+    # as a path superclass is (`Billing::Base = ...` with
+    # `class Row < Billing::Base`). A bare write does not match a path
+    # superclass, so `Base = ...` beside `class User < ActiveRecord::Base` is
+    # not kept; such a file errors on reload when it does mean that constant
+    # (#527). {JobPlan.kept_constant_splice} and discovery both ask here, so
+    # they agree on which writes count.
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
+    # @return [Boolean]
+    def self.kept_constant_write?(node, names)
+      name = kept_constant_write_name(node)
+      return false unless name
+
+      names.include?(name) || (node.is_a?(Prism::ConstantPathWriteNode) && names.include?(node.target.slice))
     end
 
     # Keeps hook defs unplaceable when the raw AST can define another method
@@ -253,9 +276,9 @@ module Mutineer
       # @param file [String] source file path being visited.
       # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
       #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
-      # @param kept_names [Set<Symbol>] the file's superclass constant names (see
+      # @param kept_names [Set<Symbol, String>] the file's superclass constants (see
       #   {Project.superclass_constant_names}); a def in the value of a constant
-      #   with one of these names is {Subject#in_kept_constant}.
+      #   write that {Project.kept_constant_write?} matches is {Subject#in_kept_constant}.
       def initialize(file, plain_calls = Set.new, kept_names = Set.new)
         @file = file
         @plain_calls = plain_calls
@@ -427,8 +450,7 @@ module Mutineer
       # @return [void]
       def visit_constant_write_node(node)
         saved_kept = @in_kept_constant
-        name = Project.kept_constant_write_name(node)
-        @in_kept_constant = true if name && @kept_names.include?(name)
+        @in_kept_constant = true if Project.kept_constant_write?(node, @kept_names)
         call = assigned_value(node.value)
         return super unless builds_class?(call)
 

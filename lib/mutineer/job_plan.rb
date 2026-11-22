@@ -467,20 +467,20 @@ module Mutineer
       end
     end
 
-    # The splice that keeps a constant's value on reload (#503): a plain `=` of
-    # a constant whose last name is a superclass name of the file, when
-    # {kept_target} of its value is not nil. `BaseRow = Struct.new(:v)` with
+    # The splice that keeps a constant's value on reload (#503): a constant
+    # write that {Project.kept_constant_write?} matches to a superclass of the
+    # file, when {kept_target} of its value is not nil. `BaseRow = Struct.new(:v)` with
     # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
     # same parent. A `||=` write keeps its text (#529).
     #
     # @param node [Prism::Node]
-    # @param names [Set<Symbol>] {Project.superclass_constant_names} of the file.
+    # @param names [Set<Symbol, String>] {Project.superclass_constant_names} of the file.
     # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
     #   wrap, the guard, the scope text and the name; nil for any other node.
     def self.kept_constant_splice(node, names)
-      name = Project.kept_constant_write_name(node)
-      return nil unless name && names.include?(name) && (target = kept_target(node.value))
+      return nil unless Project.kept_constant_write?(node, names) && (target = kept_target(node.value))
 
+      name = Project.kept_constant_write_name(node)
       scope = node.is_a?(Prism::ConstantPathWriteNode) ? superclass_scope(node.target) : "::Module.nesting.first"
       [target, "kept_constant", scope, name]
     end
