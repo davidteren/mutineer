@@ -16,8 +16,8 @@ module Mutineer
     # differ only in the value they return. No test can tell such a mutant
     # from the original. `all?` and `any?` stop on different elements, so a
     # block can show the change even when the boolean is discarded. A
-    # truthiness-only read of `each`, `map`, or an argument-free `select` or
-    # `reject` is declined too (#468, #501).
+    # truthiness-only read of `each`, `map`, or a `select` or `reject` with a
+    # block and no arguments is declined too (#468, #501).
     # `first` has no `last` on a Hash or a Set, so that decline can hide a
     # mutant that raises `NoMethodError` (#501).
     # See docs/equivalent-skips.md.
@@ -105,8 +105,8 @@ module Mutineer
 
       # Visits call nodes and emits collection-method mutations.
       # An {DISCARDABLE_NAMES} call whose value is discarded is declined,
-      # and so is an `each`, `map`, or argument-free `select` or `reject` whose
-      # value is read only for truthiness.
+      # and so is an `each`, `map`, or a `select` or `reject` with a block and no
+      # arguments whose value is read only for truthiness.
       #
       # @param node [Prism::CallNode] call node to inspect.
       # @return [void]
@@ -144,8 +144,8 @@ module Mutineer
 
       # Returns whether this call's swap changes only a value nobody reads.
       # That is an {DISCARDABLE_NAMES} call whose value is discarded, or
-      # an `each`, `map`, or argument-free `select` or `reject` whose value is
-      # read only for truthiness.
+      # an `each`, `map`, or a `select` or `reject` with a block and no
+      # arguments whose value is read only for truthiness.
       # A `min` or `max` with a block is kept: the block sees different pairs.
       #
       # Interpolation is not discarded: a string or symbol calls `to_s`, a
@@ -171,7 +171,8 @@ module Mutineer
 
         if TRUTHY_RESULT_NAMES.include?(node.name)
           !result_used?(node) || truthiness_only?(node)
-        elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && node.block && truthiness_only?(node)
+        elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && node.block.is_a?(Prism::BlockNode) &&
+                truthiness_only?(node)
           true
         else
           discarded_statement?(node)

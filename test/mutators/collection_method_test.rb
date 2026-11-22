@@ -1480,6 +1480,14 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["reject with a block argument in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if xs.reject(&blk)
+            work
+          end
+          :done
+        end
+      RUBY
       ["select on the left of && with the result kept", <<~RUBY, [], 1],
         def m
           ok = xs.select { |u| u } && b
