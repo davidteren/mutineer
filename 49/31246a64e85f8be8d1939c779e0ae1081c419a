@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_ec7a19960d3c97::t_cfee48f6e414d0 29
+docs/json-schema.md
+  s_ec7a19960d3c97::t_47f9de5f5c7953 105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4931246a64e85f8be8d1939c779e0ae1081c419a",
+  "prompts": {},
+  "sessions": {
+    "s_ec7a19960d3c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "acac6b16-261d-4288-b65c-2d48c097f829",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
