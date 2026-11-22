@@ -318,7 +318,8 @@ module Mutineer
     # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
     # `test_order`, or an `--options FILE` that replaces `.rspec` is not seen,
     # so the warning still prints; a seed-like argument meant for a wrapper
-    # hides it (#338, #368).
+    # hides it, and so does a seed in `.rspec` that a later `--order rand` in
+    # the command or SPEC_OPTS overrides (#338, #368).
     #
     # @api private
     # @param command [String] the --test-command template.
