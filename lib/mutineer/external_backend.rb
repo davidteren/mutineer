@@ -498,7 +498,7 @@ module Mutineer
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, (:line, Boolean), Array(Symbol, String), nil, Integer)]
+    # @return [Array(Float, (:line, Boolean), (Array(Symbol, String), nil), Integer)]
     #   `[elapsed_seconds, summary_mode, random_order, summary_count]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
