@@ -258,7 +258,10 @@ module Mutineer
           return Result.killed if failure_reported?(text, line: line)
           # A failing test whose summary is off the line start is no proof of
           # a survivor: no verdict, with the same reason as on exit 1 (#515).
-          return moved_summary_error(code, output) if line && failure_reported?(text)
+          return moved_summary_error(code, output, "failing") if line && failure_reported?(text)
+          # A passing summary that is only off the line start: no survivor
+          # proof either, and the reason says why.
+          return moved_summary_error(code, output, "passing") if line && !summary_line?(text, line: true) && tests_passed?(text)
 
           if tests_passed?(text, line: line)
             printed = summary_count(text, line: line)
@@ -280,7 +283,7 @@ module Mutineer
           # A kill whose failing summary a wrapper or interleaved parallel
           # output moved off the line start lands here (#549). Estimate: below
           # 1 in 100 --test-command setups, unmeasured. The reason names it.
-          return moved_summary_error(code, output) if line && failure_reported?(text)
+          return moved_summary_error(code, output, "failing") if line && failure_reported?(text)
 
           return error_with_output("test-command exited 1 but its output shows no failing test " \
                                    "(the suite or the mutant crashed before tests ran; --verbose shows the output)", output)
@@ -305,17 +308,18 @@ module Mutineer
       Result.error(last ? "#{message}; last output line: #{ChildCause.clip(last)}" : message)
     end
 
-    # The errored Result for a run in `:line` mode whose failing summary is
-    # in its output, but only away from the start of a line (#515).
+    # The errored Result for a run in `:line` mode whose failing or passing
+    # summary is in its output, but only away from the start of a line (#515).
     #
     # @api private
     # @param code [Integer] the command's exit code.
     # @param output [String] captured child stdout+stderr.
+    # @param kind [String] "failing" or "passing".
     # @return [Mutineer::Result]
-    def self.moved_summary_error(code, output)
-      error_with_output("test-command exited #{code} and a failing summary is in its output, but not at the " \
+    def self.moved_summary_error(code, output, kind)
+      error_with_output("test-command exited #{code} and a #{kind} summary is in its output, but not at the " \
                         "start of a line, where the clean run printed its summary (a wrapper or a " \
-                        "parallel runner moved it, or a test printed failing summary-like text; " \
+                        "parallel runner moved it, or a test printed #{kind} summary-like text; " \
                         "--verbose shows the output)", output)
     end
 

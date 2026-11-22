@@ -213,6 +213,18 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #515: after a SimpleCov gate, a passing summary that is only off the
+  # line start is no survivor proof, and the reason names the move.
+  def test_line_mode_names_a_moved_passing_summary_after_the_gate
+    with_script(%(STDOUT.write #{"app | 3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{GATE}".dump}\nexit 2\n)) do |path|
+      cmd = "#{RUBY} #{path} %{files}"
+      result = Backend.run(cmd, ["x"], timeout: 30, check_summary: :line, clean_summaries: 1)
+      assert_predicate result, :error?
+      assert_includes result.details, "exited 2 and a passing summary is in its output, but not at the start of a line"
+      assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true, clean_summaries: 1), :survived?
+    end
+  end
+
   # A progress bar that redraws its line ends it with "\r", and Windows ends
   # each line with "\r\n". Both are a line start.
   def test_line_mode_counts_a_summary_after_a_carriage_return
