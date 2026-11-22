@@ -16,6 +16,15 @@ All notable changes to this project are documented here. The format is based on
   On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after, and none of the six other names gained a decline).
   A run with `collection_method` can report fewer mutants. Mutant ids number only the emitted swaps, so the id of a later swap of the same name in the same method can change. A baseline or `ignore:` list can need a refresh.
   The limits that remain are in #501. See `docs/equivalent-skips.md`, "Collection method".
+- **126 private methods of `Mutineer::CoverageMap` moved into eight modules
+  (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
+  `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
+  `Recording`, `CleanCheck` and `ChildScripts`. `CoverageMap` includes each
+  module. Each method keeps its name, body and private visibility. The public
+  methods, the constants, the constructor, the path helpers and three script
+  helpers that read `__dir__` stay in `lib/mutineer/coverage_map.rb`. The
+  public API, the coverage cache format, CLI output and the JSON report do not
+  change.
 
 ## [1.9.0] - 2026-11-16
 
