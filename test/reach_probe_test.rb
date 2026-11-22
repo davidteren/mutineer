@@ -249,7 +249,7 @@ class ReachProbeTest < Minitest::Test
     %w[next break return].each do |jump|
       body = jump == "return" ? "return if  x.ok?" : "xs.each { |x| #{jump} if  x.ok? }"
       text = "class C\n  def self.f(xs, x = nil)\n    #{body}\n  end\nend\n"
-      point = text.index("if  x") + 3
+      point = text.byteindex("if  x") + 3
       probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
       assert_includes probed, "[(#{jump} if  x.ok?), ", jump
       refute Mutineer::ReachProbe.conclusive?(probed, probe_key), jump
@@ -258,7 +258,7 @@ class ReachProbeTest < Minitest::Test
     # A literal raise or throw leaves the expression in the same way.
     %w[raise\ ArgumentError throw\ :stop fail Kernel.raise].each do |call|
       text = "class C\n  def self.f(x)\n    #{call} if  x.ok?\n  end\nend\n"
-      point = text.index("if  x") + 3
+      point = text.byteindex("if  x") + 3
       probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
       assert_includes probed, "[(#{call} if  x.ok?), ", call
       refute Mutineer::ReachProbe.conclusive?(probed, probe_key), call
@@ -277,7 +277,7 @@ class ReachProbeTest < Minitest::Test
     # The body of `begin ... end until c` stays where it is, also when the
     # mutant emptied it and the wrap starts at the begin keyword.
     loop_text = "class C\n  def self.f(a, n = 0)\n    begin\n      n += 1\n    end until a\n    n\n  end\nend\n"
-    point = loop_text.index("begin")
+    point = loop_text.byteindex("begin")
     assert_includes Mutineer::ReachProbe.wrap(loop_text, point, point + 5, sentinel_path, probe_key).to_s,
                     "    end until a), "
 
@@ -299,6 +299,27 @@ class ReachProbeTest < Minitest::Test
       puts C.f(1)
     RUBY
     assert_equal "2", result
+
+    # A failed write sets no flag, so a later return on the thread writes.
+    result = run_source(wrapped, <<~'RUBY', json: true)
+      require "json"
+      $fail_once = true
+      IO.singleton_class.prepend(Module.new do
+        def sysopen(*)
+          if $fail_once
+            $fail_once = false
+            raise IOError, "mocked"
+          end
+          super
+        end
+      end)
+      C.f(1)
+      first = ::File.size(ARGV[1])
+      C.f(1)
+      puts JSON.generate(first: first, second: ::File.size(ARGV[1]))
+    RUBY
+    assert_equal 0, result.fetch("first")
+    assert_operator result.fetch("second"), :>, 0
   end
 
   # #493: an enumerator runs its block on a fiber of its own. A run at load
@@ -336,7 +357,7 @@ class ReachProbeTest < Minitest::Test
 
     # An empty body: the deletion point is in the literal itself.
     empty = "class C\n  def self.f(h)\n    h[:a] = ->(v) {}\n  end\nend\n"
-    point = empty.index("{}") + 1
+    point = empty.byteindex("{}") + 1
     assert_nil Mutineer::ReachProbe.wrap(empty, point, point, sentinel_path, probe_key)
 
     # A wrap that stays in the body is still made.

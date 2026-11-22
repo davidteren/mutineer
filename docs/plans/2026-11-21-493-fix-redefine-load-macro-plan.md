@@ -172,7 +172,7 @@ JobPlan.stored_block_verdict(result, candidate:, probed:, reached:)
 
 ### Assumptions
 
-- A stored block that the tests run is the copy the load made. The probe proves this for each mutant, so a wrong guess costs nothing: the mutant stays `survived`.
+- A stored block that the tests run is the copy the load made. The probe cannot prove this: it shows only that the mutated expression returned in some copy. When a test runs a new copy and checks the old one, the mutant stays `survived` and can be a false survivor (#286, #389).
 - The candidate set is small. The one figure so far is from the fixture: 5 of 17 mutants moved, in a file written to show the case. U5 gives the estimate for real code, on three runs.
 - The probe does not change a verdict by its presence. It has run on `:maybe` mutants since #345.
 

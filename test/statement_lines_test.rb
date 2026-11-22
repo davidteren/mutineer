@@ -391,6 +391,10 @@ class StatementLinesTest < Minitest::Test
     # place inside the block.
     assert_equal [4, 5, 6], block_lines(macro, ":invalid"), "the body of a modifier inside the block"
     assert_empty Mutineer::StatementLines.enclosing_block_lines(nil, macro, 0)
+
+    # The Rails form of #493: the lambda is an argument of a macro call.
+    rails = "def self.language_field\n  normalizes :language, with: ->(value) { value.strip }\nend\n"
+    assert_equal [2], block_lines(rails, "value.strip")
   end
 
   def block_lines(source, snippet)

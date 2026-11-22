@@ -421,8 +421,10 @@ module Mutineer
       # `Exception`): a test must not see the probe fail and score a kill.
       write = "::IO.open(::IO.sysopen(#{quoted}, ::File::WRONLY)) { |io| io.syswrite(\"1\") }"
       flag = "::Thread.current.thread_variable_get(:#{key})"
-      mark = "(#{flag} || (begin; #{write}; rescue ::Exception; end; " \
-             "::Thread.current.thread_variable_set(:#{key}, true)))"
+      # The flag is set only after a write that worked, so a failed write
+      # does not stop a later return on this thread from writing the file.
+      mark = "(#{flag} || (begin; #{write}; ::Thread.current.thread_variable_set(:#{key}, true); " \
+             "rescue ::Exception; end; true))"
       source.byteslice(0, loc.start_offset) + "[(#{inner}), #{mark}][0]" + source.byteslice(loc.end_offset..)
     end
     private_class_method :splice

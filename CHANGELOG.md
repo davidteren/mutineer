@@ -22,7 +22,7 @@ All notable changes to this project are documented here. The format is based on
   Three runs on other code moved no mutant: this gem's own gate (3 files, 269 mutants), the checks of the bundled Rails app, and the Fizzy sample (63 mutants, `--daemon`).
   In the first two, no mutant carried the new probe. The Fizzy counts and survivor ids equal the recorded sample.
   The probe now stays inside a block or lambda literal. When it cannot, the mutant gets no probe and keeps its verdict.
-  A mutant of #345 in that state is `no_coverage`, as is each mutant of #345 with no probe.
+  An unreached survivor of #345 in that state is `no_coverage`, as is each unreached survivor of #345 with no probe. A kill, an error and a timeout keep their verdict.
   Effects on a run after the upgrade:
   `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
   The moved mutants leave the denominator, so this move can raise a score and cannot lower it. A `--threshold` gate that failed on the score can pass.
