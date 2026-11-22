@@ -38,7 +38,8 @@ module Mutineer
       # `test/foo/bar_upsert_test.rb` does not taint `app/other/bar_upsert.rb`.
       # A concern also accepts the same names at its namespace path, but only
       # when it has no test at its `concerns/` path, as in {Pairing.infer_tests}.
-      # Any other source still matches by basename. A fixture under
+      # Any other source still matches by basename, and so does a failed test
+      # outside `test/` and `spec/` for an `app/` or `lib/` source. A fixture under
       # `test/fixtures/` and an explicit test both name their source that way.
       #
       # @param source_rel [String] project-relative source path.
