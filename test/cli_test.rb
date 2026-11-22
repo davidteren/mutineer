@@ -3339,6 +3339,34 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #526 through the real binary: a test that ends its own process on a wrong
+  # sum, as a container's memory limit would, leaves the add mutant errored.
+  # Its no_verdict[] entry carries the diff, and git applies it.
+  def test_an_errored_mutant_has_a_diff_that_git_applies
+    with_project do |proj|
+      File.write(File.join(proj, "calculator_kill_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+
+        class CalculatorKillTest < Minitest::Test
+          def test_add
+            Process.kill(:KILL, Process.pid) unless Calculator.new.add(2, 3) == 5
+            assert_equal 5, Calculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_kill_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      entry = JSON.parse(out)["no_verdict"].find { |e| e["status"] == "error" }
+      refute_nil entry, out
+      assert_equal "calculator.rb", entry["file"]
+      File.write(File.join(proj, "m.patch"), entry["diff"])
+      _, apply_err, apply = Open3.capture3("git", "apply", "--unidiff-zero", "--check", "m.patch", chdir: proj)
+      assert apply.success?, "git apply rejected the diff: #{apply_err}\n#{entry["diff"]}"
+    end
+  end
+
   # #479 through the real binary: an in-process reload run with two workers.
   # A require file makes the guard report Calculator after each load, so every
   # forked child logs it. The run prints it once, and the JSON report has no new

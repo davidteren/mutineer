@@ -363,6 +363,8 @@ module Mutineer
         # alone and a key that reconciled with neither would be worse. `details`
         # carries the cause where there is one. Uncapturable mutants also appear in
         # uncapturable[], which stays for consumers that already read it.
+        # Additive (1.11, #526): the diff, as on killed, so a consumer can run
+        # an errored mutant again; uncapturable[] stays lean.
         # to_s/to_i because a pre-fork failure has no subject, so its file and line
         # are null and would not compare against a real entry. id and status extend
         # the key to a total order: these entries collide on (file, line) far more
@@ -819,10 +821,7 @@ module Mutineer
         # Additive (1.11, #495): the run step's wall-clock seconds.
         seconds: result.seconds&.round(3)
       }
-      # The diff is UTF-8, as JSON is. Name the source's encoding so a consumer
-      # can transcode the hunk lines back to the file's bytes (#510).
-      encoding = result_diff_encoding(result)
-      row[:diff_encoding] = encoding if encoding
+      attach_diff(row, result)
       attach_copies(row, result.id)
     end
 
@@ -838,10 +837,27 @@ module Mutineer
       row = mutant_json(result)
       copies = row.delete(:copies)
       row[:diff] = unified_diff(result)
-      encoding = result_diff_encoding(result)
-      row[:diff_encoding] = encoding if encoding
+      attach_diff(row, result)
       row[:seconds] = result.seconds&.round(3) if seconds
       row[:copies] = copies if copies
+      row
+    end
+
+    # Adds the diff keys that depend on the source to a row that has `diff`.
+    # The diff is UTF-8, as JSON is, so `diff_encoding` names the source's
+    # encoding when a consumer can transcode the hunk lines back to the file's
+    # bytes (#510). Each caller sets `diff` itself, so each list keeps its own
+    # key order.
+    #
+    # @api private
+    # @param row [Hash] one mutant's JSON object, with `diff` set.
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [Hash] `row`.
+    def attach_diff(row, result)
+      return row unless row[:diff]
+
+      encoding = result_diff_encoding(result)
+      row[:diff_encoding] = encoding if encoding
       row
     end
 
@@ -1073,10 +1089,11 @@ module Mutineer
     # A pre-fork failure has no subject or mutation attached, so those degrade to
     # nulls rather than dropping the entry — the count must still reconcile with
     # `summary.no_verdict`. `details` is redacted here too, whatever its source
-    # (#388).
+    # (#388). `diff` is the text a survivor gets (#526), and null with no
+    # mutation.
     #
     # @api private
-    # @param result [Mutineer::Result] an errored or timed-out result.
+    # @param result [Mutineer::Result] an errored, timed-out or uncapturable result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
       file = result.subject&.file
@@ -1092,8 +1109,12 @@ module Mutineer
         id: result.id,
         status: result.status.to_s,
         details: result.details && Redaction.text(result.details),
-        seconds: result.seconds&.round(3)
+        # Additive (1.11, #526): the diff, as on survivors, so a consumer can
+        # run the mutant again itself. Null with no mutation to show.
+        diff: (unified_diff(result) if m)
       }
+      attach_diff(row, result)
+      row[:seconds] = result.seconds&.round(3)
       attach_copies(row, result.id)
     end
 

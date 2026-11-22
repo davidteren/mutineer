@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format is based on
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
   The JSON `schema_version` is now `1.11`.
+- **`no_verdict[]` entries in `--format json` carry `diff` (#526).**
+  An errored, timed-out or uncapturable mutant's entry has the same `diff` (and `diff_encoding`) as a `survivors[]` entry, so a consumer can run that mutant again itself, for example after a container's memory limit killed its child.
+  An entry with no mutation, such as a failure before the fork, has `diff: null`.
+  Each entry with a diff grows by about 224 bytes (the #498 measure: 52,242 bytes for 233 diffs).
+  `uncapturable[]` entries stay as they are. Additive key (schema `1.11`).
 - **The JSON report and the human summary show timing (#495).**
   `--format json` has a top-level `timing` object: `total_seconds`, `boot_seconds`, `coverage_seconds`, `clean_check_seconds` and `mutants_seconds`, with `null` for a phase the run did not have.
   Each `survivors[]`, `killed[]` and `no_verdict[]` entry has `seconds`, the wall-clock time of its run, so slow tests and timeouts near the limit show.

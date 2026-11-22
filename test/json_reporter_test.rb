@@ -110,7 +110,7 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
-  # #510 with #498: the lists that carry a diff name the source's encoding too.
+  # #510 with #498 and #526: the lists that carry a diff name the source's encoding too.
   def test_killed_unplaceable_and_ran_at_load_rows_have_diff_encoding
     src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
     tok = src.byteindex(">=")
@@ -120,13 +120,35 @@ class JsonReporterTest < Minitest::Test
     results = %i[killed unplaceable ran_at_load].map.with_index do |status, i|
       Mutineer::Result.public_send(status).with(subject: subj, mutation: mutation, id: "enc#{i}")
     end
+    results << Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "enc3")
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
                       .report(out: out, err: StringIO.new, format: "json")
     doc = JSON.parse(out.string)
-    %w[killed unplaceable ran_at_load].each do |list|
+    %w[killed unplaceable ran_at_load no_verdict].each do |list|
       assert_equal "EUC-JP", doc[list].first["diff_encoding"], list
     end
+  end
+
+  # Each list keeps its own key order. A survivors[] row has seconds before
+  # diff_encoding; a killed[] row has it after (#498).
+  def test_diff_key_order_of_each_list
+    src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = [Mutineer::Result.survived.with(subject: subj, mutation: mutation, id: "ord0"),
+               Mutineer::Result.killed.with(subject: subj, mutation: mutation, id: "ord1"),
+               Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "ord2")]
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "ord2" => ["dup2"] })
+    doc = JSON.parse(out.string)
+    assert_equal %w[diff seconds diff_encoding], doc["survivors"].first.keys.last(3)
+    assert_equal %w[diff diff_encoding seconds], doc["killed"].first.keys.last(3)
+    assert_equal %w[details diff diff_encoding seconds copies], doc["no_verdict"].first.keys.last(5)
   end
 
   def test_utf8_source_has_no_diff_encoding
@@ -197,13 +219,15 @@ class JsonReporterTest < Minitest::Test
     assert_equal %w[subject file line operator token id diff seconds], entry.keys
   end
 
-  # #498: killed[], unplaceable[] and ran_at_load[] carry the diff that the
-  # same mutant gets as a survivor. Checked for each mutation of each list.
+  # #498, #526: killed[], unplaceable[], ran_at_load[] and no_verdict[] carry
+  # the diff that the same mutant gets as a survivor. Checked for each
+  # mutation of each list, and for each no-verdict status.
   def test_diff_lists_match_the_survivor_diff_of_the_same_mutant
     mutations = [mutation_at("100", "0", :literal_mutation), mutation_at(">=", ">", :comparison),
                  mutation_at("    if price >= 100\n    end\n", "", :statement_removal)]
-    { "killed" => Mutineer::Result.killed, "unplaceable" => Mutineer::Result.unplaceable,
-      "ran_at_load" => Mutineer::Result.ran_at_load }.each do |list, base|
+    [["killed", Mutineer::Result.killed], ["unplaceable", Mutineer::Result.unplaceable],
+     ["ran_at_load", Mutineer::Result.ran_at_load], ["no_verdict", Mutineer::Result.error("boom")],
+     ["no_verdict", Mutineer::Result.timeout], ["no_verdict", Mutineer::Result.uncapturable]].each do |list, base|
       mutations.each_with_index do |m, i|
         id = "id#{list}#{i}"
         listed = render([base.with(subject: subject, mutation: m, id: id)])[list].first
@@ -268,17 +292,26 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
-  # #498 names three lists. The other lean lists keep their shape.
+  # #498 and #526 name four lists. The other lean lists keep their shape.
   def test_other_lean_lists_have_no_diff
-    rows = [Mutineer::Result.no_coverage, Mutineer::Result.uncapturable, Mutineer::Result.ignored,
-            Mutineer::Result.error("boom")].each_with_index.map do |r, i|
+    rows = [Mutineer::Result.no_coverage, Mutineer::Result.uncapturable,
+            Mutineer::Result.ignored].each_with_index.map do |r, i|
       r.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation), id: "lean0000000#{i}")
     end
     doc = render(rows)
-    %w[no_coverage uncapturable ignored no_verdict].each do |list|
+    %w[no_coverage uncapturable ignored].each do |list|
       refute_empty doc[list], list
       doc[list].each { |entry| refute entry.key?("diff"), list }
     end
+  end
+
+  # #526: an uncapturable mutant's no_verdict[] entry has the diff that its
+  # uncapturable[] entry lacks.
+  def test_uncapturable_mutant_has_the_diff_only_in_no_verdict
+    m = mutation_at("100", "0", :literal_mutation)
+    doc = render([Mutineer::Result.uncapturable.with(subject: subject, mutation: m, id: "uncap0000001")])
+    refute doc["uncapturable"].first.key?("diff")
+    assert doc["no_verdict"].first["diff"].start_with?("--- a/#{FILE}\n")
   end
 
   # copies stays the last key on a row that gains diff and seconds.
@@ -362,6 +395,8 @@ class JsonReporterTest < Minitest::Test
     assert_nil entry["line"]
     assert_nil entry["operator"]
     assert_nil entry["token"]
+    assert entry.key?("diff")
+    assert_nil entry["diff"]
     assert_equal "boot failed", entry["details"]
   end
 
