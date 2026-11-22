@@ -260,10 +260,11 @@ class DaemonRedactionTest < Minitest::Test
   # #517: the exact warning CoverageMap::Capture#fail_test prints, so a
   # reworded warning fails here instead of losing the note silently.
   def capture_warning(reason)
-    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: Dir.pwd,
-                                    cache_dir: Dir.mktmpdir("mutineer-517"))
-    _out, err = capture_io { map.send(:fail_test, File.join(Dir.pwd, "test/models/order_test.rb"), reason) }
-    err
+    Dir.mktmpdir("mutineer-517") do |cache_dir|
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: Dir.pwd, cache_dir: cache_dir)
+      _out, err = capture_io { map.send(:fail_test, File.join(Dir.pwd, "test/models/order_test.rb"), reason) }
+      err
+    end
   end
 
   # Only the user's load variables count; the tool's own Bundler values do not.
@@ -297,9 +298,9 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
-  # A piece with a password form that spans a newline is redacted whole, so
-  # the warning can be its second line.
-  def test_drain_notes_a_capture_warning_inside_a_multi_line_piece
+  # The drain hands with_capture_note a whole piece, with more than one line,
+  # when a password form spans a newline. The warning can be its second line.
+  def test_capture_note_finds_the_warning_on_a_later_line_of_a_piece
     missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
     client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: StringIO.new)
     with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support")) do

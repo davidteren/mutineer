@@ -208,7 +208,8 @@ class DaemonCoverageTest < Minitest::Test
         line = errio.string.lines.grep(/coverage skipped for test\/models\/order_test\.rb/).first.to_s
         if verbose
           assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
-          assert_includes line, "(the daemon does not pass RUBYLIB to the app;"
+          # RUBYOPT is the caller's; it may also hold a -I, so the note may name both.
+          assert_match(/\(the daemon does not pass (RUBYOPT or )?RUBYLIB to the app;/, line)
         else
           assert_includes line, "fork capture produced no result (re-run with --verbose for the error)"
           refute_includes line, "does not pass"
