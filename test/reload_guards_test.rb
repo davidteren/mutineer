@@ -279,6 +279,110 @@ class ReloadGuardsTest < Minitest::Test
     end
   end
 
+  # #479: a class whose own entries grew is named. An entry a subclass shares
+  # with its parent (the same object) is the parent's. A class whose entries all
+  # paired, a subclass that only inherited the growth, and a class the load
+  # created are not named. A subclass that skipped the parent's entry and grew
+  # by the same count still is: equal counts must not hide it.
+  def test_grown_classes_names_only_a_class_whose_own_entries_grew
+    p1, p2, c1, c2, x = Array.new(5) { |i| Callback.new(:before, :"e#{i}") }
+    parent = callback_class
+    child = callback_class(parent)
+    skipped = callback_class(parent)
+    paired = callback_class
+    created = callback_class
+    parent.__callbacks = { save: Chain.new(p1, p2) }
+    child.__callbacks = { save: Chain.new(p1, p2) }
+    skipped.__callbacks = { save: Chain.new(c1, c2) }
+    paired.__callbacks = { save: Chain.new(x) }
+    created.__callbacks = { save: Chain.new(x, x) }
+    sizes = { parent => { save: 1 }, child => { save: 0 }, skipped => { save: 1 }, paired => { save: 1 } }
+
+    grown = Mutineer::ReloadGuards::RepeatedCallbacks.grown_classes(sizes)
+
+    assert_equal [parent, skipped].map(&:object_id), grown.map(&:object_id)
+  end
+
+  def test_sizes_counts_each_class_own_entries_before_the_load
+    shared, own = Callback.new(:before, :a), Callback.new(:before, :b)
+    parent = callback_class
+    klass = callback_class(parent)
+    before = { parent => { save: Chain.new(shared) }, klass => { save: Chain.new(shared, own, own), validate: Chain.new } }
+    assert_equal({ parent => { save: 1 }, klass => { save: 2, validate: 0 } },
+                 Mutineer::ReloadGuards::RepeatedCallbacks.sizes(before))
+  end
+
+  def test_log_callback_growth_appends_one_line_for_each_class
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      named = Class.new
+      Object.const_set(:ReloadGuardsGrowthNamed, named)
+      Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
+      Mutineer::ReloadGuards.log_callback_growth([], "/app/models/b.rb")
+      Mutineer::ReloadGuards.log_callback_growth([named], "/app/models/a.rb")
+      assert_equal [%("ReloadGuardsGrowthNamed"\t"/app/models/a.rb")] * 2, File.readlines(log, chomp: true)
+    ensure
+      Object.send(:remove_const, :ReloadGuardsGrowthNamed) if Object.const_defined?(:ReloadGuardsGrowthNamed)
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
+  # A log that cannot be written must not fail the load or hide the failure.
+  def test_a_log_that_cannot_be_written_warns_and_does_not_raise
+    Mutineer::ReloadGuards.callback_growth_log = File.join(Dir.tmpdir, "no-such-dir-#{Process.pid}", "growth.log")
+    _out, err = capture_io { Mutineer::ReloadGuards.log_callback_growth([Class.new], "/a.rb") }
+    assert_match(/\[mutineer\] could not write the callback-growth log: /, err)
+  ensure
+    Mutineer::ReloadGuards.callback_growth_log = nil
+  end
+
+  # The check only reports: an error in it warns, and the load still returns.
+  def test_an_error_in_the_growth_check_warns_and_keeps_the_load
+    Dir.mktmpdir do |dir|
+      Mutineer::ReloadGuards.callback_growth_log = File.join(dir, "growth.log")
+      result = nil
+      _out, err = capture_io do
+        Mutineer::ReloadGuards::RepeatedCallbacks.stub(:grown_classes, ->(_) { raise ArgumentError, "boom" }) do
+          result = Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+        end
+      end
+      assert_equal :ran, result
+      assert_match(/\[mutineer\] could not check callback counts after the reload: ArgumentError: boom/, err)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
+  # A class that defines its own `name` still logs its real name.
+  def test_the_log_uses_the_real_class_name
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      odd = Class.new { def self.name = "Fake" }
+      Mutineer::ReloadGuards.log_callback_growth([odd], "/a.rb")
+      assert_match(/\A"#<Class:0x\h+>"\t"\/a\.rb"\z/, File.read(log).chomp)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+    end
+  end
+
+  # Without a log, during_load counts nothing and writes nothing.
+  def test_during_load_without_a_log_writes_nothing
+    Mutineer::ReloadGuards.callback_growth_log = nil
+    skipped = ->(*) { flunk "no log: the growth check must not run" }
+    result = nil
+    _out, err = capture_io do
+      Mutineer::ReloadGuards::RepeatedCallbacks.stub(:sizes, skipped) do
+        Mutineer::ReloadGuards::RepeatedCallbacks.stub(:grown_classes, skipped) do
+          result = Mutineer::ReloadGuards.during_load(__FILE__) { :ran }
+        end
+      end
+    end
+    assert_equal :ran, result
+    assert_empty err
+  end
+
   def assert_same_list(expected, actual, message = nil)
     assert_equal expected.map(&:object_id), actual.to_a.map(&:object_id), message
   end

@@ -1687,6 +1687,99 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # The calculator with its strong test, one operator, and a throwaway cache.
+  def growth_config(strategy)
+    Mutineer::Config.new(sources: [CALC], tests: [STRONG_TEST], operators: ["arithmetic"], jobs: 1,
+                         strategy: strategy, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT)
+  end
+
+  # #479: a reload run sets the log for its children, returns the rows in
+  # extras, and removes the log after. With no ActiveSupport, nothing grows.
+  def test_a_reload_run_returns_callback_growth_rows_and_removes_the_log
+    seen = nil
+    original = Mutineer::JobPlan.method(:create_callback_growth_log)
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { seen = original.call }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      assert_equal [], extras[:callback_growth]
+    end
+    refute_nil seen
+    refute File.exist?(seen), "the run removes its log"
+    assert_nil Mutineer::ReloadGuards.callback_growth_log
+  end
+
+  def test_a_redefine_run_has_no_callback_growth_log
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { flunk "redefine must not make a log" }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("redefine"))
+      assert_equal [], extras[:callback_growth]
+    end
+  end
+
+  def test_callback_growth_rows_are_unique_and_project_relative
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "app/models/doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      rows = [%w[Doubled], %w[Doubled], %w[Once]].map { |(name)| "#{name.dump}\t#{model.dump}\n" }
+      File.write(log, rows.join + "broken line\n" + "\"unterminated\t\"x\n")
+      assert_equal [["Doubled", "app/models/doubled.rb"], ["Once", "app/models/doubled.rb"]],
+                   Mutineer::JobPlan.callback_growth_rows(log, root)
+    end
+    assert_equal [], Mutineer::JobPlan.callback_growth_rows(nil, "/")
+  end
+
+  # A non-ASCII class name and path must not raise in the parent when the
+  # default external encoding is US-ASCII (LANG unset, #346).
+  def test_callback_growth_rows_read_non_ascii_bytes_under_us_ascii
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "caf\xC3\xA9.rb")
+      File.write(model, "class Cafe; end\n")
+      File.binwrite(log, "#{"Caf\xC3\xA9".dump}\t#{model.dump}\n".b)
+      rows = with_ascii_default_external { Mutineer::JobPlan.callback_growth_rows(log, root) }
+      assert_equal [["Café", "café.rb"]], rows
+      assert_equal [Encoding::UTF_8, Encoding::UTF_8], rows.first.map(&:encoding)
+    end
+  end
+
+  # A newline or tab in a path stays in its field: the log dumps each field.
+  def test_callback_growth_rows_keep_a_path_with_a_newline
+    Dir.mktmpdir do |root|
+      model = File.join(root, "odd\ndir\tname", "doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      log = File.join(root, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      klass = Class.new
+      Object.const_set(:RunnerGrowthDoubled, klass)
+      Mutineer::ReloadGuards.log_callback_growth([klass], model)
+      assert_equal [["RunnerGrowthDoubled", "odd\ndir\tname/doubled.rb"]], Mutineer::JobPlan.callback_growth_rows(log, root)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+      Object.send(:remove_const, :RunnerGrowthDoubled) if Object.const_defined?(:RunnerGrowthDoubled)
+    end
+  end
+
+  # The check only reports: a temp directory that refuses the log warns once,
+  # and the run goes on with no check.
+  def test_a_log_the_temp_directory_refuses_warns_and_the_run_goes_on
+    agg = extras = nil
+    _out, err = capture_io do
+      real = Tempfile.method(:create)
+    refuse = lambda do |basename = "", *rest, **kw, &blk|
+      raise Errno::EACCES, "tmp" if Array(basename).first == "mutineer-callback-growth"
+
+      real.call(basename, *rest, **kw, &blk)
+    end
+    Tempfile.stub(:create, refuse) do
+        agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      end
+    end
+    assert_match(/\[mutineer\] could not create the callback-growth log, so this run does not check/, err)
+    assert_equal [], extras[:callback_growth]
+    assert_operator agg.killed_count, :>, 0
+  end
+
   private
 
   def in_project
