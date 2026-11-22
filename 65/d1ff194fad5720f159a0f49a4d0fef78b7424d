@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_e807db0de7eee3 23
+docs/json-schema.md
+  s_9747bd218c1c67::t_22e8337c9419d2 91,105,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "65d1ff194fad5720f159a0f49a4d0fef78b7424d",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
