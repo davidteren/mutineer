@@ -1,0 +1,21 @@
+lib/mutineer/external_backend.rb
+  s_49c48c7d2890a0::t_831105a2921213 319-322,345-349
+docs/rails-setup.md
+  s_49c48c7d2890a0::t_831105a2921213 243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8b0b5633d4981fba8a962d6992a606d6f105982f",
+  "prompts": {},
+  "sessions": {
+    "s_49c48c7d2890a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4b7a35f-e2e1-40f8-86a5-a214d77c36bb",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
