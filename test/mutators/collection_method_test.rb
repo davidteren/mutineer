@@ -623,13 +623,6 @@ class CollectionMethodTest < Minitest::Test
           users.each { |user| user.notify } || extra
         end
       RUBY
-      ["while condition", <<~RUBY, [%w[each map]], 0],
-        def m
-          while users.each { |user| user.notify }
-            work
-          end
-        end
-      RUBY
       ["for collection", <<~RUBY, [%w[each map]], 0],
         def m
           for user in users.each { |item| item }
@@ -750,39 +743,589 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
-      ["select stays when its array is discarded", <<~RUBY, [%w[select reject]], 0],
+      ["select is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.select { |item| item }
           :done
         end
       RUBY
-      ["reject stays when its array is discarded", <<~RUBY, [%w[reject select]], 0],
+      ["select stays when its value is the return value", <<~RUBY, [%w[select reject]], 0],
+        def m
+          xs.select { |item| item }
+        end
+      RUBY
+      ["reject is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.reject { |item| item }
           :done
         end
       RUBY
-      ["first stays when its value is discarded", <<~RUBY, [%w[first last]], 0],
+      ["reject stays when its value is the return value", <<~RUBY, [%w[reject select]], 0],
+        def m
+          xs.reject { |item| item }
+        end
+      RUBY
+      ["first is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.first
           :done
         end
       RUBY
-      ["last stays when its value is discarded", <<~RUBY, [%w[last first]], 0],
+      ["first stays when its value is the return value", <<~RUBY, [%w[first last]], 0],
+        def m
+          xs.first
+        end
+      RUBY
+      ["last is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.last
           :done
         end
       RUBY
-      ["min stays when its value is discarded", <<~RUBY, [%w[min max]], 0],
+      ["last stays when its value is the return value", <<~RUBY, [%w[last first]], 0],
+        def m
+          xs.last
+        end
+      RUBY
+      ["min is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.min
           :done
         end
       RUBY
-      ["max stays when its value is discarded", <<~RUBY, [%w[max min]], 0],
+      ["min stays when its value is the return value", <<~RUBY, [%w[min max]], 0],
+        def m
+          xs.min
+        end
+      RUBY
+      ["max is declined when its value is discarded", <<~RUBY, [], 1],
         def m
           xs.max
+          :done
+        end
+      RUBY
+      ["max stays when its value is the return value", <<~RUBY, [%w[max min]], 0],
+        def m
+          xs.max
+        end
+      RUBY
+      ["select stays when assigned", <<~RUBY, [%w[select reject]], 0],
+        def m
+          found = xs.select { |item| item }
+          :done
+        end
+      RUBY
+      ["first stays as a condition", <<~RUBY, [%w[first last]], 0],
+        def m
+          if xs.first
+            work
+          end
+          :done
+        end
+      RUBY
+      ["min with a block stays when discarded", <<~RUBY, [%w[min max]], 0],
+        def m
+          xs.min { |a, b| log(a) <=> b }
+          :done
+        end
+      RUBY
+      ["max with a block stays when discarded", <<~RUBY, [%w[max min]], 0],
+        def m
+          xs.max { |a, b| log(a) <=> b }
+          :done
+        end
+      RUBY
+      ["lazy first stays when discarded", <<~RUBY, [%w[first last]], 0],
+        def m
+          xs.lazy.first
+          :done
+        end
+      RUBY
+      ["all? and any? stay in the same body", <<~RUBY, [%w[all? any?], %w[any? all?]], 1],
+        def m
+          xs.all? { |item| item }
+          xs.any? { |item| item }
+          xs.first
+          :done
+        end
+      RUBY
+      ["lazy local each still runs the block", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = xs.lazy
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local map does not run the block", <<~RUBY, [%w[map each]], 0],
+        def m
+          enum = xs.lazy
+          enum.map { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from a longer chain", <<~RUBY, [%w[map each], %w[each map]], 0],
+        def m
+          enum = xs.lazy.map { |item| item.name }
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local chain after the variable", <<~RUBY, [%w[each map], %w[map each]], 0],
+        def m
+          enum = xs.lazy
+          enum.map { |item| item.name }.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local assigned with ||=", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum ||= xs.lazy
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local copied to another local", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = xs.lazy
+          other = enum
+          other.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local read in a condition", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = xs.lazy
+          if enum.each { |item| item.touch }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["local not assigned from lazy is declined", <<~RUBY, [], 1],
+        def m
+          enum = xs.to_a
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["another local holds the lazy enumerator", <<~RUBY, [], 1],
+        def m
+          enum = xs.lazy
+          list = xs.to_a
+          list.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["instance variable is not known to be lazy", <<~RUBY, [], 1],
+        def m
+          @items.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["if condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if users.each { |user| user.notify }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["unless condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          unless users.each { |user| user.notify }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["while condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          while users.each { |user| user.notify }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["until condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          until users.each { |user| user.notify }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in an if condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if users.map { |user| user.name }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["elsif condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if cond
+            work
+          elsif users.each { |user| user.notify }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["modifier if condition", <<~RUBY, [], 1],
+        def m
+          work if users.each { |user| user.notify }
+          :done
+        end
+      RUBY
+      ["ternary condition", <<~RUBY, [], 1],
+        def m
+          users.each { |user| user.notify } ? 1 : 2
+        end
+      RUBY
+      ["while condition as the method value", <<~RUBY, [], 1],
+        def m
+          while users.each { |user| user.notify }
+            work
+          end
+        end
+      RUBY
+      ["left of && with the result kept", <<~RUBY, [], 1],
+        def m
+          users.each { |user| user.notify } && extra
+        end
+      RUBY
+      ["left of and with the result kept", <<~RUBY, [], 1],
+        def m
+          users.each { |user| user.notify } and extra
+        end
+      RUBY
+      ["left of && assigned", <<~RUBY, [], 1],
+        def m
+          ok = users.each { |user| user.notify } && extra
+          :done
+        end
+      RUBY
+      ["left of or stays when the result is kept", <<~RUBY, [%w[each map]], 0],
+        def m
+          users.each { |user| user.notify } or extra
+        end
+      RUBY
+      ["each in a condition with a call on its result", <<~RUBY, [%w[each map]], 0],
+        def m
+          if users.each { |user| user.notify }.empty?
+            work
+          end
+          :done
+        end
+      RUBY
+      ["negated condition keeps the swap", <<~RUBY, [%w[each map]], 0],
+        def m
+          if !users.each { |user| user.notify }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["lazy each in a condition", <<~RUBY, [%w[each map]], 0],
+        def m
+          if xs.lazy.each { |item| item.touch }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["case without a subject, when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when users.each { |user| user.notify }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["case with a subject keeps a when value", <<~RUBY, [%w[each map]], 0],
+        def m
+          case x
+          when users.each { |user| user.notify }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["if branch is the return value, not a condition", <<~RUBY, [%w[each map]], 0],
+        def m
+          if cond
+            users.each { |user| user.notify }
+          end
+        end
+      RUBY
+      ["select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if xs.select { |item| item }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["while body is still discarded", <<~RUBY, [], 1],
+        def m
+          while cond
+            users.each { |user| user.notify }
+          end
+          :done
+        end
+      RUBY
+      ["IO.select stays when discarded", <<~RUBY, [%w[select reject]], 0],
+        def m
+          IO.select([reader], nil, nil, 1)
+          :done
+        end
+      RUBY
+      ["receiverless select with arguments stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          select([reader])
+          :done
+        end
+      RUBY
+      ["first on the left of || decides the right side", <<~RUBY, [%w[first last]], 0],
+        def m
+          xs.first || warn("empty")
+          :done
+        end
+      RUBY
+      ["last on the left of or decides the right side", <<~RUBY, [%w[last first]], 0],
+        def m
+          xs.last or return
+          :done
+        end
+      RUBY
+      ["min on the left of && decides the right side", <<~RUBY, [%w[min max]], 0],
+        def m
+          xs.min && work
+          :done
+        end
+      RUBY
+      ["each on the left of || is still declined when the || is discarded", <<~RUBY, [], 1],
+        def m
+          xs.each { |x| x } || work
+          :done
+        end
+      RUBY
+      ["min with a block argument stays when discarded", <<~RUBY, [%w[min max]], 0],
+        def m
+          xs.min(&order)
+          :done
+        end
+      RUBY
+      ["lazy local from a ternary", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = flag ? xs.lazy : xs
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from parentheses", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = (xs.lazy)
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from ||", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = xs.lazy || ys
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local assigned with &&=", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum &&= xs.lazy
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from multiple assignment", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum, count = xs.lazy, 1
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local assigned inside a block", <<~RUBY, [%w[each map]], 1],
+        def m
+          items.each do |item|
+            enum = item.lazy
+            enum.each { |entry| entry.touch }
+            :seen
+          end
+          :done
+        end
+      RUBY
+      ["lazy local from an unless expression", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = unless flag then xs.lazy else xs end
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["local from an unless expression with no lazy", <<~RUBY, [], 1],
+        def m
+          enum = unless flag then xs else ys end
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["first inside a chain of && decides the right side", <<~RUBY, [%w[first last]], 0],
+        def m
+          flag && xs.first && warn("hit")
+          :done
+        end
+      RUBY
+      ["first in parentheses on the left of || decides the right side", <<~RUBY, [%w[first last]], 0],
+        def m
+          (xs.first) || warn("empty")
+          :done
+        end
+      RUBY
+      ["first on the right of a discarded && stays, only a statement of its own is declined", <<~RUBY, [%w[first last]], 0],
+        def m
+          flag && warn("hit") && xs.first
+          :done
+        end
+      RUBY
+      ["lazy local from a chained assignment", <<~RUBY, [%w[each map]], 0],
+        def m
+          first = second = xs.lazy
+          second.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from begin", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = begin xs.lazy end
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from a rescue modifier", <<~RUBY, [%w[each map]], 0],
+        def m
+          enum = xs.lazy rescue nil
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["lazy local from a nested multiple assignment", <<~RUBY, [%w[each map]], 0],
+        def m
+          (enum, count), other = [xs.lazy, 1], 2
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["first in a ternary on the left of || stays", <<~RUBY, [%w[first last]], 0],
+        def m
+          (flag ? xs.first : nil) || warn("empty")
+          :done
+        end
+      RUBY
+      ["first rescue modifier stays", <<~RUBY, [%w[first last]], 0],
+        def m
+          xs.first rescue nil
+          :done
+        end
+      RUBY
+      ["first inside defined? stays", <<~RUBY, [%w[first last]], 0],
+        def m
+          defined?(xs.first)
+          :done
+        end
+      RUBY
+      ["first as a modifier-if statement is declined", <<~RUBY, [], 1],
+        def m
+          xs.first if flag
+          :done
+        end
+      RUBY
+      ["lazy call inside a parenthesized receiver", <<~RUBY, [%w[each map]], 0],
+        def m
+          if (xs.lazy).each { |item| item.touch }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["lazy local bound by a for index", <<~RUBY, [%w[each map]], 0],
+        def m
+          for lazy_list in [xs.lazy]
+            lazy_list.each { |item| item.touch }
+            :seen
+          end
+          :done
+        end
+      RUBY
+      ["first in an else branch is declined", <<~RUBY, [], 1],
+        def m
+          if flag
+            work
+          else
+            xs.first
+          end
+          :done
+        end
+      RUBY
+      ["first in a case/in body is declined", <<~RUBY, [], 1],
+        def m
+          case value
+          in Integer
+            xs.first
+          end
+          :done
+        end
+      RUBY
+      ["first in a case/when body is declined", <<~RUBY, [], 1],
+        def m
+          case value
+          when 1
+            xs.first
+          end
+          :done
+        end
+      RUBY
+      ["reject with arguments stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          reject([reader])
+          :done
+        end
+      RUBY
+      ["lazy local bound by a multi-target for index", <<~RUBY, [%w[each map]], 0],
+        def m
+          for index, enum in [[1, xs.lazy]]
+            enum.each { |item| item.touch }
+            :seen
+          end
+          :done
+        end
+      RUBY
+      ["lazy local after another value in multiple assignment", <<~RUBY, [%w[each map]], 0],
+        def m
+          count, enum = 1, xs.lazy
+          enum.each { |item| item.touch }
+          :done
+        end
+      RUBY
+      ["min with forwarded arguments stays when discarded", <<~RUBY, [%w[min max]], 0],
+        def m(...)
+          xs.min(...)
+          :done
+        end
+      RUBY
+      ["first in a singleton class body is declined", <<~RUBY, [], 1],
+        def m
+          class << obj
+            xs.first
+            :x
+          end
           :done
         end
       RUBY

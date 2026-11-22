@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**
+  It now declines `select` / `reject` (no arguments), `first` / `last`, and `min` / `max` (no block) when the call is a statement of its own and its value is discarded. `all?` / `any?` still swap.
+  It also declines `each` / `map` when only its truthiness is read: an `if`, `unless`, `while`, `until`, or subjectless `when` condition, or the left side of `&&` / `and`.
+  A local variable that the same method assigns from a `lazy` chain keeps its `each` / `map` swap.
+  Declined swaps count in `summary.declined_by_operator`.
+  On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after, and none of the six other names gained a decline).
+  A run with `collection_method` can report fewer mutants. Mutant ids number only the emitted swaps, so the id of a later swap of the same name in the same method can change. A baseline or `ignore:` list can need a refresh.
+  The limits that remain are in #501. See `docs/equivalent-skips.md`, "Collection method".
 - **126 private methods of `Mutineer::CoverageMap` moved into eight modules
   (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
   `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
