@@ -515,6 +515,9 @@ runs:
             # A diff-scoped run's score covers a different denominator than a
             # full-run baseline, so the baseline line must not juxtapose the two
             # scores as if comparable; the report itself says so (summary.scoped).
+            # The Unpaired line (#481) gives the facts of the human Unpaired line.
+            # A report from a CLI older than 1.9.0 has no unpaired_sources key, so
+            # it gets no line.
             jq -r --arg code "$code" '
               def oneline: tostring | gsub("[\r\n]"; " ") | gsub("`"; "'\''");
               ("## Mutineer " + (if $code == "0" then "passed" else "failed (exit \($code))" end)
@@ -529,6 +532,15 @@ runs:
               (if (.summary.dropped // 0) > 0 then
                  "",
                  ("Dropped: \(.summary.dropped) repeat(s) of a kept mutant. Their ids are on `copies` in the JSON report. An ignore entry still ignores only its own id, so keep every copy.")
+               else empty end),
+              (if (.summary.unpaired_sources // 0) > 0 then
+                 "",
+                 ("Unpaired: \(.summary.unpaired_mutants // 0) mutant(s)"
+                  + (if (.summary.scoped // false) then " on changed lines" else "" end)
+                  + " not run; \(.summary.unpaired_sources) source(s) have no paired test"
+                  + ([.unpaired_sources[]? | select(.mutants == null)] | length
+                     | if . > 0 then "; \(.) source(s) not counted, so the mutant count is a lower bound" else "" end)
+                  + ". They are not in the score. To run them, add a test at the conventional path, map one with `tests:` in `.mutineer.yml`, or run those sources in a separate step that sets the `sources` and `test` inputs. The JSON report lists them under `unpaired_sources`.")
                else empty end),
               (if .baseline then
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"

@@ -87,6 +87,31 @@ grep -q 'copies `bbbbbbbbbbbb`' "$SCRATCH/case1b/summary.md" && echo "  OK: drop
 grep -q 'Copies: bbbbbbbbbbbb' "$SCRATCH/case1b/stdout.txt" && echo "  OK: dropped copy id on the annotation" || echo "  FAIL: copy id missing from the annotation"
 grep -q 'Dropped:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained a dropped line" || echo "  OK: old report has no dropped line"
 
+echo; echo "== 1c: unpaired sources (#481) =="
+cat > "$SCRATCH/report-unpaired.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":3,"unpaired_mutants":12},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":5},{"file":"lib/c.rb","mutants":3}]}
+JSON
+run_step case1c STUB_REPORT="$SCRATCH/report-unpaired.json" STUB_EXIT=0
+grep -qF 'Unpaired: 12 mutant(s) not run; 3 source(s) have no paired test. They are not in the score.' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired summary line" || echo "  FAIL: unpaired summary line"
+grep -q 'not counted' "$SCRATCH/case1c/summary.md" && echo "  FAIL: counted sources named as not counted" || echo "  OK: no not-counted part when every source is counted"
+grep -qF 'run those sources in a separate step that sets the `sources` and `test` inputs' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired hint keeps pairing for the other sources" || echo "  FAIL: unpaired hint lost the separate-step advice"
+cat > "$SCRATCH/report-unpaired-nil.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":2,"unpaired_mutants":4},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":null}]}
+JSON
+run_step case1d STUB_REPORT="$SCRATCH/report-unpaired-nil.json" STUB_EXIT=0
+grep -qF 'Unpaired: 4 mutant(s) not run; 2 source(s) have no paired test; 1 source(s) not counted, so the mutant count is a lower bound.' "$SCRATCH/case1d/summary.md" && echo "  OK: unpaired line names the uncounted source" || echo "  FAIL: unpaired line misses the uncounted source"
+cat > "$SCRATCH/report-unpaired-zero.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":0,"unpaired_mutants":0},"survivors":[],"unpaired_sources":[]}
+JSON
+run_step case1e STUB_REPORT="$SCRATCH/report-unpaired-zero.json" STUB_EXIT=0
+grep -q 'Unpaired:' "$SCRATCH/case1e/summary.md" && echo "  FAIL: zero unpaired sources gained a line" || echo "  OK: no unpaired line at zero"
+grep -q 'Unpaired:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained an unpaired line" || echo "  OK: old report has no unpaired line"
+cat > "$SCRATCH/report-unpaired-scoped.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":true,"unpaired_sources":1,"unpaired_mutants":2},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":2}]}
+JSON
+run_step case1f STUB_REPORT="$SCRATCH/report-unpaired-scoped.json" STUB_EXIT=0
+grep -qF 'Unpaired: 2 mutant(s) on changed lines not run; 1 source(s) have no paired test.' "$SCRATCH/case1f/summary.md" && echo "  OK: scoped unpaired line names changed lines" || echo "  FAIL: scoped unpaired line misses changed lines"
+
 echo; echo "== 2: PASSING run (expects ::warning annotations, 'passed' summary) =="
 run_step case2 STUB_EXIT=0
 grep -q '::warning file=' "$SCRATCH/case2/stdout.txt" && echo "  OK: passing-run warnings" || echo "  FAIL: no warnings on passing run"

@@ -321,6 +321,8 @@ module Mutineer
           "failed_clean_tests" => cmap.failed_clean_tests,
           "failed_clean_details" => cmap.failed_clean_details,
           "clean_timeouts" => cmap.clean_timeouts,
+          # #495: the tool reports this as timing.clean_check_seconds.
+          "clean_check_seconds" => cmap.clean_check_seconds,
           "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
@@ -571,11 +573,14 @@ module Mutineer
       # only stdlib, so the daemon still needs no Prism. The fork requires
       # nothing else first: the test files' `require "test_helper"` loads
       # rails/test_help after the class list is reset, as in the clean check.
+      # One failing test already kills the mutant, so the fork stops there, as
+      # the in-process mutant run does (#490). `--matrix` never reaches the
+      # daemon: the CLI rejects `--matrix` with `--daemon`.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 
         require_relative "minitest_integration"
-        MinitestIntegration.run(tests.map { |t| File.expand_path(t) })
+        MinitestIntegration.run(tests.map { |t| File.expand_path(t) }, stop_at_first_failure: true)
       end
     end
   end

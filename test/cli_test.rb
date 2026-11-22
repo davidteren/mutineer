@@ -93,6 +93,16 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A parsed JSON report without its wall-clock values (#495): the top-level
+  # `timing` and each entry's `seconds`. Two runs with the same results then
+  # compare equal.
+  def without_wall_clock(json)
+    doc = JSON.parse(json)
+    doc.delete("timing")
+    doc.each_value { |v| v.each { |row| row.delete("seconds") if row.is_a?(Hash) } if v.is_a?(Array) }
+    doc
+  end
+
   def with_project
     Dir.mktmpdir("mutineer-proj") do |proj|
       %w[calculator.rb calculator_strong_test.rb calculator_weak_test.rb].each do |f|
@@ -204,7 +214,7 @@ class CliTest < Minitest::Test
                                                "--coverage-from", "capture/coverage.json")
       assert_equal 0, status.exitstatus, err
       fresh, = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "fresh")
-      assert_equal JSON.parse(fresh), JSON.parse(reused)
+      assert_equal without_wall_clock(fresh), without_wall_clock(reused)
       # The flag is read, not ignored: a capture that is no cache stops the run.
       File.write(File.join(proj, "capture", "coverage.json"), "{}")
       _, err, status = shared_capture_run(proj, "alpha.rb", "--boot", "boot.rb", "--cache-dir", "shard2",
@@ -562,22 +572,21 @@ class CliTest < Minitest::Test
     refute_includes err, "(Errno::ENOENT)"
   end
 
-  # Boot mode does no coverage selection, so it requires at least one --test file.
-  def test_boot_without_test_exits_two
+  # A real run in boot mode does no coverage selection, so it requires at least
+  # one --test file. A dry run runs no tests, so it needs none (#410).
+  def test_boot_flags_without_test_exit_two_on_a_real_run_only
     src = File.join(FIXTURES, "boot", "widget.rb")
     app = File.join(FIXTURES, "boot", "app_boot.rb")
-    _, err, status = mutineer("run", src, "--boot", app)
-    assert_equal 2, status.exitstatus
-    assert_includes err, "--boot/--rails requires at least one --test file"
-  end
+    [["--boot", app], ["--rails"]].each do |flags|
+      _, err, status = mutineer("run", src, *flags)
+      assert_equal 2, status.exitstatus, flags.inspect
+      assert_includes err, "--boot/--rails requires at least one --test file"
 
-  # --rails defaults boot to config/environment; with no --test the same usage
-  # error fires first (deterministic, needs no real Rails app or DB).
-  def test_rails_alone_demands_test_first
-    src = File.join(FIXTURES, "boot", "widget.rb")
-    _, err, status = mutineer("run", src, "--rails")
-    assert_equal 2, status.exitstatus
-    assert_includes err, "--boot/--rails requires at least one --test file"
+      out, err, status = mutineer("run", src, "--dry-run", *flags)
+      assert_equal 0, status.exitstatus, "#{flags.inspect}: #{err}"
+      refute_includes err, "requires at least one --test file"
+      assert_match(/[1-9]\d* unpaired \(1 source has no paired test/, out, flags.inspect)
+    end
   end
 
   # --since with a ref git cannot resolve is a usage error (exit 2). Run inside
@@ -1118,6 +1127,60 @@ class CliTest < Minitest::Test
       assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"]
       assert_equal 100.0, doc["summary"]["score"]
       assert_equal doc["summary"]["killed"], doc["killed"].size
+      # #498: each killed diff applies to the source it names.
+      system("git", "init", "-q", chdir: proj, exception: true) unless File.directory?(File.join(proj, ".git"))
+      doc["killed"].each do |entry|
+        _, err, st = Open3.capture3("git", "apply", "--unidiff-zero", "--check", stdin_data: entry["diff"], chdir: proj)
+        assert st.success?, "#{entry["id"]}: #{err}"
+      end
+    end
+  end
+
+  # #495: an in-process run times every phase and each mutant run, and the
+  # human summary prints the Time line. Types and order only, never values.
+  def test_json_report_times_the_run_and_each_mutant
+    with_project do |proj|
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      timing = doc.fetch("timing")
+      assert_equal %w[total_seconds boot_seconds coverage_seconds clean_check_seconds mutants_seconds], timing.keys
+      %w[total_seconds boot_seconds coverage_seconds mutants_seconds].each { |k| assert_kind_of Numeric, timing[k], k }
+      assert_operator timing["total_seconds"], :>=, timing["mutants_seconds"]
+      refute_empty doc["killed"]
+      doc["killed"].each { |entry| assert_kind_of Numeric, entry["seconds"], entry["id"] }
+
+      text, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_match(/^Time: +\d+\.\d{3}s +\(boot \d+\.\d{3}s, coverage \d+\.\d{3}s, clean check (n\/a|\d+\.\d{3}s), mutants \d+\.\d{3}s;/, text)
+    end
+  end
+
+  # #495: a run with no job to run times nothing but the total.
+  def test_timing_phases_are_null_when_no_mutant_runs
+    with_project do |proj|
+      init_git_project(proj)
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--since", "HEAD", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      timing = JSON.parse(out).fetch("timing")
+      assert_kind_of Numeric, timing["total_seconds"]
+      assert_equal [nil, nil, nil, nil], timing.values_at("boot_seconds", "coverage_seconds", "clean_check_seconds",
+                                                          "mutants_seconds")
+    end
+  end
+
+  # #495: an in-process run whose operators give no mutant still boots and
+  # captures coverage, but mutants_seconds is null, never 0.0.
+  def test_mutants_seconds_is_null_with_no_job
+    with_project do |proj|
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                           "--operators", "regex", "--format", "json", chdir: proj)
+      doc = JSON.parse(out)
+      assert_equal 0, doc["summary"]["total"], err
+      assert_nil doc.fetch("timing")["mutants_seconds"]
+      assert_kind_of Numeric, doc["timing"]["boot_seconds"]
     end
   end
 
@@ -2572,7 +2635,7 @@ class CliTest < Minitest::Test
       )
       assert_equal 0, status_plain.exitstatus, err_plain
       refute_includes err_plain, "has no effect when --test is given"
-      assert_equal JSON.parse(out_plain), JSON.parse(out_map)
+      assert_equal without_wall_clock(out_plain), without_wall_clock(out_map)
     end
   end
 

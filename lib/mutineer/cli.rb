@@ -538,8 +538,9 @@ module Mutineer
       warn_unused_coverage_from(config)
       warn_unused_dry_run_settings(config)
 
-      # Boot mode needs at least one --test file (nothing to select from otherwise).
-      if config.boot && config.tests.empty?
+      # A real boot run needs at least one --test file (nothing to select from
+      # otherwise). A dry run runs no tests, so it needs none (#410).
+      if config.boot && config.tests.empty? && !config.dry_run
         warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
       end
@@ -1009,6 +1010,7 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.execute(config)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC) # #495: timing.total_seconds
       if config.tests.empty?
         warn "mutineer: run requires at least one --test file (or use --dry-run)"
         exit 2
@@ -1050,13 +1052,17 @@ module Mutineer
       # ignore counts old-format entries (one warning each), not the ids they matched.
       legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
+      phases = extras.fetch(:timing, {})
+      timing = { total_seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started,
+                 boot_seconds: phases[:boot_seconds], coverage_seconds: phases[:coverage_seconds],
+                 clean_check_seconds: phases[:clean_check_seconds], mutants_seconds: phases[:mutants_seconds] }
       reporter.report(out: $stdout, err: $stderr, threshold: config.threshold,
                       format: config.format, output: config.output, baseline: delta,
                       scoped: !config.since.nil?, legacy_id_matches: legacy_id_matches,
                       unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
-                      copies: extras.fetch(:copies, {}))
+                      copies: extras.fetch(:copies, {}), timing: timing)
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score

@@ -36,7 +36,7 @@ module Mutineer
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.10"
+    SCHEMA_VERSION = "1.11"
 
     # The unrun-share hint for mutants in sources with no paired test.
     # The CLI keeps a shorter copy for the empty-run message.
@@ -65,6 +65,7 @@ module Mutineer
       @unpaired = unpaired
       @fail_fast = fail_fast
       @copies = {}
+      @timing = nil
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -89,11 +90,15 @@ module Mutineer
     # #374) is listed on each kept mutant and counted in `summary.dropped`.
     # An empty hash reports zero. The count covers mutants in this report,
     # so `--fail-fast` leaves out copies of mutants it did not schedule.
+    # `timing` (#495) holds `total_seconds` and the four phase seconds, each a
+    # Float or nil. The JSON report writes it as `timing` and the human report
+    # prints a `Time:` line. Left out, JSON has `timing: null` and no line prints.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
                unmatched_ignores: [], declined: {},
-               subjects: nil, unmutated_subjects: nil, copies: {})
+               subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil)
       @copies = copies || {}
+      @timing = timing
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
@@ -327,9 +332,10 @@ module Mutineer
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
         # Additive (1.10, #361): every killed mutant's lean identity so two runs
         # can be joined by id without subtracting every unscored category.
+        # Additive (1.11, #498): its diff, as on survivors.
         # to_s/to_i: lean_mutant_json can leave null fields when a stub result
         # lacks a subject (same rule as no_verdict[]).
-        killed: @agg.results.select(&:killed?).map { |r| mutant_json(r) }
+        killed: @agg.results.select(&:killed?).map { |r| mutant_with_diff_json(r, seconds: true) }
                     .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] },
         # id extends the key to a total order: several mutants share a line.
         no_coverage: @agg.results.select(&:no_coverage?).map { |r| mutant_json(r) }
@@ -338,10 +344,12 @@ module Mutineer
         uncapturable: @agg.results.select(&:uncapturable?).map { |r| mutant_json(r) }
                           .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7): owner-unknown mutants redefine did not run. Not in no_verdict.
-        unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_json(r) }
+        # Additive (1.11, #498): the diff, so a consumer can run them itself.
+        unplaceable: @agg.results.select(&:unplaceable?).map { |r| mutant_with_diff_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
-        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_json(r) }
+        # Additive (1.11, #498): the diff, as on unplaceable.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -372,7 +380,10 @@ module Mutineer
         unpaired_sources: unpaired_sources_json,
         # Additive (1.10, #386): the methods the selected operators did not
         # mutate, sorted by (file, line, subject) in JobPlan.collect_jobs.
-        unmutated_subjects: unmutated_subjects
+        unmutated_subjects: unmutated_subjects,
+        # Additive (1.11, #495): wall-clock seconds of the run and its phases,
+        # null when the caller gave none. Wall-clock, so not byte-stable.
+        timing: @timing&.transform_values { |v| v&.round(3) }
       }
       # Additive (1.5): the kill matrix, present only with --matrix.
       doc[:matrix] = matrix_json if @matrix
@@ -766,14 +777,7 @@ module Mutineer
     def survivor_json(result)
       m = result.mutation
       file = result.subject.file
-      source = source_for(file)
-      start_line, original_block, mutated_block, token = diff_for(m, source)
-      # A block at the end of the file has no newline after it; elsewhere the
-      # file's next byte is one. Each side's own text decides its marker.
-      at_eof = source.byteindex("\n", m.end_offset).nil?
-      old_lines = side_lines(original_block, at_eof)
-      new_lines = side_lines(mutated_block, at_eof)
-      shown_file = utf8_text(file)
+      start_line, _orig, _mut, token = diff_for(m, source_for(file))
       row = {
         subject: utf8_text(result.subject.qualified_name.to_s),
         file: file,
@@ -783,15 +787,73 @@ module Mutineer
         # user can paste it straight into .mutineer.yml `ignore:`.
         id: result.id,
         token: utf8_text(token),
-        diff: "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
-              "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
-              "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
+        diff: unified_diff(result),
+        # Additive (1.11, #495): the run step's wall-clock seconds.
+        seconds: result.seconds&.round(3)
       }
       # The diff is UTF-8, as JSON is. Name the source's encoding so a consumer
       # can transcode the hunk lines back to the file's bytes (#510).
-      encoding = diff_encoding(source, original_block, mutated_block)
+      encoding = result_diff_encoding(result)
       row[:diff_encoding] = encoding if encoding
       attach_copies(row, result.id)
+    end
+
+    # A lean mutant row plus the same `diff` a survivor gets (#498): for the
+    # killed, unplaceable and ran-at-load lists, whose consumers act on the change.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @param seconds [Boolean] also add `seconds` (#495), for `killed`.
+    # @return [Hash] {#mutant_json} with `diff`; `diff` is nil when the result
+    #   has no subject or mutation.
+    def mutant_with_diff_json(result, seconds: false)
+      row = mutant_json(result)
+      copies = row.delete(:copies)
+      row[:diff] = unified_diff(result)
+      encoding = result_diff_encoding(result)
+      row[:diff_encoding] = encoding if encoding
+      row[:seconds] = result.seconds&.round(3) if seconds
+      row[:copies] = copies if copies
+      row
+    end
+
+    # The unified diff of one mutant, with no context lines.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [String, nil] the diff, or nil when the result has no subject or
+    #   mutation (a stub result).
+    def unified_diff(result)
+      m = result.mutation
+      return nil if result.subject.nil? || m.nil?
+
+      file = result.subject.file
+      source = source_for(file)
+      start_line, original_block, mutated_block, = diff_for(m, source)
+      # A block at the end of the file has no newline after it; elsewhere the
+      # file's next byte is one. Each side's own text decides its marker.
+      at_eof = source.byteindex("\n", m.end_offset).nil?
+      old_lines = side_lines(original_block, at_eof)
+      new_lines = side_lines(mutated_block, at_eof)
+      shown_file = utf8_text(file)
+      "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
+        "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
+        "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
+    end
+
+    # The encoding {#diff_encoding} names for a result's diff, or nil when the
+    # result has no subject or mutation (a stub result) or needs none.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [String, nil] the Ruby encoding name, e.g. "EUC-JP".
+    def result_diff_encoding(result)
+      m = result.mutation
+      return nil if result.subject.nil? || m.nil?
+
+      source = source_for(result.subject.file)
+      _line, original_block, mutated_block, = diff_for(m, source)
+      diff_encoding(source, original_block, mutated_block)
     end
 
     # The encoding the {#survivor_json} diff was transcoded from: the source's
@@ -868,8 +930,9 @@ module Mutineer
     end
 
     # The fields that name one mutant, for the lists that point at mutants:
-    # `killed`, `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`,
-    # `ignored` and `baseline.new_survivors`.
+    # `no_coverage`, `uncapturable`, `ignored` and `baseline.new_survivors`,
+    # and the base of `killed`, `unplaceable` and `ran_at_load`
+    # ({#mutant_with_diff_json}).
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.
@@ -1000,7 +1063,8 @@ module Mutineer
         token: token,
         id: result.id,
         status: result.status.to_s,
-        details: result.details && Redaction.text(result.details)
+        details: result.details && Redaction.text(result.details),
+        seconds: result.seconds&.round(3)
       }
       attach_copies(row, result.id)
     end
@@ -1120,6 +1184,19 @@ module Mutineer
       # Repeats that were not run (#374). The ids are on `copies` in the JSON.
       out.puts format("Dropped:      %-6d  (repeats of a kept mutant; see --format json)", dropped_count)
       out.puts unpaired_line(scoped)
+      out.puts time_line if @timing
+    end
+
+    # The human `Time:` line (#495): total seconds, then each phase, `n/a` for
+    # a phase the run did not have.
+    #
+    # @api private
+    # @return [String]
+    def time_line
+      phase = ->(key) { (v = @timing[key]) ? format("%.3fs", v) : "n/a" }
+      format("Time:         %-6s  (boot %s, coverage %s, clean check %s, mutants %s; phases do not add up to the total)",
+             phase.call(:total_seconds), phase.call(:boot_seconds), phase.call(:coverage_seconds),
+             phase.call(:clean_check_seconds), phase.call(:mutants_seconds))
     end
 
     # Writes the score line.

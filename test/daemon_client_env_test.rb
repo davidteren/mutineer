@@ -5,6 +5,7 @@ require "json"
 require "minitest/mock"
 require "open3"
 require "rbconfig"
+require "stringio"
 require "tmpdir"
 
 require_relative "test_helper"
@@ -238,6 +239,68 @@ class DaemonClientEnvTest < Minitest::Test
         assert_equal File.join(data, "shims"), parts.first
       end
     end
+  end
+
+  # #491: a missing-file error names the load variables the daemon dropped,
+  # never their values, and only when the user set them.
+  def test_missing_file_error_names_dropped_load_variables
+    cause = "LoadError: cannot load such file -- support/helpers"
+    client = client_for(Dir.pwd)
+    hint = ->(text) { client.send(:with_load_env_hint, text) }
+
+    with_env("RUBYOPT" => "-Itest -rsecret-token-123", "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYOPT" => nil,
+             "BUNDLER_ORIG_RUBYLIB" => nil) do
+      noted = hint.(cause)
+      assert noted.start_with?(cause)
+      assert_includes noted, "does not pass RUBYOPT to the app"
+      assert_includes noted, "boot:"
+      refute_includes noted, "secret-token-123"
+      assert_equal "RuntimeError: boom", hint.("RuntimeError: boom")
+      assert_nil hint.(nil)
+    end
+
+    %w[Itest -wItest].each do |opt|
+      with_env("RUBYOPT" => opt, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYLIB" => nil) do
+        assert_includes hint.(cause), "does not pass RUBYOPT to the app", opt
+      end
+    end
+
+    # A RUBYOPT with no -I adds no load path, so the note would mislead.
+    with_env("RUBYOPT" => "--yjit -W0 -rIcu", "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil,
+             "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_equal cause, hint.(cause)
+    end
+
+    # Bundler's own RUBYOPT is not the user's: the saved value says unset.
+    with_env("RUBYOPT" => "-rbundler/setup", "BUNDLER_ORIG_RUBYOPT" => UNSET, "RUBYLIB" => nil,
+             "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_equal cause, hint.(cause)
+    end
+
+    with_env("RUBYOPT" => "-rbundler/setup", "BUNDLER_ORIG_RUBYOPT" => "-Itest", "RUBYLIB" => "lib",
+             "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_includes hint.(cause), "does not pass RUBYOPT or RUBYLIB to the app"
+    end
+
+    with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_includes hint.(cause), "does not pass RUBYLIB to the app"
+    end
+  end
+
+  # The hint reaches #last_cause through #request, not only the helper.
+  def test_request_adds_the_hint_to_the_error_cause
+    client = client_for(Dir.pwd)
+    client.instance_variable_set(:@stdin, StringIO.new)
+    reply = { "id" => 7, "verdict" => "error", "details" => "LoadError: cannot load such file -- support/helpers" }
+    with_env("RUBYOPT" => "-Itest/support", "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil,
+             "BUNDLER_ORIG_RUBYLIB" => nil) do
+      client.stub(:send_line, nil) do
+        client.stub(:read_line, reply) do
+          assert_equal "error", client.request(id: 7, payload: {}, tests: [], timeout: 1)
+        end
+      end
+    end
+    assert_includes client.last_cause, "does not pass RUBYOPT to the app"
   end
 
   private
