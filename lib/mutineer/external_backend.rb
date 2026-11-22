@@ -91,13 +91,13 @@ module Mutineer
     # command and SPEC_OPTS, so an order option there counts unless a later
     # source gives another one (#522).
     RSPEC_OPTION_FILES = %w[.rspec .rspec-local].freeze
-    # An RSpec order option: `--seed N`, `--order X` or `--order=X`. The last
-    # one RSpec reads decides the order.
-    RSPEC_ORDER_OPTION = /--(?:seed|order)(?:=|\s+)\S+/
-    # An RSpec `--options FILE` or `-O FILE` on the command. RSpec then reads
-    # that file instead of `.rspec` and `.rspec-local`. RSpec ignores it in
-    # SPEC_OPTS.
-    RSPEC_OPTIONS_FILE = /(?:\A|\s)(?:--options\b|-O)/
+    # The shell token that starts an RSpec order option: `--seed`, `--order`,
+    # `--seed=N` or `--order=X`. The last one RSpec reads decides the order.
+    RSPEC_ORDER_OPTION = /\A--(?:seed|order)(?:=|\z)/
+    # The shell token of an RSpec `--options FILE`, `--options=FILE` or
+    # `-O FILE` on the command. RSpec then reads that file instead of
+    # `.rspec` and `.rspec-local`. RSpec ignores it in SPEC_OPTS.
+    RSPEC_OPTIONS_FILE = /\A(?:--options(?:=|\z)|-O)/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -478,10 +478,26 @@ module Mutineer
       rspec = text[RSPEC_SEED, 1]
       return unless rspec
 
-      files = command.to_s.match?(RSPEC_OPTIONS_FILE) ? [] : rspec_option_files
-      # Binary, so a non-ASCII command joins with the binary file text.
-      last = [*files, command, ENV["SPEC_OPTS"]].map { |o| o.to_s.b }.join("\n").scan(RSPEC_ORDER_OPTION).last
+      # Shell tokens, as RSpec splits them, so a quoted argument such as
+      # `--example 'handles --order rand'` is one value, not an option.
+      files = option_tokens(command).any? { |t| t.match?(RSPEC_OPTIONS_FILE) } ? [] : rspec_option_files
+      tokens = [*files, command, ENV["SPEC_OPTS"]].flat_map { |o| option_tokens(o) }
+      at = tokens.rindex { |t| t.match?(RSPEC_ORDER_OPTION) }
+      last = at && (tokens[at].include?("=") ? tokens[at] : "#{tokens[at]} #{tokens[at + 1]}")
       [:rspec, rspec] unless last&.match?(RSPEC_SEED_GIVEN)
+    end
+
+    # The shell tokens of a command or option text, as binary strings, so
+    # text in any encoding splits without raising. Text with an unmatched
+    # quote, which the shell would reject, splits at whitespace instead.
+    #
+    # @api private
+    # @param text [String, nil]
+    # @return [Array<String>]
+    def self.option_tokens(text)
+      Shellwords.split(text.to_s.b)
+    rescue ArgumentError
+      text.to_s.b.split
     end
 
     # The text of the RSpec option files that exist in the working directory,

@@ -605,6 +605,11 @@ class ExternalBackendTest < Minitest::Test
       [{ ".rspec" => "--seed 7" }, "rspec --options other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -O other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec --options=other.opts %{files}", nil, random],
+      # A quoted argument is one shell token: its text is not an option.
+      [{}, "rspec --seed 7 --example 'handles --order rand' %{files}", nil, nil],
+      [{}, "rspec --order rand -e \"--seed 9\" %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec -e 'reads --options x' %{files}", nil, nil],
+      [{}, "rspec --order rand %{files}", "--example 'uses --seed 3'", random],
       # Non-ASCII text in both the option file and the command.
       [{ ".rspec" => "--require spec_helper # caf\u00e9\n--seed 7" }, "rspec caf\u00e9_spec.rb", nil, nil],
       # RSpec reads --options only from the command line, not from SPEC_OPTS.
