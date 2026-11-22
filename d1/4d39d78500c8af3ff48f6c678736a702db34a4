@@ -1,0 +1,33 @@
+docs/assets/mutineer.css
+  s_9747bd218c1c67::t_3b60e4f08d916c 187
+docs/agentic-coding.html
+  s_9747bd218c1c67::t_24c4d40461ae72 27
+docs/equivalent-skips.html
+  s_9747bd218c1c67::t_e6680ddcce55c2 27
+docs/index.html
+  s_9747bd218c1c67::t_f6e3c935285ebe 27
+docs/learn.html
+  s_9747bd218c1c67::t_a58f24808dbbb5 27
+docs/rails.html
+  s_9747bd218c1c67::t_0cfbc5efa2d46a 27
+docs/sample-report.html
+  s_9747bd218c1c67::t_f84da4e57a3072 21
+rake/docs_contract.rb
+  s_9747bd218c1c67::t_2662a4e17fc478 530
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d14d39d78500c8af3ff48f6c678736a702db34a4",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
