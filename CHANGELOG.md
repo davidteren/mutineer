@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format is based on
   After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
   The warning changes no verdict, no score, no JSON field and no exit code.
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
-  `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
+  `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself now keeps its chain on reload (#504), so such a class can show here too. A class body that calls `reset_callbacks` still loses a concern's callback, and this warning does not see that (#530).
 - **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
@@ -107,6 +107,15 @@ All notable changes to this project are documented here. The format is based on
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
   A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
   A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
+- **Reload keeps the callbacks of a class whose body calls `define_callbacks` (#504).**
+  `--strategy reload` and `--daemon` run the class body again. A second `define_callbacks :save` gave the class and each subclass a new empty chain.
+  A callback from an included concern, or from a subclass in another file, was then lost, because the concern's `included` block and the other file do not run again. Nothing warned.
+  A test that needed that callback failed for every mutant of the file (false kills), and a mutant in a method that only that callback called survived (false survivors).
+  Now a `define_callbacks` call during the mutant load skips each chain that the class itself defined before the load. `define_model_callbacks` calls it, so it is covered too. A name that is new to the class, and every call outside the load, runs as Rails wrote it.
+  The class body's own callbacks still run once where reload can pair the copies. Where it cannot, the #479 warning names the class.
+  Checked with ActiveSupport 7.2.4, 8.0.5 and 8.1.4.1. On a Rails that does not write `_run_<name>_callbacks` on the class, the guard does nothing and the chain is cleared, as before.
+  After the upgrade, such a file can show survivors where it showed kills, so a score can fall.
+  Still open: `reset_callbacks` in a class body, and a body that adds a callback before its own `define_callbacks` (#530), and the cases of #479.
 - **Reload scores a class whose superclass is a constant that the same file assigns, such as `BaseRow = Struct.new(:v)` then `class Row < BaseRow` (#503).**
   `--strategy reload` and `--daemon` load the mutant file over its classes. The assignment built a new `BaseRow`, so Ruby raised `TypeError: superclass mismatch` for `Row`, and every mutant of the file scored `error`.
   Now the reload keeps the class that `BaseRow` already has, so `Row` reopens with the same parent, and an instance or a subclass in another file still sees the mutant.

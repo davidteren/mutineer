@@ -237,6 +237,24 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
   end
 
+  # #504: OwnChainNote's body calls `define_callbacks :save`, and its concern
+  # adds `before_save :stamp`. The daemon ran that call again for each mutant,
+  # which cleared the chain, so the test of the callback log failed and every
+  # `urgent?` mutant was a false kill. No test checks `urgent?`, so each of
+  # its mutants must survive. `only` keeps out the mutants of `stamp`, `log`
+  # and `save`, which the log test kills for a true reason.
+  def test_the_daemon_keeps_a_chain_the_class_body_defines
+    config = config_for(1, model: "own_chain_note")
+    config.only = "OwnChainNote#urgent?"
+    aggregate = extras = nil
+    _out, err = capture_subprocess_io { aggregate, _map, extras = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.total, :>, 0
+    assert_equal aggregate.total, aggregate.survived_count, "every urgent? mutant must run and survive"
+    assert_empty extras[:callback_growth]
+  end
+
   # #479: StampedNote's concern and class body add the same `&:stamp`
   # callback, so reload keeps both copies. With two workers, the run names the
   # class once, with its file, and the verdicts do not change: the test checks
