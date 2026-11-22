@@ -117,6 +117,8 @@ class JsonReporterTest < Minitest::Test
   def test_lossy_roundtrip_source_has_no_diff_encoding
     src = "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J")
     refute survivor_row_for(src).last.key?("diff_encoding")
+    kana = src.b.sub("\xFA\x4A".b, "\x82\xA0".b).force_encoding("Windows-31J") # same source, a character that round-trips
+    assert_equal "Windows-31J", survivor_row_for(kana).last["diff_encoding"]
   end
 
   def test_binary_source_has_no_diff_encoding
