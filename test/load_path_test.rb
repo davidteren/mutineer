@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "coverage"
 require "json"
 require "minitest/mock"
 require "open3"
@@ -226,6 +227,7 @@ class LoadPathTest < Minitest::Test
   # R11: a run with no load_path gives CoverageMap the same load paths as
   # before, so the coverage cache digest does not change.
   def test_no_load_path_keeps_the_coverage_map_load_paths
+    coverage_was_running = Coverage.running?
     with_project("Digest", source_probe: false) do |proj, _log, tag|
       write(proj, "boot.rb", "require_relative \"lib/load_path_calc_#{tag}\"\n")
       stop = Class.new(StandardError)
@@ -241,5 +243,9 @@ class LoadPathTest < Minitest::Test
         assert_equal expected, seen, "boot: #{boot.inspect}"
       end
     end
+  ensure
+    # The stub stops the boot run before it suspends the Coverage it started,
+    # and a later boot run would then treat it as the host's.
+    Coverage.suspend if !coverage_was_running && Coverage.running?
   end
 end

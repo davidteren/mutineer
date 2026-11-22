@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format is based on
   Ruby searches them in the written order, after the test-helper directories Mutineer finds itself. With no boot file, `lib` comes first. That order holds from before the boot file and the sources load, also when Bundler or `RUBYOPT` already put `lib` or a test-helper directory on `$LOAD_PATH`.
   A path that is not a directory exits 2 with `mutineer: not a directory: <path> (<origin>)`. A blank entry, or a value that is not a string or a list of strings, exits 2.
   `--test-command` does not use the directories and does not check them; it warns (#535). A blank entry or a wrong shape still exits 2 there. The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
-  A run without the setting keeps its `$LOAD_PATH` and its coverage cache. A changed order of the entries does not rebuild the coverage cache (#536).
+  A run without the setting keeps its `$LOAD_PATH` and its coverage cache. A changed order of the entries does not rebuild the coverage cache (#536), and neither does an edit to a file in a directory outside the project root (#539).
   `--l` and `-l` are now ambiguous (`--list-operators` or `--load-path`); `--li` still works.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
