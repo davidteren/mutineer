@@ -133,7 +133,7 @@ A dry run does not load the sources, so it does not report this.
 | No known operator names remain | Exit 2 |
 | `--operators` | Replaces blank or unknown configuration lists |
 | `require`, `ignore` | Empty lists allowed |
-| `load_path` | Each entry must be a directory, or the run exits 2 with `mutineer: not a directory: <path> (<origin>)`, every bad path on one line. A blank entry, or a value that is not a string or a list of strings, exits 2. `load_path: []` is allowed. Not checked with `--test-command` |
+| `load_path` | Each entry must be a directory, or the run exits 2 with `mutineer: not a directory: <path> (<origin>)`, every bad path on one line. A blank entry, or a value that is not a string or a list of strings, exits 2. `load_path: []` is allowed. `--test-command` skips the directory check, but a blank entry or a wrong shape still exits 2 there |
 | Booleans | `true` or `false`, including quoted forms; not `"yes"` |
 | `jobs` | Positive; strings contain digits only |
 | `threshold`, CLI-only `--baseline-epsilon` | Strings use plain decimals: `90`, `0.5`; not `+2`, `1e2`, `1_0` |

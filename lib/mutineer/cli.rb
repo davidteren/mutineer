@@ -757,8 +757,9 @@ module Mutineer
     # Validate path existence up front so a typo is a clean usage error (exit 2),
     # not an Errno::ENOENT backtrace from deep in the run. Flag checks run first
     # so a bad flag still reports the flag, not the missing file. A `load_path`
-    # entry must be a directory (#491), except under --test-command, which
-    # ignores the setting and only warns.
+    # entry must be a directory (#491). --test-command skips that check: it
+    # does not use the directories and only warns. Config.parse has already
+    # checked the value's shape in every mode.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.

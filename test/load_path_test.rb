@@ -29,34 +29,41 @@ class LoadPathTest < Minitest::Test
   end
 
   # A temp project whose test file logs one JSON line each time it loads.
-  # `tag` keeps the source class unique, since the parent requires it.
-  def with_project(tag)
+  # `tag` keeps the source class and the probe names unique, since the
+  # parent (this test process) requires some of them. A run without
+  # load_path gets `source_probe: false`: its parent loads the source before
+  # lib is on $LOAD_PATH, as in earlier versions.
+  def with_project(tag, source_probe: true)
     Dir.mktmpdir("mutineer-load-path") do |dir|
       proj = File.realpath(dir)
       log = File.join(proj, "load.log")
       klass = "LoadPathCalc#{tag}"
-      write(proj, "lib/load_path_calc_#{tag}.rb", "class #{klass}\n  def add(a, b)\n    a + b\n  end\nend\n")
+      # The source loads lib_probe as it loads, so the parent's order before
+      # the run matters too, not only the order when the tests load.
+      probe = source_probe ? "require \"lib_probe_#{tag}\"\n" : ""
+      write(proj, "lib/load_path_calc_#{tag}.rb", "#{probe}class #{klass}\n  def add(a, b)\n    a + b\n  end\nend\n")
       write(proj, "test/test_helper.rb", "require \"minitest/autorun\"\n")
       # In the test-helper root and in x1: the root copy must win.
-      write(proj, "test/helper_probe.rb", "\n")
-      write(proj, "x1/helper_probe.rb", "\n")
+      write(proj, "test/helper_probe_#{tag}.rb", "\n")
+      write(proj, "x1/helper_probe_#{tag}.rb", "\n")
       EXTRA.each { |x| write(proj, "#{x}/shared_name.rb", "\n") }
       # In lib and in x1: with no boot file, lib comes first, so lib's copy wins.
-      write(proj, "lib/lib_probe.rb", "\n")
-      write(proj, "x1/lib_probe.rb", "\n")
-      write(proj, "x2/boot_probe.rb", "\n")
+      write(proj, "lib/lib_probe_#{tag}.rb", "\n")
+      write(proj, "x1/lib_probe_#{tag}.rb", "\n")
+      write(proj, "x2/boot_probe_#{tag}.rb", "\n")
       write(proj, "test/load_path_calc_#{tag}_test.rb", <<~RUBY)
         require "test_helper"
         require "shared_name"
-        require "helper_probe"
+        require "helper_probe_#{tag}"
         require "json"
         require_relative "../lib/load_path_calc_#{tag}"
-        require "lib_probe"
+        require "lib_probe_#{tag}"
         found = ->(name) { $LOADED_FEATURES.grep(%r{/\#{name}\\.rb\\z}).first }
         File.open(#{log.dump}, "a") do |f|
           f.puts JSON.generate("kind" => (defined?(Mutineer::Runner) ? "fork" : "subprocess"),
                                "path" => $LOAD_PATH, "shared" => found.("shared_name"),
-                               "helper" => found.("helper_probe"), "lib" => found.("lib_probe"))
+                               "helper" => found.("helper_probe_#{tag}"),
+                               "lib" => found.("lib_probe_#{tag}"))
         end
         class LoadPathCalc#{tag}Test < Minitest::Test
           def test_add
@@ -119,8 +126,8 @@ class LoadPathTest < Minitest::Test
         order = ["lib", "test", *EXTRA].map { |d| File.join(proj, d) }
         assert_order(line["path"], order, line["kind"])
         assert_equal File.join(proj, "x1/shared_name.rb"), line["shared"], line["kind"]
-        assert_equal File.join(proj, "test/helper_probe.rb"), line["helper"], line["kind"]
-        assert_equal File.join(proj, "lib/lib_probe.rb"), line["lib"], line["kind"]
+        assert_equal File.join(proj, "test/helper_probe_#{tag}.rb"), line["helper"], line["kind"]
+        assert_equal File.join(proj, "lib/lib_probe_#{tag}.rb"), line["lib"], line["kind"]
       end
     end
   end
@@ -139,7 +146,10 @@ class LoadPathTest < Minitest::Test
       $LOAD_PATH.push(File.join(proj, "test")) if preset
       # The boot file loads from a load_path directory, so the directories
       # are on $LOAD_PATH before it.
-      write(proj, "boot.rb", "require \"boot_probe\"\nrequire_relative \"lib/load_path_calc_#{tag}\"\n")
+      # helper_probe is in the test root and in x1: the boot file must get the
+      # root's copy, as in the daemon.
+      write(proj, "boot.rb", "require \"boot_probe_#{tag}\"\nrequire \"helper_probe_#{tag}\"\n" \
+                             "require_relative \"lib/load_path_calc_#{tag}\"\n")
       aggregate, = Mutineer::Runner.execute(config_for(proj, tag, extra: %w[x1 x2 x3], boot: "boot.rb"))
 
       assert_operator aggregate.killed_count, :>, 0
@@ -147,7 +157,7 @@ class LoadPathTest < Minitest::Test
       lines(log).each do |line|
         assert_order(line["path"], ["test", *EXTRA].map { |d| File.join(proj, d) }, line["kind"])
         assert_equal File.join(proj, "x1/shared_name.rb"), line["shared"]
-        assert_equal File.join(proj, "test/helper_probe.rb"), line["helper"]
+        assert_equal File.join(proj, "test/helper_probe_#{tag}.rb"), line["helper"]
       end
     end
   end
@@ -158,7 +168,7 @@ class LoadPathTest < Minitest::Test
   def test_without_the_setting_the_capture_fails
     [nil, "boot.rb"].each do |boot|
       tag = boot ? "MissingBoot" : "Missing"
-      with_project(tag) do |proj, _log, _tag|
+      with_project(tag, source_probe: false) do |proj, _log, _tag|
         write(proj, "boot.rb", "require_relative \"lib/load_path_calc_#{tag}\"\n")
         _out, err = capture_subprocess_io do
           assert_raises(Mutineer::SmokeCheckError) do
@@ -216,7 +226,7 @@ class LoadPathTest < Minitest::Test
   # R11: a run with no load_path gives CoverageMap the same load paths as
   # before, so the coverage cache digest does not change.
   def test_no_load_path_keeps_the_coverage_map_load_paths
-    with_project("Digest") do |proj, _log, tag|
+    with_project("Digest", source_probe: false) do |proj, _log, tag|
       write(proj, "boot.rb", "require_relative \"lib/load_path_calc_#{tag}\"\n")
       stop = Class.new(StandardError)
       { nil => %w[lib test], "boot.rb" => %w[lib] }.each do |boot, expected|

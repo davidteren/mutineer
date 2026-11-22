@@ -12,9 +12,9 @@ All notable changes to this project are documented here. The format is based on
   A suite that needs an extra directory, such as `test/support`, set it with `RUBYOPT=-I` before. `--daemon` does not pass `RUBYOPT` or `RUBYLIB` to the app (#100), so every mutant of such a suite scored `error` there.
   The value is a directory or a list of directories, relative to the project root or absolute. Repeat the flag for more. The command-line list replaces the file's list, unlike `ruby -I`, which adds.
   Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require:` files and the tests, in-process and under `--daemon`.
-  Ruby searches them in the written order, after the test-helper directories Mutineer finds itself. With no boot file, `lib` comes first.
+  Ruby searches them in the written order, after the test-helper directories Mutineer finds itself. With no boot file, `lib` comes first. That order holds from before the boot file and the sources load, also when Bundler or `RUBYOPT` already put `lib` or a test-helper directory on `$LOAD_PATH`.
   A path that is not a directory exits 2 with `mutineer: not a directory: <path> (<origin>)`. A blank entry, or a value that is not a string or a list of strings, exits 2.
-  `--test-command` ignores the setting and warns (#535). The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
+  `--test-command` does not use the directories and does not check them; it warns (#535). A blank entry or a wrong shape still exits 2 there. The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
   A run without the setting keeps its `$LOAD_PATH` and its coverage cache. A changed order of the entries does not rebuild the coverage cache (#536).
   `--l` and `-l` are now ambiguous (`--list-operators` or `--load-path`); `--li` still works.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
