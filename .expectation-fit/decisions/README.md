@@ -32,8 +32,8 @@ can differ (see Limits).
   file for its topic. This folder is the source: nothing copies rules from
   cubic into it. Then teach the review tool, if you use one.
 - Before you add a line, name the function, file or doc it checks.
-  Confirm that name exists in the code on `main`.
-  For a change in an open pull request, add the line in that pull request.
+  Confirm that it exists on `main`, or that the same pull request adds it.
+  Check test code too, not only `lib/`.
 - ``(cubic `xxxxxxxx`)`` at the end of a line is the id of the rule in cubic
   that the line came from. A line that joins two cubic rules has both ids:
   ``(cubic `aaaaaaaa`, `bbbbbbbb`)``. A line with no id was written here.
