@@ -1,0 +1,21 @@
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_b8d25d568c23f9 1008-1011,1016
+test/load_path_test.rb
+  s_9747bd218c1c67::t_d0ff15f793e946 166-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e4e474391dcf0685794ad5e2fa2d2cdb9d16316",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
