@@ -505,7 +505,7 @@ module Mutineer
       return nil if node.nil?
 
       inner = node
-      inner = inner.body.body.first while sole_statement_parentheses?(inner)
+      inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
       return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
 
       write = plain_local_write(node)
@@ -520,16 +520,8 @@ module Mutineer
     # @param node [Prism::Node]
     # @return [Prism::LocalVariableWriteNode, nil]
     def self.plain_local_write(node)
-      node = node.body.body.first if sole_statement_parentheses?(node)
+      node = node.body.body.first if Project.sole_statement_parentheses?(node)
       node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
-    end
-
-    # Whether `node` is one pair of parentheses around one statement.
-    #
-    # @param node [Prism::Node]
-    # @return [Boolean]
-    def self.sole_statement_parentheses?(node)
-      node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
     end
 
     # The superclass nodes {kept_target} leaves as written: a constant, and a
@@ -563,7 +555,7 @@ module Mutineer
     # The module a class statement or a constant write defines its constant
     # in, as Ruby text that runs where the superclass or the value runs:
     # `::Module.nesting.first` for `class X`, the written parent for
-    # `class A::X` and `A::X = ...`, and `Object` for `class ::X` and `::X = ...`.
+    # `class A::X` and `A::X = ...`, and `::Object` for `class ::X` and `::X = ...`.
     #
     # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode]
     #   the class or constant name.

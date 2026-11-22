@@ -148,10 +148,11 @@ same file has a superclass whose last name is that constant's name, such as the 
 `BaseRow = Struct.new(:v) do ... end` with `class Row < BaseRow` (#503). Reload keeps the class that
 `BaseRow` already has, so `Row` reopens with the same parent, and the value and its block do not run again.
 The match uses the last name only: `class Row < Billing::BaseRow` matches `BaseRow = ...` in any scope of
-the file. `--strategy redefine` runs these methods. Two shapes are open. The value of a `||=` assignment
+the file. `--strategy redefine` runs these methods. Three shapes are open. The value of a `||=` assignment
 does not run again on reload, and its methods are not marked, so a mutant there can survive falsely (#529).
 A constant with no class statement for it in the same file is built again, so a subclass in another file
-keeps the old class (#528).
+keeps the old class (#528). A kept value that reads another class the file builds again, such as
+`BaseRow = Class.new(Fields)`, keeps the old `Fields`, so a mutant in `Fields` can survive falsely (#533).
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).

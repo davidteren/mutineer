@@ -44,13 +44,20 @@ module Mutineer
 
         superclass = node.superclass
         # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
-        while superclass.is_a?(Prism::ParenthesesNode) && superclass.body.is_a?(Prism::StatementsNode) &&
-              superclass.body.body.size == 1
-          superclass = superclass.body.body.first
-        end
+        superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
         names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) || superclass.is_a?(Prism::ConstantPathNode)
       end
       names
+    end
+
+    # Whether `node` is one pair of parentheses around one statement. Discovery
+    # ({superclass_constant_names}) and the reload text ({JobPlan.kept_target})
+    # both look through such parentheses with this one test, so they agree.
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.sole_statement_parentheses?(node)
+      node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
     end
 
     # The constant name a plain `=` assigns (`X = ...`, `A::X = ...`), or
