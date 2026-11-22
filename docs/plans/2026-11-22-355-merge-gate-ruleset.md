@@ -38,9 +38,9 @@ no bypass list.
 | Rule | Setting | Why |
 |---|---|---|
 | Required status checks | Every job in `ci.yml` (12 checks), plus `GitGuardian Security Checks` and `Socket Security: Pull Request Alerts` | Each job checks something the gate list in `AGENTS.md` names. A job that is not required can fail and still merge. |
-| Check source | Each check is pinned to the app that reports it (GitHub Actions, GitGuardian, Socket) | Another app or a workflow cannot post a fake green status with the same name. |
-| Up-to-date branch | On (`strict_required_status_checks_policy`) | The checks must pass on a head commit that already contains current `main`. This is how a run proves it tested the commit that merges. |
-| Pull request | Required, 0 approvals, review threads must be resolved | Every change goes through a pull request. Every human or bot review thread is answered and resolved before merge. No approval count, because the only maintainer cannot approve their own pull request. |
+| Check source | Each check is pinned to the app that reports it (GitHub Actions, GitGuardian, Socket) | Another app cannot post a green status with the same name. A workflow in this repository still reports through GitHub Actions, so a pull request that edits a workflow can report any Actions check name. Review workflow changes for that. |
+| Up-to-date branch | On (`strict_required_status_checks_policy`) | The checks report on the head commit, and that head must already contain current `main`. A `pull_request` run tests the merge of that head with `main`, which is then the same code that lands. |
+| Pull request | Required, 0 approvals, review threads must be resolved | Every change goes through a pull request. Every human or bot review thread is resolved before merge. GitHub does not check for a reply: replying first stays a rule in `AGENTS.md`, "PR review gate". No approval count, because the only maintainer cannot approve their own pull request. |
 | Deletion, force push | Blocked | `main` keeps its history. |
 | Bypass | Nobody | An admin merge past the checks is the gap this closes. A maintainer who must merge anyway in an emergency disables the ruleset, merges, and enables it again, so the bypass is visible in the ruleset history. |
 
@@ -48,7 +48,7 @@ Not required, and why:
 
 - **cubic and Qodo.** They are review bots. They can skip a pull request (no
   quota, a bot author). Their findings arrive as review threads, and the
-  thread-resolution rule already blocks a merge until each one is answered.
+  thread-resolution rule already blocks a merge until each one is resolved.
 - **The local review skills** (ce-code-review, fit-review, the local cubic
   CLI). They run on one person's machine and report nothing to GitHub, so
   GitHub cannot check them. They stay part of the author's routine in
@@ -58,7 +58,9 @@ Not required, and why:
 
 The old branch protection can stay. GitHub applies both, and the stricter rule
 wins. A maintainer can delete it later, once the ruleset has worked for a few
-merges.
+merges. While both exist, a pull request that renames one of its four checks
+must also change that check in branch protection, or the old name still
+blocks the merge.
 
 ## Effect on the release pull request
 

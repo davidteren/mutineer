@@ -75,8 +75,9 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 `yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `test (ruby 3.4, prism 2)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
 
-Today branch protection on `main` requires only `test` (×2 OS), `yard:strict`
-and `rails dogfood`, and admins can merge past it. The proposed ruleset
+Today branch protection on `main` requires only `test (ruby 3.4 on
+ubuntu-latest)`, `test (ruby 3.4 on macos-latest)`, `yard strict (ruby 3.4)`
+and `rails dogfood (ruby 3.4)`, and admins can merge past it. The proposed ruleset
 `.github/rulesets/main-merge-gate.json` requires every `ci.yml` job plus
 Socket and GitGuardian on an up-to-date head, and resolved review threads,
 with no bypass. A maintainer applies it by hand (issue #355):
@@ -216,8 +217,8 @@ The release procedure. A maintainer owns every step. An agent may do steps
    that finds the branch already based on current `main` leaves that branch
    as it is. It still dispatches `ci.yml` when
    the push used `GITHUB_TOKEN`. That dispatch runs tests only.
-2. Approve the release PR's parked CI run (see "CI on the release PR"
-   below), then review and merge that PR. Merging leaves the gem
+2. If the release PR's CI run is parked, approve it (see "CI on the
+   release PR" below). Then review and merge that PR. Merging leaves the gem
    unpublished. Leave repository auto-merge off.
 3. Tag the merged commit and push the tag:
    ```sh
@@ -289,14 +290,16 @@ Safety nets:
   counts only checks from runs tied to the PR, and the dispatched run is not
   tied to it. GitHub does create the PR's own `pull_request` CI run, but it
   parks that run as "action required" because a bot opened the PR. The PR
-  stays blocked until a maintainer approves that run. Find it with
-  `gh run list --workflow ci.yml --branch release/vX.Y.Z --event pull_request`,
-  open it, and click the approve button that GitHub shows on a waiting run.
+  stays blocked until a maintainer approves that run on the release PR's
+  page, where GitHub shows the waiting workflows and an approve button.
+  `gh run list --workflow ci.yml --branch release/vX.Y.Z --event pull_request`
+  lists the parked run.
   The required checks then report on the PR's head commit.
   Do not merge past protection instead. If the dispatched run is missing,
   run `gh workflow run ci.yml --ref release/vX.Y.Z`. That command runs CI
-  only. With a `RELEASE_PR_TOKEN` secret (a fine-grained PAT or GitHub App
-  token with Contents, Pull requests and Workflows write), the push and the
+  only. With a `RELEASE_PR_TOKEN` secret (a fine-grained PAT with Contents,
+  Pull requests and Workflows write; not a GitHub App installation token,
+  which expires after an hour), the push and the
   PR come from that identity, CI runs without approval, and the dispatch is
   skipped. The secret stays optional.
 

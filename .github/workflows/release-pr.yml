@@ -17,8 +17,8 @@ name: Release PR
 # the rubygems environment. That approval is what publishes.
 #
 # Note: a push made with the default GITHUB_TOKEN does NOT trigger other
-# workflows (GitHub's recursion guard). A workflow_dispatch is the one event
-# GITHUB_TOKEN may start, so after a GITHUB_TOKEN push this job dispatches ci.yml
+# workflows (GitHub's recursion guard). GITHUB_TOKEN may start a
+# workflow_dispatch, so after a GITHUB_TOKEN push this job dispatches ci.yml
 # on the release branch as an early signal. Those runs do not unblock the PR:
 # branch protection counts only runs tied to the PR. The PR's own pull_request
 # run waits in action_required until a maintainer approves it, because a bot
