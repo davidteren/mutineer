@@ -1,0 +1,41 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9747bd218c1c67::t_3828fd312f42ea 14
+CHANGELOG.md
+  s_9747bd218c1c67::t_d7dd26c3bf9c66 110-118,123,125
+docs/json-schema.md
+  s_9747bd218c1c67::t_bc03d1efba626b 143-144
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_a3b899076ad23c 484
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_df3ab5e624ead9 366-367,427-435,440,443-444,452,454-455,457,462-472,475-484,486-495,498-501
+lib/mutineer/runner.rb
+  s_9747bd218c1c67::t_a500b5102c2858 497
+test/call_superclass_reload_test.rb
+  s_9747bd218c1c67::t_73d7f94e469a15 22-29,45,102-119,130-210
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_89e39430b69b0c 403-432
+test/fixtures/local_read_superclass.rb
+  s_9747bd218c1c67::t_6eae86c0bd9292 1-12
+test/fixtures/local_read_superclass_test.rb
+  s_9747bd218c1c67::t_bcae765ca1749b 1-15
+test/fixtures/local_superclass.rb
+  s_9747bd218c1c67::t_c4dc68a799d48d 1-13
+test/fixtures/local_superclass_test.rb
+  s_9747bd218c1c67::t_e32825bb558be4 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58703c4216edc350ec4053101f3fe0c10c9246a3",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
