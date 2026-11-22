@@ -1,0 +1,19 @@
+test/external_backend_test.rb
+  s_9747bd218c1c67::t_e2b6ca72a02b6c 105,164,247,251,253,271,275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b536a4ca9de903532ab727a7e9c648b5bd1d7cc",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
