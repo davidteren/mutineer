@@ -102,7 +102,7 @@ class ExternalBackendTest < Minitest::Test
   GATE = "SimpleCov failed with exit 2 due to a coverage related error\n"
 
   # Exit-2 outputs and their verdict.
-  SIMPLECOV_GATE = {
+  GATE_OUTPUTS = {
     "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{GATE}" => :survived?,
     "4 examples, 0 failures\n#{GATE}" => :survived?,
     "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{GATE}" => :killed?,
@@ -161,7 +161,7 @@ class ExternalBackendTest < Minitest::Test
   # not start a line counts as no summary; under true it counts as before.
   def test_line_mode_reads_a_moved_summary_line_as_no_summary
     summary = ->(line) { Backend.summary_line?(Backend.summary_text(line)) }
-    rows = EXIT_ONE_KILLED.map { |o| [o, 1] } + EXIT_ONE_ERROR.map { |o| [o, 1] } + SIMPLECOV_GATE.keys.map { |o| [o, 2] }
+    rows = EXIT_ONE_KILLED.map { |o| [o, 1] } + EXIT_ONE_ERROR.map { |o| [o, 1] } + GATE_OUTPUTS.keys.map { |o| [o, 2] }
     rows.each do |output, code|
       lines = output.b.lines
       without = lines.reject(&summary).join
@@ -244,13 +244,13 @@ class ExternalBackendTest < Minitest::Test
   # process, where the fork exits before that hook. Without SimpleCov's line,
   # exit 2 may be code under test calling exit 2, which scores error.
   def test_simplecov_gate_exit_follows_the_summary
-    SIMPLECOV_GATE.each do |output, verdict|
+    GATE_OUTPUTS.each do |output, expected|
       with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
         cmd = "#{RUBY} #{path} %{files}"
         MODES.each do |mode|
-          assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: mode), verdict, "#{mode.inspect} #{output.inspect}"
+          assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: mode), expected, "#{mode.inspect} #{output.inspect}"
         end
-        assert_predicate Backend.run(cmd, ["x"], timeout: 30), verdict, "check off: #{output.inspect}"
+        assert_predicate Backend.run(cmd, ["x"], timeout: 30), expected, "check off: #{output.inspect}"
       end
     end
   end
@@ -268,11 +268,11 @@ class ExternalBackendTest < Minitest::Test
       ["3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{GATE}", 2, :killed?],
       [passing + GATE, 0, :survived?],
       ["0 examples, 0 failures, 1 error occurred outside of examples\n#{GATE}", 1, :error?]
-    ].each do |output, clean, verdict|
+    ].each do |output, clean, expected|
       with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
         MODES.each do |mode|
           result = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: mode, clean_summaries: clean)
-          assert_predicate result, verdict, "#{mode.inspect} #{clean} #{output.inspect}"
+          assert_predicate result, expected, "#{mode.inspect} #{clean} #{output.inspect}"
         end
       end
     end
