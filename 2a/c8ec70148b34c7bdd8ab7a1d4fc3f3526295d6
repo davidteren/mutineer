@@ -1,0 +1,19 @@
+test/merge_gate_ruleset_test.rb
+  s_a5f73b7874bfdc::t_e26a1d69c2f1fb 49,51,69-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ac8ec70148b34c7bdd8ab7a1d4fc3f3526295d6",
+  "prompts": {},
+  "sessions": {
+    "s_a5f73b7874bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fba5a0ce-537b-43af-8b4e-562be727f217",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
