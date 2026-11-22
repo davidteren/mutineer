@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**
+  It now declines `select` / `reject` (no arguments), `first` / `last`, and `min` / `max` (no block) when the call is a statement of its own and its value is discarded. `all?` / `any?` still swap.
+  It also declines `each` / `map` when only its truthiness is read: an `if`, `unless`, `while`, `until`, or subjectless `when` condition, or the left side of `&&` / `and`.
+  A local variable that the same method assigns from a `lazy` chain keeps its `each` / `map` swap.
+  Declined swaps count in `summary.declined_by_operator`.
+  On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after, and none of the six other names gained a decline).
+  A run with `collection_method` can report fewer mutants. Mutant ids number only the emitted swaps, so the id of a later swap of the same name in the same method can change. A baseline or `ignore:` list can need a refresh.
+  The limits that remain are in #501. See `docs/equivalent-skips.md`, "Collection method".
 - **126 private methods of `Mutineer::CoverageMap` moved into eight modules
   (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
   `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
@@ -33,6 +41,14 @@ All notable changes to this project are documented here. The format is based on
   The note names only the variable, never its value.
   A setting that adds load paths for the daemon is still open in #491.
 - `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
+- **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
+  It reads the minitest-reporters seed line, so a random order there now gets the warning.
+  It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
+  Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
+- **The 12 known limits of reading `--test-command` output are documented (#342).**
+  `docs/rails-setup.md` lists each one and its result. The code comments cite #342.
+  The limits that can score a crash as `killed` are tracked in #515, and the one that can score `survived` wrongly in #516.
+  No scoring changed.
 
 ## [1.9.0] - 2026-11-16
 
