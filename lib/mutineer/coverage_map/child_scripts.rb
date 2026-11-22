@@ -24,7 +24,7 @@ module Mutineer
       # running can inherit fd {RESULT_FD} (a `fork` without `exec` keeps it
       # despite close-on-exec) and hold the pipe open long after the child exits.
       # The capture and the clean check both use `result: true`, and each reads
-      # one JSON line. `result: false` opens no pipe and returns `""`.
+      # one JSON line. `result: false` opens no pipe, so the result line is `""`.
       #
       # @api private
       # @param script [String] Ruby script text.
