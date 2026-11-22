@@ -448,6 +448,18 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # #497 review: the failure reporter fails closed, so a run whose summary
+  # reporters a plugin dropped is still red.
+  def test_minitest_failure_report_fails_closed
+    report = Mutineer::MinitestFailureReport.new(StringIO.new)
+    pass = Struct.new(:passed?, :skipped?).new(true, false)
+    fail = Struct.new(:passed?, :skipped?).new(false, false)
+    report.record(pass)
+    assert_predicate report, :passed?
+    report.record(fail)
+    refute_predicate report, :passed?
+  end
+
   # #96: a warm cache cannot certify a suite that now fails without a file-content
   # change (the digest still matches).
   def test_warm_cache_records_failed_clean_when_suite_turns_red

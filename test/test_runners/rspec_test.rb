@@ -552,7 +552,8 @@ class TestRunnersRSpecTest < Minitest::Test
   def test_database_error_verdict_names_the_database_error
     verdict = rspec_db_verdict({ "FIRST" => "connection" }, matrix: false)
     assert_equal :error, verdict.status
-    assert_match(/\Aa test failed with a database error: ActiveRecord::ConnectionNotEstablished/, verdict.details)
+    assert_equal "a test failed with a database error: ActiveRecord::ConnectionNotEstablished: the database is gone",
+                 verdict.details
   end
 
   def test_first_assertion_keeps_a_later_database_error_killed

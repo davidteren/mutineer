@@ -571,7 +571,7 @@ module Mutineer
           <div class="survivor">
           <h3>#{esc(row[:subject] || "unknown method")}</h3>
           <div class="meta">#{esc(errored_place(row))} &middot; #{esc(row[:operator].to_s)} &middot; <span class="id">#{esc(row[:id].to_s)}</span></div>
-          <pre class="diff">#{esc(row[:details] || ERRORED_NO_CAUSE)}</pre>
+          <pre class="diff">#{esc(errored_cause(row))}</pre>
           </div>
         CARD
       end.join("\n")
@@ -1472,7 +1472,7 @@ module Mutineer
       rows.each do |row|
         head = "#{printable(row[:subject] || 'unknown method')} (#{printable(errored_place(row))})"
         out.puts "  #{[head, row[:operator], row[:id]].compact.join(' ')}"
-        out.puts "    #{printable(row[:details] || ERRORED_NO_CAUSE)}"
+        out.puts "    #{printable(errored_cause(row))}"
       end
     end
 
@@ -1483,6 +1483,17 @@ module Mutineer
     def errored_rows
       @agg.results.select(&:error?).map { |r| no_verdict_json(r) }
           .sort_by { |h| [h[:file].to_s, h[:line].to_i, h[:operator].to_s, h[:id].to_s] }
+    end
+
+    # The cause of an errored row, or {ERRORED_NO_CAUSE} when it has none.
+    # An empty `details` counts as none.
+    #
+    # @api private
+    # @param row [Hash] one {#errored_rows} row.
+    # @return [String]
+    def errored_cause(row)
+      text = row[:details].to_s
+      text.strip.empty? ? ERRORED_NO_CAUSE : text
     end
 
     # `file:line` of an errored row, or a note when the error came before a

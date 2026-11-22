@@ -249,7 +249,9 @@ module Mutineer
     # @param output [String] captured child stdout+stderr.
     # @return [Mutineer::Result]
     def self.error_with_output(message, output)
-      last = summary_text(output).force_encoding(Encoding::UTF_8).scrub.lines.map(&:strip).reject(&:empty?).last
+      # Redact before the split, so a password that spans lines is hidden whole.
+      text = Redaction.text(summary_text(output).force_encoding(Encoding::UTF_8).scrub)
+      last = text.lines("\n").map(&:strip).reject(&:empty?).last
       Result.error(last ? "#{message}; last output line: #{ChildCause.clip(last)}" : message)
     end
 

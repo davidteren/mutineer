@@ -52,11 +52,12 @@ module Mutineer
       @failures.each_with_index { |result, i| io.puts format("\n%3d) %s", i + 1, result) }
     end
 
-    # Always true: the run's other reporters decide pass or fail.
+    # False once a test failed or errored. A plugin can drop the summary
+    # reporters that decide the run's result, so this one fails closed too.
     #
     # @return [Boolean]
     def passed?
-      true
+      @failures.empty?
     end
   end
 end

@@ -226,6 +226,8 @@ class HtmlReporterTest < Minitest::Test
     Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.error("boom")]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "human", verbose: true)
     assert_includes out.string, "  unknown method (no mutant location)\n    boom\n"
+    # An empty cause is no cause.
+    assert_includes render([errored_mutant(" ")]), "<pre class=\"diff\">#{Mutineer::Reporter::ERRORED_NO_CAUSE}</pre>"
   end
 
   def test_no_matrix_section_without_the_flag

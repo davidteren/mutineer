@@ -73,7 +73,7 @@ All notable changes to this project are documented here. The format is based on
   The report now comes from `Mutineer::MinitestFailureReport`, which that
   plugin leaves in place. It applies to the per-file and the combined clean
   check, in-process, `--boot` and `--daemon`.
-- **Every report names the cause of an errored mutant (#480).** A
+- **The JSON and HTML reports, and the human report under `--verbose`, name the cause of an errored mutant (#480).** A
   `--test-command` mutant that scores error adds the command's last non-blank
   output line to its `details`, redacted and cut at 500 characters. An RSpec
   example that fails with a database error now writes the same cause line as

@@ -293,6 +293,7 @@ module Mutineer
 
       saved == BUNDLER_UNSET ? nil : saved
     end
+    private_class_method :user_value
 
     # Drop rbenv and asdf version bins so shims can select the app Ruby.
     # Leave those bins in place when no shim directory exists, so +bundle+
