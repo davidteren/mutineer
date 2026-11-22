@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format is based on
 - **A `survivors[]` diff for a non-UTF-8 source now says how to apply it (#510).**
   The JSON `diff` is UTF-8, so `git apply` rejected it for a source with `# encoding: EUC-JP` (or `Shift_JIS`, `ISO-8859-1`) and a changed line with non-ASCII text.
   The entry now has `diff_encoding`, the source's encoding. Transcode the hunk lines to it, and `git apply --unidiff-zero` accepts the patch.
-  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. See `docs/json-schema.md`.
+  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source with non-UTF-8 bytes, `git apply` still rejects the diff, so edit the file by hand. See `docs/json-schema.md`.
 
 ## [1.9.0] - 2026-11-16
 

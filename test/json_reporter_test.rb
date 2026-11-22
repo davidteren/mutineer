@@ -76,20 +76,26 @@ class JsonReporterTest < Minitest::Test
     ["EUC-JP", "\u3042\u3044"], ["Shift_JIS", "\u3042\u3044"], ["ISO-8859-1", "caf\u00e9"], ["ISO-8859-1", "cafe"]
   ].freeze
 
+  # Renders the `>=` -> `>` survivor of `src` (a Foo#bar source) as JSON.
+  # @return [Array(Mutineer::Mutation, Hash)] the mutation and its survivors[] row.
+  def survivor_row_for(src)
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    [mutation, JSON.parse(out.string)["survivors"].first]
+  end
+
   def test_diff_applies_with_git_after_transcoding_to_diff_encoding
     NON_UTF8_SOURCES.each do |name, text|
       label = "#{name} #{text}"
       enc = Encoding.find(name)
       src = "# encoding: #{name}\nclass Foo\n  def bar(x) # #{text}\n    x >= 1 ? \"#{text}\" : 0\n  end\nend\n"
       src = src.encode(enc, undef: :replace).force_encoding(enc)
-      tok = src.byteindex(">=")
-      mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
-      subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
-                                   def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
-      out = StringIO.new
-      Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
-                             { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
-      row = JSON.parse(out.string)["survivors"].first
+      mutation, row = survivor_row_for(src)
       assert_equal name, row["diff_encoding"], label
       header, hunk = row["diff"].split(/^(?=@@)/, 2)
       assert row["diff"].valid_encoding?, label
@@ -110,26 +116,12 @@ class JsonReporterTest < Minitest::Test
 
   def test_lossy_roundtrip_source_has_no_diff_encoding
     src = "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J")
-    tok = src.byteindex(">=")
-    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
-    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
-                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
-    out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
-                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
-    refute JSON.parse(out.string)["survivors"].first.key?("diff_encoding")
+    refute survivor_row_for(src).last.key?("diff_encoding")
   end
 
   def test_binary_source_has_no_diff_encoding
     src = "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b
-    tok = src.byteindex(">=")
-    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
-    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
-                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
-    out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
-                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
-    row = JSON.parse(out.string)["survivors"].first
+    _, row = survivor_row_for(src)
     refute row.key?("diff_encoding")
     assert_includes row["diff"], "\u3042" # read as UTF-8, so it applies as it is
   end
