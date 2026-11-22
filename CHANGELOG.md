@@ -37,6 +37,7 @@ All notable changes to this project are documented here. The format is based on
   This covers every superclass that is not a constant and sets no local variable of the file, such as `Struct.new`, `Class.new` and `DelegateClass`.
   A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
   Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). A superclass expression that sets a local variable (`class Q < (base = Struct.new(:a))`) keeps its text, so that file still errors when the call builds a new class (#512).
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 
 ## [1.9.0] - 2026-11-16
 
