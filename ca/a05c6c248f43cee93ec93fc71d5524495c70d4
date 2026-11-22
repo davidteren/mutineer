@@ -1,0 +1,31 @@
+docs/json-schema.md
+  s_2104026818f077::t_0312a6b898106b 192,204-207
+CHANGELOG.md
+  s_2104026818f077::t_0312a6b898106b 40-43
+lib/mutineer/daemon_client.rb
+  s_2104026818f077::t_0312a6b898106b 59-62
+lib/mutineer/reporter.rb
+  s_2104026818f077::t_0312a6b898106b 1413-1414
+docs/cli.md
+  s_2104026818f077::t_0312a6b898106b 105
+test/daemon_backend_contract_test.rb
+  s_2104026818f077::t_0312a6b898106b 455-463
+test/html_reporter_test.rb
+  s_2104026818f077::t_0312a6b898106b 225-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "caa05c6c248f43cee93ec93fc71d5524495c70d4",
+  "prompts": {},
+  "sessions": {
+    "s_2104026818f077": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18c7f4be-528d-4a58-abac-91dfd0fbc081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
