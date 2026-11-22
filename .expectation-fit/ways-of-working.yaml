@@ -57,5 +57,6 @@ conventions:
   # Product facts and review checks that reviews taught us, one line each.
   # The convention lens reads them as rules, below the notes above. The glob
   # matches the lower-case topic files only, so the README stays documentation.
+  # New rules are added to those files by hand first (see that README).
   sources:
     - '.expectation-fit/decisions/[a-z]*.md'

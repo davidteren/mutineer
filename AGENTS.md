@@ -368,7 +368,8 @@ Product facts and checks that reviews taught us live beside it, in
 `.expectation-fit/decisions/`, one line each. Read the file for the area you
 change before you open a pull request. `ways-of-working.yaml` lists that
 folder as a rule source, so the plugin applies those lines too. Other
-reviewers apply those lines by hand. Score terms
+reviewers apply those lines by hand. Add a new review rule there by
+hand first. Its README has the full policy. Score terms
 are defined in "Score-model discipline" below. In-process Minitest and RSpec runs
 share one seed (#282). Within a file, that order does not depend on the other
 files. A mutant run still orders its files by coverage (paired, then cheapest),

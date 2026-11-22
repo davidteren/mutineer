@@ -28,8 +28,12 @@ can differ (see Limits).
 - A line states a check. The code, its tests and the user docs remain the full
   description of the behaviour.
 - When a change makes a line false, change the line in the same pull request.
-- When a review teaches a new fact, add the line here first. Then teach the
-  review tool, if you use one.
+- When a review teaches a new fact, add the line here first, by hand, in the
+  file for its topic. This folder is the source: nothing copies rules from
+  cubic into it. Then teach the review tool, if you use one.
+- Before you add a line, name the function, file or doc it checks.
+  Confirm that it exists on `main`, or that the same pull request adds it.
+  Check test code too, not only `lib/`.
 - ``(cubic `xxxxxxxx`)`` at the end of a line is the id of the rule in cubic
   that the line came from. A line that joins two cubic rules has both ids:
   ``(cubic `aaaaaaaa`, `bbbbbbbb`)``. A line with no id was written here.
@@ -37,8 +41,6 @@ can differ (see Limits).
 
 ## Limits
 
-- The lines came from cubic on 2026-11-16. No one checked each line against
-  the code on that day. Correct a line that is wrong when you find it.
-- There is no script that copies new cubic rules here. Copy them by hand.
-
-Issue #483 tracks both limits.
+- The lines came from cubic on 2026-11-16. Issue #483 checked them against
+  the code on 2026-11-22. It deleted lines for code that was not on `main`.
+  Correct a line that is wrong when you find it.
