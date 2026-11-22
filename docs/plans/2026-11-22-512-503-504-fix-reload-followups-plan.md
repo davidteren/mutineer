@@ -30,8 +30,8 @@ Suggested model and effort for the build: Opus 5.5, `high`. The plan settles the
 
 The build changed two decisions of this plan after review. The code, `CHANGELOG.md` and `docs/json-schema.md` describe the result.
 
-- **KTD4 and U3 step 3 no longer hold as written.** A bare superclass (`< BaseRow` or `< ::BaseRow`) matches a bare write of that name in any scope. A path superclass (`< Billing::BaseRow`) matches only a path write spelled the same, and a path write's parent must be a constant path or `self` (`Project.kept_constant_write?`).
-- **KTD2 keeps fewer values.** Reload keeps a constant's value only when it is `Struct.new`, `Data.define` or `Class.new` with literal arguments (`Project.kept_builder?`). A builder method of the file or an argument that reads a constant is left as written, so the file errors visibly. Keeping those values gave silent false survivors (#533).
+- **KTD4 and U3 step 3 no longer hold as written.** A bare superclass (`< BaseRow` or `< ::BaseRow`) matches a bare write of that name in any scope. A path superclass (`< Billing::BaseRow`) matches only a path write spelled the same, and a path write's parent must be absent (`::BaseRow = ...`), a constant path or `self` (`Project.kept_constant_write?`).
+- **KTD2 keeps fewer values.** Reload keeps a constant's value only when it is `Struct.new`, `Data.define` or `Class.new` with literal arguments (`Project.kept_builder?`). A builder method of the file or an argument that reads a constant is left as written, so the file errors visibly (#527). Keeping those values gave silent false survivors. #533 tracks the same cause in a superclass call (`class Q < build_base`).
 
 ---
 

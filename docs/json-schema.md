@@ -162,7 +162,7 @@ errors on reload when it builds a new class (#527):
 - a bare assignment (`BaseRow = ...`) matches a bare superclass (`< BaseRow` or `< ::BaseRow`) in any
   scope of the file, and a path assignment (`Billing::BaseRow = ...`) matches only a path superclass
   spelled the same. So `Base = ...` beside `class User < ActiveRecord::Base` is not kept;
-- a path assignment's parent is a constant path or `self`.
+- a path assignment has no parent (`::BaseRow = ...`), or its parent is a constant path or `self`.
 
 Two constant shapes can still give a false survivor. The value of a `||=` assignment does not run again on
 reload, and its methods are not marked (#529). A constant with no class statement for it in the same file
