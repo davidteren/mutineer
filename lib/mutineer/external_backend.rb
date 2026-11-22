@@ -319,7 +319,7 @@ module Mutineer
     # `test_order`, or an `--options FILE` that replaces `.rspec`, is not seen,
     # so the warning still prints. A seed-like argument meant for a wrapper
     # hides it. So does a seed in `.rspec` that RSpec does not use, because a
-    # later `--order rand` or an `--options FILE` overrides it (#338, #368).
+    # later `--order rand` or an `--options FILE` overrides it (#338, #368, #522).
     #
     # @api private
     # @param command [String] the --test-command template.
