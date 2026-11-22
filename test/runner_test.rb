@@ -274,6 +274,7 @@ class RunnerTest < Minitest::Test
     def ran_at_load?(_file, line) = Array(load_lines).include?(line)
     def method_ran_at_load?(_file, line, column) = Array(load_methods).include?([line, column])
     def order_tests(_file, tests) = tests
+    def clean_check_seconds = nil
   end
 
   def load_probe(snippet, source, load_lines:)

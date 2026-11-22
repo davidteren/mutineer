@@ -15,6 +15,20 @@ All notable changes to this project are documented here. The format is based on
   The warning changes no verdict, no score, no JSON field and no exit code.
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
   `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
+- **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
+  It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
+  It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
+  The JSON `schema_version` is now `1.11`.
+- **The JSON report and the human summary show timing (#495).**
+  `--format json` has a top-level `timing` object: `total_seconds`, `boot_seconds`, `coverage_seconds`, `clean_check_seconds` and `mutants_seconds`, with `null` for a phase the run did not have.
+  Each `survivors[]`, `killed[]` and `no_verdict[]` entry has `seconds`, the wall-clock time of its run, so slow tests and timeouts near the limit show.
+  The human summary of a run with results prints a `Time:` line.
+  The values change from run to run, so the JSON report is byte-identical for the same results except `timing` and `seconds`, and a refreshed baseline file now always differs.
+- **The GitHub Action step summary shows unpaired sources (#481).**
+  When `summary.unpaired_sources` is above 0, a line below the score table gives the unpaired mutants, the sources with no paired test, and the sources whose mutants were not counted.
+  Those mutants are not in the score, so a high score no longer hides them.
+  A report from a CLI older than 1.9.0 has no such key, and the line stays out.
+  No Action input or default changes.
 
 ### Changed
 

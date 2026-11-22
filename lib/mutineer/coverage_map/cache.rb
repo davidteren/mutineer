@@ -83,6 +83,7 @@ module Mutineer
         @failed_clean_tests = []
         @failed_clean_details = {}
         @clean_timeouts = {}
+        @clean_check_seconds = nil
         @loaded_dependencies = cached["dependencies"] || {}
       end
 
