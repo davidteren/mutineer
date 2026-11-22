@@ -135,10 +135,12 @@ class CallSuperclassReloadTest < Minitest::Test
   # reload, so a kept parent would differ from what the variable then holds.
   # A method call is still wrapped: nothing else holds its result.
   def test_a_superclass_that_reads_a_variable_is_not_wrapped
-    %w[base @base @@base $base].each do |read|
-      code = "#{read} = Struct.new(:v)\nclass LocalRow < #{read}\nend\n"
+    %w[base @base @@base $base (base) ((@base))].each do |read|
+      code = "#{read.delete("()")} = Struct.new(:v)\nclass LocalRow < #{read}\nend\n"
       assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), read
     end
+    code = "class LocalRow < (Parent)\nend\n"
+    assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
     code = "class Q < base_class\nend\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "kept_superclass(::Module.nesting.first, :Q) { base_class }"
   end
@@ -246,6 +248,10 @@ class CallSuperclassReloadTest < Minitest::Test
     code = "Billing::Base = Class.new\nclass Billing::Row < Billing::Base\nend\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code),
                     "Billing::Base = ::Mutineer::ReloadGuards.kept_constant(Billing, :Base) { Class.new }"
+    code = "::Base = Class.new\nclass Row < ::Base\nend\nmodule M\n  self::Kid = Class.new\n  class Row < Kid\n  end\nend\n"
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    assert_includes rewritten, "::Base = ::Mutineer::ReloadGuards.kept_constant(::Object, :Base) { Class.new }"
+    assert_includes rewritten, "self::Kid = ::Mutineer::ReloadGuards.kept_constant(self, :Kid) { Class.new }"
     # A local write in the value keeps the write outside the block.
     code = "Base = (b = Struct.new(:v))\nclass Row < Base\nend\nb\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "(b = ::Mutineer::ReloadGuards.kept_constant("
@@ -319,7 +325,7 @@ class CallSuperclassReloadTest < Minitest::Test
               "BaseRow = Struct.new(:v) do\n  def k5; end\nend\nclass Row < BaseRow\nend\n",
               "Base = (b = Struct.new(:v) do\n  def k6; end\nend)\nclass Row < Base\nend\n",
               "module M\n  M::Base = Class.new do\n    def k7; end\n  end\nend\nclass Row < M::Base\nend\n"]
-    checked = 0
+    checked = []
     Dir.mktmpdir do |dir|
       texts.each_with_index do |code, index|
         next if Mutineer::Parser.invalid?(code)
@@ -337,12 +343,13 @@ class CallSuperclassReloadTest < Minitest::Test
           subject = subjects.find { |s| s.def_node.location.start_line == line && s.name == name }
           next unless subject # a def discovery does not select
 
-          checked += 1
+          checked << name
           assert subject.unplaceable?("reload"), "#{name} on line #{line} of text #{index}"
         end
       end
     end
-    assert_operator checked, :>=, 5
+    # Each shape text above must reach the check, so none drops out unseen.
+    assert_empty %i[k1 k2 k3 k4 k5 k6 k7] - checked
   end
 
   # The line and name of each def inside a kept block of the rewritten text.

@@ -113,7 +113,7 @@ All notable changes to this project are documented here. The format is based on
   A test that needed that callback failed for every mutant of the file (false kills), and a mutant in a method that only that callback called survived (false survivors).
   Now a `define_callbacks` call during the mutant load skips each chain that the class itself defined before the load. `define_model_callbacks` calls it, so it is covered too. A name that is new to the class, and every call outside the load, runs as Rails wrote it.
   The class body's own callbacks still run once where reload can pair the copies. Where it cannot, the #479 warning names the class.
-  Checked with ActiveSupport 7.2.4, 8.0.5 and 8.1.4.1. On a Rails that does not write `_run_<name>_callbacks` on the class, the guard does nothing and the chain is cleared, as before.
+  Checked with ActiveSupport 7.2.4, 8.0.5 and 8.1.4.1. On a Rails that does not write `_run_<name>_callbacks` on the class, the guard does nothing and the chain is cleared, as before (#530).
   After the upgrade, such a file can show survivors where it showed kills, so a score can fall.
   Still open: `reset_callbacks` in a class body, and a body that adds a callback before its own `define_callbacks` (#530), and the cases of #479.
 - **Reload scores a class whose superclass is a constant that the same file assigns, such as `BaseRow = Struct.new(:v)` then `class Row < BaseRow` (#503).**
@@ -123,13 +123,14 @@ All notable changes to this project are documented here. The format is based on
   A method inside the kept value, such as one in the block of `BaseRow = Struct.new(:v) do ... end`, is now `unplaceable` under reload, because that block does not run again. `--strategy redefine` runs it.
   After the upgrade, `summary.errored` can fall for such a file, and `killed`, `survived` and `unplaceable` can rise, so a score can change.
   The shape is in 0 of 392 Ruby files of the Fizzy sample app, 0 of 90 files of Mutineer's `lib/`, and 0 of 1,218 files of seven Rails 7.2 gems.
-  Still open: the rare shapes of #527, a `Struct.new ... do` constant with no class statement for it in the same file (#528), and a `||=` constant whose block does not run again (#529).
+  Still open: the rare shapes of #527, a `Struct.new ... do` constant with no class statement for it in the same file (#528), a `||=` constant whose block does not run again (#529), and a kept value that reads another class the file builds again (`BaseRow = Class.new(Fields)`, #533).
 - **Reload scores a class whose superclass sets a local variable, such as `class Q < (base = Struct.new(:a))` (#512).**
   `--strategy reload` and `--daemon` now keep the live superclass and still set the local, to that same class, so a later line that reads it works.
   Before, every mutant of such a file scored `error` with "superclass mismatch".
   This covers a plain write (`base = ...`), alone or in one pair of parentheses, and a chain (`a = b = ...`).
-  A superclass that sets a local in another way (`||=`, multiple assignment, double parentheses, a write deeper in the expression) keeps its text and still errors, visibly (#527).
-  A superclass that is a bare variable read (`base = Struct.new(:a)`, then `class Q < base`) keeps its text too, so that file errors, as in 1.9.0 (#527).
+  A superclass that sets a local in another way (`||=`, multiple assignment, double parentheses, a write deeper in the expression) keeps its text. When its call builds a new class, the file still errors, visibly (#527).
+  A superclass that is a bare variable read (`base = Struct.new(:a)`, then `class Q < base`, also in parentheses) keeps its text too, so that file errors, as in 1.9.0, when the earlier line builds a new class (#527).
+  A read deeper in the expression (`Class.new(base)`) is still wrapped and can keep a stale parent (#533).
   The unreleased #492 change kept the old parent there, but the earlier line builds a new class on each load, so a mutant in that class's block survived falsely and a later read of the variable killed mutants falsely.
   After the upgrade from 1.9.0, `summary.errored` can fall for a file with a superclass local write, and `killed` and `survived` can rise, so a score can change.
   The shape is in 0 of 392 Ruby files of the Fizzy sample app.
@@ -139,7 +140,7 @@ All notable changes to this project are documented here. The format is based on
   Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
   This covers a superclass that is a call, such as `Struct.new`, `Class.new` and `DelegateClass`, and that sets no local variable of the file. A plain local write of such a call is covered too (#512).
   A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
-  A superclass constant that the same file assigns from a call is covered too (#503). The rare superclass shapes of #527 still error.
+  A superclass constant that the same file assigns from a call is covered too (#503). The rare superclass shapes of #527 still error when their call builds a new class. A superclass call that reads such a class, such as `Class.new(Fields)` when the file builds `Fields` again, keeps the old one, so a mutant in `Fields` can survive falsely (#533).
 - **A `--daemon` mutant run now stops at the first failing test (#490).**
   Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
   One failing test already kills the mutant, so the daemon now stops there too.

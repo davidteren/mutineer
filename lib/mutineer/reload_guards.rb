@@ -1073,9 +1073,13 @@ module Mutineer
       @enums_before_load.fetch(key) { @enums_before_load[key] = klass.defined_enums.key?(key.last) }
     end
 
-    # Whether `klass` itself defined chain `name` before this load: Rails'
+    # Whether `klass` itself owns chain `name` before this load: Rails'
     # `define_callbacks` writes `_run_<name>_callbacks` on the calling class.
-    # A subclass that only inherited the method did not. The answer is read
+    # ActiveSupport 8.1 also writes it on a subclass when its inherited chain
+    # gets a first callback. Either way the class body is the original text,
+    # so a `define_callbacks` it runs during the load also ran in the first
+    # load and is a repeat. A subclass that only inherited the chain and added
+    # nothing to it does not own the method, so Rails runs. The answer is read
     # once for each class and name in a load and kept, so a chain that is new
     # in this load stays new for a second call. On a Rails that does not write
     # that method, the answer is false and Rails runs as before.

@@ -363,8 +363,8 @@ module Mutineer
     # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
-    # Then each class statement with a superclass that is not a constant keeps
-    # its live superclass, and each superclass constant the file assigns keeps
+    # Then each class statement whose superclass {kept_target} wraps keeps its
+    # live superclass, and each superclass constant the file assigns keeps
     # its class ({keep_live_superclasses}, #492, #512, #503).
     #
     # @param mutated [String] the mutated source text.
@@ -478,15 +478,10 @@ module Mutineer
     # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
     #   wrap, the guard, the scope text and the name; nil for any other node.
     def self.kept_constant_splice(node, names)
-      if node.is_a?(Prism::ConstantWriteNode)
-        name = node.name
-        scope = "::Module.nesting.first"
-      elsif node.is_a?(Prism::ConstantPathWriteNode)
-        name = node.target.name
-        scope = superclass_scope(node.target)
-      end
+      name = Project.kept_constant_write_name(node)
       return nil unless name && names.include?(name) && (target = kept_target(node.value))
 
+      scope = node.is_a?(Prism::ConstantPathWriteNode) ? superclass_scope(node.target) : "::Module.nesting.first"
       [target, "kept_constant", scope, name]
     end
 
@@ -495,7 +490,9 @@ module Mutineer
     # names the same class on each load. A bare variable read is left alone
     # too: an earlier line set it, that line runs again, and a kept parent
     # would differ from what the variable then holds, a silent false verdict
-    # (#512). A plain local write (`base = v`, or `(base = v)` alone in
+    # (#512). Both hold inside any number of parentheses (`(base)`). A read
+    # deeper in the expression (`Class.new(base)`) is still wrapped (#533).
+    # A plain local write (`base = v`, or `(base = v)` alone in
     # parentheses, or a chain `a = b = v`) gives the target of its value, so
     # the write stays outside the block and still sets the local (#512).
     # Any other superclass that sets a local is left alone, because the block
@@ -505,8 +502,11 @@ module Mutineer
     # @param node [Prism::Node, nil] a class statement's superclass.
     # @return [Prism::Node, nil]
     def self.kept_target(node)
-      return nil if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
-      return nil if VARIABLE_READS.any? { |type| node.is_a?(type) }
+      return nil if node.nil?
+
+      inner = node
+      inner = inner.body.body.first while sole_statement_parentheses?(inner)
+      return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
 
       write = plain_local_write(node)
       return kept_target(write.value) if write
@@ -520,15 +520,23 @@ module Mutineer
     # @param node [Prism::Node]
     # @return [Prism::LocalVariableWriteNode, nil]
     def self.plain_local_write(node)
-      if node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
-        node = node.body.body.first
-      end
+      node = node.body.body.first if sole_statement_parentheses?(node)
       node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
     end
 
-    # The Prism nodes that read a variable an earlier statement set (#512).
-    VARIABLE_READS = [Prism::LocalVariableReadNode, Prism::InstanceVariableReadNode,
-                      Prism::ClassVariableReadNode, Prism::GlobalVariableReadNode].freeze
+    # Whether `node` is one pair of parentheses around one statement.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.sole_statement_parentheses?(node)
+      node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
+    end
+
+    # The superclass nodes {kept_target} leaves as written: a constant, and a
+    # read of a variable an earlier statement set (#512).
+    LEFT_AS_WRITTEN = [Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
+                       Prism::InstanceVariableReadNode, Prism::ClassVariableReadNode,
+                       Prism::GlobalVariableReadNode].freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only

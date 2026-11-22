@@ -1653,8 +1653,8 @@ class ReloadGuardsTest < Minitest::Test
     assert_equal [[[:save], {}], [[:create], { terminator: :t }], [[:create], {}]], host.calls
   end
 
-  # A subclass inherits `_run_save_callbacks` but never defined the chain
-  # itself, so its own `define_callbacks :save` is new and reaches Rails.
+  # A subclass inherits `_run_save_callbacks` and does not own it, so its
+  # own `define_callbacks :save` is new and reaches Rails.
   def test_a_subclass_that_inherited_the_chain_defines_it_during_a_load
     parent = Class.new(DefineHost)
     parent.define_callbacks(:save)
