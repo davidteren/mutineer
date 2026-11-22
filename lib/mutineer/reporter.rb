@@ -868,8 +868,9 @@ module Mutineer
     # Adds the diff keys that depend on the source to a row that has `diff`.
     # The diff is UTF-8, as JSON is, so `diff_encoding` names the source's
     # encoding when a consumer can transcode the hunk lines back to the file's
-    # bytes (#510). Each caller sets `diff` itself, so each list keeps its own
-    # key order.
+    # bytes (#510), and `diff_base64` holds the exact patch whenever the bytes
+    # of `diff` are not that patch (#518). Each caller sets `diff` itself, so
+    # each list keeps its own key order.
     #
     # @api private
     # @param row [Hash] one mutant's JSON object, with `diff` set.
@@ -880,6 +881,10 @@ module Mutineer
 
       encoding = result_diff_encoding(result)
       row[:diff_encoding] = encoding if encoding
+      # #518: the exact bytes when the text is not the patch for the file.
+      # pack("m0"), not the base64 library, which is a bundled gem since Ruby 3.4.
+      patch = exact_patch(result)
+      row[:diff_base64] = [patch].pack("m0") if patch && patch.b != row[:diff].b
       row
     end
 
@@ -890,6 +895,32 @@ module Mutineer
     # @return [String, nil] the diff, or nil when the result has no subject or
     #   mutation (a stub result).
     def unified_diff(result)
+      build_patch(result) { |piece| utf8_text(piece) }
+    end
+
+    # The same patch as {#unified_diff}, in the file's own bytes (#518): the
+    # path and every side line are kept as bytes, so `git apply` accepts it
+    # for any source encoding.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [String, nil] the patch, or nil when the result has no subject
+    #   or mutation.
+    def exact_patch(result)
+      build_patch(result, &:b)
+    end
+
+    # The one builder of both patches, so the header, the hunk ranges and the
+    # end-of-file rule cannot drift apart. `piece` turns the path and each
+    # side line into the text the patch holds.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @yieldparam piece [String] the path or one side line.
+    # @yieldreturn [String] its form in the patch.
+    # @return [String, nil] the patch, or nil when the result has no subject
+    #   or mutation (a stub result).
+    def build_patch(result, &piece)
       m = result.mutation
       return nil if result.subject.nil? || m.nil?
 
@@ -899,9 +930,9 @@ module Mutineer
       # A block at the end of the file has no newline after it; elsewhere the
       # file's next byte is one. Each side's own text decides its marker.
       at_eof = source.byteindex("\n", m.end_offset).nil?
-      old_lines = side_lines(original_block, at_eof)
-      new_lines = side_lines(mutated_block, at_eof)
-      shown_file = utf8_text(file)
+      old_lines = side_lines(original_block, at_eof).map(&piece)
+      new_lines = side_lines(mutated_block, at_eof).map(&piece)
+      shown_file = piece.call(file)
       "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
@@ -928,7 +959,7 @@ module Mutineer
     # for an invalid one, whose bad bytes print as `\xNN` and cannot be restored,
     # and when a block does not convert back to its own bytes (CP932 0xFA4A
     # reads as U+2160, which encodes back as 0x8754), so a consumer could not
-    # restore the line.
+    # restore the line. Those rows carry `diff_base64` instead (#518).
     #
     # @api private
     # @param source [String] source text, tagged with its encoding.
@@ -947,7 +978,8 @@ module Mutineer
     # One side of the diff as the file holds it: the {#diff_for} block plus the
     # newline that follows it, unless the block ends the file. Each line keeps
     # its own ending, so a CRLF line keeps its "\r" and a last line with no
-    # newline is told apart from one with a newline.
+    # newline is told apart from one with a newline. The lines stay in the
+    # source's encoding; {#build_patch} converts them.
     #
     # @api private
     # @param block [String] the block's text.
@@ -956,7 +988,7 @@ module Mutineer
     def side_lines(block, at_eof)
       newline = "\n".dup.force_encoding(block.encoding)
       text = at_eof ? block : block + newline
-      text.lines.map { |line| utf8_text(line) }
+      text.lines
     end
 
     # The `-` or `+` lines of one side. A line with no newline is the file's

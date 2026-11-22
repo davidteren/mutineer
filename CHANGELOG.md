@@ -19,6 +19,10 @@ All notable changes to this project are documented here. The format is based on
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
   The JSON `schema_version` is now `1.11`.
+- **Entries with a `diff` carry `diff_base64` when the text is not the exact patch (#518).**
+  For a non-UTF-8 source with a non-ASCII changed line, an invalid byte on a changed line, or a binary-tagged source, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
+  To apply any entry: for a file with a `working-tree-encoding` Git attribute use `diff`; else decode `diff_base64` when present; else use `diff`.
+  A UTF-8 project gets no new key. A source path that is not valid UTF-8 still cannot be applied (#532). Additive key (schema `1.11`).
 - **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
   Each row is `{ class, file }`, sorted by file and class, so a JSON-only tool can see which kills of a file a repeated callback may have made false.
   `[]` means that the run logged no growth, and a run that does not reload has `[]`. `null` means that a reload or `--daemon` run could not create its log, so it checked nothing.
@@ -43,7 +47,7 @@ All notable changes to this project are documented here. The format is based on
   The JSON `diff` is UTF-8, so `git apply` rejected it for a source with `# encoding: EUC-JP` (or `Shift_JIS`, `ISO-8859-1`) and a changed line with non-ASCII text.
   The entry now has `diff_encoding`, the source's encoding. Transcode the hunk lines to it, and `git apply --unidiff-zero` accepts the patch.
   The exception is a file with a `working-tree-encoding` Git attribute: Git applies the UTF-8 form there, so use `diff` as it is.
-  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source, `git apply` still rejects the diff when the changed lines hold bytes that cannot be restored, so edit the file by hand. A diff whose changed lines are all ASCII still applies. Those cases are tracked in #518. See `docs/json-schema.md`.
+  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source, `git apply` still rejects the diff when the changed lines hold bytes that cannot be restored. Such an entry carries `diff_base64`, the exact patch (#518). A diff whose changed lines are all ASCII still applies. See `docs/json-schema.md`.
   The same key is on a `killed[]`, `unplaceable[]` or `ran_at_load[]` entry, which carries `diff` (#498).
   Additive key (schema `1.11`).
 

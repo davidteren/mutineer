@@ -131,7 +131,8 @@ class JsonReporterTest < Minitest::Test
   end
 
   # Each list keeps its own key order. A survivors[] row has seconds before
-  # diff_encoding; a killed[] row has it after (#498).
+  # diff_encoding; a killed[] row has it after (#498). diff_base64 follows
+  # diff_encoding (#518).
   def test_diff_key_order_of_each_list
     src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
     tok = src.byteindex(">=")
@@ -146,9 +147,101 @@ class JsonReporterTest < Minitest::Test
                       .report(out: out, err: StringIO.new, format: "json",
                               copies: { "ord2" => ["dup2"] })
     doc = JSON.parse(out.string)
-    assert_equal %w[diff seconds diff_encoding], doc["survivors"].first.keys.last(3)
-    assert_equal %w[diff diff_encoding seconds], doc["killed"].first.keys.last(3)
-    assert_equal %w[details diff diff_encoding seconds copies], doc["no_verdict"].first.keys.last(5)
+    assert_equal %w[diff seconds diff_encoding diff_base64], doc["survivors"].first.keys.last(4)
+    assert_equal %w[diff diff_encoding diff_base64 seconds], doc["killed"].first.keys.last(4)
+    assert_equal %w[details diff diff_encoding diff_base64 seconds copies], doc["no_verdict"].first.keys.last(6)
+  end
+
+  # #518: the sources the rule covers. Each is a Foo#bar source whose
+  # changed line holds `text`, and whether the row carries diff_base64.
+  def diff_base64_sources
+    rows = NON_UTF8_SOURCES.map do |name, text|
+      src = "# encoding: #{name}\nclass Foo\n  def bar(x) = x >= 1 ? \"#{text}\" : 0\nend\n"
+      ["#{name} #{text}", src.encode(name).force_encoding(name), !text.ascii_only?]
+    end
+    rows + [
+      ["UTF-8 ASCII", "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n", false],
+      ["UTF-8 non-ASCII", "class Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n", false],
+      ["EUC-JP ASCII line", "# encoding: EUC-JP\n# \u3042\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n".encode("EUC-JP"), false],
+      ["Windows-31J 0xFA4A", "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J"), true],
+      ["binary UTF-8 bytes", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b, false],
+      ["binary FF FE", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFF\xFE\" : 0\nend\n".b, true],
+      ["UTF-8 invalid comment", "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8"), true],
+      ["UTF-8 invalid comment, CRLF, no final newline",
+       "class Foo\r\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\r\nend".b.force_encoding("UTF-8"), true]
+    ]
+  end
+
+  # #518, the consumer recipe steps 2 and 3: apply diff_base64 when present,
+  # else diff as it is. The file git writes equals the mutant's bytes, and
+  # diff_base64 is present exactly when diff alone would not give them.
+  def test_diff_base64_or_diff_applies_for_every_source
+    diff_base64_sources.each do |label, src, want_base64|
+      mutation, row = survivor_row_for(src)
+      assert_equal want_base64, row.key?("diff_base64"), label
+      patch = row["diff_base64"]&.unpack1("m") || row["diff"].b
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, "foo.rb"), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, "git apply rejected #{label}: #{err}"
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
+      end
+    end
+  end
+
+  # diff_base64 is one line of standard base64, and diff keeps its text.
+  def test_diff_base64_is_one_line_of_standard_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    _, row = survivor_row_for(src)
+    encoded = row["diff_base64"]
+    refute_includes encoded, "\n"
+    assert_equal encoded, [encoded.unpack1("m")].pack("m0")
+    assert_includes row["diff"], "caf\\xE9"
+  end
+
+  # The header is bytes too: a UTF-8 path with a non-ASCII character and an
+  # invalid byte on the changed line render, and the patch applies.
+  def test_diff_base64_with_a_non_ascii_path_applies
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "caf\u00e9.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "caf\u00e9.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    patch = JSON.parse(out.string)["survivors"].first["diff_base64"].unpack1("m")
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "caf\u00e9.rb"), src)
+      File.binwrite(File.join(dir, "m.patch"), patch)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, err
+      assert_equal mutation.apply(src).b, File.binread(File.join(dir, "caf\u00e9.rb"))
+    end
+  end
+
+  # Every list with a diff carries diff_base64; a stub row has neither.
+  def test_every_list_with_a_diff_has_diff_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = %i[killed unplaceable ran_at_load].map.with_index do |status, i|
+      Mutineer::Result.public_send(status).with(subject: subj, mutation: mutation, id: "b64#{i}")
+    end
+    results << Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "b643")
+    results << Mutineer::Result.error("boot failed")
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    %w[killed unplaceable ran_at_load].each { |list| assert doc[list].first.key?("diff_base64"), list }
+    stub, errored = doc["no_verdict"].partition { |e| e["file"].nil? }
+    assert errored.first.key?("diff_base64")
+    assert_nil stub.first["diff"]
+    refute stub.first.key?("diff_base64")
   end
 
   def test_utf8_source_has_no_diff_encoding
