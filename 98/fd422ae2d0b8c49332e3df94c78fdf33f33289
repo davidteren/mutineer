@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_cf50a9820801b5 26
+lib/mutineer/reporter.rb
+  s_9747bd218c1c67::t_ee8ae418b704b6 872-873
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98fd422ae2d0b8c49332e3df94c78fdf33f33289",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
