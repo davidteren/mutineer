@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format is based on
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
   `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
 
+### Changed
+
+- **126 private methods of `Mutineer::CoverageMap` moved into eight modules
+  (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
+  `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
+  `Recording`, `CleanCheck` and `ChildScripts`. `CoverageMap` includes each
+  module. Each method keeps its name, body and private visibility. The public
+  methods, the constants, the constructor, the path helpers and three script
+  helpers that read `__dir__` stay in `lib/mutineer/coverage_map.rb`. The
+  public API, the coverage cache format, CLI output and the JSON report do not
+  change.
+
 ### Fixed
 
 - **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
