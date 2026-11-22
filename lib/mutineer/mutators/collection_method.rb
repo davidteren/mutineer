@@ -104,7 +104,8 @@ module Mutineer
 
       # Visits call nodes and emits collection-method mutations.
       # An {DISCARDABLE_NAMES} call whose value is discarded is declined,
-      # and so is an `each` or `map` whose value is read only for truthiness.
+      # and so is an `each`, `map`, or argument-free `select` or `reject` whose
+      # value is read only for truthiness.
       #
       # @param node [Prism::CallNode] call node to inspect.
       # @return [void]
@@ -142,7 +143,8 @@ module Mutineer
 
       # Returns whether this call's swap changes only a value nobody reads.
       # That is an {DISCARDABLE_NAMES} call whose value is discarded, or
-      # an `each` or `map` whose value is read only for truthiness.
+      # an `each`, `map`, or argument-free `select` or `reject` whose value is
+      # read only for truthiness.
       # A `min` or `max` with a block is kept: the block sees different pairs.
       #
       # Interpolation is not discarded: a string or symbol calls `to_s`, a
@@ -178,7 +180,8 @@ module Mutineer
       # Returns whether a `select`, `reject`, `first`, `last`, `min` or `max`
       # call is a statement of its own whose value is discarded.
       #
-      # Only a statement of its own counts. A call inside `&&`, `||`,
+      # Only a statement of its own counts here. A truthiness-only read is
+      # handled by {#truthiness_only?}. A call inside `&&`, `||`,
       # parentheses, a rescue modifier, or `defined?` is kept: its value can
       # decide a branch, and `defined?` asks whether the method exists. A
       # `min` or `max` with a block, or with `...` that may forward one, is kept:
@@ -242,7 +245,7 @@ module Mutineer
           parent.predicate.equal?(node)
         when Prism::AndNode
           parent.left.equal?(node) || truthiness_only?(parent)
-        when Prism::OrNode, Prism::ParenthesesNode
+        when Prism::OrNode
           truthiness_only?(parent)
         when Prism::StatementsNode
           parent.body.last.equal?(node) && @parents[parent].is_a?(Prism::ParenthesesNode) &&

@@ -1332,6 +1332,18 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["select on the left of && with the result kept", <<~RUBY, [], 1],
+        def m
+          ok = xs.select { |u| u } && b
+          :done
+        end
+      RUBY
+      ["reject on the left of && as a statement", <<~RUBY, [], 1],
+        def m
+          xs.reject { |u| u } && b
+          :done
+        end
+      RUBY
       ["select with arguments in a condition stays", <<~RUBY, [%w[select reject]], 0],
         def m
           if IO.select([reader], nil, nil, 1)
