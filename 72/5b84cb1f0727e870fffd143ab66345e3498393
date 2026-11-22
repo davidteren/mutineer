@@ -1,0 +1,64 @@
+docs/rails-setup.md
+  s_9747bd218c1c67::t_cf6824d210e94b 143,187-205
+test/cli_test.rb
+  s_9747bd218c1c67::t_51677ff2d358ad 1700-1741
+test/load_path_test.rb
+  s_9747bd218c1c67::t_e1febb7c668323 197
+  s_9747bd218c1c67::t_c7890492c54857 1-196
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_16df904b16decc 1006-1015
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_9747bd218c1c67::t_643e2d34a21a30 18
+test/fixtures/rails_app/test/load_path/load_path_probe_test.rb
+  s_9747bd218c1c67::t_2f35dde7f66f03 1-15
+test/runner_external_test.rb
+  s_9747bd218c1c67::t_3b7d4c7de2e037 308-326
+docs/plans/2026-11-22-517-491-feat-daemon-load-paths-plan.md
+  s_9747bd218c1c67::t_189be753e5d79d 1-396
+test/daemon_client_env_test.rb
+  s_9747bd218c1c67::t_2178adc401df18 256-259
+lib/mutineer/cli.rb
+  s_9747bd218c1c67::t_84114f40b084b2 94-97,200-203,582,643-644,759-761,769-776,778
+STABILITY.md
+  s_9747bd218c1c67::t_8532987476cc65 51-55
+lib/mutineer/daemon_client.rb
+  s_9747bd218c1c67::t_a7541b26584615 57-58,71-72,286-287
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_8117864e3e9075 136-154
+test/config_test.rb
+  s_9747bd218c1c67::t_af517e9bade0cc 123-165,784
+docs/cli.md
+  s_9747bd218c1c67::t_8b2b31c5dfd1d4 26,115,136
+docs/json-schema.md
+  s_9747bd218c1c67::t_d77b431265c1d0 254-255
+test/runner_daemon_test.rb
+  s_9747bd218c1c67::t_0592a0ecf505a9 5-7,117-179
+test/fixtures/rails_app/extra_load_path/load_path_probe.rb
+  s_9747bd218c1c67::t_3770eb4790d0f3 1-8
+CHANGELOG.md
+  s_9747bd218c1c67::t_e7ea787b89056e 11-19,141
+lib/mutineer/daemon_server.rb
+  s_9747bd218c1c67::t_317655f472fbe7 36-37
+lib/mutineer/config.rb
+  s_9747bd218c1c67::t_73278744bfac39 66-68,106-110,124,164,383,419-437
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_4697ac6d40619d 526-527,545-548
+lib/mutineer/runner.rb
+  s_9747bd218c1c67::t_9eb99539710c1e 169-174,226,246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "725b84cb1f0727e870fffd143ab66345e3498393",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
