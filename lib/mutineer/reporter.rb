@@ -869,7 +869,8 @@ module Mutineer
     # The diff is UTF-8, as JSON is, so `diff_encoding` names the source's
     # encoding when a consumer can transcode the hunk lines back to the file's
     # bytes (#510), and `diff_base64` holds the exact patch whenever the bytes
-    # of `diff` are not that patch (#518). Each caller sets `diff` itself, so
+    # of `diff` are not that patch (#518), unless the change holds a credential
+    # that redaction would hide (#540). Each caller sets `diff` itself, so
     # each list keeps its own key order.
     #
     # @api private
