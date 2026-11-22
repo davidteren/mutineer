@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_9209b0ccca9bdd 18
+docs/cli.md
+  s_9747bd218c1c67::t_4c1234d32b4cef 115
+test/load_path_test.rb
+  s_9747bd218c1c67::t_95d8f03e561291 4,230,246-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "69dc0558d4b94d6cc675c13104ff308db171b1b2",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
