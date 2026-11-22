@@ -1,0 +1,31 @@
+test/runner_external_test.rb
+  s_9747bd218c1c67::t_9addb0afb63d5e 237-280
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_9747bd218c1c67::t_8f32cee7b23ee4 9
+CHANGELOG.md
+  s_9747bd218c1c67::t_2b645aaac5ec86 135-146
+docs/rails-setup.md
+  s_9747bd218c1c67::t_534e032a0d76d3 300-301,307,309,311,317-318,321-322
+lib/mutineer/external_backend.rb
+  s_9747bd218c1c67::t_0668f616e8380a 63-71,195-200,226,234-237,239-240,248-257,281-306,311,313-314,321-328,332,334-337,346-355,359,361-362,365,376,378-379,436-437,444-445,451
+lib/mutineer/runner.rb
+  s_9747bd218c1c67::t_920bd91c3d8541 410
+test/external_backend_test.rb
+  s_9747bd218c1c67::t_e34952f7cae82e 6,71-117,127-131,138,140-141,146-193,195-222,231,234-236,363,365-380,383-434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "061c974182abcb3eade40c4a883bfc3053035821",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
