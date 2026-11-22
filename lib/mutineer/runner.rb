@@ -407,7 +407,7 @@ module Mutineer
     # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
-    # @param check_summary [Boolean] passed to {ExternalBackend.run}.
+    # @param check_summary [Boolean, :line] passed to {ExternalBackend.run}.
     # @return [Mutineer::Result] verdict for this mutant.
     def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
       source  = Parser.read(subject.file)

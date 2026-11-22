@@ -3,6 +3,7 @@
 require_relative "test_helper"
 require "minitest/mock"
 require "tmpdir"
+require "open3"
 require "mutineer/external_backend"
 
 # #27 (U3): the external backend spawns the user's test command in the app's own
@@ -67,6 +68,53 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # Exit-1 outputs that score killed with the summary check on (#292).
+  EXIT_ONE_KILLED = [
+    "1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n",
+    "2 runs, 1 assertions, 0 failures, 1 errors, 0 skips\n",
+    "3 tests, 3 assertions, 1 failures, 0 errors, 0 skips\n", # minitest-reporters
+    "2 examples, 1 failure\n",
+    "\e[31m3 examples, 2 failures\e[0m\n",
+    # A wrapper that runs two suites: a kill in either one is a kill.
+    "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n4 examples, 1 failure\n",
+    # Minitest started its tests, then code under test called exit or abort.
+    "Run options: --seed 1\n\n# Running:\n\n",
+    # A wrapper's first suite passed, then its second one stopped mid-test.
+    "# Running:\n\n2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n# Running:\n\n",
+    "\e[31m5 tests, 5 assertions, \e[0m\e[31m1 failures\e[0m, 0 errors, 0 skips\n",
+    "café ✓\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n\xFF\n"
+  ].freeze
+
+  # Exit-1 outputs with no failing test. An RSpec file that raises while
+  # loading prints a summary line with no failing example, the case #246
+  # scores as error in process.
+  EXIT_ONE_ERROR = [
+    "0 examples, 0 failures, 1 error occurred outside of examples\n",
+    # RSpec prints this when code under test calls exit 1 mid-example.
+    "2 examples, 0 failures\n",
+    "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
+    "# Running:\n\n3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
+    "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
+      "0 examples, 0 failures, 1 error occurred outside of examples\n"
+  ].freeze
+
+  # SimpleCov's gate message.
+  GATE = "SimpleCov failed with exit 2 due to a coverage related error\n"
+
+  # Exit-2 outputs and their verdict.
+  SIMPLECOV_GATE = {
+    "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{GATE}" => :survived?,
+    "4 examples, 0 failures\n#{GATE}" => :survived?,
+    "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{GATE}" => :killed?,
+    "4 examples, 1 failure\n#{GATE}" => :killed?,
+    "0 examples, 0 failures, 1 error occurred outside of examples\n#{GATE}" => :error?,
+    GATE => :error?, # no recognized summary line: a failing run cannot be ruled out
+    "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n" => :error?
+  }.freeze
+
+  # The two summary modes of a clean run that printed a summary line (#515).
+  MODES = [true, :line].freeze
+
   # #292: with summary checking on, exit 1 is a kill only when a Minitest or
   # RSpec summary line reports a failing test.
   def run_exit_one(output, check_summary: true)
@@ -76,49 +124,102 @@ class ExternalBackendTest < Minitest::Test
   end
 
   def test_exit_one_without_summary_is_error_when_checking
-    result = run_exit_one("LoadError: cannot load such file\n")
-    assert_predicate result, :error?
-    assert_match(/exited 1 but its output shows no failing test/, result.details)
+    MODES.each do |mode|
+      result = run_exit_one("LoadError: cannot load such file\n", check_summary: mode)
+      assert_predicate result, :error?, mode.inspect
+      assert_match(/exited 1 but its output shows no failing test/, result.details)
+    end
   end
 
   def test_exit_one_without_summary_is_killed_when_not_checking
     assert_predicate run_exit_one("LoadError\n", check_summary: false), :killed?
   end
 
+  # #515: both summary modes give the same verdict on line-start output.
   def test_exit_one_with_failing_summary_is_killed
-    [
-      "1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n",
-      "2 runs, 1 assertions, 0 failures, 1 errors, 0 skips\n",
-      "3 tests, 3 assertions, 1 failures, 0 errors, 0 skips\n", # minitest-reporters
-      "2 examples, 1 failure\n",
-      "\e[31m3 examples, 2 failures\e[0m\n",
-      # A wrapper that runs two suites: a kill in either one is a kill.
-      "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n4 examples, 1 failure\n",
-      # Minitest started its tests, then code under test called exit or abort.
-      "Run options: --seed 1\n\n# Running:\n\n",
-      # A wrapper's first suite passed, then its second one stopped mid-test.
-      "# Running:\n\n2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n# Running:\n\n",
-      "\e[31m5 tests, 5 assertions, \e[0m\e[31m1 failures\e[0m, 0 errors, 0 skips\n",
-      "café ✓\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n\xFF\n"
-    ].each do |output|
-      assert_predicate run_exit_one(output), :killed?, output.inspect
+    EXIT_ONE_KILLED.product(MODES).each do |output, mode|
+      assert_predicate run_exit_one(output, check_summary: mode), :killed?, "#{mode.inspect} #{output.inspect}"
     end
   end
 
-  # An RSpec file that raises while loading prints a summary line with no
-  # failing example, the case #246 scores as error in process.
   def test_exit_one_with_no_failing_test_in_summary_is_error
-    [
-      "0 examples, 0 failures, 1 error occurred outside of examples\n",
-      # RSpec prints this when code under test calls exit 1 mid-example.
-      "2 examples, 0 failures\n",
-      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
-      "# Running:\n\n3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n",
-      "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
-        "0 examples, 0 failures, 1 error occurred outside of examples\n"
-    ].each do |output|
-      assert_predicate run_exit_one(output), :error?, output.inspect
+    EXIT_ONE_ERROR.product(MODES).each do |output, mode|
+      assert_predicate run_exit_one(output, check_summary: mode), :error?, "#{mode.inspect} #{output.inspect}"
     end
+  end
+
+  # The verdict of +output+ with exit +code+, without a process: the stub
+  # hands Backend.run the output as spawn_capture reads it.
+  def verdict(output, code, check_summary)
+    read = output.b.force_encoding(Encoding::UTF_8).scrub
+    Backend.stub(:spawn_capture, [:exited, code, read, 0.0]) do
+      Backend.run("unused %{files}", ["x"], timeout: 30, check_summary: check_summary)
+    end
+  end
+
+  # #515, the rule on every table row: under :line, a summary line that does
+  # not start a line counts as no summary; under true it counts as before.
+  def test_line_mode_reads_a_moved_summary_line_as_no_summary
+    summary = ->(line) { Backend.summary_line?(Backend.summary_text(line)) }
+    rows = EXIT_ONE_KILLED.map { |o| [o, 1] } + EXIT_ONE_ERROR.map { |o| [o, 1] } + SIMPLECOV_GATE.keys.map { |o| [o, 2] }
+    rows.each do |output, code|
+      lines = output.b.lines
+      without = lines.reject(&summary).join
+      ["  ", "app | "].each do |prefix|
+        moved = lines.map { |l| summary.call(l) ? "#{prefix}#{l}" : l }.join
+        assert_equal verdict(without, code, :line).status, verdict(moved, code, :line).status,
+                     ":line #{prefix.inspect} #{output.inspect}"
+        assert_equal verdict(output, code, true).status, verdict(moved, code, true).status,
+                     "true #{prefix.inspect} #{output.inspect}"
+      end
+    end
+  end
+
+  # Failing summary-like text that does not start a line (#342 limit 4).
+  FAKE_FAILING_SUMMARIES = [
+    "FakeTest#test_x = 9 runs, 9 assertions, 1 failures, 0 errors, 0 skips = 0.00 s = .\n", # Minitest -v
+    ".9 runs, 9 assertions, 1 failures, 0 errors, 0 skips\n", # a puts after a progress dot
+    "  reports 2 examples, 1 failure\n", # an RSpec documentation example name
+    "app | 3 runs, 3 assertions, 1 failures, 0 errors\n" # a prefixed line
+  ].freeze
+
+  # #515: each fake is followed by the real passing summary and exit 1.
+  def test_line_mode_drops_a_failing_summary_that_does_not_start_a_line
+    passing = "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n"
+    FAKE_FAILING_SUMMARIES.each do |fake|
+      result = run_exit_one(fake + passing, check_summary: :line)
+      assert_predicate result, :error?, fake
+      assert_includes result.details, "a failing summary is in its output, but not at the start of a line", fake
+      assert_predicate run_exit_one(fake + passing, check_summary: true), :killed?, fake
+    end
+    details = run_exit_one(passing, check_summary: :line).details
+    assert_includes details, "shows no failing test"
+    refute_includes details, "not at the start of a line"
+  end
+
+  # A progress bar that redraws its line ends it with "\r", and Windows ends
+  # each line with "\r\n". Both are a line start.
+  def test_line_mode_counts_a_summary_after_a_carriage_return
+    ["progress\r3 runs, 3 assertions, 1 failures, 0 errors\n",
+     "Run options: --seed 1\r\n\r\n# Running:\r\n\r\nF\r\n\r\n1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\r\n",
+     "Run options: --seed 1\r\n\r\n# Running:\r\n\r\n"].each do |output|
+      assert_predicate run_exit_one(output, check_summary: :line), :killed?, output.inspect
+    end
+  end
+
+  # Under :line the "# Running:" line also counts only at a line start.
+  def test_line_mode_reads_the_running_line_only_at_a_line_start
+    output = "2 runs, 2 assertions, 0 failures, 0 errors\nnote: # Running:\n"
+    assert_predicate run_exit_one(output, check_summary: :line), :error?
+    assert_predicate run_exit_one(output, check_summary: true), :killed?
+  end
+
+  # A run that stopped during a Minitest -v test: the name line holds a
+  # passing summary, and no real summary follows "# Running:".
+  def test_line_mode_sees_a_run_that_stopped_during_a_verbose_test
+    output = "# Running:\n\nFakeTest#test_1 runs, 1 assertions, 0 failures, 0 errors = "
+    assert_predicate run_exit_one(output, check_summary: :line), :killed?
+    assert_predicate run_exit_one(output, check_summary: true), :error?
   end
 
   # SimpleCov's minimum_coverage gate replaces the exit code (exit 2). Under
@@ -127,19 +228,12 @@ class ExternalBackendTest < Minitest::Test
   # process, where the fork exits before that hook. Without SimpleCov's line,
   # exit 2 may be code under test calling exit 2, which scores error.
   def test_simplecov_gate_exit_follows_the_summary
-    gate = "SimpleCov failed with exit 2 due to a coverage related error\n"
-    {
-      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n#{gate}" => :survived?,
-      "4 examples, 0 failures\n#{gate}" => :survived?,
-      "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{gate}" => :killed?,
-      "4 examples, 1 failure\n#{gate}" => :killed?,
-      "0 examples, 0 failures, 1 error occurred outside of examples\n#{gate}" => :error?,
-      gate => :error?, # no recognized summary line: a failing run cannot be ruled out
-      "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n" => :error?
-    }.each do |output, verdict|
+    SIMPLECOV_GATE.each do |output, verdict|
       with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
         cmd = "#{RUBY} #{path} %{files}"
-        assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true), verdict, output.inspect
+        MODES.each do |mode|
+          assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: mode), verdict, "#{mode.inspect} #{output.inspect}"
+        end
         assert_predicate Backend.run(cmd, ["x"], timeout: 30), verdict, "check off: #{output.inspect}"
       end
     end
@@ -266,16 +360,78 @@ class ExternalBackendTest < Minitest::Test
 
   # smoke check — green returns elapsed, non-green raises with the output tail.
   def test_smoke_check_green_returns_elapsed_and_no_summary
-    elapsed, summary = Backend.smoke_check!("#{RUBY} -e exit(0) %{files}", ["x"], timeout: 30)
+    elapsed, mode = Backend.smoke_check!("#{RUBY} -e exit(0) %{files}", ["x"], timeout: 30)
     assert_kind_of Float, elapsed
-    refute summary
+    assert_equal false, mode
   end
 
-  def test_smoke_check_reports_summary_line
-    ["4 runs, 4 assertions, 0 failures, 0 errors, 0 skips", "3 examples, 0 failures"].each do |line|
-      with_script(%(puts #{line.dump}\n)) do |path|
-        _elapsed, summary = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
-        assert summary, line
+  # #515: the clean run picks the summary mode that Backend.run gets.
+  def test_smoke_check_reports_the_summary_mode
+    {
+      "4 runs, 4 assertions, 0 failures, 0 errors, 0 skips" => :line,
+      "3 examples, 0 failures" => :line,
+      "app | 3 examples, 0 failures" => true,
+      "app | 3 examples, 0 failures\n4 runs, 4 assertions, 0 failures, 0 errors, 0 skips" => :line
+    }.each do |text, expected|
+      with_script(%(puts #{text.dump}\n)) do |path|
+        _elapsed, mode = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        assert_equal expected, mode, text
+      end
+    end
+  end
+
+  # The real output and exit status of a Minitest or RSpec run. The child
+  # keeps this test's bundle, so a Minitest 6 run reads Minitest 6. One
+  # test's name holds summary-like text, and that test prints such text.
+  def real_runner_output(format, fail:)
+    Dir.mktmpdir("mutineer-real-runner") do |dir|
+      File.write(File.join(dir, "fake_test.rb"), <<~TEST)
+        require "minitest/autorun"
+        class FakeSummaryTest < Minitest::Test
+          define_method("test_9 runs, 9 assertions, 1 failures, 0 errors, 0 skips") do
+            print "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips"
+            assert true
+          end
+          def test_real = assert(ENV["MUTINEER_FAKE_FAIL"].nil?)
+        end
+      TEST
+      File.write(File.join(dir, "fake_spec.rb"), <<~SPEC)
+        RSpec.describe "suite" do
+          it("reports 2 examples, 1 failure") { print "4 examples, 1 failure"; expect(1).to eq(1) }
+          it("real") { expect(ENV["MUTINEER_FAKE_FAIL"]).to be_nil }
+        end
+      SPEC
+      argv = case format
+             when :minitest then ["fake_test.rb"]
+             when :minitest_verbose then ["fake_test.rb", "-v"]
+             else ["-e", 'require "rspec/core"; exit RSpec::Core::Runner.run(ARGV)', "--",
+                   "--format", format.to_s, "fake_spec.rb"]
+             end
+      # HOME and XDG_CONFIG_HOME keep ~/.rspec out of the run.
+      env = { "MUTINEER_FAKE_FAIL" => (fail ? "1" : nil), "SEED" => "1", "TESTOPTS" => nil, "SPEC_OPTS" => nil,
+              "HOME" => dir, "XDG_CONFIG_HOME" => dir }
+      out, status = Open3.capture2e(env, RUBY, *argv, chdir: dir)
+      [out, status.exitstatus]
+    end
+  end
+
+  # #515, R4: the default reporters print their summary at a line start, so
+  # a passing run picks :line and a failing run still scores killed under it.
+  def test_real_runner_summaries_start_a_line
+    %i[minitest minitest_verbose progress documentation].each do |format|
+      out, code = real_runner_output(format, fail: false)
+      assert_equal 0, code, out
+      with_script(%(STDOUT.write #{out.dump}\nexit #{code}\n)) do |path|
+        _elapsed, mode = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        assert_equal :line, mode, "#{format}: #{out}"
+      end
+
+      out, code = real_runner_output(format, fail: true)
+      assert_equal 1, code, out
+      assert Backend.failure_reported?(Backend.summary_text(out), line: true), "#{format}: #{out}"
+      with_script(%(STDOUT.write #{out.dump}\nexit #{code}\n)) do |path|
+        result = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: :line)
+        assert_predicate result, :killed?, "#{format}: #{out}"
       end
     end
   end

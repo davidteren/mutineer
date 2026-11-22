@@ -60,6 +60,15 @@ module Mutineer
     MINITEST_RUNNING = "# Running:"
     # The line SimpleCov prints when its minimum_coverage gate fails the run.
     SIMPLECOV_GATE = /SimpleCov failed with exit \d+ due to a coverage related error/
+    # The start of a line, after colour codes are removed: the start of the
+    # text, or right after "\n" or "\r" (a progress bar that redraws a line).
+    LINE_START = /(?:\A|(?<=[\n\r]))/
+    # {MINITEST_SUMMARY} at the start of a line (#515).
+    MINITEST_SUMMARY_AT_LINE_START = /#{LINE_START}#{MINITEST_SUMMARY}/
+    # {RSPEC_SUMMARY} at the start of a line (#515).
+    RSPEC_SUMMARY_AT_LINE_START = /#{LINE_START}#{RSPEC_SUMMARY}/
+    # {MINITEST_RUNNING} at the start of a line (#515).
+    MINITEST_RUNNING_AT_LINE_START = /#{LINE_START}#{Regexp.escape(MINITEST_RUNNING)}/
     # RSpec's note that a file raised outside any example, such as at load.
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
@@ -183,9 +192,12 @@ module Mutineer
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] per-mutant wall-clock timeout in seconds.
     # @param verbose [Boolean] print the child's captured output on a non-pass.
-    # @param check_summary [Boolean] score exit 1 as killed only when the output
-    #   has a summary line that reports a failing test (see {failure_reported?}).
-    #   The runner turns this on when the clean smoke run printed a summary line.
+    # @param check_summary [Boolean, :line] score exit 1 as killed only when the
+    #   output has a summary line that reports a failing test (see
+    #   {failure_reported?}). `true` matches a summary at any position, as in
+    #   1.9.0. `:line` matches a summary and the `# Running:` line only at the
+    #   start of a line (#515). The runner passes {summary_mode} of the clean
+    #   smoke run.
     # @return [Mutineer::Result]
     def self.run(command, files, timeout:, verbose: false, check_summary: false)
       kind, code, output, = spawn_capture(command, files, timeout)
@@ -211,6 +223,7 @@ module Mutineer
         return error_with_output("test-command could not start (exit #{code})", output) if CANNOT_RUN_CODES.include?(code)
 
         text = summary_text(output)
+        line = check_summary == :line
         # SimpleCov's minimum_coverage gate replaced the exit code. Under
         # Minitest it runs in Minitest.after_run even after a failing test, so a
         # failing summary plus its message is still a kill. A passing summary
@@ -218,12 +231,13 @@ module Mutineer
         # fork exits before that hook, and the mutant survives. Keyed on
         # SimpleCov's own message, so code under test that calls `exit 2`
         # outside a running Minitest test still scores error (inside one, see
-        # {exited_during_tests?}, #342 limit 8). Ceiling (#342 limits 2, 9, 10): with
-        # `SimpleCov.print_error_status = false` the gate prints nothing, and its
-        # exit scores error too; two chained suites can score survived (#516).
+        # {exited_during_tests?}, #342 limit 8). Ceiling (#342 limits 2, 9, 10,
+        # tracked in #549): with `SimpleCov.print_error_status = false` the gate
+        # prints nothing, and its exit scores error too; two chained suites can
+        # score survived (#516).
         if text.match?(SIMPLECOV_GATE)
-          return Result.killed if failure_reported?(text)
-          return Result.survived if tests_passed?(text)
+          return Result.killed if failure_reported?(text, line: line)
+          return Result.survived if tests_passed?(text, line: line)
         end
 
         unless code == FAILURE_CODE
@@ -231,7 +245,16 @@ module Mutineer
                                    "check RSpec --failure-exit-code, a coverage gate, or your wrapper)", output)
         end
 
-        if check_summary && !failure_reported?(text) && !exited_during_tests?(text)
+        if check_summary && !failure_reported?(text, line: line) && !exited_during_tests?(text, line: line)
+          # A kill whose failing summary a wrapper or interleaved parallel
+          # output moved off the line start lands here (#549). Estimate: below
+          # 1 in 100 --test-command setups, unmeasured. The reason names it.
+          if line && failure_reported?(text)
+            return error_with_output("test-command exited 1 and a failing summary is in its output, but not at the " \
+                                     "start of a line, where the clean run printed its summary (a wrapper or a " \
+                                     "parallel runner moved it; --verbose shows the output)", output)
+          end
+
           return error_with_output("test-command exited 1 but its output shows no failing test " \
                                    "(the suite or the mutant crashed before tests ran; --verbose shows the output)", output)
         end
@@ -255,28 +278,63 @@ module Mutineer
       Result.error(last ? "#{message}; last output line: #{ChildCause.clip(last)}" : message)
     end
 
+    # The Minitest and RSpec summary patterns, at the start of a line when
+    # +line+ is true, else at any position.
+    #
+    # @api private
+    # @param line [Boolean]
+    # @return [Array(Regexp, Regexp)] `[minitest, rspec]`.
+    def self.summary_patterns(line)
+      line ? [MINITEST_SUMMARY_AT_LINE_START, RSPEC_SUMMARY_AT_LINE_START] : [MINITEST_SUMMARY, RSPEC_SUMMARY]
+    end
+
+    # How a mutant run must match summary lines, from the clean run's output
+    # (#515): `:line` when a summary line starts a line, `true` when summary
+    # lines exist only at other positions (a wrapper that prefixes each line),
+    # `false` when there is none. Real Minitest and RSpec reporters print the
+    # summary at the start of a line, while summary-like text in a test name
+    # (Minitest `-v`) or after a progress dot does not start one.
+    #
+    # @api private
+    # @param text [String] output from {summary_text}.
+    # @return [:line, Boolean]
+    def self.summary_mode(text)
+      return :line if summary_line?(text, line: true)
+
+      summary_line?(text)
+    end
+
     # True when the text has a Minitest or RSpec summary line.
     #
     # @api private
     # @param text [String] output from {summary_text}.
+    # @param line [Boolean] count a summary only at the start of a line.
     # @return [Boolean]
-    def self.summary_line?(text)
-      text.match?(MINITEST_SUMMARY) || text.match?(RSPEC_SUMMARY)
+    def self.summary_line?(text, line: false)
+      summary_patterns(line).any? { |pattern| text.match?(pattern) }
     end
 
     # True when a summary line reports a failing test: a Minitest failure or
     # error, or an RSpec failure. An RSpec error outside examples alone (a spec
     # file that raised while loading) is not one, as in TestRunners::RSpec.
     # Any matching line counts, so a wrapper that runs two suites still kills.
-    # A test that prints a fake summary line to stdout fools this check
-    # (#342 limit 4, tracked in #515).
+    # With +line+, a summary counts only at the start of a line, so a fake
+    # summary in a Minitest `-v` test name, after a progress dot, or in an
+    # indented RSpec example name no longer reads as a failing test (#342
+    # limit 4, #515). Ceiling (#549): a test that prints a whole summary line
+    # at a line start, or an RSpec top-level group with such a name, still
+    # fools it; and a wrapper that prefixes every line keeps matching at any
+    # position (mode `true`), so limit 4 stays whole there. Estimate: the fix
+    # changes a verdict in far below 1 project in 1,000.
     #
     # @api private
     # @param text [String] output from {summary_text}.
+    # @param line [Boolean] count a summary only at the start of a line.
     # @return [Boolean]
-    def self.failure_reported?(text)
-      text.scan(MINITEST_SUMMARY).any? { |failures, errors| (failures.to_i + errors.to_i).positive? } ||
-        text.scan(RSPEC_SUMMARY).any? { |(failures)| failures.to_i.positive? }
+    def self.failure_reported?(text, line: false)
+      minitest, rspec = summary_patterns(line)
+      text.scan(minitest).any? { |failures, errors| (failures.to_i + errors.to_i).positive? } ||
+        text.scan(rspec).any? { |(failures)| failures.to_i.positive? }
     end
 
     # True when Minitest started its tests and the process then ended with no
@@ -285,20 +343,26 @@ module Mutineer
     # suite printed a summary still kills. A load crash ends before Minitest
     # prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
-    # minitest-reporters, such an exit scores error, not killed. Ceiling (#342
-    # limits 1, 3, 8; #515): an exception that escapes Minitest.run itself (a
-    # reporter plugin bug) also reads as a kill here, where the in-process
-    # backend scores error. Minitest's `autorun` ends the process with status 1
-    # after any `exit` during a test, so `exit 0` and `exit 2` read as a kill too.
+    # minitest-reporters, such an exit scores error, not killed. With +line+,
+    # the start line and the summary count only at the start of a line (#515).
+    # Accepted (#342 limits 3 and 8, tracked in #549): an exception that
+    # escapes Minitest.run itself (a reporter plugin bug) also reads as a
+    # kill here, where the in-process backend scores error. Its output and
+    # status are the same as code under test that runs
+    # `warn e.full_message; exit 1` in a test, a real kill. Minitest's
+    # `autorun` ends the process with status 1 after any `exit` during a
+    # test, and prints the same output, so `exit 0` and `exit 2` read as a
+    # kill too.
     #
     # @api private
     # @param text [String] output from {summary_text}.
+    # @param line [Boolean] count the start line and a summary only at the start of a line.
     # @return [Boolean]
-    def self.exited_during_tests?(text)
-      running_at = text.rindex(MINITEST_RUNNING)
+    def self.exited_during_tests?(text, line: false)
+      running_at = text.rindex(line ? MINITEST_RUNNING_AT_LINE_START : MINITEST_RUNNING)
       return false unless running_at
 
-      summary_at = [text.rindex(MINITEST_SUMMARY), text.rindex(RSPEC_SUMMARY)].compact.max
+      summary_at = summary_patterns(line).filter_map { |pattern| text.rindex(pattern) }.max
       summary_at.nil? || summary_at < running_at
     end
 
@@ -309,9 +373,10 @@ module Mutineer
     #
     # @api private
     # @param text [String] output from {summary_text}.
+    # @param line [Boolean] count a summary only at the start of a line.
     # @return [Boolean]
-    def self.tests_passed?(text)
-      summary_line?(text) && !failure_reported?(text) && !text.match?(RSPEC_OUTSIDE_ERROR)
+    def self.tests_passed?(text, line: false)
+      summary_line?(text, line: line) && !failure_reported?(text, line: line) && !text.match?(RSPEC_OUTSIDE_ERROR)
     end
 
     # The output as binary with ANSI colour codes removed. Binary, so bytes that
@@ -368,22 +433,22 @@ module Mutineer
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
     # returns the elapsed seconds (used to calibrate the per-mutant timeout),
-    # whether the output has a Minitest or RSpec summary line (used to turn on
-    # the summary check in {run}), and the runner and seed of a random test
+    # the {summary_mode} of the output (passed to {run} as `check_summary`),
+    # and the runner and seed of a random test
     # order (see {random_order}); anything else raises SmokeCheckError so the run
     # aborts before scoring.
     #
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, Boolean, Array(Symbol, String), nil)]
-    #   `[elapsed_seconds, summary_seen, random_order]`.
+    # @return [Array(Float, (:line, Boolean), Array(Symbol, String), nil)]
+    #   `[elapsed_seconds, summary_mode, random_order]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
       if kind == :exited && code&.zero?
         text = summary_text(output)
-        return [elapsed, summary_line?(text), random_order(command, text)]
+        return [elapsed, summary_mode(text), random_order(command, text)]
       end
 
       reason =

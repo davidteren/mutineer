@@ -132,9 +132,18 @@ All notable changes to this project are documented here. The format is based on
   It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
   Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
 - **The 12 known limits of reading `--test-command` output are documented (#342).**
-  `docs/rails-setup.md` lists each one and its result. The code comments cite #342.
-  The limits that can score a crash as `killed` are tracked in #515, and the one that can score `survived` wrongly in #516.
-  No scoring changed.
+  `docs/rails-setup.md` lists each one and its result.
+  The #515 entry below fixes most of limit 4. #549 tracks each limit that stays open, and the code comments cite it.
+  This entry changes no scoring on its own.
+- **A `--test-command` crash no longer scores `killed` because of summary-like text away from a line start (#515).**
+  When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
+  So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill.
+  Such a run now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
+  Estimate: far below 1 project in 1,000, unmeasured.
+  A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start.
+  The reason then says "not at the start of a line". Estimate: below 1 in 100 `--test-command` setups, unmeasured.
+  When no summary of the clean run starts a line, such as with a wrapper that prefixes each line, matching stays as in 1.9.0.
+  Limits 3, 7 and 8 of #342 are accepted and keep their verdicts. #549 tracks them.
 - **A red clean check under `--rails` names the failing test and its error
   (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
   The clean check built its failure report on one, so under `--rails` the

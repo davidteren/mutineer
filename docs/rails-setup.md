@@ -297,28 +297,29 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Exit code other than 1, or a signal | `error`, except for the SimpleCov case below. |
 | RSpec `--failure-exit-code` other than 1 | Test failures become `error`. |
 | Clean run prints a recognised summary | Exit 1 requires a reported test failure or a Minitest run stopped during a test. Otherwise, `error`. |
-| Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. |
+| Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. When a summary of the clean run starts a line, a mutant run's summary and its `# Running:` line count only at the start of a line ([#515](https://github.com/davidteren/mutineer/issues/515)). When no summary of the clean run starts a line (a wrapper that prefixes each line), they count at any position. |
+| Exit 1 with a failing summary that does not start a line, when the clean run's summary did | `error`, with the reason "not at the start of a line". A wrapper prefix or a parallel runner moved the summary. Remove that prefix or the parallel runner from `--test-command`. |
 | Crash during loading | `error` when summary validation applies. |
 | SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
 
-#### Known limits of reading test output ([#342](https://github.com/davidteren/mutineer/issues/342))
+#### Known limits of reading test output ([#549](https://github.com/davidteren/mutineer/issues/549))
 
-Mutineer reads the output of `--test-command` to tell a crash from a kill. It accepts these 12 limits and does not tighten the check. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
+Mutineer reads the output of `--test-command` to tell a crash from a kill. #342 listed these 12 limits. [#515](https://github.com/davidteren/mutineer/issues/515) closed most of limit 4, and the other limits stay. [#549](https://github.com/davidteren/mutineer/issues/549) tracks each open limit, with the reason it is accepted. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
 
-A verdict that can be wrong is marked. Those limits are tracked as bugs: [#515](https://github.com/davidteren/mutineer/issues/515) for a false `killed`, and [#516](https://github.com/davidteren/mutineer/issues/516) for a false `survived`.
+A verdict that can be wrong is marked.
 
 | # | Limit | Result |
 | --- | --- | --- |
 | 1 | Code under test calls `exit 1` or `abort` during a test. | `killed` under the default Minitest reporter, as in process. Under RSpec or minitest-reporters it is `error`, because only the default reporter prints `# Running:`. |
 | 2 | `SimpleCov.print_error_status = false`. | The gate prints no message, so its exit scores `error`. |
-| 3 | An exception escapes `Minitest.run` (a reporter plugin bug). | **False `killed`**, where in process it is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
-| 4 | A test prints a fake summary line, or a test name holds summary-like text. The patterns have no line-start anchor. | **False `killed`** for a crash ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 3 | An exception escapes `Minitest.run` (a reporter plugin bug). | **False `killed`**, where in process it is `error`. Accepted: the output and exit status are the same as code under test that runs `warn e.full_message; exit 1` in a test, a real kill. |
+| 4 | A test prints a whole summary line at the start of a line, or an RSpec top-level group name holds summary-like text in documentation format. Summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer counts, because the clean run's summary starts a line. | **False `killed`** for a crash. When a wrapper prefixes each line, a summary counts at any position, so the whole limit stays. |
 | 5 | A custom failure exit code, such as RSpec `--failure-exit-code 3`. | Every kill scores `error`. This matches the in-process rule: only exit 1 kills. |
 | 6 | Code under test calls `exit!(1)`. | The output flush is skipped and `# Running:` can be lost, so it scores `error`, where in process it is `killed`. |
-| 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill** ([#515](https://github.com/davidteren/mutineer/issues/515)). |
-| 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill**. Accepted: the output has no sign that a test ran. |
+| 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error`. Accepted: the output is the same for each status. |
 | 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | A passing first summary scores **`survived`**, although the skipped suite might kill ([#516](https://github.com/davidteren/mutineer/issues/516)). |
 | 10 | SimpleCov older than 0.19 prints a different gate message. | The gate exit scores `error`, not `survived`. |
 | 11 | RSpec exits 1 in the middle of an example. | The `error` reason text can name the wrong cause. The verdict is right. |
