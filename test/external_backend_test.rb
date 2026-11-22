@@ -592,6 +592,9 @@ class ExternalBackendTest < Minitest::Test
       [{ ".rspec" => "--seed 7", ".rspec-local" => "--order rand" }, "rspec %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec --options other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -O other.opts %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec --options=other.opts %{files}", nil, random],
+      # Non-ASCII text in both the option file and the command.
+      [{ ".rspec" => "--require spec_helper # caf\u00e9\n--seed 7" }, "rspec caf\u00e9_spec.rb", nil, nil],
       # RSpec reads --options only from the command line, not from SPEC_OPTS.
       [{ ".rspec" => "--seed 7" }, "rspec %{files}", "--options other.opts", nil],
       [{}, "rspec --seed 7 --order rand %{files}", nil, random],

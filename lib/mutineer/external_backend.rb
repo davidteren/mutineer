@@ -83,8 +83,9 @@ module Mutineer
     # `-s N` or `-sN`). Minitest prints its seed line for a fixed seed too, so
     # the line alone cannot tell.
     MINITEST_SEED_GIVEN = /\bSEED=|--seed\b|(?:\A|\s)-s(?![A-Za-z_])/
-    # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
-    # `--order rand:N`). RSpec ignores SEED.
+    # An RSpec order option that fixes the seed (`--seed N` or
+    # `--order rand:N`). {random_order} matches it against the last
+    # {RSPEC_ORDER_OPTION} RSpec reads. RSpec ignores SEED.
     RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
     # RSpec option files in the working directory. RSpec reads them before the
     # command and SPEC_OPTS, so an order option there counts unless a later
@@ -473,7 +474,8 @@ module Mutineer
       return unless rspec
 
       files = command.to_s.match?(RSPEC_OPTIONS_FILE) ? [] : rspec_option_files
-      last = [*files, command, ENV["SPEC_OPTS"]].join("\n").scan(RSPEC_ORDER_OPTION).last
+      # Binary, so a non-ASCII command joins with the binary file text.
+      last = [*files, command, ENV["SPEC_OPTS"]].map { |o| o.to_s.b }.join("\n").scan(RSPEC_ORDER_OPTION).last
       [:rspec, rspec] unless last&.match?(RSPEC_SEED_GIVEN)
     end
 
