@@ -122,6 +122,11 @@ class DaemonBackendContractTest < Minitest::Test
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
+      assert_equal false, boot[:verbose], "#517: no --verbose, so the capture warning stays generic"
+      config.verbose = true
+      assert_equal true, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:verbose],
+                   "#517: --verbose reaches the map-building daemon"
+      config.verbose = false
       config.capture_timeout = 300
       assert_equal 300, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:capture_timeout],
                    "PR #183 review: the map-building daemon gets --capture-timeout"

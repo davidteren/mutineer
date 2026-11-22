@@ -523,8 +523,8 @@ module Mutineer
 
     # The boot config the daemon needs to boot the app once: where to boot, the
     # --require files to load after it, the test load roots (so
-    # `require "test_helper"` resolves in every fork), framework, and whether this
-    # is Rails.
+    # `require "test_helper"` resolves in every fork), framework, whether this
+    # is Rails, and --verbose for the coverage build's capture warnings.
     #
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
@@ -559,6 +559,9 @@ module Mutineer
         db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,
+        # --verbose: the map-building daemon's capture warning shows the real
+        # error, as in-process (#517). Not part of the coverage digest.
+        verbose: config.verbose,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }

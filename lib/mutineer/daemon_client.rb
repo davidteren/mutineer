@@ -63,11 +63,15 @@ module Mutineer
     # A RUBYOPT that adds a load path: `-Itest`, `-I test`, `Itest` (the dash
     # is optional there), or `-wItest` after the flag-only switches.
     RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
+    # Start of the daemon's warning for a test file whose coverage capture
+    # failed. CoverageMap::Capture#fail_test writes it. The stderr drain adds
+    # the load note to the first such line (#517).
+    COVERAGE_SKIPPED = "[mutineer] coverage skipped for "
     # Published guide with the boot: workaround, for an installed gem's users.
     LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend"
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
-    #   load_paths, framework, rails.
+    #   load_paths, framework, rails, verbose (see {DaemonBackend.boot_config}).
     # @param app_root [String] directory to spawn the daemon in (the app root).
     # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
     #   nil keeps a pin already in the environment. That pin is often the
@@ -81,6 +85,7 @@ module Mutineer
       @gemfile = gemfile || File.join(app_root, "Gemfile")
       @errio = errio
       @restarts = 0
+      @capture_noted = false # one load note on the capture warnings (#517)
     end
 
     # Spawn the daemon and complete the ready handshake. Raises DaemonBootError on
@@ -262,8 +267,8 @@ module Mutineer
     # A text that reports a missing file, with a note when this run set a
     # load variable that the daemon dropped (#491). The text is a mutant's
     # cause line, or the coverage build's error or red clean-check message
-    # (#500). Names only the variables, never their values: RUBYOPT can hold
-    # a secret.
+    # (#500), or the daemon's capture warning for one test file (#517).
+    # Names only the variables, never their values: RUBYOPT can hold a secret.
     #
     # @api private
     # @param cause [String, nil] the text to note.
@@ -578,8 +583,30 @@ module Mutineer
       newline = line.end_with?("\n")
       body = (newline ? line.chomp("\n") : line).dup.force_encoding(Encoding::UTF_8)
       body.scrub! unless body.valid_encoding? # an invalid byte must not stop the drain
-      @errio.write(Redaction.text(body))
+      @errio.write(with_capture_note(Redaction.text(body)))
       @errio.write("\n") if newline
+    end
+
+    # Adds the load note ({.with_load_env_hint}) to the first capture warning
+    # that reports a missing file (#517). The daemon prints that warning in
+    # the app, which cannot see the dropped variables; the drain runs here,
+    # which can. Later warnings stay as they are, so one note does not repeat
+    # on every line of a suite that cannot load its helper. A piece holds
+    # more than one line when a password form spans a newline.
+    #
+    # @api private
+    # @param text [String] redacted daemon stderr, without its last newline.
+    # @return [String]
+    def with_capture_note(text)
+      return text if @capture_noted || !text.include?(COVERAGE_SKIPPED)
+
+      text.split("\n", -1).map do |line|
+        next line if @capture_noted || !line.start_with?(COVERAGE_SKIPPED)
+
+        noted = with_load_env_hint(line)
+        @capture_noted = true unless noted.equal?(line)
+        noted
+      end.join("\n")
     end
 
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a

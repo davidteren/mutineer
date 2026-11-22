@@ -5,6 +5,7 @@ require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/daemon_client"
 require "tmpdir"
+require "stringio"
 
 # #26/U7 — coverage narrowing restored on the daemon path. The daemon builds the
 # coverage map app-side (Coverage started before boot) and ships it to the tool, which
@@ -184,6 +185,35 @@ class DaemonCoverageTest < Minitest::Test
       config.cache_dir = dir
       Mutineer::Runner.execute(config)
       assert_path_exists File.join(dir, "coverage.json")
+    end
+  end
+
+  # #517: --verbose reaches the map-building daemon, so its capture warning
+  # shows the real error. The tool-side drain then adds the load note, because
+  # the daemon cannot see the RUBYLIB it dropped. No load path finds
+  # test_helper here, so every capture fails the way a dropped -Itest does.
+  def test_verbose_capture_warning_shows_the_error_and_the_load_note
+    [true, false].each do |verbose|
+      Dir.mktmpdir("mutineer-daemon-517") do |dir|
+        boot = boot_config("order_test.rb").merge(load_paths: [], cache_dir: dir, verbose: verbose)
+        errio = StringIO.new
+        with_env("RUBYLIB" => "test", "BUNDLER_ORIG_RUBYLIB" => nil) do
+          client = Mutineer::DaemonClient.new(boot: boot, app_root: APP, errio: errio).start
+          begin
+            assert_equal %w[test/models/order_test.rb], client.coverage["failed_test_files"]
+          ensure
+            client.quit
+          end
+        end
+        line = errio.string.lines.grep(/coverage skipped for test\/models\/order_test\.rb/).first.to_s
+        if verbose
+          assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
+          assert_includes line, "(the daemon does not pass RUBYLIB to the app;"
+        else
+          assert_includes line, "fork capture produced no result (re-run with --verbose for the error)"
+          refute_includes line, "does not pass"
+        end
+      end
     end
   end
 end

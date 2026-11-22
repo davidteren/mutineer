@@ -623,6 +623,20 @@ class CoverageMapTest < Minitest::Test
                  second.tests_for(CALC, line_of("a + b"))
   end
 
+  # #517: the daemon now gets --verbose for its coverage build. The flag only
+  # changes the warning text, so a --verbose run reuses the map a plain run
+  # saved, and the reverse.
+  def test_verbose_does_not_change_the_cache_digest
+    dir = Dir.mktmpdir("mutineer-cache")
+    build_with = lambda do |verbose|
+      Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                project_root: ROOT, verbose: verbose).build_or_load
+    end
+    assert build_with.(false).phase_a_ran
+    refute build_with.(true).phase_a_ran, "--verbose must not rebuild a saved map"
+    refute build_with.(false).phase_a_ran
+  end
+
   def test_content_change_invalidates_cache_and_rebuilds
     dir = Dir.mktmpdir("mutineer-proj")
     cache = Dir.mktmpdir("mutineer-cache")
