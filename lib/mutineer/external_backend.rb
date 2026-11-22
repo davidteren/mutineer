@@ -316,10 +316,10 @@ module Mutineer
     # an unseeded RSpec suite that the same command runs. Mutineer only warns:
     # it cannot know the seed flag of an arbitrary command, so it sets no seed.
     # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
-    # `test_order`, or an `--options FILE` that replaces `.rspec` is not seen,
-    # so the warning still prints; a seed-like argument meant for a wrapper
-    # hides it, and so does a seed in `.rspec` that a later `--order rand` in
-    # the command or SPEC_OPTS overrides (#338, #368).
+    # `test_order`, or an `--options FILE` that replaces `.rspec`, is not seen,
+    # so the warning still prints. A seed-like argument meant for a wrapper
+    # hides it. So does a seed in `.rspec` that RSpec does not use, because a
+    # later `--order rand` or an `--options FILE` overrides it (#338, #368).
     #
     # @api private
     # @param command [String] the --test-command template.
@@ -342,7 +342,11 @@ module Mutineer
     # @api private
     # @return [Array<String>]
     def self.rspec_option_files
-      RSPEC_OPTION_FILES.select { |f| File.file?(f) }.map { |f| File.readlines(f, encoding: "BINARY").grep_v(/\A\s*#/).join }
+      RSPEC_OPTION_FILES.filter_map do |f|
+        File.readlines(f, encoding: "BINARY").grep_v(/\A\s*#/).join if File.file?(f)
+      rescue SystemCallError
+        nil # unreadable: the check only decides on a warning, so count it as no seed
+      end
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
