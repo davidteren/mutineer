@@ -62,11 +62,10 @@ Set up Mutineer in this Rails app. Add gem "mutineer", group: :test, require: fa
 
 ## 2. First run on one file
 
-Choose a small model with passing tests. Count mutants. With `--rails`, dry runs skip test pairing and require `--test`:
+Choose a small model with passing tests. Count mutants. With `--rails`, dry runs skip test pairing and need no `--test`:
 
 ```sh
-RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run \
-  --test test/models/order_test.rb
+RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --dry-run
 ```
 
 Run:
