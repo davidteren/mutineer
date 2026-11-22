@@ -278,6 +278,33 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #516, AE3 and AE4: a wrapper stands for `suite && suite`. The clean run
+  # prints two summary lines. On a mutant, the SimpleCov gate ends the first
+  # suite, so the second never runs: error, not survived.
+  def test_simplecov_gate_that_stops_a_chain_of_suites_scores_error
+    with_project("calculator_strong_test.rb") do |proj|
+      original = File.read(File.join(proj, "calculator.rb"))
+      wrapper = File.join(proj, "chain.rb")
+      File.write(wrapper, <<~RUBY)
+        if File.read(#{File.join(proj, 'calculator.rb').dump}) == #{original.dump}
+          2.times { system(RbConfig.ruby, *ARGV) || exit($?.exitstatus) }
+          exit 0
+        end
+        puts "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips"
+        puts "SimpleCov failed with exit 2 due to a coverage related error"
+        exit 2
+      RUBY
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                           "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+      doc = JSON.parse(out)
+      assert_equal 0, doc.dig("summary", "survived"), err
+      assert_equal 6, doc.dig("summary", "errored"), err
+      doc.fetch("no_verdict").each do |row|
+        assert_includes row["details"], "printed 1 summary line where the clean run printed 2"
+      end
+    end
+  end
+
   # #292: a clean run with no summary line keeps the exit-code rule and says so once.
   def test_no_summary_on_clean_run_warns_once
     with_project("calculator_strong_test.rb") do |proj|

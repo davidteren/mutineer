@@ -198,8 +198,11 @@ module Mutineer
     #   1.9.0. `:line` matches a summary and the `# Running:` line only at the
     #   start of a line (#515). The runner passes {summary_mode} of the clean
     #   smoke run.
+    # @param clean_summaries [Integer] how many summary lines the clean smoke
+    #   run printed ({summary_count}). After a SimpleCov gate, a passing run
+    #   with fewer scores error, not survived (#516). 0 keeps the 1.9.0 rule.
     # @return [Mutineer::Result]
-    def self.run(command, files, timeout:, verbose: false, check_summary: false)
+    def self.run(command, files, timeout:, verbose: false, check_summary: false, clean_summaries: 0)
       kind, code, output, = spawn_capture(command, files, timeout)
       case kind
       when :timeout
@@ -231,13 +234,26 @@ module Mutineer
         # fork exits before that hook, and the mutant survives. Keyed on
         # SimpleCov's own message, so code under test that calls `exit 2`
         # outside a running Minitest test still scores error (inside one, see
-        # {exited_during_tests?}, #342 limit 8). Ceiling (#342 limits 2, 9, 10,
-        # tracked in #549): with `SimpleCov.print_error_status = false` the gate
-        # prints nothing, and its exit scores error too; two chained suites can
-        # score survived (#516).
+        # {exited_during_tests?}, #342 limit 8). A passing run survives only
+        # when it printed at least as many summary lines as the clean run: with fewer,
+        # the gate stopped a chain of suites, and a suite that did not run
+        # could kill the mutant (#516). Estimate: below 1 in 100 --test-command
+        # setups, unmeasured. Ceiling (#342 limits 2, 9, 10, tracked in #549):
+        # with `SimpleCov.print_error_status = false` the gate prints nothing,
+        # and its exit scores error too; a clean run with no summary line, or a
+        # chain whose prefixed suite runs second, keeps the 1.9.0 rule.
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text, line: line)
-          return Result.survived if tests_passed?(text, line: line)
+
+          if tests_passed?(text, line: line)
+            printed = summary_count(text, line: line)
+            return Result.survived if printed >= clean_summaries
+
+            return error_with_output("test-command printed #{printed} summary #{printed == 1 ? 'line' : 'lines'} " \
+                                     "where the clean run printed #{clean_summaries}, after a SimpleCov coverage " \
+                                     "gate ended it; a suite that did not run could still kill this mutant " \
+                                     "(turn the gate off for mutation runs)", output)
+          end
         end
 
         unless code == FAILURE_CODE
@@ -302,6 +318,16 @@ module Mutineer
       return :line if summary_line?(text, line: true)
 
       summary_line?(text)
+    end
+
+    # The number of Minitest and RSpec summary lines in the text (#516).
+    #
+    # @api private
+    # @param text [String] output from {summary_text}.
+    # @param line [Boolean] count a summary only at the start of a line.
+    # @return [Integer]
+    def self.summary_count(text, line: false)
+      summary_patterns(line).sum { |pattern| text.scan(pattern).size }
     end
 
     # True when the text has a Minitest or RSpec summary line.
@@ -434,21 +460,22 @@ module Mutineer
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
     # returns the elapsed seconds (used to calibrate the per-mutant timeout),
     # the {summary_mode} of the output (passed to {run} as `check_summary`),
-    # and the runner and seed of a random test
-    # order (see {random_order}); anything else raises SmokeCheckError so the run
-    # aborts before scoring.
+    # the runner and seed of a random test order (see {random_order}), and
+    # the {summary_count} in that mode (passed to {run} as `clean_summaries`);
+    # anything else raises SmokeCheckError so the run aborts before scoring.
     #
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
-    # @return [Array(Float, (:line, Boolean), Array(Symbol, String), nil)]
-    #   `[elapsed_seconds, summary_mode, random_order]`.
+    # @return [Array(Float, (:line, Boolean), Array(Symbol, String), nil, Integer)]
+    #   `[elapsed_seconds, summary_mode, random_order, summary_count]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
     def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
       kind, code, output, elapsed = spawn_capture(command, files, timeout)
       if kind == :exited && code&.zero?
         text = summary_text(output)
-        return [elapsed, summary_mode(text), random_order(command, text)]
+        mode = summary_mode(text)
+        return [elapsed, mode, random_order(command, text), summary_count(text, line: mode == :line)]
       end
 
       reason =

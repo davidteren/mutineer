@@ -300,13 +300,14 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. When a summary of the clean run starts a line, a mutant run's summary and its `# Running:` line count only at the start of a line ([#515](https://github.com/davidteren/mutineer/issues/515)). When no summary of the clean run starts a line (a wrapper that prefixes each line), they count at any position. |
 | Exit 1 with a failing summary that does not start a line, when the clean run's summary did | `error`, with the reason "not at the start of a line". A wrapper prefix or a parallel runner moved the summary. Remove that prefix or the parallel runner from `--test-command`. |
 | Crash during loading | `error` when summary validation applies. |
-| SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
+| SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill. All tests passing means `survived` when the run printed at least as many summary lines as the clean run. |
+| SimpleCov gate message, all tests passing, and fewer summary lines than the clean run | `error`, with the reason "printed 1 summary line where the clean run printed 2" ([#516](https://github.com/davidteren/mutineer/issues/516)). The gate stopped a chain of suites, and a suite that did not run could kill the mutant. Turn the coverage gate off for mutation runs. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
 
 #### Known limits of reading test output ([#549](https://github.com/davidteren/mutineer/issues/549))
 
-Mutineer reads the output of `--test-command` to tell a crash from a kill. #342 listed these 12 limits. [#515](https://github.com/davidteren/mutineer/issues/515) closed most of limit 4, and the other limits stay. [#549](https://github.com/davidteren/mutineer/issues/549) tracks each open limit, with the reason it is accepted. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
+Mutineer reads the output of `--test-command` to tell a crash from a kill. #342 listed these 12 limits. [#515](https://github.com/davidteren/mutineer/issues/515) closed most of limit 4, [#516](https://github.com/davidteren/mutineer/issues/516) closed most of limit 9, and the other limits stay. [#549](https://github.com/davidteren/mutineer/issues/549) tracks each open limit, with the reason it is accepted. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
 
 A verdict that can be wrong is marked.
 
@@ -320,7 +321,7 @@ A verdict that can be wrong is marked.
 | 6 | Code under test calls `exit!(1)`. | The output flush is skipped and `# Running:` can be lost, so it scores `error`, where in process it is `killed`. |
 | 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill**. Accepted: the output has no sign that a test ran. |
 | 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error`. Accepted: the output is the same for each status. |
-| 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | A passing first summary scores **`survived`**, although the skipped suite might kill ([#516](https://github.com/davidteren/mutineer/issues/516)). |
+| 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | The run printed fewer summary lines than the clean run, so it scores `error`, not `survived`. Mutineer does not run the skipped suite. When the clean run printed no summary line, or when a plain first suite is followed by a prefixed second suite, a passing first summary still scores **`survived`**, although the skipped suite might kill. |
 | 10 | SimpleCov older than 0.19 prints a different gate message. | The gate exit scores `error`, not `survived`. |
 | 11 | RSpec exits 1 in the middle of an example. | The `error` reason text can name the wrong cause. The verdict is right. |
 | 12 | test-unit. | Its summary line matches `MINITEST_SUMMARY`, so the summary check is on, not the exit-code fallback. Scoring is right. |

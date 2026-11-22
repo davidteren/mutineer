@@ -350,7 +350,7 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed, check_summary, random_order = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary, random_order, clean_summaries = ExternalBackend.smoke_check!(config.test_command, abs_tests)
         # #495: each command boots the app itself, and nothing captures coverage.
         timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: smoke_elapsed, mutants_seconds: nil }
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
@@ -385,7 +385,8 @@ module Mutineer
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
+                             clean_summaries: clean_summaries)
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -408,15 +409,17 @@ module Mutineer
     # in-process path gives at the pre-fork check.
     #
     # @param check_summary [Boolean, :line] passed to {ExternalBackend.run}.
+    # @param clean_summaries [Integer] passed to {ExternalBackend.run}.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, clean_summaries: 0)
       source  = Parser.read(subject.file)
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = FileSwap.with(subject.file, mutated) do
-        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary,
+                            clean_summaries: clean_summaries)
       end
       result.with(seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
     end

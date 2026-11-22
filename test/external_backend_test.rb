@@ -239,6 +239,36 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #516: after the gate, a passing run survives only when it printed as
+  # many summary lines as the clean run. With fewer, a suite of a chain did
+  # not run, so the mutant has no verdict.
+  def test_simplecov_gate_compares_the_summary_count_with_the_clean_run
+    passing = "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips\n"
+    [
+      [passing + GATE, 1, :survived?],
+      [passing + GATE, 2, :error?],
+      [passing * 2 + GATE, 2, :survived?],
+      [passing * 3 + GATE, 2, :survived?],
+      ["3 runs, 3 assertions, 1 failures, 0 errors, 0 skips\n#{GATE}", 2, :killed?],
+      [passing + GATE, 0, :survived?],
+      ["0 examples, 0 failures, 1 error occurred outside of examples\n#{GATE}", 1, :error?]
+    ].each do |output, clean, verdict|
+      with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
+        MODES.each do |mode|
+          result = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: mode, clean_summaries: clean)
+          assert_predicate result, verdict, "#{mode.inspect} #{clean} #{output.inspect}"
+        end
+      end
+    end
+    result = verdict(passing + GATE, 2, :line)
+    assert_predicate result, :survived?, "the default clean_summaries of 0 keeps the 1.9.0 rule"
+    with_script(%(STDOUT.write #{(passing + GATE).dump}\nexit 2\n)) do |path|
+      details = Backend.run("#{RUBY} #{path} %{files}", ["x"], timeout: 30, check_summary: :line, clean_summaries: 2).details
+      assert_includes details, "printed 1 summary line where the clean run printed 2, after a SimpleCov coverage gate"
+      assert_includes details, "turn the gate off for mutation runs"
+    end
+  end
+
   # 126 (cannot execute) and 127 (command not found) come from a wrapper such
   # as `bundle exec` that could not start the suite: no test ran, so no kill.
   def test_cannot_run_exit_codes_are_error_not_killed
@@ -376,6 +406,23 @@ class ExternalBackendTest < Minitest::Test
       with_script(%(puts #{text.dump}\n)) do |path|
         _elapsed, mode = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
         assert_equal expected, mode, text
+      end
+    end
+  end
+
+  # #516: the clean run's summary count, in the mode it picked.
+  def test_smoke_check_reports_the_summary_count
+    passing = "4 runs, 4 assertions, 0 failures, 0 errors, 0 skips"
+    {
+      "no summary" => 0,
+      passing => 1,
+      "#{passing}\n3 examples, 0 failures" => 2,
+      "#{passing}\napp | 3 examples, 0 failures" => 1,
+      "app | #{passing}" => 1
+    }.each do |text, expected|
+      with_script(%(puts #{text.dump}\n)) do |path|
+        _elapsed, _mode, _order, count = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
+        assert_equal expected, count, text
       end
     end
   end
