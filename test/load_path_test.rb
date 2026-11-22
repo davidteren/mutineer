@@ -163,6 +163,23 @@ class LoadPathTest < Minitest::Test
     end
   end
 
+  # A `link/../support` entry names the directory the file system reaches
+  # through the symlink, as the capture subprocess resolves it, not the one
+  # `..` names as text. The parent and the subprocess must agree.
+  def test_a_symlink_with_dot_dot_resolves_the_same_in_every_place
+    with_project("Symlink") do |proj, log, tag|
+      FileUtils.mkdir_p(File.join(proj, "shared/deep"))
+      File.symlink(File.join(proj, "shared/deep"), File.join(proj, "link"))
+      write(proj, "shared/support/shared_name.rb", "\n")
+      write(proj, "support/shared_name.rb", "\n")
+      aggregate, = Mutineer::Runner.execute(config_for(proj, tag, extra: %w[link/../support]))
+
+      assert_operator aggregate.killed_count, :>, 0
+      assert_equal %w[fork subprocess], lines(log).map { |l| l["kind"] }.uniq.sort
+      assert_equal [File.join(proj, "shared/support/shared_name.rb")], lines(log).map { |l| l["shared"] }.uniq
+    end
+  end
+
   # Without the setting the test cannot load shared_name, so no capture
   # records coverage and the run stops before any mutant. With a boot file
   # and without one.
