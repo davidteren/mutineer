@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_68f2f196f57a45 22-25,50
+docs/json-schema.md
+  s_9747bd218c1c67::t_2944992609e313 105-107,123-124,133,243
+docs/plans/2026-11-22-526-505-518-feat-report-fields-plan.md
+  s_9747bd218c1c67::t_e287b8077da736 1-381
+lib/mutineer/reporter.rb
+  s_9747bd218c1c67::t_6c4fbde947f302 871-873,884-887,898-923,933-935,962,981-982,991
+test/json_reporter_test.rb
+  s_9747bd218c1c67::t_7e4ef574acc4e4 134-135,150-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9eaa647497d8586f7d1b6dd39cf0ffdae2abd755",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
