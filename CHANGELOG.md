@@ -148,7 +148,7 @@ All notable changes to this project are documented here. The format is based on
   With SimpleCov's gate message and a passing summary, a mutant now scores `survived` only when its run printed at least as many summary lines as the clean run.
   With fewer, a suite of the chain did not run and could have killed the mutant, so it scores `error`. The reason gives both counts.
   Such a mutant leaves the score and counts in `no_verdict[]`, so the mutation score can change.
-  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
   Turn the coverage gate off for mutation runs.
   Estimate: below 1 in 100 `--test-command` setups, unmeasured.
   When the clean run printed no summary line, the rule stays as in 1.9.0. #549 tracks the cases that still score `survived`.
