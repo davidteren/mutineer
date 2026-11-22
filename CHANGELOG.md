@@ -59,7 +59,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **`--coverage-from` refuses a capture whose `timings` hold a non-number or infinite number (#513).**
+- **`--coverage-from` (in-process `--rails` or `--boot` runs only) refuses a capture whose `timings` hold a non-number or infinite number (#513).**
   Before, a hand-edited `coverage.json` with a string timing raised in test ordering with a backtrace.
   Now the run stops with the usual "not the shape a coverage cache saves" reason.
   The same change corrects three stale doc comments in `CoverageMap` (`spawn_script`, `fork_capture`, `exact_failed_test?`).
