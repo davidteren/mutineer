@@ -932,7 +932,8 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof).map(&piece)
       new_lines = side_lines(mutated_block, at_eof).map(&piece)
-      shown_file = piece.call(file)
+      # The path stays the text `diff` shows, so only the side lines differ (#532).
+      shown_file = piece.call(utf8_text(file))
       "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"

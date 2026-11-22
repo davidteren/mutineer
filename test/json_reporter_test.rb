@@ -221,6 +221,23 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # A path that is not UTF-8 prints as \xNN in both patches (#532), so a
+  # UTF-8 source with an ASCII change gets no diff_base64.
+  def test_a_non_utf8_path_alone_gives_no_diff_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
+    path = "caf\xE9.rb".b
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: path, namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { path => src }).report(out: out, err: StringIO.new, format: "json")
+    row = JSON.parse(out.string)["survivors"].first
+    assert_includes row["diff"], "caf\\xE9.rb"
+    refute row.key?("diff_base64")
+  end
+
   # Every list with a diff carries diff_base64; a stub row has neither.
   def test_every_list_with_a_diff_has_diff_base64
     src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")

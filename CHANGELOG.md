@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format is based on
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
   The JSON `schema_version` is now `1.11`.
 - **Entries with a `diff` carry `diff_base64` when the text is not the exact patch (#518).**
-  For a non-UTF-8 source with a non-ASCII changed line, an invalid byte on a changed line, or a binary-tagged source, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
+  For a non-UTF-8 source with a non-ASCII changed line, an invalid byte on a changed line, or a binary-tagged source whose changed line is not UTF-8, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
   To apply any entry: for a file with a `working-tree-encoding` Git attribute use `diff`; else decode `diff_base64` when present; else use `diff`.
   A UTF-8 project gets no new key. A source path that is not valid UTF-8 still cannot be applied (#532). Additive key (schema `1.11`).
 - **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
