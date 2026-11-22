@@ -1,0 +1,19 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_bfd9a4e918f7ae::t_93974eddfd80ef 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52bff22c96cf077b521c03ae01d0542afc40495f",
+  "prompts": {},
+  "sessions": {
+    "s_bfd9a4e918f7ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec518233-17e9-4044-ba05-b81f3785ca8d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
