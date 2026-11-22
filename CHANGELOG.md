@@ -155,7 +155,7 @@ All notable changes to this project are documented here. The format is based on
 - **The random-order warning of `--test-command` follows RSpec's option order (#522).**
   RSpec reads `.rspec`, `.rspec-local`, the command, then `SPEC_OPTS`, and the last order option wins.
   Mutineer now reads them the same way. A seed in `.rspec` that a later `--order rand` overrides now gets the warning.
-  With `--options FILE` or `-O FILE` in the command or `SPEC_OPTS`, Mutineer skips `.rspec` and `.rspec-local`, as RSpec does.
+  With `--options FILE` or `-O FILE` in the command, Mutineer skips `.rspec` and `.rspec-local`, as RSpec does.
   The warning now says "found no fixed seed in effect". It is a warning only: no verdict, score, exit code or JSON field changes.
   #549 tracks the blind spots that stay, such as a `cd` inside a wrapper.
 - **A red clean check under `--rails` names the failing test and its error

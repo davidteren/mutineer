@@ -584,7 +584,8 @@ class ExternalBackendTest < Minitest::Test
       [{ ".rspec" => "--seed 7", ".rspec-local" => "--order rand" }, "rspec %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec --options other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -O other.opts %{files}", nil, random],
-      [{ ".rspec" => "--seed 7" }, "rspec %{files}", "--options other.opts", random],
+      # RSpec reads --options only from the command line, not from SPEC_OPTS.
+      [{ ".rspec" => "--seed 7" }, "rspec %{files}", "--options other.opts", nil],
       [{}, "rspec --seed 7 --order rand %{files}", nil, random],
       [{}, "rspec --order rand --seed 7 %{files}", nil, nil],
       [{}, "rspec --order=rand:9 %{files}", nil, nil],

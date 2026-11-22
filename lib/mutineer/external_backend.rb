@@ -93,8 +93,9 @@ module Mutineer
     # An RSpec order option: `--seed N`, `--order X` or `--order=X`. The last
     # one RSpec reads decides the order.
     RSPEC_ORDER_OPTION = /--(?:seed|order)(?:=|\s+)\S+/
-    # An RSpec `--options FILE` or `-O FILE`. RSpec then reads that file
-    # instead of `.rspec` and `.rspec-local`.
+    # An RSpec `--options FILE` or `-O FILE` on the command. RSpec then reads
+    # that file instead of `.rspec` and `.rspec-local`. RSpec ignores it in
+    # SPEC_OPTS.
     RSPEC_OPTIONS_FILE = /(?:\A|\s)(?:--options\b|-O)/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
@@ -443,8 +444,8 @@ module Mutineer
     # or the command sets one. For RSpec, the last order option decides, read
     # in RSpec's order: `.rspec`, `.rspec-local`, the command, SPEC_OPTS
     # (#522). The order is fixed only when that option is `--seed N` or
-    # `--order rand:N`. With `--options FILE` or `-O FILE` in the command or
-    # SPEC_OPTS, RSpec skips the two files, and so does this check. RSpec
+    # `--order rand:N`. With `--options FILE` or `-O FILE` in the command,
+    # RSpec skips the two files, and so does this check. RSpec
     # `--order defined` prints no seed line. Each runner is checked on its
     # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
     # that the same command runs. Mutineer only warns: it cannot know the
@@ -469,9 +470,8 @@ module Mutineer
       rspec = text[RSPEC_SEED, 1]
       return unless rspec
 
-      options = [command, ENV["SPEC_OPTS"]].map(&:to_s)
-      files = options.any? { |o| o.match?(RSPEC_OPTIONS_FILE) } ? [] : rspec_option_files
-      last = [*files, *options].join("\n").scan(RSPEC_ORDER_OPTION).last
+      files = command.to_s.match?(RSPEC_OPTIONS_FILE) ? [] : rspec_option_files
+      last = [*files, command, ENV["SPEC_OPTS"]].join("\n").scan(RSPEC_ORDER_OPTION).last
       [:rspec, rspec] unless last&.match?(RSPEC_SEED_GIVEN)
     end
 
