@@ -12,13 +12,18 @@ All notable changes to this project are documented here. The format is based on
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
   After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
-  The warning changes no verdict, no score, no JSON field and no exit code.
+  The warning changes no verdict, no score and no exit code. `--format json` lists the same classes in `summary.callback_growth` (#505).
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
-  `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
+  A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
 - **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
   The JSON `schema_version` is now `1.11`.
+- **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
+  Each row is `{ class, file }`, sorted by file and class, so a JSON-only tool can see which kills of a file a repeated callback may have made false.
+  `[]` means that the run logged no growth, and a run that does not reload has `[]`. `null` means that a reload or `--daemon` run could not create its log, so it checked nothing.
+  `[]` is not proof that no class grew: a check that fails inside a mutant's child logs nothing (#531).
+  No verdict, score, count or exit code changes. Additive key (schema `1.11`).
 - **`no_verdict[]` entries in `--format json` carry `diff` (#526).**
   An errored, timed-out or uncapturable mutant's entry has the same `diff` (and `diff_encoding`) as a `survivors[]` entry, so a consumer can run that mutant again itself, for example after a container's memory limit killed its child.
   An entry with no mutation, such as a failure before the fork, has `diff: null`.

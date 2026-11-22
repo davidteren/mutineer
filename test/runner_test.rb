@@ -1941,8 +1941,24 @@ class RunnerTest < Minitest::Test
       end
     end
     assert_match(/\[mutineer\] could not create the callback-growth log, so this run does not check/, err)
-    assert_equal [], extras[:callback_growth]
+    assert_nil extras[:callback_growth], "no log means nothing was checked (#505)"
     assert_operator agg.killed_count, :>, 0
+  end
+
+  # #505: nil only when the run had to check and has no log. A run that does
+  # not reload gets an empty list, and a real log gives its rows.
+  def test_callback_growth_is_nil_only_for_a_checking_run_without_a_log
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "doubled.rb")
+      File.write(model, "class Doubled; end\n")
+      File.write(log, "#{"Doubled".dump}\t#{model.dump}\n")
+      rows = [["Doubled", "doubled.rb"]]
+      { [true, nil] => nil, [false, nil] => [], [true, log] => rows, [false, log] => rows }.each do |(checks, path), want|
+        got = Mutineer::Runner.send(:callback_growth, path, checks, root)
+        want.nil? ? assert_nil(got, [checks, path].inspect) : assert_equal(want, got, [checks, path].inspect)
+      end
+    end
   end
 
   private

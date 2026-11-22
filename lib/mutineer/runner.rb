@@ -66,9 +66,11 @@ module Mutineer
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
     # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
-    # whose callback count grew after a reload (#479), empty under redefine. A
-    # `--test-command` run and a run that returns before any mutant leave that key
-    # out, so read it with `fetch(:callback_growth, [])`.
+    # whose callback count grew after a reload (#479), empty under redefine, and
+    # nil when a reload or `--daemon` run could not create its log, so it checked
+    # nothing (#505). A `--test-command` run and a run that returns before any
+    # mutant leave that key out: they did not reload, so read it with
+    # `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -112,7 +114,8 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       # #479: each reload child logs a class whose callback count grew, and
       # the run returns them once each in extras[:callback_growth].
-      growth_log = JobPlan.create_callback_growth_log if config.daemon || config.strategy == "reload"
+      checks_growth = config.daemon || config.strategy == "reload"
+      growth_log = JobPlan.create_callback_growth_log if checks_growth
       ReloadGuards.callback_growth_log = growth_log
 
       if config.daemon
@@ -121,7 +124,7 @@ module Mutineer
         # as it is in process.
         check_boot_files!(config)
         result = DaemonBackend.execute(config, operator_classes)
-        result[2][:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+        result[2][:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
         return result
       end
 
@@ -285,7 +288,7 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
-      extras[:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+      extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
       extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
@@ -608,6 +611,22 @@ module Mutineer
       nil
     end
     private_class_method :reconnect_active_record
+
+    # The callback growth rows of a run (#479), or nil when the run had to
+    # check them and could not create its log (#505). A run that does not
+    # reload checks nothing and grows nothing, so it gets an empty list.
+    #
+    # @api private
+    # @param growth_log [String, nil] the log file, or nil when there is none.
+    # @param checks_growth [Boolean] the run reloads (`reload` or `--daemon`).
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>, nil] each class name and its file.
+    def self.callback_growth(growth_log, checks_growth, project_root)
+      return nil if checks_growth && growth_log.nil?
+
+      JobPlan.callback_growth_rows(growth_log, project_root)
+    end
+    private_class_method :callback_growth
 
     # The absolute path of a project file `require` can load: as given, or
     # with `.rb` or the native-extension suffix.

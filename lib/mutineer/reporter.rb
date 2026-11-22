@@ -68,6 +68,7 @@ module Mutineer
       @fail_fast = fail_fast
       @copies = {}
       @timing = nil
+      @callback_growth = nil
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -95,12 +96,18 @@ module Mutineer
     # `timing` (#495) holds `total_seconds` and the four phase seconds, each a
     # Float or nil. The JSON report writes it as `timing` and the human report
     # prints a `Time:` line. Left out, JSON has `timing: null` and no line prints.
+    # `callback_growth` (#505) is each class name and file whose callback count
+    # grew after a reload, from {Runner.execute}. Only the JSON report records
+    # it (`summary.callback_growth`, sorted). Left out, or nil when the run made
+    # no log, JSON has `callback_growth: null`.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
                unmatched_ignores: [], declined: {},
-               subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil, verbose: false)
+               subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil,
+               callback_growth: nil, verbose: false)
       @copies = copies || {}
       @timing = timing
+      @callback_growth = callback_growth
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
@@ -332,7 +339,11 @@ module Mutineer
           # Additive (1.10, #386): methods discovered, and how many of them the
           # selected operators did not mutate. Not mutants, so not in `total`.
           subjects: subjects,
-          unmutated_subjects: unmutated_subjects&.size
+          unmutated_subjects: unmutated_subjects&.size,
+          # Additive (1.11, #505): the classes the stderr callback warning
+          # names, as { class, file } rows. null when the run made no log.
+          # Changes no verdict, score or exit code.
+          callback_growth: callback_growth_json
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -797,6 +808,17 @@ module Mutineer
         killed: agg.killed_count, survived: agg.survived_count,
         no_coverage: agg.no_coverage_count, score: agg.mutation_score
       }
+    end
+
+    # The callback growth rows as `{ class, file }` objects, sorted by file
+    # and class: the runner returns them in worker finish order, and the
+    # report must stay byte-stable. {#json_safe} makes the strings UTF-8.
+    #
+    # @api private
+    # @return [Array<Hash>, nil] nil when the caller gave no rows.
+    def callback_growth_json
+      @callback_growth&.map { |name, file| { class: name, file: file } }
+                      &.sort_by { |h| [h[:file], h[:class]] }
     end
 
     # Builds survivor JSON.

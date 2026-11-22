@@ -1054,6 +1054,7 @@ module Mutineer
       legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
       phases = extras.fetch(:timing, {})
+      growth_rows = extras.fetch(:callback_growth, [])
       timing = { total_seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started,
                  boot_seconds: phases[:boot_seconds], coverage_seconds: phases[:coverage_seconds],
                  clean_check_seconds: phases[:clean_check_seconds], mutants_seconds: phases[:mutants_seconds] }
@@ -1063,9 +1064,11 @@ module Mutineer
                       unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
-                      copies: extras.fetch(:copies, {}), timing: timing, verbose: config.verbose)
+                      copies: extras.fetch(:copies, {}), timing: timing,
+                      callback_growth: growth_rows, verbose: config.verbose)
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
-      warn_callback_growth(extras.fetch(:callback_growth, []))
+      # nil: the run could not create its log, and a stderr line said so.
+      warn_callback_growth(growth_rows || [])
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -1245,8 +1248,9 @@ module Mutineer
     # one header, then one line for each class. Reload keeps both copies of a
     # callback when it cannot tell which old one a new one repeats, so the
     # class runs it twice and a test that counts runs can kill falsely. Report
-    # only: no verdict, score, JSON field or exit code changes. Names and paths
-    # are escaped, so a control character cannot reach the terminal.
+    # only: no verdict, score or exit code changes, and `--format json` lists
+    # the same rows in `summary.callback_growth` (#505). Names and paths are
+    # escaped, so a control character cannot reach the terminal.
     #
     # @param rows [Array<Array(String, String)>] each class name and its file,
     #   from {JobPlan.callback_growth_rows}.

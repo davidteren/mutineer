@@ -3369,8 +3369,9 @@ class CliTest < Minitest::Test
 
   # #479 through the real binary: an in-process reload run with two workers.
   # A require file makes the guard report Calculator after each load, so every
-  # forked child logs it. The run prints it once, and the JSON report has no new
-  # key. The score is the same as without the warning.
+  # forked child logs it. The run prints it once, and the JSON report lists the
+  # same rows in summary.callback_growth (#505). The score and the exit code are
+  # the same as in a redefine run, which does not reload.
   def test_an_in_process_reload_run_prints_the_callback_growth_warning_once
     with_project do |proj|
       File.write(File.join(proj, "growth_stub.rb"),
@@ -3383,8 +3384,36 @@ class CliTest < Minitest::Test
       assert_equal 1, err.lines.grep(/\A\[mutineer\] after a reload, 1 class runs a callback/).size, err
       assert_equal ["[mutineer]   Calculator (calculator.rb)\n"], err.lines.grep(/\A\[mutineer\]   Calculator/)
       doc = JSON.parse(out)
-      refute_includes out, "callback_growth"
+      rows = doc["summary"]["callback_growth"]
+      assert_equal [{ "class" => "Calculator", "file" => "calculator.rb" }], rows
+      warned = err.lines.grep(/\A\[mutineer\]   /).map { |l| l.chomp.match(/\A\[mutineer\]   (.*) \((.*)\)\z/).captures }
+      assert_equal rows.map { |r| r.values_at("class", "file") }, warned, "stderr and JSON name the same rows"
+      assert_includes doc["killed"].map { |k| k["file"] }, rows.first["file"]
       assert_equal 100.0, doc["summary"]["score"]
+
+      redefine_out, redefine_err, redefine = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                                      "--strategy", "redefine", "--format", "json", chdir: proj)
+      assert_equal status.exitstatus, redefine.exitstatus, redefine_err
+      redefine_doc = JSON.parse(redefine_out)
+      assert_equal [], redefine_doc["summary"]["callback_growth"], "a run that does not reload grows nothing"
+      assert_equal doc["summary"]["score"], redefine_doc["summary"]["score"]
+    end
+  end
+
+  # #505: a reload run with no log writes callback_growth: null, prints no
+  # growth header, and finishes as before.
+  def test_a_reload_run_without_a_growth_log_reports_null
+    with_project do |proj|
+      stub = File.join(proj, "no_growth_log.rb")
+      File.write(stub, "require \"mutineer\"\n" \
+                       "Mutineer::JobPlan.define_singleton_method(:create_callback_growth_log) { nil }\n")
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--strategy", "reload", "--format", "json", chdir: proj,
+                                  env: { "RUBYOPT" => "-I#{File.join(ROOT, 'lib')} -r#{stub}" })
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, '"callback_growth":null'
+      assert_empty err.lines.grep(/after a reload/)
+      assert_equal 100.0, JSON.parse(out)["summary"]["score"]
     end
   end
 

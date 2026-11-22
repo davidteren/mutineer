@@ -246,6 +246,42 @@ class JsonReporterTest < Minitest::Test
     assert_nil entry["file"]
   end
 
+  # Renders one killed mutant with `callback_growth` rows (#505), as JSON text.
+  def render_growth(rows)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", callback_growth: rows)
+    out.string
+  end
+
+  # #505: the key is present and null when the caller gives no rows.
+  def test_callback_growth_is_null_without_a_caller_value
+    summary = render([killed_mutant])["summary"]
+    assert summary.key?("callback_growth")
+    assert_nil summary["callback_growth"]
+    assert_equal [], JSON.parse(render_growth([]))["summary"]["callback_growth"]
+  end
+
+  # Sorted by file, then class, whatever order the workers logged them in.
+  # One class logged from two files gives two rows.
+  def test_callback_growth_rows_sort_by_file_then_class
+    rows = [%w[B z.rb], %w[A z.rb], %w[C a.rb], %w[A a.rb]]
+    text = render_growth(rows)
+    assert_equal [{ "class" => "A", "file" => "a.rb" }, { "class" => "C", "file" => "a.rb" },
+                  { "class" => "A", "file" => "z.rb" }, { "class" => "B", "file" => "z.rb" }],
+                 JSON.parse(text)["summary"]["callback_growth"]
+    assert_equal text, render_growth(rows.reverse)
+  end
+
+  # json_safe covers the key: a control character survives as itself, and a
+  # byte that is not UTF-8 still gives valid JSON.
+  def test_callback_growth_names_with_odd_bytes_render_as_valid_json
+    rows = JSON.parse(render_growth([["Once\e[2J", "a.rb"], ["Caf\xE9".b, "b.rb"]]))["summary"]["callback_growth"]
+    assert_equal "Once\e[2J", rows[0]["class"]
+    assert rows[1]["class"].valid_encoding?
+    assert_equal "b.rb", rows[1]["file"]
+  end
+
   # #495: timing is null when the caller gives none, and each phase rounds to
   # three decimals with a nil phase kept as null.
   def test_timing_is_null_without_a_caller_value
