@@ -84,7 +84,7 @@ Considered and not built:
 - **`diff` on `uncapturable[]`.** The same mutant's `no_verdict[]` entry has it after this change. #526 asks for `no_verdict[]` only.
 - **`diff` on `no_coverage[]`, `ignored[]`, `baseline.new_survivors[]` and dry-run `mutants[]`.** Nobody asked, and each adds size. A request names the list that needs it.
 - **A count such as `summary.callback_growth_classes`.** A consumer counts the rows. A separate number would differ from the row count when one class is logged from two files.
-- **A callback growth line in the HTML report or the Action step summary.** The stderr warning prints on every format, and the Action log shows it. Tracked as a follow-up (see "Limits left open").
+- **A callback growth line in the HTML report or the Action step summary.** The stderr warning prints on every format, and the Action log shows it. Tracked as a follow-up in #531.
 - **Byte offsets in the report** (`start_offset`, `end_offset`, `replacement`). The replacement can hold non-UTF-8 bytes too, so it would need base64 as well, and the consumer would have to write its own splice.
 - **Raw path bytes in the patch header.** The header keeps the text that `diff` has. See "Limits left open".
 - **`extras[:callback_growth]` on every `Runner.execute` return.** A `--test-command` run and a run that ends before any mutant leave the key out today, and `Runner.execute` documents `fetch(:callback_growth, [])` for that. Group P edits the `--test-command` path in this round, so this plan does not touch those returns.
@@ -235,7 +235,7 @@ If the builder finds another sentence that the change makes false, it corrects i
   5. In `docs/json-schema.md`, add a `callback_growth` row at the end of the `summary` table. The row says:
      - Type `array of object | null`, the row shape `{ class, file }`, and the sort order.
      - `file` is the file whose reload grew the count. It has the form of `file` in `killed[]` and `survivors[]`, so a consumer matches on equal `file`. A test that counts callback runs or errors can kill mutants of that file falsely (#479).
-     - `[]` means that no growth was logged. It is not proof that no class grew: a check that fails in a mutant's child prints a stderr line and logs nothing. Name the follow-up issue from "Limits left open".
+     - `[]` means that no growth was logged. It is not proof that no class grew: a check that fails in a mutant's child prints a stderr line and logs nothing. Name the follow-up issue from "Limits left open" (#531).
      - `[]` also for a run that never reloads: `--strategy redefine` without `--daemon`, and `--test-command`.
      - `null` means that the run could not create its log, so it checked nothing. A stderr line says so.
      - To check the kills: `--no-daemon --strategy redefine`, or `--test-command`.
@@ -277,7 +277,7 @@ If the builder finds another sentence that the change makes false, it corrects i
   3. Update the YARD text of `diff_encoding` (line 887): the cases with no `diff_encoding` now have `diff_base64`.
   4. In `docs/json-schema.md`:
      - Add a `diff_base64` row after `diff_encoding` in the `survivors[]` table. It says when the key is present (R8), and what it holds (R9: the header lines and the hunk header as in `diff`, each `-` and `+` line in the file's own bytes). It says how to use it: decode standard base64, write the bytes, run `git apply --unidiff-zero` (in Ruby, `row["diff_base64"].unpack1("m")`). It names the lists that carry it, and "Additive key (schema `1.11`, #518)".
-     - In the same row, state the limit: a source path that is not valid UTF-8 prints as `\xNN` in the patch header, so `git apply` cannot find the file, and the report has no workaround today. Name the follow-up issue from "Limits left open".
+     - In the same row, state the limit: a source path that is not valid UTF-8 prints as `\xNN` in the patch header, so `git apply` cannot find the file, and the report has no workaround today. Name the follow-up issue from "Limits left open" (#532).
      - In the `diff` row, add the numbered recipe of KTD6, with the `git check-attr` step first. Say that `diff_encoding` is for a consumer that prefers the text route.
      - In the `diff_encoding` row, replace the text from "In those last three cases" to "tracked in #518" with a pointer to `diff_base64`. Keep the `working-tree-encoding` sentence, and point it to the recipe.
      - In the `no_verdict[]` section, the `killed[]` section and the line 130 note, add `diff_base64` where `diff` is named, with one pointer to the recipe.
@@ -319,7 +319,7 @@ Not needed: the Minitest 6 run and the Prism 2 run. No Minitest integration, par
 - All Verification Contract checks pass on the pull request head.
 - The pull request has three commits in the KTD8 order, the labels in the Goal Capsule, and `Closes #526`, `Closes #505`, `Closes #518`. An issue whose commit was dropped gets no `Closes` line.
 - The pull request body names the maintainer questions below, with the default the build took for each.
-- The two follow-up issues in "Limits left open" exist, and the docs and `CHANGELOG.md` name them where they state the limit.
+- The two follow-up issues in "Limits left open" exist (#531, #532), and the docs and `CHANGELOG.md` name them where they state the limit.
 - The author self-check skill (`.claude/skills/author-self-check/SKILL.md`) ran before the first push.
 - No debug output or abandoned attempt is left in the diff.
 
@@ -349,9 +349,9 @@ Only a maintainer can answer these. None blocks the build: the builder takes the
 
 | Limit | Tracked by |
 |---|---|
-| A callback check that fails inside a mutant's child prints a stderr line and logs nothing (`ReloadGuards.growth_check`, `ReloadGuards.log_callback_growth`). The JSON list then misses that class, and `[]` does not prove that no class grew. How often: the check fails only when one of those two methods raises. The builder reads stderr of the `rake test:daemon` run and writes the count, or "not seen in the dogfood run", into the issue. | New issue, filed by the builder before the first push. Title: "Callback growth list: a check that fails in the child is not in the JSON report". No version label. The `callback_growth` doc row names it. |
+| A callback check that fails inside a mutant's child prints a stderr line and logs nothing (`ReloadGuards.growth_check`, `ReloadGuards.log_callback_growth`). The JSON list then misses that class, and `[]` does not prove that no class grew. How often: the check fails only when one of those two methods raises. The builder reads stderr of the `rake test:daemon` run and writes the count, or "not seen in the dogfood run", into the issue. | #531, filed by the builder before the first push. Title: "Callback growth list: a check that fails in the child is not in the JSON report". No version label. The `callback_growth` doc row names it. |
 | The HTML report and the Action step summary have no callback growth line. The stderr warning covers every format, and the Action log shows it. | The same new issue, as a second point. |
-| A source path that is not valid UTF-8 prints as `\xNN` in `file` and in the header of `diff` and of the `diff_base64` patch, so no patch names the real file (#346 made it print, and is closed). | New issue, filed by the builder before the first push. Title: "JSON diff: a source path that is not UTF-8 cannot be applied". No version label. The `diff_base64` doc row names it. |
+| A source path that is not valid UTF-8 prints as `\xNN` in `file` and in the header of `diff` and of the `diff_base64` patch, so no patch names the real file (#346 made it print, and is closed). | #532, filed by the builder before the first push. Title: "JSON diff: a source path that is not UTF-8 cannot be applied". No version label. The `diff_base64` doc row names it. |
 | A file with a `working-tree-encoding` Git attribute and a changed line that `diff` cannot hold as text (an invalid byte) has no patch that applies: Git wants the UTF-8 form, and `diff` prints the byte as `\xNN`. The report also does not say which files have the attribute, so the consumer runs `git check-attr`. | The same new issue, as a second point. |
 | The six reload cases where a class keeps both copies of a callback. | #479 (open). |
 | A class body that calls `define_callbacks` can lose a concern's callback on reload, and the warning and the list do not see it. | #504 (open, Group O). |
