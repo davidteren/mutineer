@@ -1,0 +1,23 @@
+docs/plans/2026-11-22-515-516-522-fix-test-command-output-plan.md
+  s_9747bd218c1c67::t_6f595465f11947 227,315
+docs/rails-setup.md
+  s_9747bd218c1c67::t_827f9165c84936 301
+lib/mutineer/external_backend.rb
+  s_9747bd218c1c67::t_2aded96c3393dc 318-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a3abb2527a5cb7bf50d9407d8871a153117ce119",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
