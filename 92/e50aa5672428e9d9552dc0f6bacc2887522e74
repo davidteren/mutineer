@@ -1,0 +1,27 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_9747bd218c1c67::t_44a1d57d27cd34 9
+CHANGELOG.md
+  s_9747bd218c1c67::t_161e326243787c 143
+docs/rails-setup.md
+  s_9747bd218c1c67::t_e105e56bc5edad 301,310,319
+lib/mutineer/external_backend.rb
+  s_9747bd218c1c67::t_caca63b8503261 250-252,255-257,279,304-316,370-374
+test/external_backend_test.rb
+  s_9747bd218c1c67::t_ecc805227dd8b0 200-215,448-449,455,461,481-482,487-490
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92e50aa5672428e9d9552dc0f6bacc2887522e74",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
