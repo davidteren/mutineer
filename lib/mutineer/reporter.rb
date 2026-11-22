@@ -886,8 +886,11 @@ module Mutineer
       patch = exact_patch(result)
       return row unless patch && patch.b != row[:diff].b
       # Base64 would carry a credential past the stdout redaction that hides it
-      # in `diff`, so such a change gets no exact bytes.
-      row[:diff_base64] = [patch].pack("m0") if Redaction.text(row[:diff]) == row[:diff]
+      # in `diff`, so such a change gets no exact bytes. Check the bytes as
+      # UTF-8 too: a transcoded `diff` can hide what the bytes spell.
+      bytes_text = patch.dup.force_encoding(Encoding::UTF_8).scrub
+      clean = [row[:diff], bytes_text].all? { |text| Redaction.text(text) == text }
+      row[:diff_base64] = [patch].pack("m0") if clean
       row
     end
 

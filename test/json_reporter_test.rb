@@ -224,6 +224,13 @@ class JsonReporterTest < Minitest::Test
     _, row = survivor_row_for(src)
     assert_equal "ISO-8859-1", row["diff_encoding"]
     refute row.key?("diff_base64")
+
+    # The bytes count too: a Latin-1 file that holds the UTF-8 bytes of the
+    # password shows mojibake in `diff`, which redaction does not match.
+    ENV["DATABASE_URL"] = "postgres://app:p\u00e4sswort9@db/prod"
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"p\u00e4sswort9\" : 0\nend\n".b.force_encoding("ISO-8859-1")
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_base64")
   ensure
     saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
   end
