@@ -318,6 +318,9 @@ class ExternalBackendTest < Minitest::Test
           assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
           File.write(".rspec", "--require spec_helper\n--color\n")
           assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
+          File.write(".rspec", "# --seed 7\n  # --order rand:7\n")
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec), "commented-out seed"
+          File.delete(".rspec")
           ["--seed 7", "--order rand:7", "--order random:7"].each do |line|
             File.write(".rspec", "#{line}\n")
             assert_nil Backend.random_order("rspec %{files}", rspec), line

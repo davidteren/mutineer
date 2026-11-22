@@ -316,7 +316,7 @@ module Mutineer
     # an unseeded RSpec suite that the same command runs. Mutineer only warns:
     # it cannot know the seed flag of an arbitrary command, so it sets no seed.
     # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
-    # `test_order` is not seen, so the warning still prints; a seed-like
+    # `test_order`, or an `--options FILE` that replaces `.rspec` is not seen, so the warning still prints; a seed-like
     # argument meant for a wrapper hides it (#338, #368).
     #
     # @api private
@@ -334,12 +334,13 @@ module Mutineer
       [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"], *rspec_option_files].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
     end
 
-    # The text of the RSpec option files that exist in the working directory.
+    # The text of the RSpec option files that exist in the working directory,
+    # without comment lines (RSpec ignores a line that starts with `#`).
     #
     # @api private
     # @return [Array<String>]
     def self.rspec_option_files
-      RSPEC_OPTION_FILES.select { |f| File.file?(f) }.map { |f| File.read(f, encoding: "BINARY") }
+      RSPEC_OPTION_FILES.select { |f| File.file?(f) }.map { |f| File.readlines(f, encoding: "BINARY").grep_v(/\A\s*#/).join }
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
