@@ -187,7 +187,7 @@ module Mutineer
 
           STDERR.puts(line(error))
           STDERR.flush
-          ChildCause.write_text("a test failed with a database error: #{ChildCause.line(error)}")
+          ChildCause.write_database_error(error)
           2
         end
 

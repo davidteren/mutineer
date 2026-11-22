@@ -4,6 +4,7 @@ require "fileutils"
 require "shellwords"
 require "tempfile"
 require "tmpdir"
+require_relative "child_cause"
 require_relative "result"
 require_relative "rails_run_env"
 require_relative "redaction"
@@ -201,13 +202,13 @@ module Mutineer
         # failure — match Isolation/daemon (error), do not inflate kill rate.
         if code.nil?
           warn Redaction.text(output) if verbose && !output.empty?
-          return Result.error("test-command terminated by signal")
+          return error_with_output("test-command terminated by signal", output)
         end
 
         warn Redaction.text(output) if verbose && !output.empty?
         # 126 (cannot execute) and 127 (command not found) come from a wrapper
         # such as `bundle exec` that could not start the suite: no test ran.
-        return Result.error("test-command could not start (exit #{code})") if CANNOT_RUN_CODES.include?(code)
+        return error_with_output("test-command could not start (exit #{code})", output) if CANNOT_RUN_CODES.include?(code)
 
         text = summary_text(output)
         # SimpleCov's minimum_coverage gate replaced the exit code. Under
@@ -226,17 +227,32 @@ module Mutineer
         end
 
         unless code == FAILURE_CODE
-          return Result.error("test-command exited #{code} (only exit 1 counts as a kill; " \
-                              "check RSpec --failure-exit-code, a coverage gate, or your wrapper)")
+          return error_with_output("test-command exited #{code} (only exit 1 counts as a kill; " \
+                                   "check RSpec --failure-exit-code, a coverage gate, or your wrapper)", output)
         end
 
         if check_summary && !failure_reported?(text) && !exited_during_tests?(text)
-          return Result.error("test-command exited 1 but its output shows no failing test " \
-                              "(the suite or the mutant crashed before tests ran; --verbose shows the output)")
+          return error_with_output("test-command exited 1 but its output shows no failing test " \
+                                   "(the suite or the mutant crashed before tests ran; --verbose shows the output)", output)
         end
 
         Result.killed
       end
+    end
+
+    # An errored Result whose details end with the command's last non-blank
+    # output line, redacted and cut like a child cause (#480). The output
+    # alone is the cause a `--test-command` run can give.
+    #
+    # @api private
+    # @param message [String] why the run scored error.
+    # @param output [String] captured child stdout+stderr.
+    # @return [Mutineer::Result]
+    def self.error_with_output(message, output)
+      # Redact before the split, so a password that spans lines is hidden whole.
+      text = Redaction.text(summary_text(output).force_encoding(Encoding::UTF_8).scrub)
+      last = text.lines("\n").map(&:strip).reject(&:empty?).last
+      Result.error(last ? "#{message}; last output line: #{ChildCause.clip(last)}" : message)
     end
 
     # True when the text has a Minitest or RSpec summary line.

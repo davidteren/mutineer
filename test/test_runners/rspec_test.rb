@@ -547,6 +547,15 @@ class TestRunnersRSpecTest < Minitest::Test
     end
   end
 
+  # #480: an RSpec database error names its cause in `details`, with the
+  # same text as the Minitest path.
+  def test_database_error_verdict_names_the_database_error
+    verdict = rspec_db_verdict({ "FIRST" => "connection" }, matrix: false)
+    assert_equal :error, verdict.status
+    assert_equal "a test failed with a database error: ActiveRecord::ConnectionNotEstablished: the database is gone",
+                 verdict.details
+  end
+
   def test_first_assertion_keeps_a_later_database_error_killed
     env = { "FIRST" => "fail", "SECOND" => "connection" }
     code, err = rspec_db_error(env)

@@ -10,7 +10,7 @@ Read report rows, fix survivors, suppress equivalent mutants, and check which te
 | Survived | Every test passed. Inspect the change. | Yes |
 | No coverage | No test covers the line, or its tests do not reach this mutation. Add or extend a test first. | No |
 | Timeout | Tests exceeded `--timeout`. | No |
-| Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. The JSON report names the cause in `no_verdict[].details` when the child raised, when a Minitest database error ended the run, when RSpec failed outside examples, or when `--matrix` ended early after a serial database error (#388, #417). | No |
+| Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. The JSON report names the cause in `no_verdict[].details` when the child raised, when a Minitest database error ended the run, when RSpec failed outside examples, or when `--matrix` ended early after a serial database error (#388, #417). It also names an RSpec database error, and for `--test-command` the last output line of the command (#480). The HTML report lists each errored mutant with that cause, and so does the human report under `--verbose`. A mutant with no recorded cause shows "no cause recorded; stderr of the run may name it". | No |
 | Ignored | You marked the mutant as equivalent. | No |
 | Skipped | The change produced invalid Ruby and did not run. | No |
 

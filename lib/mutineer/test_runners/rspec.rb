@@ -83,7 +83,13 @@ module Mutineer
         # Fixed cause when RSpec failed outside examples (#417 / KTD5). Status 2
         # is also an in-example database error (#347), so test the predicate,
         # not the status. Write here so failure_code stays a pure status helper.
-        ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES) if outside_examples?
+        # A status of 2 with no outside error is a database error: write the
+        # same cause line as Minitest (#480).
+        if outside_examples?
+          ChildCause.write_text(ChildCause::RSPEC_OUTSIDE_EXAMPLES)
+        elsif code == 2 && (error = first_failed_database_error)
+          ChildCause.write_database_error(error)
+        end
         code
       ensure
         FileOrder.rank = nil

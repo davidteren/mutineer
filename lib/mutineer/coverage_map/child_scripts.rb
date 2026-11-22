@@ -151,12 +151,13 @@ module Mutineer
           #{result_channel_expression}
           require "json"
           require #{FsPath::PATH.inspect}
+          require #{MinitestFailureReport::PATH.inspect}
           require "minitest"
           require "stringio"
           Mutineer::FsPath.install_minitest_path_filter!
           def Minitest.autorun; end
           _report = StringIO.new
-          Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+          Minitest.define_singleton_method(:plugin_mutineer_report_init) { |_| reporter << Mutineer::MinitestFailureReport.new(_report) }
           Minitest.extensions << "mutineer_report"
           $LOAD_PATH.unshift(*#{abs_load_paths.inspect})
           begin
@@ -268,12 +269,13 @@ module Mutineer
           require "coverage"
           require "json"
           require #{FsPath::PATH.inspect}
+          require #{MinitestFailureReport::PATH.inspect}
           require "minitest"
           require "stringio"
           Mutineer::FsPath.install_minitest_path_filter!
           def Minitest.autorun; end
           _report = StringIO.new
-          Minitest.define_singleton_method(:plugin_mutineer_report_init) { |options| reporter << Minitest::SummaryReporter.new(_report, options) }
+          Minitest.define_singleton_method(:plugin_mutineer_report_init) { |_| reporter << Mutineer::MinitestFailureReport.new(_report) }
           Minitest.extensions << "mutineer_report"
           Coverage.start(lines: true, methods: true)
           $LOAD_PATH.unshift(*#{abs_load_paths.inspect})

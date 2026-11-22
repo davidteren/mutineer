@@ -56,8 +56,10 @@ module Mutineer
     # Variables the daemon never inherits, so a parent require cannot run in
     # the app (#100). A load path set in them is missing in the daemon (#491).
     LOAD_ENV = %w[RUBYOPT RUBYLIB].freeze
-    # The start of a child cause for a missing required file.
-    MISSING_FILE_CAUSE = /\ALoadError: cannot load such file/
+    # A missing required file: a `LoadError` at a line start or after `: `,
+    # as a cause line, a boot error, Minitest (`LoadError: cannot load ...`)
+    # and RSpec (`LoadError:`, then the message on the next line) print it.
+    MISSING_FILE_CAUSE = /(?:^\s*|: )LoadError:\s+cannot load such file/
     # A RUBYOPT that adds a load path: `-Itest`, `-I test`, `Itest` (the dash
     # is optional there), or `-wItest` after the flag-only switches.
     RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
@@ -250,14 +252,23 @@ module Mutineer
       env
     end
 
-    # A missing-file cause, with a note when this run set a load variable
-    # that the daemon dropped (#491). Names only the variables, never their
-    # values: RUBYOPT can hold a secret.
+    # {.with_load_env_hint} for a mutant's cause line.
     #
     # @api private
     # @param cause [String, nil] the child's cause line.
     # @return [String, nil]
-    def with_load_env_hint(cause)
+    def with_load_env_hint(cause) = self.class.with_load_env_hint(cause)
+
+    # A text that reports a missing file, with a note when this run set a
+    # load variable that the daemon dropped (#491). The text is a mutant's
+    # cause line, or the coverage build's error or red clean-check message
+    # (#500). Names only the variables, never their values: RUBYOPT can hold
+    # a secret.
+    #
+    # @api private
+    # @param cause [String, nil] the text to note.
+    # @return [String, nil]
+    def self.with_load_env_hint(cause)
       return cause unless cause&.match?(MISSING_FILE_CAUSE)
 
       names = LOAD_ENV.select do |key|
@@ -276,12 +287,13 @@ module Mutineer
     # @api private
     # @param key [String]
     # @return [String, nil]
-    def user_value(key)
+    def self.user_value(key)
       saved = ENV.fetch("BUNDLER_ORIG_#{key}", nil)
       return ENV.fetch(key, nil) if saved.nil?
 
       saved == BUNDLER_UNSET ? nil : saved
     end
+    private_class_method :user_value
 
     # Drop rbenv and asdf version bins so shims can select the app Ruby.
     # Leave those bins in place when no shim directory exists, so +bundle+

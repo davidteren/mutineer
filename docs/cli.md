@@ -30,7 +30,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--[no-]fail-fast` | Stop at first survivor | Off |
 | `--[no-]matrix` | Run all covering tests; report blind and redundant tests. In-process only | Off |
 | `--[no-]allow-empty` | Suppress warnings for runs without mutants | Off |
-| `--verbose` (alias `--debug`) | Full error details | Off |
+| `--verbose` (alias `--debug`) | Full error details. The human report also lists each errored mutant and its cause | Off |
 | `--list-operators`, `--version`, `--help` | Print and exit | |
 
 `--test` takes a file, a directory, or a quoted glob.
@@ -102,7 +102,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `since` | Nonblank git ref; `false` disables diff scoping |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
 | `tests` | File only. List of mappings with `sources` and `tests` patterns; adds those tests to the run when a matching source is in the run. See [Extra tests for a source](#extra-tests-for-a-source) |
-| `verbose` | Boolean; shows capture diagnostics |
+| `verbose` | Boolean; shows capture diagnostics, and lists each errored mutant and its cause in the human report |
 | `ignore` | Mutant ID or list, or mappings with an `id` and optional `reason`, to suppress |
 | `baseline` | Prior JSON report path |
 | `fail_fast` | Boolean; stops scheduling after first survivor |
