@@ -96,6 +96,30 @@ module Mutineer
       yield
     end
 
+    # The value a reloaded constant assignment keeps (#503).
+    #
+    # `BaseRow = Struct.new(:v)` builds a new class each time Ruby runs it, so
+    # a class statement in the same file that inherits from `BaseRow` raised
+    # "superclass mismatch" on a second load. The reload text wraps such a
+    # value in a call to this method ({JobPlan.keep_live_superclasses}). When
+    # `scope` already has a class `name`, this returns it, so every class,
+    # subclass and instance keeps pointing at one class. Otherwise it runs the
+    # block, as the original text would.
+    #
+    # @param scope [Module, nil] the module the constant is assigned in; nil
+    #   at the top level.
+    # @param name [Symbol] the constant name.
+    # @yieldreturn [Object] the value the original text builds.
+    # @return [Object]
+    def self.kept_constant(scope, name)
+      scope ||= Object
+      if scope.const_defined?(name, false)
+        value = scope.const_get(name, false)
+        return value if value.is_a?(Class)
+      end
+      yield
+    end
+
     # True while a mutant file loads.
     #
     # @return [Boolean]

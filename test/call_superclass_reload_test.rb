@@ -210,6 +210,161 @@ class CallSuperclassReloadTest < Minitest::Test
     assert(doc["details"].all? { |detail| detail.include?("superclass mismatch") }, doc["details"].inspect)
   end
 
+  def const_run(test)
+    %w[reload redefine].to_h do |strategy|
+      [strategy, run_strategy(strategy, sources: %w[const_superclass.rb const_superclass_holders.rb], test: test)]
+    end
+  end
+
+  # #503: AE3, AE5. The file assigns the constant its class inherits from.
+  # Reload keeps that constant's class and scores the class body like
+  # redefine. A method in the kept value's block is unplaceable under reload.
+  def test_reload_scores_a_class_whose_superclass_constant_the_file_assigns
+    rows = const_run("const_superclass_test.rb")
+    assert_equal ["killed"], rows["reload"]["Row#three?"].uniq
+    assert_equal ["survived"], rows["reload"]["Row#weak?"].uniq
+    assert_equal ["killed"], rows["reload"]["Ledger::Credit#zero?"].uniq
+    assert_equal ["unplaceable"], rows["reload"]["BaseRow#in_block?"].uniq
+    assert_equal ["killed"], rows["redefine"]["BaseRow#in_block?"].uniq
+    assert_equal rows["redefine"].except("BaseRow#in_block?"), rows["reload"].except("BaseRow#in_block?")
+  end
+
+  # #503: AE4. A subclass and an instance in another file keep the same
+  # class, so the mutant reaches the subclass, and the held instance is still
+  # a BaseRow equal to a new Row.
+  def test_a_kept_superclass_constant_keeps_subclasses_and_instances
+    rows = const_run("const_superclass_subclass_test.rb")
+    assert_equal ["killed"], rows["reload"]["Row#three?"].uniq
+    assert_equal ["survived"], rows["reload"]["Ledger::Credit#zero?"].uniq
+    assert_equal rows["redefine"].except("BaseRow#in_block?"), rows["reload"].except("BaseRow#in_block?")
+  end
+
+  def test_the_rewrite_keeps_a_superclass_constant_the_file_assigns
+    code = "BaseRow = Struct.new(:v)\nclass Row < BaseRow\nend\n"
+    assert_equal "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) " \
+                 "{ Struct.new(:v) }\nclass Row < BaseRow\nend\n", Mutineer::JobPlan.keep_live_superclasses(code)
+    code = "Billing::Base = Class.new\nclass Billing::Row < Billing::Base\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code),
+                    "Billing::Base = ::Mutineer::ReloadGuards.kept_constant(Billing, :Base) { Class.new }"
+    # A local write in the value keeps the write outside the block.
+    code = "Base = (b = Struct.new(:v))\nclass Row < Base\nend\nb\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "(b = ::Mutineer::ReloadGuards.kept_constant("
+  end
+
+  # #503: AE8. These come back as the same String: no class statement names
+  # the constant, the value is a constant, or the write is `||=` (#529).
+  def test_the_rewrite_leaves_other_constant_writes_alone
+    ["Other = Struct.new(:v)\nclass Row < BaseRow\nend\n",
+     "BaseRow = Parent\nclass Row < BaseRow\nend\n",
+     "BaseRow = Parent::Kid\nclass Row < BaseRow\nend\n",
+     "BaseRow ||= Struct.new(:v)\nclass Row < BaseRow\nend\n",
+     "base = Struct.new(:v)\nBaseRow = base\nclass Row < BaseRow\nend\n",
+     "A, BaseRow = 1, Struct.new(:v)\nclass Row < BaseRow\nend\n"].each do |code|
+      assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), code
+    end
+  end
+
+  # The walk does not enter a kept value, so a class inside it is not wrapped
+  # again: two splices in one range would not parse.
+  def test_a_class_inside_a_kept_constant_is_not_wrapped
+    code = "Base = Class.new do\n  class Inner < Struct.new(:b); end\nend\nclass Row < Base\nend\n"
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    assert_equal 1, rewritten.scan("::Mutineer::ReloadGuards.").size
+    assert_includes rewritten, "kept_constant"
+    refute Mutineer::Parser.invalid?(rewritten)
+  end
+
+  def test_the_constant_fixture_rewrite_parses_keeps_lines_and_loads_twice
+    code = File.read(File.join(ROOT, "const_superclass.rb"))
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    refute Mutineer::Parser.invalid?(rewritten)
+    assert_equal code.lines.size, rewritten.lines.size
+    Dir.mktmpdir do |dir|
+      original = File.join(dir, "original.rb")
+      mutant = File.join(dir, "rewritten.rb")
+      File.write(original, code)
+      File.write(mutant, rewritten)
+      script = "require 'mutineer/reload_guards'\nload #{original.inspect}\nbase = BaseRow; entry = Ledger::Entry\n" \
+               "load #{mutant.inspect}\n" \
+               "raise 'BaseRow' unless BaseRow.equal?(base) && Row.superclass.equal?(BaseRow)\n" \
+               "raise 'Entry' unless Ledger::Entry.equal?(entry) && Ledger::Credit.superclass.equal?(entry)"
+      _out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script)
+      assert status.success?, err
+    end
+  end
+
+  def test_kept_constant_returns_the_live_class_or_runs_the_block
+    scope = Module.new
+    live = Class.new
+    scope.const_set(:Kept, live)
+    scope.const_set(:NotAClass, 1)
+    fresh = Class.new
+    assert_same live, Mutineer::ReloadGuards.kept_constant(scope, :Kept) { fresh }
+    assert_same fresh, Mutineer::ReloadGuards.kept_constant(scope, :Missing) { fresh }
+    assert_same fresh, Mutineer::ReloadGuards.kept_constant(scope, :NotAClass) { fresh }
+    assert_same String, Mutineer::ReloadGuards.kept_constant(nil, :String) { fresh }
+    # Only the named scope counts, not a top-level class of the same name.
+    assert_same fresh, Mutineer::ReloadGuards.kept_constant(scope, :String) { fresh }
+  end
+
+  # #503, test the rule (R7 of the plan): discovery marks every def that the
+  # reload text keeps in a block, so none of them gets a silent verdict.
+  # Checked on every fixture file and every shape text of this file.
+  def test_every_def_in_a_kept_value_is_unplaceable_under_reload
+    texts = Dir.glob(File.join(ROOT, "**", "*.rb")).reject { |path| path.end_with?("_test.rb") }.map { |path| File.read(path) }
+    texts += ["class K < Struct.new(:a) do\n  def k1; end\nend\nend\n",
+              "class K < (base = Struct.new(:a) { def k2; end })\nend\n",
+              "class K < base = Struct.new(:a) { def k3; end }\nend\n",
+              "class K < (a = b = Data.define(:a) { def k4; end })\nend\n",
+              "BaseRow = Struct.new(:v) do\n  def k5; end\nend\nclass Row < BaseRow\nend\n",
+              "Base = (b = Struct.new(:v) do\n  def k6; end\nend)\nclass Row < Base\nend\n",
+              "module M\n  M::Base = Class.new do\n    def k7; end\n  end\nend\nclass Row < M::Base\nend\n"]
+    checked = 0
+    Dir.mktmpdir do |dir|
+      texts.each_with_index do |code, index|
+        next if Mutineer::Parser.invalid?(code)
+
+        rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+        next if rewritten.equal?(code)
+
+        kept = kept_def_lines(rewritten)
+        next if kept.empty?
+
+        path = File.join(dir, "text#{index}.rb")
+        File.write(path, code)
+        subjects = Mutineer::Project.discover([path])
+        kept.each do |line, name|
+          subject = subjects.find { |s| s.def_node.location.start_line == line && s.name == name }
+          next unless subject # a def discovery does not select
+
+          checked += 1
+          assert subject.unplaceable?("reload"), "#{name} on line #{line} of text #{index}"
+        end
+      end
+    end
+    assert_operator checked, :>=, 5
+  end
+
+  # The line and name of each def inside a kept block of the rewritten text.
+  #
+  # @return [Array<Array(Integer, Symbol)>]
+  def kept_def_lines(rewritten)
+    found = []
+    queue = [Mutineer::Parser.parse_string(rewritten).value]
+    while (node = queue.shift)
+      if node.is_a?(Prism::CallNode) && %i[kept_superclass kept_constant].include?(node.name) && node.block
+        defs = [node.block]
+        while (inner = defs.shift)
+          found << [inner.location.start_line, inner.name] if inner.is_a?(Prism::DefNode)
+          defs.concat(inner.compact_child_nodes)
+        end
+      else
+        queue.concat(node.compact_child_nodes)
+      end
+    end
+    found
+  end
+
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in
     code = "class X < Data.define(:a)\nend\nclass A::B::Y < Struct.new(:b)\nend\nclass ::Z < Class.new\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)

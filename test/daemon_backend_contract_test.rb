@@ -430,6 +430,12 @@ class DaemonBackendContractTest < Minitest::Test
     assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
   end
 
+  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  def test_the_payload_keeps_a_superclass_constant_the_file_assigns
+    code = payload_code("const_superclass.rb", "Row#three?")
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
+  end
+
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
   # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
   # only, so it runs on past these.

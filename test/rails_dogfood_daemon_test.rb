@@ -219,6 +219,24 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 100.0, aggregate.mutation_score
   end
 
+  # #503 and #512: LedgerRow inherits from a constant its file assigns, and
+  # LedgerRow::Line's superclass sets a local a later line reads. Each load
+  # built a new class, so the daemon raised "superclass mismatch" for every
+  # mutant. The test checks both answers of each predicate and the local, so
+  # each mutant must run and be killed.
+  def test_the_daemon_reloads_a_superclass_constant_and_a_superclass_local
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, model: "ledger_row"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_equal %w[LedgerRow#zero? LedgerRow::Line#single?],
+                 aggregate.results.map { |r| r.subject.qualified_name }.uniq.sort
+    assert_operator aggregate.killed_count, :>, 1
+    assert_equal 100.0, aggregate.mutation_score
+  end
+
   # #479: StampedNote's concern and class body add the same `&:stamp`
   # callback, so reload keeps both copies. With two workers, the run names the
   # class once, with its file, and the verdicts do not change: the test checks

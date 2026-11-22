@@ -1587,6 +1587,34 @@ class ProjectTest < Minitest::Test
       refute by_name[:outer].unplaceable?("reload")
       refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
       refute by_name[:built].unplaceable?("reload")
+      refute by_name[:built].in_kept_constant, "no class statement names Y"
     end
+  end
+
+  # #503: reload keeps the value of a constant that a class statement in the
+  # same file names as its superclass, so a def inside that value cannot be
+  # placed under reload. Redefine still places it.
+  def test_a_def_in_a_kept_superclass_constant_is_unplaceable_under_reload_only
+    src = "BaseRow = Struct.new(:v) do\n  def in_block?; end\nend\n" \
+          "class Row < BaseRow\n  def three?; end\nend\n" \
+          "module Ledger\n  Ledger::Entry = Data.define(:c) do\n    def path_block; end\n  end\n" \
+          "  Other = Struct.new(:o) do\n    def other; end\n  end\nend\n" \
+          "class Ledger::Credit < Ledger::Entry\nend\n"
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      assert by_name[:in_block?].in_kept_constant
+      assert by_name[:in_block?].unplaceable?("reload")
+      refute by_name[:in_block?].unplaceable?("redefine")
+      assert by_name[:path_block].in_kept_constant, "a path write matches by its last name"
+      refute by_name[:three?].in_kept_constant
+      refute by_name[:three?].unplaceable?("reload")
+      refute by_name[:other].in_kept_constant, "no class statement names Other"
+    end
+  end
+
+  def test_superclass_constant_names_reads_the_last_name_of_each_constant_superclass
+    program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
+                                            "class F < Struct.new(:a)\nend\nclass G\nend\n").value
+    assert_equal Set[:B, :E], Mutineer::Project.superclass_constant_names(program)
   end
 end

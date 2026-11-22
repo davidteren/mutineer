@@ -364,7 +364,8 @@ module Mutineer
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
     # Then each class statement with a superclass that is not a constant keeps
-    # its live superclass ({keep_live_superclasses}, #492, #512).
+    # its live superclass, and each superclass constant the file assigns keeps
+    # its class ({keep_live_superclasses}, #492, #512, #503).
     #
     # @param mutated [String] the mutated source text.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -427,24 +428,31 @@ module Mutineer
     # mismatch" (#492). For a superclass that sets a local
     # (`class Q < (base = Struct.new(:a))`), only the written value is wrapped,
     # so the local is still set, to the live superclass (#512). See
-    # {kept_target} for the superclasses it leaves as written. The superclass
-    # text stays as it is, inside the block, and on its own lines, so line
-    # numbers do not move. A wrap puts one expression in a block, and a class
-    # inside a wrapped superclass is not wrapped again. A bad wrap is not
+    # {kept_target} for the superclasses it leaves as written. It also wraps
+    # the value of a constant that a class statement in the file inherits from
+    # in {ReloadGuards.kept_constant} ({kept_constant_splice}, #503). The
+    # wrapped text stays as it is, inside the block, and on its own lines, so
+    # line numbers do not move. A wrap puts one expression in a block, and a
+    # class inside a wrapped superclass or a kept value is not wrapped again. A bad wrap is not
     # checked here: the child's `load` raises `SyntaxError`, and the mutant
     # scores `error`. Text with no such class comes back unchanged.
     #
     # @param code [String] the reload text.
     # @return [String]
     def self.keep_live_superclasses(code)
+      program = Parser.parse_string(code).value
+      names = Project.superclass_constant_names(program)
       splices = []
-      queue = [Parser.parse_string(code).value]
+      queue = [program]
       while (node = queue.shift)
         if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
           splices << [target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name]
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
+        elsif (splice = kept_constant_splice(node, names))
+          # A kept value does not run again, so nothing inside it is wrapped.
+          splices << splice
         else
           queue.concat(node.compact_child_nodes)
         end
@@ -457,6 +465,29 @@ module Mutineer
         wrapped = "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { #{inner} }"
         text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
       end
+    end
+
+    # The splice that keeps a constant's value on reload (#503): a plain `=` of
+    # a constant whose last name is a superclass name of the file, when
+    # {kept_target} of its value is not nil. `BaseRow = Struct.new(:v)` with
+    # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
+    # same parent. A `||=` write keeps its text (#529).
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol>] {Project.superclass_constant_names} of the file.
+    # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
+    #   wrap, the guard, the scope text and the name; nil for any other node.
+    def self.kept_constant_splice(node, names)
+      if node.is_a?(Prism::ConstantWriteNode)
+        name = node.name
+        scope = "::Module.nesting.first"
+      elsif node.is_a?(Prism::ConstantPathWriteNode)
+        name = node.target.name
+        scope = superclass_scope(node.target)
+      end
+      return nil unless name && names.include?(name) && (target = kept_target(node.value))
+
+      [target, "kept_constant", scope, name]
     end
 
     # The part of a class statement's superclass that the reload text wraps,
@@ -521,11 +552,13 @@ module Mutineer
                     Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
                     Prism::LocalVariableAndWriteNode].freeze
 
-    # The module a class statement defines its constant in, as Ruby text that
-    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
-    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    # The module a class statement or a constant write defines its constant
+    # in, as Ruby text that runs where the superclass or the value runs:
+    # `::Module.nesting.first` for `class X`, the written parent for
+    # `class A::X` and `A::X = ...`, and `Object` for `class ::X` and `::X = ...`.
     #
-    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode]
+    #   the class or constant name.
     # @return [String]
     def self.superclass_scope(path)
       return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)

@@ -29,7 +29,10 @@ module Mutineer
   #                  load into each class that has them (#297; the cases are
   #                  listed in docs/json-schema.md). A method inside the block
   #                  of a class statement's superclass call is one too
-  #                  (`class X < Struct.new(:a) do ... end`, #492).
+  #                  (`class X < Struct.new(:a) do ... end`, #492), and so
+  #                  is a method inside the value of a superclass constant
+  #                  the same file assigns (`BaseRow = Struct.new(:v) do
+  #                  ... end` with `class Row < BaseRow`, #503).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.
