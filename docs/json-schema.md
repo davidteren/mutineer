@@ -193,6 +193,9 @@ most 500 characters (a longer line is cut and ends in `...`). Example:
 lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
 examples gives
 `RSpec reported an error outside its examples, for example a spec file that raised while it loaded`.
+Under `--daemon`, a `LoadError: cannot load such file` line gets a note after it when you set
+`RUBYLIB`, or a `RUBYOPT` with `-I`, because the daemon does not pass them to the app (#491). The 500-character limit caps the
+cause line only, so with the note `details` can be longer. The note names the variable, never its value.
 A `--matrix` early end after a serial database error gives
 `a test failed with a database error, then the child ended before the suite finished`
 (schema `1.10`, #417). Other errors keep their fixed text, such as

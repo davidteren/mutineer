@@ -28,6 +28,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A `--daemon` mutant run now stops at the first failing test (#490).**
+  Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
+  One failing test already kills the mutant, so the daemon now stops there too.
+  This can change verdicts, not only speed.
+  Before, a mutant that its first test killed scored `timeout` when all its covering tests took longer than the daemon's 60-second limit per mutant.
+  It now scores `killed`, as with `--no-daemon`. `timeout` is outside the score, so the mutation score can change.
+  `--matrix` still runs every covering test in-process. `--matrix` with `--daemon` still exits 2.
+- **A `--daemon` mutant that cannot load a file now says why (#491).**
+  The daemon does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing.
+  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and links the `boot:` workaround in `docs/rails-setup.md`.
+  The note names only the variable, never its value.
+  A setting that adds load paths for the daemon is still open in #491.
 - `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 - **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
   It reads the minitest-reporters seed line, so a random order there now gets the warning.
