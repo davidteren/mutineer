@@ -1245,7 +1245,8 @@ module Mutineer
     end
 
     # Warns when a reload left a class with more callbacks than it had (#479):
-    # one header, then one line for each class. Reload keeps both copies of a
+    # one header that counts each class once, then one line for each class and
+    # file, so a class logged from two files has two lines. Reload keeps both copies of a
     # callback when it cannot tell which old one a new one repeats, so the
     # class runs it twice and a test that counts runs can kill falsely. Report
     # only: no verdict, score or exit code changes, and `--format json` lists
