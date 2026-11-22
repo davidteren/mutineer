@@ -1,0 +1,19 @@
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_4a7781ab5727b8::t_7a6a834ec6d5d3 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b62d90fae8e95110a82a75fa83372f3dc4e11be7",
+  "prompts": {},
+  "sessions": {
+    "s_4a7781ab5727b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38f3ef70-f052-4138-b80f-524dcc81a47b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
