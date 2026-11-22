@@ -187,7 +187,7 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 #### Extra load paths
 
 Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
-This works in-process and under `--daemon`.
+This works in-process and under `--daemon` (Minitest only). `--test-command` ignores it ([#535](https://github.com/davidteren/mutineer/issues/535)).
 Use it for a test helper outside the test folder, such as `test/support`:
 
 ```yaml
