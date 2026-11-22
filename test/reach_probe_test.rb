@@ -257,11 +257,9 @@ class ReachProbeTest < Minitest::Test
       refute Mutineer::ReachProbe.conclusive?(probed, probe_key), call
     end
 
-    # Ruby never runs the operand of defined?, so a probe there cannot fire.
+    # Ruby never runs the operand of defined?, and a wrapper changes its answer.
     operand = "class C\n  def self.f(x)\n    defined?(x.size)\n  end\nend\n"
-    probed = wrap_snippet(operand, "x.size")
-    assert_includes probed, "defined?([(x.size), "
-    refute Mutineer::ReachProbe.conclusive?(probed, probe_key)
+    assert_nil wrap_snippet(operand, "x.size")
 
     # A bare regexp in a condition matches $_. Inside the wrapper it is a
     # plain value, so the wrap goes around the whole if. (Ruby warns about
@@ -272,6 +270,18 @@ class ReachProbeTest < Minitest::Test
     # A jump outside the wrapped expression does not matter.
     guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"
     assert Mutineer::ReachProbe.conclusive?(wrap_snippet(guard, "x > 1"), probe_key)
+  end
+
+  # #493: a test that doubles File must not see the probe's write raise and
+  # score a kill. The expression keeps its value and the sentinel stays empty.
+  def test_a_failing_sentinel_write_does_not_raise_into_the_program
+    source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
+    wrapped = wrap_snippet(source, "a + 1")
+    result = run_source(wrapped, <<~'RUBY', json: false)
+      File.singleton_class.prepend(Module.new { def write(*) = raise(IOError, "strict double") })
+      puts C.f(1)
+    RUBY
+    assert_equal "2", result
   end
 
   # #493: a probe around a block or lambda literal fires when the block is

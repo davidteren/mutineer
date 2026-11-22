@@ -187,14 +187,16 @@ score is `null`. `--threshold` passes a `null` score when no mutant broke. The r
   catches it and the tests pass (#286).
 - A test can run a new copy of the block and check the result of the old copy. The probe counts, so that mutant
   stays `survived`, and it can be a false survivor (#286, #389).
-- A test that replaces `File.write` (FakeFS, a stub) stops the probe. A survivor that this test ran is then
-  `ran_at_load` (#507).
+- A test that replaces `File.write` (FakeFS, a stub, a strict double) stops the probe. The probe ignores an error
+  from that write, so the test sees no change. A survivor that this test ran is then `ran_at_load` (#507).
+- An expression that passes control to a block, which leaves early (`break`, or `first` on an `enum_for`), does not
+  return. A survivor that such a test ran is then `ran_at_load` (#507).
 - A line such as `if c then call { ... } end`, `elsif c then call { ... }` or `when 1 then call { ... }` counts when
   the condition is checked. So the rule can apply when that call did not run at load (#507).
 - The rule leaves these mutants with the status they had in 1.9.0. Four kinds are in #507. The first is a
-  mutant whose expression cannot hold the probe inside the block. The second is a mutant whose probe cannot speak: the probed
+  mutant whose expression cannot hold the probe inside the block. The second is a mutant whose probe cannot speak or is not placed: the probed
   expression holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit`,
-  `exit!` or `abort`, or the probe is in the operand of `defined?`. The third is a block whose call is the body of a modifier
+  `exit!` or `abort`, or the expression is in the operand of `defined?`. The third is a block whose call is the body of a modifier
   (`validate { ... } if strict`) or of `&.`. The fourth is a `def` that reload places from a concern's `included` or
   `prepended` block. The other kinds are a mutant whose tests are the tests of another line of its statement
   (#254, #289), and a block in a one-line or endless `def` (#389).

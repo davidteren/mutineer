@@ -201,6 +201,10 @@ module Mutineer
       return nil unless node
 
       parents = parent_map(root)
+      # Ruby never runs the operand of defined?, and a wrapper there changes
+      # its answer ("expression" becomes "method").
+      return nil if ancestors(parents, node).any?(Prism::DefinedNode)
+
       while node
         break if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
 
@@ -260,6 +264,21 @@ module Mutineer
       parent.is_a?(Prism::CallNode) && parent.receiver.equal?(node) && parents[parent].is_a?(Prism::MatchWriteNode)
     end
     private_class_method :named_capture_part?
+
+    # `node` and each node above it.
+    #
+    # @param parents [Hash{Prism::Node => Prism::Node}] from {parent_map}.
+    # @param node [Prism::Node]
+    # @return [Array<Prism::Node>]
+    def self.ancestors(parents, node)
+      list = []
+      while node
+        list << node
+        node = parents[node]
+      end
+      list
+    end
+    private_class_method :ancestors
 
     # Nodes whose meaning depends on where they stand. In a condition, a
     # flip-flop keeps its state and a bare regexp matches `$_`. Inside the
@@ -377,7 +396,8 @@ module Mutineer
       # The fiber-local skips the write after the first return on this
       # fiber. A stat on every later pass would hit a loop.
       # `::Thread` and `::File`: a namespace can hold its own constant of that name.
-      mark = "(::Thread.current[:#{key}] ||= (::File.write(#{quoted}, \"1\"); true))"
+      # A test that doubles `File` must not see the write raise and score a kill.
+      mark = "(::Thread.current[:#{key}] ||= ((::File.write(#{quoted}, \"1\") rescue nil); true))"
       source.byteslice(0, loc.start_offset) + "[(#{inner}), #{mark}][0]" + source.byteslice(loc.end_offset..)
     end
     private_class_method :splice
