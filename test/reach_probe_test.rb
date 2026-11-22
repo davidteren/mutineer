@@ -99,6 +99,24 @@ class ReachProbeTest < Minitest::Test
         x.name
       end
     RUBY
+    # The body of `begin ... end until c` runs once before the check. A
+    # wrapper around that body would make it a plain value.
+    ["do-while body", <<~'RUBY', "n += 1", "C.f(true)", "C.f(false)"],
+      def self.f(flag, n = 0)
+        return n unless flag
+        begin
+          n += 1
+        end until true
+        n
+      end
+    RUBY
+    # A flip-flop in a condition keeps state. Inside the wrapper it is a range.
+    ["flip-flop condition", <<~'RUBY', "(x == 2)..(x == 3)", "C.f(true)", "C.f(false)"],
+      def self.f(flag)
+        return 0 unless flag
+        [1, 2, 3].count { |x| ((x == 2)..(x == 3)) ? true : false }
+      end
+    RUBY
     # A namespace can hold its own Thread constant.
     ["own Thread constant", <<~'RUBY', "a + 1", "C.f(true)", "C.f(false)"],
       Thread = Class.new
@@ -244,6 +262,12 @@ class ReachProbeTest < Minitest::Test
     probed = wrap_snippet(operand, "x.size")
     assert_includes probed, "defined?([(x.size), "
     refute Mutineer::ReachProbe.conclusive?(probed, probe_key)
+
+    # A bare regexp in a condition matches $_. Inside the wrapper it is a
+    # plain value, so the wrap goes around the whole if. (Ruby warns about
+    # this form under -w, so it is not a row of FORMS.)
+    bare = "class C\n  def self.f\n    if /foo/ then 2 else 1 end\n  end\nend\n"
+    assert_includes wrap_snippet(bare, "/foo/"), "[(if /foo/ then 2 else 1 end), "
 
     # A jump outside the wrapped expression does not matter.
     guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"

@@ -205,7 +205,7 @@ module Mutineer
         break if node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
 
         parent = parents[node]
-        unless named_capture_part?(parents, node) || node.class.name.end_with?("TargetNode")
+        unless named_capture_part?(parents, node) || keeps_meaning_only_in_place?(parents, node)
           wrapped = splice(source, node, path, key)
           return wrapped if sound?(wrapped, node.location.start_offset)
         end
@@ -260,6 +260,36 @@ module Mutineer
       parent.is_a?(Prism::CallNode) && parent.receiver.equal?(node) && parents[parent].is_a?(Prism::MatchWriteNode)
     end
     private_class_method :named_capture_part?
+
+    # Nodes whose meaning depends on where they stand. In a condition, a
+    # flip-flop keeps its state and a bare regexp matches `$_`. Inside the
+    # wrapper each is a plain value (#493).
+    IN_PLACE_ONLY = [Prism::FlipFlopNode, Prism::MatchLastLineNode, Prism::InterpolatedMatchLastLineNode].freeze
+
+    # Whether a wrap around `node` would change what the program does, though
+    # the text still parses: an assignment target (the setter would not run),
+    # one of {IN_PLACE_ONLY} (also in parentheses), or the body of
+    # `begin ... end while c` (the body would no longer run once before the
+    # check). The wrap then goes around the parent.
+    #
+    # @param parents [Hash{Prism::Node => Prism::Node}] from {parent_map}.
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.keeps_meaning_only_in_place?(parents, node)
+      return true if node.class.name.end_with?("TargetNode")
+
+      core = node
+      while core.is_a?(Prism::ParenthesesNode) || (core.is_a?(Prism::StatementsNode) && core.body.size == 1)
+        core = core.is_a?(Prism::ParenthesesNode) ? core.body : core.body.first
+      end
+      return true if IN_PLACE_ONLY.any? { |klass| core.is_a?(klass) }
+
+      loop_node = parents[node]
+      loop_node = parents[loop_node] if loop_node.is_a?(Prism::StatementsNode)
+      node.is_a?(Prism::BeginNode) && (loop_node.is_a?(Prism::WhileNode) || loop_node.is_a?(Prism::UntilNode)) &&
+        loop_node.begin_modifier?
+    end
+    private_class_method :keeps_meaning_only_in_place?
 
     # True when wrapping `parent` would record a run of code that can run
     # without `child`: a conditional child, or a node that is a whole def,

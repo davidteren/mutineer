@@ -44,10 +44,11 @@ All notable changes to this project are documented here. The format is based on
   The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
   Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
   The probe text now starts on the line of the expression.
-  Four more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
+  Seven more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
   A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
   The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
   A wrapper in place of an assignment target (`x.name, y = 1, 2`) stopped the setter. The probe now goes around the whole assignment.
+  In a condition, a wrapper made a flip-flop a range and a bare regexp a plain value. Around the body of `begin ... end until c`, it stopped the first run before the check. The probe now goes around the whole statement.
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
   A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
   A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
