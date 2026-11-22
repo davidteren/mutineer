@@ -22,8 +22,9 @@ module Mutineer
   # The inserted text is stdlib only (`File`). The daemon loads it as source,
   # so the app process needs no Prism and no Mutineer constant.
   module ReachProbe
-    # A fiber-local key for one sentinel: `mutineer_r` plus 16 hex digits.
-    # `Thread.current[]` is fiber-local, not one value for the whole thread.
+    # A thread-local key for one sentinel: `mutineer_r` plus 16 hex digits.
+    # It names a thread variable, which every fiber of the thread shares, so
+    # {forget_load} also clears it for an enumerator fiber that ran at load.
     # The generated source and {forget_load} use this key, not a fixed global,
     # so an application variable of the same shape is not read or overwritten.
     # The daemon checks the same pattern; it cannot load this file.
@@ -61,12 +62,12 @@ module Mutineer
     # the daemon cannot.
     #
     # @param path [String, nil] sentinel path.
-    # @param key [String, nil] fiber-local key from {reach_key}.
+    # @param key [String, nil] thread-local key from {reach_key}.
     # @return [void]
     def self.forget_load(path, key)
       return unless path
 
-      Thread.current[key.to_sym] = nil if key.to_s.match?(KEY_FORMAT)
+      Thread.current.thread_variable_set(key.to_sym, nil) if key.to_s.match?(KEY_FORMAT)
       File.write(path, "")
     end
 
@@ -92,7 +93,7 @@ module Mutineer
     # @param source [String] mutated source.
     # @param mutation [Mutineer::Mutation] the edit, already applied to `source`.
     # @param path [String, nil] sentinel path, or nil to leave `source` alone.
-    # @param key [String, nil] fiber-local key from {reach_key}.
+    # @param key [String, nil] thread-local key from {reach_key}.
     # @return [String]
     def self.wrap_mutation(source, mutation, path, key)
       return source if path.nil? || !key.to_s.match?(KEY_FORMAT)
@@ -122,12 +123,12 @@ module Mutineer
     # ask it about the text it sends to the daemon.
     #
     # @param code [String] the mutant text that the child loads.
-    # @param key [String, nil] fiber-local key from {reach_key}.
+    # @param key [String, nil] thread-local key from {reach_key}.
     # @return [Boolean]
     def self.conclusive?(code, key)
       return false unless key.to_s.match?(KEY_FORMAT)
 
-      at = code.byteindex("(::Thread.current[:#{key}]")
+      at = code.byteindex("(::Thread.current.thread_variable_get(:#{key})")
       wrapped = at && wrapped_node(Parser.parse_string(code).value, at)
       !wrapped.nil? && !jump?(wrapped)
     end
@@ -192,7 +193,7 @@ module Mutineer
     # @param start_offset [Integer] byte offset of the replacement.
     # @param end_offset [Integer] byte offset just after the replacement.
     # @param path [String] absolute sentinel path.
-    # @param key [String] fiber-local key from {reach_key}.
+    # @param key [String] thread-local key from {reach_key}.
     # @return [String, nil]
     def self.wrap(source, start_offset, end_offset, path, key)
       return nil unless key.to_s.match?(KEY_FORMAT)
@@ -301,7 +302,7 @@ module Mutineer
       while core.is_a?(Prism::ParenthesesNode) || (core.is_a?(Prism::StatementsNode) && core.body.size == 1)
         core = core.is_a?(Prism::ParenthesesNode) ? core.body : core.body.first
       end
-      return true if IN_PLACE_ONLY.any? { |klass| core.is_a?(klass) }
+      return true if condition_only?(node)
 
       # The `begin ... end`, or the one-statement list that holds it.
       loop_node = parents[node]
@@ -310,6 +311,24 @@ module Mutineer
         loop_node.begin_modifier?
     end
     private_class_method :keeps_meaning_only_in_place?
+
+    # Whether `node` is or holds one of {IN_PLACE_ONLY} where a condition
+    # would still treat it as one: through parentheses, a one-statement list,
+    # `&&`, `||` and `!`.
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.condition_only?(node)
+      case node
+      when *IN_PLACE_ONLY then true
+      when Prism::ParenthesesNode then condition_only?(node.body)
+      when Prism::StatementsNode then node.body.size == 1 && condition_only?(node.body.first)
+      when Prism::AndNode, Prism::OrNode then condition_only?(node.left) || condition_only?(node.right)
+      when Prism::CallNode then node.name == :! && node.arguments.nil? && condition_only?(node.receiver)
+      else false
+      end
+    end
+    private_class_method :condition_only?
 
     # True when wrapping `parent` would record a run of code that can run
     # without `child`: a conditional child, or a node that is a whole def,
@@ -388,17 +407,22 @@ module Mutineer
     # @param source [String]
     # @param node [Prism::Node]
     # @param path [String]
-    # @param key [String] fiber-local key from {reach_key}.
+    # @param key [String] thread-local key from {reach_key}.
     # @return [String]
     def self.splice(source, node, path, key)
       loc = node.location
       inner = source.byteslice(loc.start_offset, loc.end_offset - loc.start_offset)
       quoted = path.dump
-      # The fiber-local skips the write after the first return on this
-      # fiber. A stat on every later pass would hit a loop.
-      # `::Thread` and `::File`: a namespace can hold its own constant of that name.
-      # A test that doubles `File` must not see the write raise and score a kill.
-      mark = "(::Thread.current[:#{key}] ||= ((::File.write(#{quoted}, \"1\") rescue nil); true))"
+      # The thread variable skips the write after the first return on this
+      # thread. A stat on every later pass would hit a loop.
+      # `::Thread`, `::IO` and `::File`: a namespace can hold its own constant
+      # of that name. The write goes through `IO.sysopen`, which a test rarely
+      # doubles, and ignores any error, also an RSpec mock error (an
+      # `Exception`): a test must not see the probe fail and score a kill.
+      write = "::IO.open(::IO.sysopen(#{quoted}, ::File::WRONLY)) { |io| io.syswrite(\"1\") }"
+      flag = "::Thread.current.thread_variable_get(:#{key})"
+      mark = "(#{flag} || (begin; #{write}; rescue ::Exception; end; " \
+             "::Thread.current.thread_variable_set(:#{key}, true)))"
       source.byteslice(0, loc.start_offset) + "[(#{inner}), #{mark}][0]" + source.byteslice(loc.end_offset..)
     end
     private_class_method :splice

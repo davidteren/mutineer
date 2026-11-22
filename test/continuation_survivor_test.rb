@@ -128,7 +128,7 @@ class ContinuationSurvivorTest < Minitest::Test
                             verdict: "killed")
 
     assert_equal :survived, reached.status
-    assert_includes code, "::File.write"
+    assert_includes code, "::IO.sysopen"
     assert_equal :no_coverage, missed.status
     assert_equal :killed, killed.status
     assert_equal :comparison, reached.mutation.operator

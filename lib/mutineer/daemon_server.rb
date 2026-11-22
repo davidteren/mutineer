@@ -40,7 +40,7 @@ module Mutineer
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
   #              (a mutant with a reach probe, #345 and #493, also sends "reach_path" and "reach_key" inside
-  #               "payload". The child clears that file, and the fiber-local
+  #               "payload". The child clears that file, and the thread variable
   #               named by reach_key, after load and before tests, so a
   #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
@@ -521,13 +521,13 @@ module Mutineer
       # require Prism.
       #
       # @param path [String, nil] sentinel path, inside the run payload.
-      # @param key [String, nil] fiber-local key, `mutineer_r` plus 16 hex
+      # @param key [String, nil] thread-local key, `mutineer_r` plus 16 hex
       #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
       # @return [void]
       def forget_load_reach(path, key)
         return unless path.is_a?(String) && !path.empty?
 
-        Thread.current[key.to_sym] = nil if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
+        Thread.current.thread_variable_set(key.to_sym, nil) if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
         File.write(path, "")
       end
 

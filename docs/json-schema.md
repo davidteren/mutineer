@@ -187,8 +187,9 @@ score is `null`. `--threshold` passes a `null` score when no mutant broke. The r
   catches it and the tests pass (#286).
 - A test can run a new copy of the block and check the result of the old copy. The probe counts, so that mutant
   stays `survived`, and it can be a false survivor (#286, #389).
-- A test that replaces `File.write` (FakeFS, a stub, a strict double) stops the probe. The probe ignores an error
-  from that write, so the test sees no change. A survivor that this test ran is then `ran_at_load` (#507).
+- The probe writes its file with `IO.sysopen`. A test that replaces it, or replaces the file system (FakeFS), stops the
+  probe. The probe ignores any error from that write, so the test sees no change. A survivor that this test ran is then
+  `ran_at_load` (#507).
 - An expression that passes control to a block, which leaves early (`break`, or `first` on an `enum_for`), does not
   return. A survivor that such a test ran is then `ran_at_load` (#507).
 - A line such as `if c then call { ... } end`, `elsif c then call { ... }` or `when 1 then call { ... }` counts when

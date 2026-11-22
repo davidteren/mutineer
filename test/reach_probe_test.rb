@@ -117,6 +117,13 @@ class ReachProbeTest < Minitest::Test
         [1, 2, 3].count { |x| ((x == 2)..(x == 3)) ? true : false }
       end
     RUBY
+    # A flip-flop inside && keeps its state only in place.
+    ["flip-flop in a logical condition", <<~'RUBY', "&&", "C.f(true)", "C.f(false)"],
+      def self.f(flag)
+        return 0 unless flag
+        [1, 2, 3].count { |x| (x > 0 && ((x == 2)..(x == 3))) ? true : false }
+      end
+    RUBY
     # A namespace can hold its own Thread constant.
     ["own Thread constant", <<~'RUBY', "a + 1", "C.f(true)", "C.f(false)"],
       Thread = Class.new
@@ -284,11 +291,35 @@ class ReachProbeTest < Minitest::Test
   def test_a_failing_sentinel_write_does_not_raise_into_the_program
     source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
     wrapped = wrap_snippet(source, "a + 1")
+    # A strict File double, and an RSpec mock error, which is an Exception.
     result = run_source(wrapped, <<~'RUBY', json: false)
-      File.singleton_class.prepend(Module.new { def write(*) = raise(IOError, "strict double") })
+      MockError = Class.new(Exception)
+      File.singleton_class.prepend(Module.new { def write(*) = raise(MockError, "unexpected arguments") })
+      IO.singleton_class.prepend(Module.new { def sysopen(*) = raise(MockError, "unexpected arguments") })
       puts C.f(1)
     RUBY
     assert_equal "2", result
+  end
+
+  # #493: an enumerator runs its block on a fiber of its own. A run at load
+  # on that fiber must not hide a later run from a test that resumes it.
+  def test_a_run_at_load_on_an_enumerator_fiber_does_not_hide_a_test_run
+    source = "class C\n  def self.each_value\n    3.times { |i| yield i + 1 }\n  end\nend\n"
+    wrapped = wrap_snippet(source, "i + 1")
+    probe = File.expand_path("../lib/mutineer/reach_probe", __dir__)
+    result = run_source(wrapped, <<~RUBY, json: true)
+      require "json"
+      require #{probe.dump}
+      enum = C.enum_for(:each_value)
+      enum.next
+      at_load = ::File.size(ARGV[1])
+      Mutineer::ReachProbe.forget_load(ARGV[1], #{probe_key.dump})
+      value = enum.next
+      puts JSON.generate(at_load: at_load, after: ::File.size(ARGV[1]), value: value)
+    RUBY
+    assert_operator result.fetch("at_load"), :>, 0
+    assert_equal 2, result.fetch("value")
+    assert_operator result.fetch("after"), :>, 0, "the run on the resumed enumerator fiber was not recorded"
   end
 
   # #493: a probe around a block or lambda literal fires when the block is
