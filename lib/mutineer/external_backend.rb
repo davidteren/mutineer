@@ -215,8 +215,10 @@ module Mutineer
         # plus its message means no test caught the mutant: in process, the
         # fork exits before that hook, and the mutant survives. Keyed on
         # SimpleCov's own message, so code under test that calls `exit 2`
-        # still scores error. Ceiling: with `SimpleCov.print_error_status =
-        # false` the gate prints nothing, and its exit scores error too.
+        # outside a running Minitest test still scores error (inside one, see
+        # {exited_during_tests?}, #342 limit 8). Ceiling (#342 limits 2, 9, 10): with
+        # `SimpleCov.print_error_status = false` the gate prints nothing, and its
+        # exit scores error too; two chained suites can score survived (#516).
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text)
           return Result.survived if tests_passed?(text)
@@ -249,7 +251,8 @@ module Mutineer
     # error, or an RSpec failure. An RSpec error outside examples alone (a spec
     # file that raised while loading) is not one, as in TestRunners::RSpec.
     # Any matching line counts, so a wrapper that runs two suites still kills.
-    # A test that prints a fake summary line to stdout fools this check.
+    # A test that prints a fake summary line to stdout fools this check
+    # (#342 limit 4, tracked in #515).
     #
     # @api private
     # @param text [String] output from {summary_text}.
@@ -265,9 +268,11 @@ module Mutineer
     # suite printed a summary still kills. A load crash ends before Minitest
     # prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
-    # minitest-reporters, such an exit scores error, not killed. Ceiling: an
-    # exception that escapes Minitest.run itself (a reporter plugin bug) also
-    # reads as a kill here, where the in-process backend scores error.
+    # minitest-reporters, such an exit scores error, not killed. Ceiling (#342
+    # limits 1, 3, 8; #515): an exception that escapes Minitest.run itself (a
+    # reporter plugin bug) also reads as a kill here, where the in-process
+    # backend scores error. Minitest's `autorun` ends the process with status 1
+    # after any `exit` during a test, so `exit 0` and `exit 2` read as a kill too.
     #
     # @api private
     # @param text [String] output from {summary_text}.
