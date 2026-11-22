@@ -64,11 +64,13 @@ module Mutineer
           rel = relativize(test_path)
           next if @failed_test_files.include?(rel)
 
-          ok, detail, timed_out = if @boot_path
-                                    fork_clean_pass?([absolute(test_path)], after_fork)
-                                  else
-                                    subprocess_clean_pass?([test_path])
-                                  end
+          ok, detail, timed_out = timed_clean do
+            if @boot_path
+              fork_clean_pass?([absolute(test_path)], after_fork)
+            else
+              subprocess_clean_pass?([test_path])
+            end
+          end
           if timed_out
             record_clean_timeout(rel, @capture_timeout)
           elsif !ok
@@ -113,6 +115,19 @@ module Mutineer
         end
       end
 
+      # Runs one clean check and adds its wall-clock seconds to
+      # {#clean_check_seconds} (#495).
+      #
+      # @api private
+      # @yieldreturn [Array] the clean check's answer.
+      # @return [Array] the block's value.
+      def timed_clean
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        yield
+      ensure
+        @clean_check_seconds = (@clean_check_seconds || 0.0) + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
+      end
+
       # Runs every successfully captured test of {#clean_check_test_paths}
       # together. Per-file capture can miss a failure that only appears when
       # covering files share one process.
@@ -126,11 +141,13 @@ module Mutineer
         return unless @failed_clean_tests.empty?
 
         timeout = combined_clean_timeout(runnable)
-        ok, detail, timed_out = if @boot_path
-                                  fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork, timeout: timeout)
-                                else
-                                  subprocess_clean_pass?(runnable, timeout: timeout)
-                                end
+        ok, detail, timed_out = timed_clean do
+          if @boot_path
+            fork_clean_pass?(runnable.map { |t| absolute(t) }, after_fork, timeout: timeout)
+          else
+            subprocess_clean_pass?(runnable, timeout: timeout)
+          end
+        end
         if timed_out
           record_clean_timeout("combined suite", timeout)
         elsif !ok

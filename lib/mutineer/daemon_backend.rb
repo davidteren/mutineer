@@ -82,14 +82,16 @@ module Mutineer
       # connected to the template database. That process keeps its database lock
       # until the worker daemons have taken theirs.
       prepare_client = nil
+      # #495: phase seconds for the report. The worker daemons' boots add to boot_seconds.
+      timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
       begin
-        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count)
+        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count, timing)
 
         results =
           if worker_count > 1
-            run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client)
+            run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           else
-            run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client)
+            run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           end
       ensure
         # run_serial and run_parallel quit this client once workers hold locks.
@@ -97,6 +99,7 @@ module Mutineer
         prepare_client&.quit
       end
 
+      extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
       sweep_daemon_temps(config)
@@ -165,8 +168,10 @@ module Mutineer
     # @return [Array] the coverage map (or nil), the worker count to start, and
     #   the prepare daemon. The caller quits that daemon after worker daemons
     #   hold their locks. It is nil when this process could not boot one.
-    def self.prepare_run(config, abs_tests, worker_count)
+    # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
+    def self.prepare_run(config, abs_tests, worker_count, timing = {})
       client = nil
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       begin
         client = DaemonClient.new(boot: boot_config(config, abs_tests, coverage: true),
                                   app_root: config.project_root).start
@@ -177,6 +182,7 @@ module Mutineer
         # No daemon listed a Rails app's databases, so no second worker may
         # share them. A --boot app without --rails has no database routing.
         unknown = { "error" => "the first daemon did not boot" }
+        timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
         return [nil, config.rails ? worker_count_for(unknown, [], worker_count) : worker_count, nil]
       end
 
@@ -185,7 +191,12 @@ module Mutineer
         worker_count = worker_count_for(client.databases, config.shared_databases, worker_count)
         # Raises DaemonBootError. Callers must not score mutants after this.
         client.provision(worker_count)
-        [coverage_map_from_client(client, config), worker_count, client]
+        timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
+        coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        coverage_map = coverage_map_from_client(client, config, timing)
+        # The daemon runs the clean checks inside its map build; report them apart.
+        timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
+        [coverage_map, worker_count, client]
       rescue Exception # rubocop:disable Lint/RescueException
         # An interrupt must also quit it, or the daemon keeps its database lock.
         client.quit
@@ -243,9 +254,12 @@ module Mutineer
     #
     # @param client [Mutineer::DaemonClient]
     # @param config [Mutineer::Config]
+    # @param timing [Hash] phase seconds; this sets the clean check from the reply.
     # @return [Mutineer::CoverageMap, nil]
-    def self.coverage_map_from_client(client, config)
+    def self.coverage_map_from_client(client, config, timing = {})
       data = client.coverage
+      # #495: read it here, so a reply with an empty map keeps it too.
+      timing[:clean_check_seconds] = data["clean_check_seconds"] if data.is_a?(Hash)
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
@@ -279,7 +293,8 @@ module Mutineer
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
                             project_root: config.project_root, load_lines: data["load_lines"] || [],
-                            load_methods: data["load_methods"] || [])
+                            load_methods: data["load_methods"] || [],
+                            clean_check_seconds: data["clean_check_seconds"])
     rescue DaemonBootTimeout
       raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e
@@ -305,22 +320,27 @@ module Mutineer
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
     #   the databases. Quit once this worker has booted and taken its lock.
+    # @param timing [Hash] phase seconds; this adds the worker boot and sets the mutant runs.
     # @return [Array<Mutineer::Result>] results in input order.
-    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil)
+    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil, timing = {})
       client = nil
       begin
+        boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         client = DaemonClient.new(boot: boot_config(config, abs_tests),
                                   app_root: config.project_root).start
+        timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
         prepare_client&.quit
         prepare_client = nil
         results = []
         progress = Progress.new(jobs.size)
+        mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         jobs.each_with_index do |job, i|
           r = job_result(job, i, client, 0, config, coverage_map, abs_tests, source_map)
           results << r
           progress.tick
           break if config.fail_fast && r.survived?
         end
+        timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         results
       ensure
         prepare_client&.quit
@@ -339,8 +359,10 @@ module Mutineer
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
     #   the databases. Quit once every worker has booted and taken its lock.
+    # @param timing [Hash] phase seconds; this adds the worker boots and sets the mutant runs.
     # @return [Array<Mutineer::Result>] one result per input job, in input order.
-    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client = nil)
+    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client = nil,
+                          timing = {})
       results  = Array.new(jobs.size)
       progress = Progress.new(jobs.size)
       queue    = Queue.new
@@ -355,6 +377,7 @@ module Mutineer
       # holds one.
       clients = []
       threads = []
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       begin
         worker_count.times do
           clients << DaemonClient.new(boot: boot_config(config, abs_tests, parallel: true),
@@ -364,7 +387,10 @@ module Mutineer
       ensure
         prepare_client&.quit
       end
+      timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
 
+      mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      finished = Queue.new
       clients.each_with_index do |client, worker|
         threads << Thread.new do
           loop do
@@ -376,6 +402,8 @@ module Mutineer
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
             progress.tick
           end
+          # #495: before the quit in `ensure`, as run_serial stops its timer.
+          finished << Process.clock_gettime(Process::CLOCK_MONOTONIC)
         rescue Exception => e # rubocop:disable Lint/RescueException
           # The daemon gave up for good, or a defect escaped. Stop feeding the
           # other workers, so they stop after their current mutant, and hand the
@@ -389,6 +417,8 @@ module Mutineer
       # Join every worker before raising, so all daemons have quit and the
       # end-of-run sweep sees each child gone.
       threads.each(&:join)
+      last = Array.new(finished.size) { finished.pop }.max
+      timing[:mutants_seconds] = last - mutants_started if last
       raise errors.pop unless errors.empty?
 
       # Every job was popped by some worker and every pop assigns, so no slot can
@@ -434,6 +464,7 @@ module Mutineer
       # no fork. No map, or an empty one (build failed) → run the full --test set
       # (fallback, not narrowed).
       sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      seconds = nil # #495: set only when a request ran the mutant
       r =
         if Parser.invalid?(mutated)
           Result.skipped
@@ -461,10 +492,12 @@ module Mutineer
               payload["reach_path"] = sentinel.path
               payload["reach_key"] = reach_key
             end
+            started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
             verdict = client.request(
               id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
               payload: payload, tests: sel ? sel[1] : abs_tests
             )
+            seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
             # A survivor whose line ran at load, as in-process (Runner.run).
             details = client.last_cause if verdict == "error"
             loaded = JobPlan.load_verdict(result_for(verdict, details), subject.file, mutation, subject, source,
@@ -476,7 +509,7 @@ module Mutineer
             ReachProbe.close_sentinel(sentinel)
           end
         end
-      r.with(subject: subject, mutation: mutation, id: id)
+      r.with(subject: subject, mutation: mutation, id: id, seconds: seconds)
     end
 
     # The boot config the daemon needs to boot the app once: where to boot, the

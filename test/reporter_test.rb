@@ -714,6 +714,21 @@ class ReporterTest < Minitest::Test
     assert_match(/Dropped:\s+2\s+\(repeats of a kept mutant; see --format json\)/, out.string)
   end
 
+  # #495: the Time line gives the total and each phase; n/a for a phase the
+  # run did not have. No timing, no line.
+  def test_human_summary_has_a_time_line
+    out = StringIO.new
+    timing = { total_seconds: 12.3456, boot_seconds: nil, coverage_seconds: 3.4, clean_check_seconds: 0.8,
+               mutants_seconds: 6.1 }
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, timing: timing)
+    assert_includes out.string, "Time:         12.346s  (boot n/a, coverage 3.400s, clean check 0.800s, " \
+                                "mutants 6.100s; phases do not add up to the total)\n"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "Time:"
+  end
+
   def test_human_summary_leaves_out_the_no_mutants_row_when_counts_are_unknown
     out = StringIO.new
     reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)

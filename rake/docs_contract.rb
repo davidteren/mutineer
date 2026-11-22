@@ -19,6 +19,7 @@ module DocsContract
     "`no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)" => "other-statuses",
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
+    "`timing` (object)" => "timing",
     "`per_source[]` (array of object)" => "per-source",
     "`unpaired_sources[]` (array of object)" => "unpaired-sources",
     "`unmutated_subjects[]` (array of object)" => "unmutated-subjects",
@@ -33,6 +34,7 @@ module DocsContract
     "summary" => "Summary fields",
     "survivors" => "Survivor fields",
     "killed" => "Killed fields",
+    "timing" => "Timing fields",
     "matrix" => "Matrix fields",
     "baseline" => "Baseline fields",
     "exit-codes" => "Exit codes"
@@ -48,6 +50,7 @@ module DocsContract
     "other-statuses" => "no_coverage / uncapturable / unplaceable / ran_at_load",
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
+    "timing" => "timing",
     "per-source" => "per_source[]",
     "unpaired-sources" => "unpaired_sources[]",
     "unmutated-subjects" => "unmutated_subjects[]",

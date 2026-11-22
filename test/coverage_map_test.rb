@@ -811,12 +811,17 @@ class CoverageMapTest < Minitest::Test
                    "a miss captures each test alone; one covering test leaves no combined run"
       assert_includes err, "[mutineer] coverage capture: the together check covers only the 1 test file that " \
                            "covers the sources; 1 other test file ran alone only."
+      # #495: no separate clean check ran a test on this miss, so no seconds.
+      assert_nil first.clean_check_seconds
 
       hit = nil
       hits = sentinel_processes(dir) { _, err = capture_io { hit = shared_map(%w[alpha.rb], cache) } }
       refute hit.phase_a_ran
       assert_equal [%w[alpha_test.rb]], hits, "beta_test.rb covers no line of alpha.rb, so it is not run"
       assert_empty hit.failed_clean_tests
+      # #495: the hit's clean check ran a test, so it has seconds.
+      assert_kind_of Float, hit.clean_check_seconds
+      assert_operator hit.clean_check_seconds, :>, 0
       assert_includes err, "[mutineer] coverage cache hit: the clean check ran the 1 test file that covers " \
                            "the sources; 1 other test file never runs with a mutant and was not checked."
     end

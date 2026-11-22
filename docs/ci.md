@@ -73,7 +73,7 @@ The Action fetches the commit for shallow checkouts, falling back to the base br
 
 | Default JSON output | Result |
 |---------------------|--------|
-| Step summary | Score summary |
+| Step summary | Score table, then, when they apply, a `Dropped:` line for dropped repeats, an `Unpaired:` line for sources with no paired test (absent for a report from a CLI older than 1.9.0), the baseline line, a note when no mutant was in scope for the diff, and up to 20 survivors |
 | PR diff annotations | Up to 50 survivors; `error` when the gate fails, `warning` when it passes |
 | `report` output | Report path; `human` and `html` formats require the `output` input |
 

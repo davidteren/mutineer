@@ -131,6 +131,7 @@ module Mutineer
         @failed_clean_tests = []
         @failed_clean_details = {}
         @clean_timeouts = {}
+        @clean_check_seconds = nil
         @loaded_dependencies = cached["dependencies"]
         checked = clean_check_test_paths
         verify_cached_clean(after_fork: after_fork, test_paths: checked)
