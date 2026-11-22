@@ -1,0 +1,23 @@
+.github/workflows/release-pr.yml
+  s_a5f73b7874bfdc::t_d0207975a20dd3 109
+AGENTS.md
+  s_a5f73b7874bfdc::t_0c280da06999e4 84-85
+docs/plans/2026-11-22-355-merge-gate-ruleset.md
+  s_a5f73b7874bfdc::t_8cdaba51d91d57 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "704f688bde9f8767d3d68645d2860681ab0262c4",
+  "prompts": {},
+  "sessions": {
+    "s_a5f73b7874bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fba5a0ce-537b-43af-8b4e-562be727f217",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
