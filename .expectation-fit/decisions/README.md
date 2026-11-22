@@ -31,9 +31,9 @@ can differ (see Limits).
 - When a review teaches a new fact, add the line here first, by hand, in the
   file for its topic. This folder is the source: nothing copies rules from
   cubic into it. Then teach the review tool, if you use one.
-- Before you add a line, name the function, file or doc it checks. Confirm
-  that name exists in the code on `main`. For a change in an open pull
-  request, add the line in that pull request.
+- Before you add a line, name the function, file or doc it checks.
+  Confirm that name exists in the code on `main`.
+  For a change in an open pull request, add the line in that pull request.
 - ``(cubic `xxxxxxxx`)`` at the end of a line is the id of the rule in cubic
   that the line came from. A line that joins two cubic rules has both ids:
   ``(cubic `aaaaaaaa`, `bbbbbbbb`)``. A line with no id was written here.
@@ -42,7 +42,5 @@ can differ (see Limits).
 ## Limits
 
 - The lines came from cubic on 2026-11-16. Issue #483 checked them against
-  the code on 2026-11-22. The check deleted lines for code that was not on `main`.
+  the code on 2026-11-22. It deleted lines for code that was not on `main`.
   Correct a line that is wrong when you find it.
-- A rule that cubic learns later reaches this folder only when someone adds it
-  by hand (see above). cubic's copy can differ from this one.
