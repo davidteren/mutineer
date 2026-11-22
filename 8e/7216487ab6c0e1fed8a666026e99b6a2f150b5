@@ -1,0 +1,33 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9747bd218c1c67::t_278be8e3efa362 15
+CHANGELOG.md
+  s_9747bd218c1c67::t_b7e0215ccad906 122
+docs/json-schema.md
+  s_9747bd218c1c67::t_4012bbf742c729 147-154
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_24014be3b350fe 470-472,477,481,483
+lib/mutineer/project.rb
+  s_9747bd218c1c67::t_ae1aa6990c78c0 29-36,39,50-54,70,82-101,279,281,453
+lib/mutineer/subject.rb
+  s_9747bd218c1c67::t_2b614de2306e78 31-32
+test/call_superclass_reload_test.rb
+  s_9747bd218c1c67::t_414e4e7d7d0fba 261-262,269-272
+test/project_test.rb
+  s_9747bd218c1c67::t_cb900001be42c9 1608,1615,1618
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e7216487ab6c0e1fed8a666026e99b6a2f150b5",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
