@@ -53,6 +53,16 @@ module Mutineer
     DRAIN_POLL = 0.1
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
+    # Variables the daemon never inherits, so a parent require cannot run in
+    # the app (#100). A load path set in them is missing in the daemon (#491).
+    LOAD_ENV = %w[RUBYOPT RUBYLIB].freeze
+    # The start of a child cause for a missing required file.
+    MISSING_FILE_CAUSE = /\ALoadError: cannot load such file/
+    # A RUBYOPT that adds a load path: `-Itest`, `-I test`, `Itest` (the dash
+    # is optional there), or `-wItest` after the flag-only switches.
+    RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
+    # Published guide with the boot: workaround, for an installed gem's users.
+    LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend"
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails.
@@ -90,7 +100,9 @@ module Mutineer
     # Why the last {#request} answered `"error"`: the redacted `Class: message`
     # line from the daemon's child (#388), or `daemon crashed` / `daemon
     # stopped answering` when no reply came. nil when the reply carried no
-    # cause, or the last request answered anything else. Read it right after
+    # cause, or the last request answered anything else. A missing-file
+    # `LoadError` line can end with a note on dropped load variables
+    # ({#with_load_env_hint}, #491). Read it right after
     # {#request}: a client serves one worker thread at a time
     # ({DaemonBackend} gives each thread its own), so no other request can
     # replace it in between.
@@ -150,7 +162,7 @@ module Mutineer
           nil
         end
       if reply && reply["id"] == id
-        @last_cause = reply["details"] if reply["verdict"] == "error"
+        @last_cause = with_load_env_hint(reply["details"]) if reply["verdict"] == "error"
         return reply["verdict"]
       end
 
@@ -230,12 +242,45 @@ module Mutineer
         end
       end
       # A parent require must not run in the app, even when Bundler saved it.
-      %w[RUBYOPT RUBYLIB].each { |key| env.delete(key) }
+      LOAD_ENV.each { |key| env.delete(key) }
       # No saved original means the value belongs to the tool process.
       %w[GEM_HOME GEM_PATH BUNDLE_PATH BUNDLE_WITHOUT BUNDLER_VERSION].each do |key|
         env.delete(key) unless restored.include?(key)
       end
       env
+    end
+
+    # A missing-file cause, with a note when this run set a load variable
+    # that the daemon dropped (#491). Names only the variables, never their
+    # values: RUBYOPT can hold a secret.
+    #
+    # @api private
+    # @param cause [String, nil] the child's cause line.
+    # @return [String, nil]
+    def with_load_env_hint(cause)
+      return cause unless cause&.match?(MISSING_FILE_CAUSE)
+
+      names = LOAD_ENV.select do |key|
+        value = user_value(key).to_s
+        key == "RUBYOPT" ? value.match?(RUBYOPT_LOAD_PATH) : !value.strip.empty?
+      end
+      return cause if names.empty?
+
+      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if a load path was set there, " \
+        "add it in a boot: file that puts it on $LOAD_PATH and then loads the app (config/environment for Rails), " \
+        "see #{LOAD_PATH_GUIDE})"
+    end
+
+    # The value the user set for +key+, before Bundler changed it.
+    #
+    # @api private
+    # @param key [String]
+    # @return [String, nil]
+    def user_value(key)
+      saved = ENV.fetch("BUNDLER_ORIG_#{key}", nil)
+      return ENV.fetch(key, nil) if saved.nil?
+
+      saved == BUNDLER_UNSET ? nil : saved
     end
 
     # Drop rbenv and asdf version bins so shims can select the app Ruby.
