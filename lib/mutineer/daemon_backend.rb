@@ -546,6 +546,8 @@ module Mutineer
         # searched first: the test-helper roots, then the load_path
         # directories in the written order (#491), as in-process.
         load_paths: JobPlan.extra_load_dirs(config).reverse + JobPlan.test_load_roots(abs_tests),
+        # The same directories in the written order, for the coverage cache key.
+        extra_load_paths: JobPlan.extra_load_dirs(config),
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,

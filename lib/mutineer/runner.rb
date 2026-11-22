@@ -238,6 +238,7 @@ module Mutineer
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths + config.extra_load_paths, framework: config.framework,
+          extra_load_paths: config.extra_load_paths, # cache key only (#536, #539, #544)
           boot_path: File.expand_path(config.boot, config.project_root),
           require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
@@ -258,6 +259,7 @@ module Mutineer
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
           load_paths: config.load_paths + rel_roots + config.extra_load_paths, framework: config.framework,
+          extra_load_paths: config.extra_load_paths, # cache key only (#536, #539, #544)
           require_paths: config.require_paths, verbose: config.verbose,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load

@@ -307,6 +307,36 @@ module Mutineer
         @test_paths.to_h { |path| [relativize(absolute(path)), file_fingerprint(absolute(path))] }
       end
 
+      # Adds the load_path directories (#491) to `digest`, in the written
+      # order, with the name and content of every `.rb` file under each. A
+      # directory can change which file a test loads while every file the
+      # last capture loaded stays the same: a reorder (#536), a new file that
+      # shadows one in a later directory (#544), an edit outside the project
+      # root, where loaded files are not fingerprinted (#539). Each forces a
+      # full capture. The run's sources and tests are left out: their own
+      # fingerprints decide a partial recapture (#421). Adds nothing without
+      # load_path, so those runs keep their digest.
+      #
+      # @api private
+      # @param digest [Digest::SHA256]
+      # @return [void]
+      def digest_extra_load_dirs(digest)
+        return if @extra_load_paths.empty?
+
+        own = (@source_paths + @test_paths).to_set { |path| absolute(path) }
+        @extra_load_paths.each do |dir|
+          root = absolute(dir)
+          digest.update("extraload\0#{dir}\0")
+          Dir.glob("**/*.rb", base: root).sort.each do |rel|
+            path = File.join(root, rel)
+            next if own.include?(absolute(path))
+
+            digest.update("extrafile\0#{rel}\0")
+            digest.update(File.file?(path) && File.readable?(path) ? Digest::SHA256.file(path).hexdigest : "unreadable")
+          end
+        end
+      end
+
       # Digest of everything that forces a full capture except source and test
       # contents (#421). The source list is included, so adding a source still
       # captures every test: standalone capture loads every source.
@@ -328,6 +358,7 @@ module Mutineer
           digest.update("\0")
         end
         @load_paths.sort.each { |load_path| digest.update("loadpath\0#{load_path}\0") }
+        digest_extra_load_dirs(digest)
         digest.update("framework\0#{@framework}\0")
         digest_test_seed(digest)
         digest.hexdigest

@@ -147,8 +147,10 @@ class DaemonBackendContractTest < Minitest::Test
       assert_equal roots, Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
 
       config.extra_load_paths = ["a", "b", "/abs/c"]
-      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots],
-                   Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+      boot = Mutineer::DaemonBackend.boot_config(config, [test])
+      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots], boot[:load_paths]
+      assert_equal [File.join(root, "a"), File.join(root, "b"), "/abs/c"], boot[:extra_load_paths],
+                   "the written order, for the coverage cache key"
     end
   end
 
