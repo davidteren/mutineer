@@ -278,29 +278,39 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
-  # #516, AE3 and AE4: a wrapper stands for `suite && suite`. The clean run
-  # prints two summary lines. On a mutant, the SimpleCov gate ends the first
-  # suite, so the second never runs: error, not survived.
+  # #516, AE3: a real chain, `weak suite && strong suite`. A stand-in for
+  # SimpleCov's minimum_coverage gate runs after the first suite: on a
+  # mutated tree it prints SimpleCov's gate message and exits 2, as SimpleCov
+  # does in Minitest.after_run. The weak suite kills 4 of the 6 mutants. The
+  # other 2 pass it, the gate stops the chain, and the strong suite, which
+  # would kill them, never runs: error, not survived.
   def test_simplecov_gate_that_stops_a_chain_of_suites_scores_error
     with_project("calculator_strong_test.rb") do |proj|
-      original = File.read(File.join(proj, "calculator.rb"))
-      wrapper = File.join(proj, "chain.rb")
-      File.write(wrapper, <<~RUBY)
-        if File.read(#{File.join(proj, 'calculator.rb').dump}) == #{original.dump}
-          2.times { system(RbConfig.ruby, *ARGV) || exit($?.exitstatus) }
-          exit 0
+      FileUtils.cp(File.join(FIXTURES, "calculator_weak_test.rb"), proj)
+      calc = File.join(proj, "calculator.rb")
+      gate = File.join(proj, "coverage_gate.rb")
+      File.write(gate, <<~RUBY)
+        require "minitest"
+        Minitest.after_run do
+          next if File.read(#{calc.dump}) == #{File.read(calc).dump}
+
+          puts "SimpleCov failed with exit 2 due to a coverage related error"
+          exit 2
         end
-        puts "3 runs, 3 assertions, 0 failures, 0 errors, 0 skips"
-        puts "SimpleCov failed with exit 2 due to a coverage related error"
-        exit 2
+      RUBY
+      chain = File.join(proj, "chain.rb")
+      File.write(chain, <<~RUBY)
+        system(RbConfig.ruby, "-r", #{gate.dump}, #{File.join(proj, 'calculator_weak_test.rb').dump}) || exit($?.exitstatus)
+        system(RbConfig.ruby, #{File.join(proj, 'calculator_strong_test.rb').dump}) || exit($?.exitstatus)
       RUBY
       out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
-                           "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+                           "--test-command", "#{RUBY} #{chain} %{files}", chdir: proj)
       doc = JSON.parse(out)
+      assert_equal 4, doc.dig("summary", "killed"), err
       assert_equal 0, doc.dig("summary", "survived"), err
-      assert_equal 6, doc.dig("summary", "errored"), err
+      assert_equal 2, doc.dig("summary", "errored"), err
       doc.fetch("no_verdict").each do |row|
-        assert_includes row["details"], "printed 1 summary line where the clean run printed 2"
+        assert_includes row["details"], "printed 1 summary line where the clean run printed 2, after a SimpleCov coverage gate"
       end
     end
   end
