@@ -321,6 +321,8 @@ module Mutineer
           "failed_clean_tests" => cmap.failed_clean_tests,
           "failed_clean_details" => cmap.failed_clean_details,
           "clean_timeouts" => cmap.clean_timeouts,
+          # #495: the tool reports this as timing.clean_check_seconds.
+          "clean_check_seconds" => cmap.clean_check_seconds,
           "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException

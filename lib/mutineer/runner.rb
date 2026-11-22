@@ -153,6 +153,9 @@ module Mutineer
       # recorded and every forked child keeps it (#282).
       prepare_rspec_seed!(config)
 
+      # #495: phase seconds for the report; nil for a phase the run skips.
+      timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -188,7 +191,9 @@ module Mutineer
       end
       config.require_paths.each { |f| require_project_file(config.project_root, f) }
       preload_owners(config) if config.boot && config.strategy == "redefine"
+      timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
 
+      coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       if config.boot
         # Rails/Minitest test files do `require "test_helper"`, which needs the
         # test root on $LOAD_PATH (`bin/rails test` adds it). Prepend each test
@@ -227,6 +232,9 @@ module Mutineer
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
+      timing[:clean_check_seconds] = coverage_map.clean_check_seconds
+      # The clean checks run inside the map build; report them apart.
+      timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
@@ -248,12 +256,14 @@ module Mutineer
           framework = config.framework
           stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
           progress  = Progress.new(jobs.size)
+          mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework,
                 timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
           end
+          timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started unless jobs.empty?
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
@@ -265,6 +275,7 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
+      extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
@@ -327,6 +338,8 @@ module Mutineer
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
         smoke_elapsed, check_summary, random_order = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        # #495: each command boots the app itself, and nothing captures coverage.
+        timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: smoke_elapsed, mutants_seconds: nil }
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
         # #292: the summary check needs a summary line to look for. Without one
         # on the clean run, keep the exit-code rule and say what that costs.
@@ -355,6 +368,7 @@ module Mutineer
 
         results = []
         progress = Progress.new(jobs.size)
+        mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
@@ -363,9 +377,12 @@ module Mutineer
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
           end
+          # Before the cleanup below, so recovery time is not mutant time.
+          timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         ensure
           FileSwap.restore_orphans(dirs)
         end
+        extras[:timing] = timing
 
         [AggregateResult.new(results + ignored_results), source_map, extras]
       end
@@ -384,9 +401,11 @@ module Mutineer
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
-      FileSwap.with(subject.file, mutated) do
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = FileSwap.with(subject.file, mutated) do
         ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
       end
+      result.with(seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
     end
 
     # Loads the class or module of every subject in the booted parent, before
@@ -475,6 +494,7 @@ module Mutineer
       )
 
       begin
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
           # Forking inherits the parent's live DB connection; sharing one socket
           # across processes corrupts it. Drop it so AR reconnects per child.
@@ -506,11 +526,12 @@ module Mutineer
             TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
           end
         end
+        seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         result = relative_kills(result, coverage_map.project_root)
         result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
         reached = ReachProbe.reached?(sentinel)
         result = JobPlan.selection_verdict(kind, result, reached: reached)
-        JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached)
+        JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached).with(seconds: seconds)
       ensure
         ReachProbe.close_sentinel(sentinel)
       end
