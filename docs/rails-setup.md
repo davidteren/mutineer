@@ -240,7 +240,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
 | Forced child settings | Replaces existing values with `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1`, and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`. |
-| Test order | Only for `--test-command`. Other runs share one seed; see the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order). This command must use a fixed order. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. It cannot see a seed set in a wrapper script or `.rspec`, or a Minitest `test_order`, so the warning can print when the order is already fixed ([#368](https://github.com/davidteren/mutineer/issues/368)). |
+| Test order | Only for `--test-command`. Other runs share one seed; see the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order). This command must use a fixed order. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. Mutineer only warns: it cannot know the seed flag of an arbitrary command, so it never sets a seed. It reads the seed line of Minitest, minitest-reporters and RSpec, and a seed in `.rspec` or `.rspec-local` in the working directory. It cannot see a seed set in a wrapper script, in `~/.rspec`, with `config.seed = N` in a spec helper or `--require` file, inside an inactive ERB branch of `.rspec` (RSpec renders the file as ERB, Mutineer scans its text), or an `--options FILE` that replaces `.rspec`, or a Minitest `test_order` such as `:alpha` (Minitest still prints a seed line then). In those cases the warning can print when the order is already fixed. A seed-like argument meant for a wrapper (`bin/run --seed 7 %{files}`, where the wrapper does not pass it on) hides the warning while the tests still shuffle. A later `--order rand` in the command or `SPEC_OPTS`, or an `--options FILE` that skips `.rspec`, can leave a seed in `.rspec` unused, and the warning stays silent too ([#522](https://github.com/davidteren/mutineer/issues/522)). |
 
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis) for wrapper behaviour.
 
@@ -297,5 +297,28 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
+
+#### Known limits of reading test output ([#342](https://github.com/davidteren/mutineer/issues/342))
+
+Mutineer reads the output of `--test-command` to tell a crash from a kill. It accepts these 12 limits and does not tighten the check. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
+
+A verdict that can be wrong is marked. Those limits are tracked as bugs: [#515](https://github.com/davidteren/mutineer/issues/515) for a false `killed`, and [#516](https://github.com/davidteren/mutineer/issues/516) for a false `survived`.
+
+| # | Limit | Result |
+| --- | --- | --- |
+| 1 | Code under test calls `exit 1` or `abort` during a test. | `killed` under the default Minitest reporter, as in process. Under RSpec or minitest-reporters it is `error`, because only the default reporter prints `# Running:`. |
+| 2 | `SimpleCov.print_error_status = false`. | The gate prints no message, so its exit scores `error`. |
+| 3 | An exception escapes `Minitest.run` (a reporter plugin bug). | **False `killed`**, where in process it is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 4 | A test prints a fake summary line, or a test name holds summary-like text. The patterns have no line-start anchor. | **False `killed`** for a crash ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 5 | A custom failure exit code, such as RSpec `--failure-exit-code 3`. | Every kill scores `error`. This matches the in-process rule: only exit 1 kills. |
+| 6 | Code under test calls `exit!(1)`. | The output flush is skipped and `# Running:` can be lost, so it scores `error`, where in process it is `killed`. |
+| 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill** ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | A passing first summary scores **`survived`**, although the skipped suite might kill ([#516](https://github.com/davidteren/mutineer/issues/516)). |
+| 10 | SimpleCov older than 0.19 prints a different gate message. | The gate exit scores `error`, not `survived`. |
+| 11 | RSpec exits 1 in the middle of an example. | The `error` reason text can name the wrong cause. The verdict is right. |
+| 12 | test-unit. | Its summary line matches `MINITEST_SUMMARY`, so the summary check is on, not the exit-code fallback. Scoring is right. |
+
+Each `error` verdict leaves the score's denominator, so the score stays honest, but real kills can drop out of it.
 
 For Ruby ≥ 3.4 with Minitest and a supported database, use [the daemon backend](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend) for safe parallelism. RSpec and other serial-only setups use `--rails` without `--daemon`.

@@ -63,8 +63,10 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
-    # The seed line Minitest prints before every run. Captures the seed.
-    MINITEST_SEED = /^Run options:.*--seed (\d+)/
+    # The seed line Minitest prints before every run ("Run options:"), or that
+    # minitest-reporters prints ("Started with run options", or "# Running tests with run options"
+    # for its DefaultReporter). Captures the seed.
+    MINITEST_SEED = /^(?:Run options:|Started with run options|# Running tests with run options).*--seed (\d+)/
     # The seed line RSpec prints when it shuffles the tests. Captures the seed.
     RSPEC_SEED = /^Randomized with seed (\d+)/
     # A Minitest seed given on the command or in TESTOPTS (`SEED=N`, `--seed N`
@@ -74,6 +76,9 @@ module Mutineer
     # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
     # `--order rand:N`). RSpec ignores SEED.
     RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
+    # RSpec option files in the working directory. RSpec reads them as well,
+    # so a seed there is a fixed seed ({RSPEC_SEED_GIVEN} matches their lines).
+    RSPEC_OPTION_FILES = %w[.rspec .rspec-local].freeze
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -211,8 +216,10 @@ module Mutineer
         # plus its message means no test caught the mutant: in process, the
         # fork exits before that hook, and the mutant survives. Keyed on
         # SimpleCov's own message, so code under test that calls `exit 2`
-        # still scores error. Ceiling: with `SimpleCov.print_error_status =
-        # false` the gate prints nothing, and its exit scores error too.
+        # outside a running Minitest test still scores error (inside one, see
+        # {exited_during_tests?}, #342 limit 8). Ceiling (#342 limits 2, 9, 10): with
+        # `SimpleCov.print_error_status = false` the gate prints nothing, and its
+        # exit scores error too; two chained suites can score survived (#516).
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text)
           return Result.survived if tests_passed?(text)
@@ -245,7 +252,8 @@ module Mutineer
     # error, or an RSpec failure. An RSpec error outside examples alone (a spec
     # file that raised while loading) is not one, as in TestRunners::RSpec.
     # Any matching line counts, so a wrapper that runs two suites still kills.
-    # A test that prints a fake summary line to stdout fools this check.
+    # A test that prints a fake summary line to stdout fools this check
+    # (#342 limit 4, tracked in #515).
     #
     # @api private
     # @param text [String] output from {summary_text}.
@@ -261,9 +269,11 @@ module Mutineer
     # suite printed a summary still kills. A load crash ends before Minitest
     # prints {MINITEST_RUNNING}, so it stays false.
     # Only the default Minitest reporter prints that line: under RSpec or
-    # minitest-reporters, such an exit scores error, not killed. Ceiling: an
-    # exception that escapes Minitest.run itself (a reporter plugin bug) also
-    # reads as a kill here, where the in-process backend scores error.
+    # minitest-reporters, such an exit scores error, not killed. Ceiling (#342
+    # limits 1, 3, 8; #515): an exception that escapes Minitest.run itself (a
+    # reporter plugin bug) also reads as a kill here, where the in-process
+    # backend scores error. Minitest's `autorun` ends the process with status 1
+    # after any `exit` during a test, so `exit 0` and `exit 2` read as a kill too.
     #
     # @api private
     # @param text [String] output from {summary_text}.
@@ -301,13 +311,16 @@ module Mutineer
 
     # The runner and seed of a random test order the output shows, or nil.
     # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
-    # or the command sets one; for RSpec, SPEC_OPTS or the command does. RSpec
-    # `--order defined` prints no seed line. Each runner is checked on its
-    # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
-    # that the same command runs. Ceiling: a seed set in a wrapper script or
-    # `.rspec`, or Minitest's `test_order`, is not seen, so the warning still
-    # prints; a seed-like argument meant for a wrapper hides it (#338, limits
-    # tracked in #368).
+    # or the command sets one; for RSpec, SPEC_OPTS, `.rspec`, `.rspec-local`
+    # or the command does. RSpec `--order defined` prints no seed line. Each
+    # runner is checked on its own, so a seeded Minitest suite does not hide
+    # an unseeded RSpec suite that the same command runs. Mutineer only warns:
+    # it cannot know the seed flag of an arbitrary command, so it sets no seed.
+    # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
+    # `test_order`, a seed inside an inactive ERB branch of an option file, or an `--options FILE` that replaces `.rspec`, is not seen,
+    # so the warning still prints. A seed-like argument meant for a wrapper
+    # hides it. So does a seed in `.rspec` that RSpec does not use, because a
+    # later `--order rand` or an `--options FILE` overrides it (#338, #368, #522).
     #
     # @api private
     # @param command [String] the --test-command template.
@@ -321,7 +334,20 @@ module Mutineer
       end
 
       rspec = text[RSPEC_SEED, 1]
-      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"]].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"], *rspec_option_files].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+    end
+
+    # The text of the RSpec option files that exist in the working directory,
+    # without comment lines (RSpec ignores a line that starts with `#`).
+    #
+    # @api private
+    # @return [Array<String>]
+    def self.rspec_option_files
+      RSPEC_OPTION_FILES.filter_map do |f|
+        File.readlines(f, encoding: "BINARY").grep_v(/\A\s*#/).join if File.file?(f)
+      rescue SystemCallError
+        nil # unreadable: the check only decides on a warning, so count it as no seed
+      end
     end
 
     # Pre-flight: run the command once against the UNMUTATED tree. Green (exit 0)
