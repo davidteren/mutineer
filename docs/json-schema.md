@@ -189,7 +189,7 @@ Filter on `status` `"error"` for the errored mutants: their count equals `summar
 When the mutant's child raised (under `reload`, `redefine` or the daemon), `details` is one line:
 `Class: first non-blank line of the message`, or the class alone when the message is blank, at
 most 500 characters (a longer line is cut and ends in `...`). Example:
-`"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest database connection or
+`"ArgumentError: enum declared twice"` (schema `1.10`, #388). A Minitest or RSpec database connection or
 lock error gives `a test failed with a database error: Class: message`. An RSpec error outside
 examples gives
 `RSpec reported an error outside its examples, for example a spec file that raised while it loaded`.
@@ -201,8 +201,10 @@ A `--matrix` early end after a serial database error gives
 (schema `1.10`, #417). Other errors keep their fixed text, such as
 `child exited with status 2`, `daemon verdict: error` or `worker crashed: Class: message`.
 A daemon that died or did not reply in time gives `daemon crashed` or `daemon stopped answering`
-(schema `1.10`, #388). `--test-command` and the human/HTML errored lists still lack named causes
-(#417 items 5–6).
+(schema `1.10`, #388). A `--test-command` error adds the command's last non-blank output line:
+`<reason>; last output line: <line>`. That line is redacted and cut at 500 characters (#480).
+The HTML report lists each errored mutant with its `details`, and so does the human report under
+`--verbose` (#480).
 
 `details` is redacted. Redaction replaces the password of `DATABASE_URL` from the environment and from
 these dotenv files: `.env`, `.env.local`, `.env.development`, `.env.development.local`, `.env.test`,

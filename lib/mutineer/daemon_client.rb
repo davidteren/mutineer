@@ -56,10 +56,10 @@ module Mutineer
     # Variables the daemon never inherits, so a parent require cannot run in
     # the app (#100). A load path set in them is missing in the daemon (#491).
     LOAD_ENV = %w[RUBYOPT RUBYLIB].freeze
-    # A missing required file: a line that starts a `LoadError`, as a cause
-    # line, Minitest (`LoadError: cannot load ...`) and RSpec (`LoadError:`,
-    # then the message on the next line) print it.
-    MISSING_FILE_CAUSE = /^\s*LoadError:\s+cannot load such file/
+    # A missing required file: a `LoadError` at a line start or after `: `,
+    # as a cause line, a boot error, Minitest (`LoadError: cannot load ...`)
+    # and RSpec (`LoadError:`, then the message on the next line) print it.
+    MISSING_FILE_CAUSE = /(?:^\s*|: )LoadError:\s+cannot load such file/
     # A RUBYOPT that adds a load path: `-Itest`, `-I test`, `Itest` (the dash
     # is optional there), or `-wItest` after the flag-only switches.
     RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/

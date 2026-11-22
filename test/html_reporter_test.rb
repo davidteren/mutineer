@@ -222,6 +222,10 @@ class HtmlReporterTest < Minitest::Test
                     "Errored Mutants\n---------------\n  Pricing#total (#{FILE}:3) comparison abc123def456\n" \
                     "    RuntimeError: boom\n"
     refute_includes report.call(false), "Errored Mutants"
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.error("boom")]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "human", verbose: true)
+    assert_includes out.string, "  unknown method (no mutant location)\n    boom\n"
   end
 
   def test_no_matrix_section_without_the_flag

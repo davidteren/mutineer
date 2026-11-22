@@ -452,6 +452,15 @@ class DaemonBackendContractTest < Minitest::Test
         with_env(load_env) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
       end
       assert_match(/cannot load such file -- helpers \(the daemon does not pass RUBYLIB/, warned)
+
+      # A boot failure wraps the LoadError after its own class name.
+      _out, warned = capture_io do
+        with_env(load_env) do
+          Mutineer::DaemonBackend.send(:warn_coverage_fallback,
+                                       "Mutineer::DaemonBootError: boot failed: LoadError: cannot load such file -- x")
+        end
+      end
+      assert_includes warned, "does not pass RUBYLIB to the app"
     end
   end
 

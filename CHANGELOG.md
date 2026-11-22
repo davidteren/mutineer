@@ -6,23 +6,6 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
-
-- **A red clean check under `--rails` names the failing test and its error
-  (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
-  The clean check built its failure report on one, so under `--rails` the
-  "not green" message named the test file but no test, message or backtrace.
-  The report now comes from `Mutineer::MinitestFailureReport`, which that
-  plugin leaves in place. It applies to the per-file and the combined clean
-  check, in-process, `--boot` and `--daemon`.
-- **Every report names the cause of an errored mutant (#480).** A
-  `--test-command` mutant that scores error adds the command's last non-blank
-  output line to its `details`, redacted and cut at 500 characters. An RSpec
-  example that fails with a database error now writes the same cause line as
-  Minitest (#347). The HTML report has an "Errored mutants" section, and the
-  human report lists errored mutants under `--verbose`. Each entry has the
-  method, `file:line`, operator, id and cause.
-
 ### Changed
 
 - **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**
@@ -69,8 +52,24 @@ All notable changes to this project are documented here. The format is based on
 - **The `--daemon` coverage build and clean check name a dropped load path
   too (#500).** When the coverage build fails, or the clean check is red,
   with `LoadError: cannot load such file`, the message ends with the same
-  `RUBYOPT`/`RUBYLIB` note as a mutant (#491). Before this, those paths
-  printed the bare `LoadError`.
+  `RUBYOPT`/`RUBYLIB` note as a mutant (#491). So does a daemon that fails
+  to boot with that error. Before this, those paths printed the bare
+  `LoadError`. The daemon's own warning for one test file it could not
+  capture still has no note (#517).
+- **A red clean check under `--rails` names the failing test and its error
+  (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
+  The clean check built its failure report on one, so under `--rails` the
+  "not green" message named the test file but no test, message or backtrace.
+  The report now comes from `Mutineer::MinitestFailureReport`, which that
+  plugin leaves in place. It applies to the per-file and the combined clean
+  check, in-process, `--boot` and `--daemon`.
+- **Every report names the cause of an errored mutant (#480).** A
+  `--test-command` mutant that scores error adds the command's last non-blank
+  output line to its `details`, redacted and cut at 500 characters. An RSpec
+  example that fails with a database error now writes the same cause line as
+  Minitest (#347). The HTML report has an "Errored mutants" section, and the
+  human report lists errored mutants under `--verbose`. Each entry has the
+  method, `file:line`, operator, id and cause.
 
 ## [1.9.0] - 2026-11-16
 

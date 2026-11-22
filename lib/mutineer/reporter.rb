@@ -1410,8 +1410,8 @@ module Mutineer
       out.puts "Errored Mutants"
       out.puts "---------------"
       rows.each do |row|
-        out.puts "  #{printable(row[:subject] || 'unknown method')} (#{printable(errored_place(row))}) " \
-                 "#{row[:operator]} #{row[:id]}".rstrip
+        head = "#{printable(row[:subject] || 'unknown method')} (#{printable(errored_place(row))})"
+        out.puts "  #{[head, row[:operator], row[:id]].compact.join(' ')}"
         out.puts "    #{printable(row[:details] || ERRORED_NO_CAUSE)}"
       end
     end
