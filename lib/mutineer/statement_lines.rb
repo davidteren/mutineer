@@ -47,7 +47,8 @@ module Mutineer
     # The call's line can count without the block: `each` on an empty array
     # still counts the line. {JobPlan.ran_at_load?} does not treat that as the
     # block having run. It uses these lines only for a `define_method` or
-    # `define_singleton_method` call (#435).
+    # `define_singleton_method` call (#435). For a block of another call, the
+    # reach probe tells if a test ran it ({JobPlan.stored_block_verdict}, #493).
     #
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.
@@ -117,7 +118,9 @@ module Mutineer
 
     # Calls that store a block as a method. The block does not run when the
     # call does, so a mutant in the call or in the block is the original method
-    # once that call has run at load (#435).
+    # once that call has run at load (#435). Another call can store its block
+    # too, and the syntax does not say so. {enclosing_block_lines} gives the
+    # lines of such a call, and the reach probe gives the verdict (#493).
     STORED_METHOD_CALLS = %i[define_method define_singleton_method].freeze
 
     # Lines of the nearest {STORED_METHOD_CALLS} call that holds `offset`: the
@@ -139,7 +142,41 @@ module Mutineer
       end
       return [] unless call
 
-      statement = statement_at(def_node, call.location.start_offset, conditional: true)
+      call_statement_lines(def_node, source, call.location.start_offset)
+    end
+
+    # Lines of each statement that holds a block or a lambda literal around
+    # `offset`, with the line rule of {stored_method_lines}. Empty when no
+    # block or lambda in the method body holds `offset`. A statement that runs
+    # only sometimes (`validate { ... } if c`) gives no lines. That check is
+    # for the call that holds the block, not for the place of `offset` in the
+    # block. A line here says that the call ran. It does not say that the
+    # block ran, or that the call stored it (#493).
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the position.
+    # @return [Array<Integer>]
+    def self.enclosing_block_lines(def_node, source, offset)
+      return [] unless def_node&.body
+
+      blocks = (path_to(def_node.body, offset) || []).select do |node|
+        node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
+      end
+      blocks.flat_map { |block| call_statement_lines(def_node, source, block.location.start_offset) }.uniq
+    end
+
+    # Lines of the statement that holds the call at `offset`: its strict
+    # lines, or the line it shares with other code when strict mode drops
+    # every line. Empty when no statement holds `offset`, or when that
+    # statement runs only sometimes.
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the call.
+    # @return [Array<Integer>]
+    def self.call_statement_lines(def_node, source, offset)
+      statement = statement_at(def_node, offset, conditional: true)
       return [] unless statement
 
       location = statement.location
@@ -147,6 +184,7 @@ module Mutineer
       kept = strict_lines(source, location, lines.dup)
       kept.empty? ? lines : kept
     end
+    private_class_method :call_statement_lines
 
     # Whether the code at `offset` runs each time the method runs: it is in
     # the first statement of the body, not in a statement nested in it or in

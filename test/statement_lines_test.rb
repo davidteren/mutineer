@@ -359,4 +359,46 @@ class StatementLinesTest < Minitest::Test
       assert_equal expected, actual, "#{source} at #{snippet}"
     end
   end
+
+  # #493: the lines of each call that holds a block or lambda around the
+  # offset. The reach probe is added only for a mutant in such a block.
+  def test_enclosing_block_lines_are_the_lines_of_each_call_that_holds_the_block
+    macro = <<~'RUBY'
+      def self.language_field
+        normalizers[:language] = ->(value) { value.strip }
+        limits[:language] = 35
+        checks << proc do |record|
+          record.errors << :invalid unless record.language == record.language.downcase
+        end
+        validate { |r| r.ok? } if strict
+        fields.each do |field|
+          rules.push(proc { field.size })
+        end
+      end
+    RUBY
+    {
+      "xs.each { |x| keep(x) }" => ["keep", [2]],                # a one-line block on a call
+      macro => ["value.strip", [2]]                              # a lambda literal as an argument
+    }.each do |source, (snippet, expected)|
+      source = "def f(xs)\n  #{source}\nend\n" unless source.start_with?("def")
+      assert_equal expected, block_lines(source, snippet), snippet
+    end
+    assert_equal [4, 5, 6], block_lines(macro, "downcase"), "a multi-line do ... end block"
+    assert_equal [8, 9, 10], block_lines(macro, "field.size"), "a block in a block: both statements, line 9 once"
+    assert_empty block_lines(macro, "35"), "a mutant outside any block"
+    assert_empty block_lines(macro, "r.ok?"), "the call runs only sometimes"
+    # The check is for the call that holds the block, not for the mutant's
+    # place inside the block.
+    assert_equal [4, 5, 6], block_lines(macro, ":invalid"), "the body of a modifier inside the block"
+    assert_empty Mutineer::StatementLines.enclosing_block_lines(nil, macro, 0)
+
+    # The Rails form of #493: the lambda is an argument of a macro call.
+    rails = "def self.language_field\n  normalizes :language, with: ->(value) { value.strip }\nend\n"
+    assert_equal [2], block_lines(rails, "value.strip")
+  end
+
+  def block_lines(source, snippet)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    Mutineer::StatementLines.enclosing_block_lines(def_node, source, source.index(snippet))
+  end
 end

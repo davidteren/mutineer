@@ -348,7 +348,7 @@ module Mutineer
     # @param source [String] the original source text.
     # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
     #   The placed def records a run of the mutated expression.
-    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @param reach_key [String, nil] thread-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
     def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
@@ -602,7 +602,8 @@ module Mutineer
     # as `Greeter` calling `greets`, so a mutant in that call or in the stored
     # block is the original method when the call's line ran at load (#435).
     # The line of `each` on an empty array counts without the block, so a block
-    # that is not one of those calls stays scored (#286). Re-running the
+    # that is not one of those calls is not `ran_at_load` here (#286). The
+    # reach probe decides it ({stored_block_verdict}, #493). Re-running the
     # caller's class body is #389. `CI` is not read here. Rails eager load,
     # which the test env turns on when `CI` is set, is what puts the line in
     # the load set.
@@ -636,6 +637,65 @@ module Mutineer
       return true if ran.call(StatementLines.for(subject.def_node, source, mutation.start_offset))
 
       ran.call(StatementLines.stored_method_lines(subject.def_node, source, mutation.start_offset))
+    end
+
+    # Whether the reach probe decides the survivor verdict of this mutant
+    # (#493): its selection is `:run`, and a block or lambda literal around it
+    # sits in a statement whose line ran at load. A class macro stores such a
+    # block when the caller's class loads, before the mutant is applied. The
+    # tests then run the stored original, and the mutant passes them all. The
+    # syntax does not tell a stored block from one that runs at once (`each`),
+    # so this is only a reason to add the probe. {stored_block_verdict} gives
+    # the verdict.
+    #
+    # False for a `:maybe` selection: {selection_verdict} decides it (#254,
+    # #345). False for a body on the `def` line: that line counts when the
+    # method is defined (#389). False for a def that reload places from a
+    # concern's hook block ({hook_mutant}): the probe is only in the placed
+    # def, and a class that includes the concern during a test gets its def
+    # from the file text, which has no probe. A test can run that def with
+    # no word from the probe, so the probe is not evidence there (#507).
+    #
+    # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
+    #   answer, or a falsy value when no selection ran.
+    # @param source_file [String] the mutated source file path.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject (for its method body range).
+    # @param source [String] the original source text.
+    # @param coverage_map [Mutineer::CoverageMap, nil] the coverage map.
+    # @return [Boolean]
+    def self.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
+      loc = subject&.body_loc
+      return false unless kind == :run && loc && coverage_map && !subject.reload_hook_call
+
+      def_line = subject.def_node.location.start_line
+      return false if loc.end_line == def_line
+
+      body = (loc.start_line..loc.end_line)
+      StatementLines.enclosing_block_lines(subject.def_node, source, mutation.start_offset).any? do |l|
+        l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l)
+      end
+    end
+
+    # A survivor in a block whose call ran at load becomes `ran_at_load` when
+    # the probe was in the mutant's code and did not see the mutated
+    # expression return during a test (#493): the tests ran a copy of the
+    # block that the load stored, or did not run the mutated code. Any other
+    # result comes back unchanged. A `--matrix` row is kept. The callers run
+    # this after {load_verdict} and {selection_verdict}.
+    #
+    # @param result [Mutineer::Result] the mutant's verdict.
+    # @param candidate [Boolean] the answer of {stored_block_candidate?}.
+    # @param probed [Boolean] true when the code the child loaded holds a
+    #   probe that can speak ({ReachProbe.conclusive?}). Without one there is
+    #   no evidence, so the verdict stays.
+    # @param reached [Boolean] true when the mutated expression returned
+    #   during a test ({ReachProbe.reached?}).
+    # @return [Mutineer::Result]
+    def self.stored_block_verdict(result, candidate:, probed:, reached:)
+      return result unless candidate && probed && result.survived? && !reached
+
+      result.with(status: :ran_at_load)
     end
 
     # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});

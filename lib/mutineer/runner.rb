@@ -487,9 +487,26 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
-      # A :maybe mutant records whether the mutated expression ran (#345).
-      sentinel = kind == :maybe ? ReachProbe.sentinel : nil
+      # A :maybe mutant records whether the mutated expression ran (#345). So
+      # does a mutant in a block whose call ran at load (#493).
+      candidate = JobPlan.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
+      sentinel = kind == :maybe || candidate ? ReachProbe.sentinel : nil
       reach_key = sentinel && ReachProbe.reach_key
+      # The reload text is built once, before the fork, so the parent checks
+      # the text that the child loads. It is the same text the daemon loads: a
+      # hook-block def placed (#297), a call superclass kept (#492). Under
+      # redefine the child builds the def text itself
+      # ({Isolation.apply_surgical}), from the same values.
+      unless strategy == "redefine"
+        reload_code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                                                        reach_key: reach_key)
+      end
+      # No conclusive probe in that text means no evidence, so the verdict
+      # stays. A candidate is never a hook-block def.
+      probed = candidate && ReachProbe.conclusive?(
+        reload_code || Isolation.mutated_def(mutation, subject, source, reach_path: sentinel.path,
+                                                                        reach_key: reach_key), reach_key
+      )
 
       begin
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -506,11 +523,7 @@ module Mutineer
               Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
             end
           else
-            # The same text the daemon loads: a hook-block def placed (#297), a
-            # call superclass kept (#492).
-            code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source, reach_path: sentinel&.path,
-                                                                                    reach_key: reach_key)
-            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
+            Isolation.apply_whole_file(reload_code, source_file, hook_def: hook_def)
           end
           # A reload can run the expression while the file loads. That is not
           # a test reaching it (#345).
@@ -526,7 +539,9 @@ module Mutineer
         seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         result = relative_kills(result, coverage_map.project_root)
         result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-        JobPlan.selection_verdict(kind, result, reached: ReachProbe.reached?(sentinel)).with(seconds: seconds)
+        reached = ReachProbe.reached?(sentinel)
+        result = JobPlan.selection_verdict(kind, result, reached: reached)
+        JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached).with(seconds: seconds)
       ensure
         ReachProbe.close_sentinel(sentinel)
       end

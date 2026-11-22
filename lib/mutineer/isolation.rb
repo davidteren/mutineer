@@ -278,10 +278,11 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to apply.
     # @param subject [Mutineer::Subject] subject being mutated.
     # @param source [String] full source text.
-    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    # @param reach_path [String, nil] sentinel for a mutant with a reach
+    #   probe (#345, #493).
     #   The loaded def records a run of the mutated expression. Nil leaves
     #   the def as the mutation alone.
-    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @param reach_key [String, nil] thread-local key for `reach_path`.
     # @return [Object] whatever `load` returns.
     def self.apply_surgical(mutation, subject, source, reach_path: nil, reach_key: nil)
       # Rebuild the FULL namespace nesting textually so unqualified enclosing-
@@ -454,7 +455,8 @@ module Mutineer
 
     # The enclosing def with the mutation applied, wrapped in `class << self`
     # for a singleton def with no receiver (#20). Pure text: it reads no live
-    # module, so the tool process can call it too ({JobPlan.hook_mutant}).
+    # module, so the tool process can call it too ({JobPlan.hook_mutant},
+    # {Runner.run}).
     #
     # @api private
     # @param mutation [Mutineer::Mutation] mutation to apply.

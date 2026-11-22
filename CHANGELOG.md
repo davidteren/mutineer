@@ -59,6 +59,54 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
+  A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
+  A class that calls the macro while it loads keeps the original blocks.
+  A mutant inside such a block then passed every test, because no test ran the mutated code, and it counted as a survivor.
+  An in-process `redefine` run with a boot file loads the class of each method in the sources before the mutants, so lazy loading did not prevent this.
+  `reload` and `--daemon` gave the same false survivors when the class loaded at boot (Rails eager load).
+  The run now adds the reach probe of #345 to a mutant in a block or lambda literal whose call ran at load.
+  A survivor that the probe did not see return during a test is `ran_at_load`. A survivor that the probe saw stays `survived`.
+  A kill, an error and a timeout do not change. The rule holds for in-process `redefine`, in-process `reload` and `--daemon`.
+  `--test-command` does not use it: that backend runs the load again for each mutant.
+  On the reported shape (a macro with a lambda and a block, 17 mutants), 5 false survivors moved and the score went from 60.0 to 90.0.
+  Three runs on other code moved no mutant: this gem's own gate (3 files, 269 mutants), the checks of the bundled Rails app, and the Fizzy sample (63 mutants, `--daemon`).
+  In the first two, no mutant carried the new probe. The Fizzy counts and survivor ids equal the recorded sample.
+  The probe now stays inside a block or lambda literal. When it cannot, the mutant gets no probe and keeps its verdict.
+  An unreached survivor of #345 in that state is `no_coverage`, as is each unreached survivor of #345 with no probe. A kill, an error and a timeout keep their verdict.
+  Effects on a run after the upgrade:
+  `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
+  The moved mutants leave the denominator, so this move can raise a score and cannot lower it. A `--threshold` gate that failed on the score can pass.
+  When each scored mutant moves, the score is `null`. `--threshold` passes a `null` score when no mutant broke, so exit 1 can become exit 0.
+  With `--baseline` and no `--since`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
+  The completeness gate can go from pass to fail. `attempted` gets smaller with each moved survivor.
+  A `--threshold` run fails when more than 1 mutant and more than 10% of the attempted mutants have no verdict.
+  Example: 14 killed, 5 survived and 2 errored passes `--threshold 70`. With the 5 survivors as `ran_at_load` it fails, and the message gives the count of mutants with no verdict.
+  Limits, all in `docs/json-schema.md`:
+  a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
+  A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict, and so does a block whose call runs only sometimes (#507).
+  So does a mutant whose probe cannot speak (#507). That is a probed expression that holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit`, `exit!` or `abort`.
+  It is also an expression in the operand of `defined?`, which gets no probe.
+  When the macro and its caller are both sources, in-process `redefine` does not kill a mutant that only the stored block runs. `--daemon` with lazy loading can (#507).
+  A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
+- **The reach probe keeps the value of `return`, `next`, `break`, `yield` and a command call (#345, found in the review of #493).**
+  For a mutated expression that spans lines, the probe text started on a new line.
+  After `return`, `next`, `break`, `yield` or a command call with no parentheses, that line break ended the statement.
+  The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
+  Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
+  The probe text now starts on the line of the expression.
+  Ten more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
+  A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
+  The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
+  A wrapper in place of an assignment target (`x.name, y = 1, 2`) stopped the setter. The probe now goes around the whole assignment.
+  In the operand of `defined?`, a wrapper changed the answer. The probe is no longer placed there.
+  A test with a strict `File` double, or an RSpec mock of `File.write`, saw the probe's write fail and scored a kill. The probe now writes with `IO.sysopen` and ignores any error from that write.
+  A flip-flop inside `&&` or `||` in a condition became a range inside the wrapper. The probe now goes around the whole condition.
+  The probe kept its "already written" flag per fiber. A run at load on an enumerator fiber hid a later test run on that fiber. The flag is now per thread, so the clear after load reaches it.
+  In a condition, a wrapper made a flip-flop a range and a bare regexp a plain value. Around the body of `begin ... end until c`, it stopped the first run before the check. The probe now goes around the whole statement.
+  Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
+  A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
+  A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
 - **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
   `class X < Data.define(:a)` builds a new superclass each time Ruby runs it.
   `--strategy reload` and `--daemon` load the mutant file over the class, so Ruby raised `TypeError: superclass mismatch` and every mutant of the file scored `error`.
