@@ -523,7 +523,8 @@ module Mutineer
 
     # The boot config the daemon needs to boot the app once: where to boot, the
     # --require files to load after it, the test load roots (so
-    # `require "test_helper"` resolves in every fork), framework, whether this
+    # `require "test_helper"` resolves in every fork) and the `load_path`
+    # directories, framework, whether this
     # is Rails, and --verbose for the coverage build's capture warnings.
     #
     # @param config [Mutineer::Config] the run config.
@@ -541,7 +542,10 @@ module Mutineer
         # Required after the boot, as in-process (Runner.execute); also part of
         # the coverage digest.
         require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
-        load_paths: JobPlan.test_load_roots(abs_tests),
+        # DaemonServer#boot! unshifts one entry at a time, so the last is
+        # searched first: the test-helper roots, then the load_path
+        # directories in the written order (#491), as in-process.
+        load_paths: JobPlan.extra_load_dirs(config).reverse + JobPlan.test_load_roots(abs_tests),
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,

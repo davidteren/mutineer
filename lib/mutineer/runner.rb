@@ -166,6 +166,12 @@ module Mutineer
       # #495: phase seconds for the report; nil for a phase the run skips.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
       boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # The load_path directories go first, so the boot file, the sources and
+      # the require: files can load from them (#491). One splat keeps the
+      # written order. No include? filter, as in the capture subprocess and
+      # the daemon, so every place gets the same order. The test-helper roots
+      # unshifted below then come first, as in the daemon.
+      $LOAD_PATH.unshift(*JobPlan.extra_load_dirs(config))
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -217,7 +223,7 @@ module Mutineer
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
-          load_paths: config.load_paths, framework: config.framework,
+          load_paths: config.load_paths + config.extra_load_paths, framework: config.framework,
           boot_path: File.expand_path(config.boot, config.project_root),
           require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
@@ -237,7 +243,7 @@ module Mutineer
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
-          load_paths: config.load_paths + rel_roots, framework: config.framework,
+          load_paths: config.load_paths + rel_roots + config.extra_load_paths, framework: config.framework,
           require_paths: config.require_paths, verbose: config.verbose,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load

@@ -48,6 +48,11 @@ These keys are accepted in `.mutineer.yml` in 1.8.0:
 `test_command`, `daemon`, `timeout`, `capture_timeout`, `cache_dir`,
 `allow_empty`, `shared_databases`.
 
+`load_path` is new in 1.10.0.
+Its flag is `--load-path DIR`, with the short form `-I DIR`.
+`--test-command` ignores it.
+An older version warns that the key is unknown and ignores it.
+
 `shared_databases` is new in 1.8.0.
 It is a file key with no flag.
 Parallel workers with it need Rails 7.1 or later.

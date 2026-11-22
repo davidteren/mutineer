@@ -1003,6 +1003,16 @@ module Mutineer
       end
     end
 
+    # The `load_path` directories (#491), absolute, in the order the user wrote
+    # them. Relative entries resolve against the project root. The runner,
+    # the daemon boot config and the CLI check all read this one list.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] absolute directories; [] when none is set.
+    def self.extra_load_dirs(config)
+      config.extra_load_paths.map { |dir| File.expand_path(dir, config.project_root) }
+    end
+
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
     # holding that helper, plus the file's own dir as a fallback.

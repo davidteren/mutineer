@@ -120,6 +120,49 @@ class ConfigTest < Minitest::Test
     assert_includes err.message, ".mutineer.yml: cache_dir must be a directory, not blank"
   end
 
+  # #491: load_path is a directory or a list of directories. A blank entry
+  # and a value of any other shape are usage errors, never a guessed path.
+  def test_parse_load_path_shapes
+    assert_equal %w[test/support], Config.parse(:extra_load_paths, "test/support", file: ".mutineer.yml")
+    assert_equal %w[a /abs/b], Config.parse(:extra_load_paths, %w[a /abs/b], file: ".mutineer.yml")
+    assert_equal [], Config.parse(:extra_load_paths, [], file: ".mutineer.yml"), "load_path: [] means no directory"
+    assert_equal %w[x], Config.parse(:extra_load_paths, "x")
+
+    err = assert_raises(Mutineer::ConfigError) { Config.parse(:extra_load_paths, "") }
+    assert_equal '--load-path must name a directory, not blank (got: "")', err.message
+    { nil => "nil", [""] => '[""]', ["a", nil] => '["a", nil]', " " => '" "' }.each do |value, shown|
+      err = assert_raises(Mutineer::ConfigError) { Config.parse(:extra_load_paths, value, file: ".mutineer.yml") }
+      assert_equal ".mutineer.yml: load_path must name a directory, not blank (got: #{shown})", err.message
+    end
+    [true, false, 1, { "a" => "b" }, [%w[a b]], [1]].each do |value|
+      err = assert_raises(Mutineer::ConfigError, value.inspect) do
+        Config.parse(:extra_load_paths, value, file: ".mutineer.yml")
+      end
+      assert_equal ".mutineer.yml: load_path must be a directory or a list of directories (got: #{value.inspect})",
+                   err.message
+    end
+  end
+
+  def test_load_path_file_key_command_line_replaces_and_origin
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, ".mutineer.yml")
+      File.write(path, "load_path:\n  - test/support\n  - shared\n")
+      file_hash = Config.from_file(path)
+      assert_equal({ extra_load_paths: %w[test/support shared] }, file_hash)
+
+      from_file = Config.resolve({}, file_hash)
+      assert_equal %w[test/support shared], from_file.extra_load_paths
+      assert_equal "load_path in .mutineer.yml", from_file.origin(:extra_load_paths)
+
+      typed = Config.resolve({ extra_load_paths: %w[other] }, file_hash)
+      assert_equal %w[other], typed.extra_load_paths, "the command line replaces the file's list"
+      assert_equal "--load-path", typed.origin(:extra_load_paths)
+      assert_equal %w[lib], typed.load_paths, "the code-only lib default is a separate field"
+    end
+    assert_equal [], Config.new.extra_load_paths
+    assert_includes Mutineer::KNOWN_KEYS, "load_path"
+  end
+
   def test_parse_rejects_a_blank_coverage_from
     assert_equal "capture/coverage.json", Config.parse(:coverage_from, "capture/coverage.json")
     err = assert_raises(Mutineer::ConfigError) { Config.parse(:coverage_from, " ") }
@@ -738,6 +781,7 @@ class ConfigTest < Minitest::Test
     capture_timeout: [300, 600],
     cache_dir: ["a", "b"],
     shared_databases: [%w[cable], %w[queue]],
+    extra_load_paths: [%w[test/support], %w[shared]],
     test_map: [[{ sources: ["a.rb"], tests: ["a_test.rb"] }],
                [{ sources: ["b.rb"], tests: ["b_test.rb"] }]]
   }.freeze

@@ -54,7 +54,8 @@ module Mutineer
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
     # Variables the daemon never inherits, so a parent require cannot run in
-    # the app (#100). A load path set in them is missing in the daemon (#491).
+    # the app (#100). A load path set in them is missing in the daemon; the
+    # load_path setting replaces it through the boot config (#491).
     LOAD_ENV = %w[RUBYOPT RUBYLIB].freeze
     # A missing required file: a `LoadError` at a line start or after `: `,
     # as a cause line, a boot error, Minitest (`LoadError: cannot load ...`)
@@ -67,8 +68,8 @@ module Mutineer
     # failed. CoverageMap::Capture#fail_test writes it. The stderr drain adds
     # the load note to the first such line (#517).
     COVERAGE_SKIPPED = "[mutineer] coverage skipped for "
-    # Published guide with the boot: workaround, for an installed gem's users.
-    LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#faster-parallel-safe-rails-the---daemon-backend"
+    # Published guide to the load_path setting, for an installed gem's users.
+    LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#extra-load-paths"
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
     #   load_paths, framework, rails, verbose (see {DaemonBackend.boot_config}).
@@ -282,8 +283,8 @@ module Mutineer
       end
       return cause if names.empty?
 
-      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if a load path was set there, " \
-        "add it in a boot: file that puts it on $LOAD_PATH and then loads the app (config/environment for Rails), " \
+      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if the missing file is in a " \
+        "directory set there, add that directory with load_path: in .mutineer.yml or with -I DIR, " \
         "see #{LOAD_PATH_GUIDE})"
     end
 

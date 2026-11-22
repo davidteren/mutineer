@@ -133,6 +133,25 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #491: DaemonServer#boot! unshifts each load_paths entry in turn, so the
+  # list carries the load_path directories reversed, then the test roots.
+  # With no load_path the list is the test roots alone, as before.
+  def test_boot_config_puts_load_path_directories_behind_the_test_roots
+    Dir.mktmpdir("mutineer-contract") do |root|
+      test = File.join(root, "test/models/order_test.rb")
+      FileUtils.mkdir_p(File.dirname(test))
+      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+      roots = Mutineer::JobPlan.test_load_roots([test])
+
+      config = Mutineer::Config.new(sources: [], tests: [test], project_root: root, framework: "minitest")
+      assert_equal roots, Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+
+      config.extra_load_paths = ["a", "b", "/abs/c"]
+      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots],
+                   Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+    end
+  end
+
   # Only a parallel worker daemon gets the shared names: one worker shares
   # nothing, so its daemon runs no shared-database check.
   def test_boot_config_sends_shared_databases_only_to_parallel_workers
