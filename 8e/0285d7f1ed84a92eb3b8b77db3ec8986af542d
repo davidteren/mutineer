@@ -1,0 +1,19 @@
+docs/rails-setup.md
+  s_49c48c7d2890a0::t_a7dd06d38c4a88 315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e0285d7f1ed84a92eb3b8b77db3ec8986af542d",
+  "prompts": {},
+  "sessions": {
+    "s_49c48c7d2890a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4b7a35f-e2e1-40f8-86a5-a214d77c36bb",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
