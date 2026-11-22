@@ -197,6 +197,22 @@ class ExternalBackendTest < Minitest::Test
     refute_includes details, "not at the start of a line"
   end
 
+  # #515: after a SimpleCov gate, a failing summary away from the line start
+  # is no survivor proof: a chain of a plain suite and a prefixed one.
+  def test_line_mode_does_not_score_a_moved_failing_summary_survived_after_the_gate
+    output = "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips\n" \
+             "app | 1 runs, 1 assertions, 1 failures, 0 errors, 0 skips\n#{GATE}"
+    with_script(%(STDOUT.write #{output.dump}\nexit 2\n)) do |path|
+      cmd = "#{RUBY} #{path} %{files}"
+      [1, 2].each do |clean|
+        result = Backend.run(cmd, ["x"], timeout: 30, check_summary: :line, clean_summaries: clean)
+        assert_predicate result, :error?, "clean #{clean}"
+        assert_includes result.details, "exited 2 and a failing summary is in its output, but not at the start of a line"
+      end
+      assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true, clean_summaries: 1), :killed?
+    end
+  end
+
   # A progress bar that redraws its line ends it with "\r", and Windows ends
   # each line with "\r\n". Both are a line start.
   def test_line_mode_counts_a_summary_after_a_carriage_return
@@ -429,22 +445,20 @@ class ExternalBackendTest < Minitest::Test
 
   # The real output and exit status of a Minitest or RSpec run. The child
   # keeps this test's bundle, so a Minitest 6 run reads Minitest 6. One
-  # test's name holds summary-like text, and that test prints such text.
+  # test's name holds failing-summary-like text. Minitest -v and RSpec
+  # documentation format print that name away from a line start.
   def real_runner_output(format, fail:)
     Dir.mktmpdir("mutineer-real-runner") do |dir|
       File.write(File.join(dir, "fake_test.rb"), <<~TEST)
         require "minitest/autorun"
         class FakeSummaryTest < Minitest::Test
-          define_method("test_9 runs, 9 assertions, 1 failures, 0 errors, 0 skips") do
-            print "3 runs, 3 assertions, 1 failures, 0 errors, 0 skips"
-            assert true
-          end
+          define_method("test_9 runs, 9 assertions, 1 failures, 0 errors, 0 skips") { assert true }
           def test_real = assert(ENV["MUTINEER_FAKE_FAIL"].nil?)
         end
       TEST
       File.write(File.join(dir, "fake_spec.rb"), <<~SPEC)
         RSpec.describe "suite" do
-          it("reports 2 examples, 1 failure") { print "4 examples, 1 failure"; expect(1).to eq(1) }
+          it("reports 2 examples, 1 failure") { expect(1).to eq(1) }
           it("real") { expect(ENV["MUTINEER_FAKE_FAIL"]).to be_nil }
         end
       SPEC
@@ -464,10 +478,16 @@ class ExternalBackendTest < Minitest::Test
 
   # #515, R4: the default reporters print their summary at a line start, so
   # a passing run picks :line and a failing run still scores killed under it.
+  # The passing run has exactly one line-start summary, the real one, and in
+  # the formats that print test names the failing-like name does not count.
   def test_real_runner_summaries_start_a_line
     %i[minitest minitest_verbose progress documentation].each do |format|
       out, code = real_runner_output(format, fail: false)
       assert_equal 0, code, out
+      text = Backend.summary_text(out)
+      assert_equal 1, Backend.summary_count(text, line: true), "#{format}: #{out}"
+      refute Backend.failure_reported?(text, line: true), "#{format}: #{out}"
+      assert Backend.failure_reported?(text), "#{format}: #{out}" if %i[minitest_verbose documentation].include?(format)
       with_script(%(STDOUT.write #{out.dump}\nexit #{code}\n)) do |path|
         _elapsed, mode = Backend.smoke_check!("#{RUBY} #{path} %{files}", ["x"], timeout: 30)
         assert_equal :line, mode, "#{format}: #{out}"

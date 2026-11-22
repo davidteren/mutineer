@@ -247,10 +247,14 @@ module Mutineer
         # could kill the mutant (#516). Estimate: below 1 in 100 --test-command
         # setups, unmeasured. Ceiling (#342 limits 2, 9, 10, tracked in #549):
         # with `SimpleCov.print_error_status = false` the gate prints nothing,
-        # and its exit scores error too; a clean run with no summary line, or a
-        # chain whose prefixed suite runs second, keeps the 1.9.0 rule.
+        # and its exit scores error too; a clean run with no summary line keeps
+        # the 1.9.0 rule, and so does a gate that stops the plain first suite
+        # of a chain whose second suite is prefixed.
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text, line: line)
+          # A failing test whose summary is off the line start is no proof of
+          # a survivor: no verdict, with the same reason as on exit 1 (#515).
+          return moved_summary_error(code, output) if line && failure_reported?(text)
 
           if tests_passed?(text, line: line)
             printed = summary_count(text, line: line)
@@ -272,11 +276,7 @@ module Mutineer
           # A kill whose failing summary a wrapper or interleaved parallel
           # output moved off the line start lands here (#549). Estimate: below
           # 1 in 100 --test-command setups, unmeasured. The reason names it.
-          if line && failure_reported?(text)
-            return error_with_output("test-command exited 1 and a failing summary is in its output, but not at the " \
-                                     "start of a line, where the clean run printed its summary (a wrapper or a " \
-                                     "parallel runner moved it; --verbose shows the output)", output)
-          end
+          return moved_summary_error(code, output) if line && failure_reported?(text)
 
           return error_with_output("test-command exited 1 but its output shows no failing test " \
                                    "(the suite or the mutant crashed before tests ran; --verbose shows the output)", output)
@@ -299,6 +299,19 @@ module Mutineer
       text = Redaction.text(summary_text(output).force_encoding(Encoding::UTF_8).scrub)
       last = text.lines("\n").map(&:strip).reject(&:empty?).last
       Result.error(last ? "#{message}; last output line: #{ChildCause.clip(last)}" : message)
+    end
+
+    # The errored Result for a run in `:line` mode whose failing summary is
+    # in its output, but only away from the start of a line (#515).
+    #
+    # @api private
+    # @param code [Integer] the command's exit code.
+    # @param output [String] captured child stdout+stderr.
+    # @return [Mutineer::Result]
+    def self.moved_summary_error(code, output)
+      error_with_output("test-command exited #{code} and a failing summary is in its output, but not at the " \
+                        "start of a line, where the clean run printed its summary (a wrapper or a " \
+                        "parallel runner moved it; --verbose shows the output)", output)
     end
 
     # The Minitest and RSpec summary patterns, at the start of a line when
@@ -354,9 +367,11 @@ module Mutineer
     # With +line+, a summary counts only at the start of a line, so a fake
     # summary in a Minitest `-v` test name, after a progress dot, or in an
     # indented RSpec example name no longer reads as a failing test (#342
-    # limit 4, #515). Ceiling (#549): a test that prints a whole summary line
-    # at a line start, or an RSpec top-level group with such a name, still
-    # fools it; and a wrapper that prefixes every line keeps matching at any
+    # limit 4, #515). Ceiling (#549): summary-like text that a test prints at
+    # a line start still fools it, such as the first output after
+    # `# Running:` or at the start of RSpec output, even with no newline; so
+    # does an RSpec top-level group with such a name; and a wrapper that
+    # prefixes every line keeps matching at any
     # position (mode `true`), so limit 4 stays whole there. Estimate: the fix
     # changes a verdict in far below 1 project in 1,000.
     #
