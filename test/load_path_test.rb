@@ -41,6 +41,9 @@ class LoadPathTest < Minitest::Test
       write(proj, "test/helper_probe.rb", "\n")
       write(proj, "x1/helper_probe.rb", "\n")
       EXTRA.each { |x| write(proj, "#{x}/shared_name.rb", "\n") }
+      # In lib and in x1: with no boot file, lib comes first, so lib's copy wins.
+      write(proj, "lib/lib_probe.rb", "\n")
+      write(proj, "x1/lib_probe.rb", "\n")
       write(proj, "x2/boot_probe.rb", "\n")
       write(proj, "test/load_path_calc_#{tag}_test.rb", <<~RUBY)
         require "test_helper"
@@ -48,11 +51,12 @@ class LoadPathTest < Minitest::Test
         require "helper_probe"
         require "json"
         require_relative "../lib/load_path_calc_#{tag}"
+        require "lib_probe"
         found = ->(name) { $LOADED_FEATURES.grep(%r{/\#{name}\\.rb\\z}).first }
         File.open(#{log.dump}, "a") do |f|
           f.puts JSON.generate("kind" => (defined?(Mutineer::Runner) ? "fork" : "subprocess"),
                                "path" => $LOAD_PATH, "shared" => found.("shared_name"),
-                               "helper" => found.("helper_probe"))
+                               "helper" => found.("helper_probe"), "lib" => found.("lib_probe"))
         end
         class LoadPathCalc#{tag}Test < Minitest::Test
           def test_add
@@ -89,8 +93,24 @@ class LoadPathTest < Minitest::Test
   end
 
   def test_order_in_process_without_a_boot_file
-    with_project("NoBoot") do |proj, log, tag|
-      aggregate, = Mutineer::Runner.execute(config_for(proj, tag, extra: %w[x1 x2 x3]))
+    assert_order_without_a_boot_file("NoBoot")
+  end
+
+  # Bundler or RUBYOPT can put lib and the test root on $LOAD_PATH before the
+  # run. They still come before the load_path directories in the parent, as
+  # in the capture subprocess, which gets them from RUBYLIB here.
+  def test_order_without_a_boot_file_when_lib_and_the_test_root_are_on_the_path
+    assert_order_without_a_boot_file("Preset", preset: %w[lib test])
+  end
+
+  def assert_order_without_a_boot_file(tag, preset: [])
+    with_project(tag) do |proj, log, _tag|
+      dirs = preset.map { |d| File.join(proj, d) }
+      $LOAD_PATH.push(*dirs)
+      aggregate = nil
+      with_env("RUBYLIB" => dirs.empty? ? ENV.fetch("RUBYLIB", nil) : dirs.join(File::PATH_SEPARATOR)) do
+        aggregate, = Mutineer::Runner.execute(config_for(proj, tag, extra: %w[x1 x2 x3]))
+      end
 
       assert_operator aggregate.killed_count, :>, 0
       kinds = lines(log).map { |l| l["kind"] }.uniq.sort
@@ -100,12 +120,23 @@ class LoadPathTest < Minitest::Test
         assert_order(line["path"], order, line["kind"])
         assert_equal File.join(proj, "x1/shared_name.rb"), line["shared"], line["kind"]
         assert_equal File.join(proj, "test/helper_probe.rb"), line["helper"], line["kind"]
+        assert_equal File.join(proj, "lib/lib_probe.rb"), line["lib"], line["kind"]
       end
     end
   end
 
   def test_order_in_process_with_a_boot_file
-    with_project("Boot") do |proj, log, tag|
+    assert_order_with_a_boot_file("Boot")
+  end
+
+  # A test root already on $LOAD_PATH (RUBYOPT=-Itest) still comes first.
+  def test_order_with_a_boot_file_when_the_test_root_is_on_the_path
+    assert_order_with_a_boot_file("BootPreset", preset: true)
+  end
+
+  def assert_order_with_a_boot_file(tag, preset: false)
+    with_project(tag) do |proj, log, _tag|
+      $LOAD_PATH.push(File.join(proj, "test")) if preset
       # The boot file loads from a load_path directory, so the directories
       # are on $LOAD_PATH before it.
       write(proj, "boot.rb", "require \"boot_probe\"\nrequire_relative \"lib/load_path_calc_#{tag}\"\n")
@@ -122,13 +153,20 @@ class LoadPathTest < Minitest::Test
   end
 
   # Without the setting the test cannot load shared_name, so no capture
-  # records coverage and the run stops before any mutant.
+  # records coverage and the run stops before any mutant. With a boot file
+  # and without one.
   def test_without_the_setting_the_capture_fails
-    with_project("Missing") do |proj, _log, tag|
-      _out, err = capture_subprocess_io do
-        assert_raises(Mutineer::SmokeCheckError) { Mutineer::Runner.execute(config_for(proj, tag, extra: [])) }
+    [nil, "boot.rb"].each do |boot|
+      tag = boot ? "MissingBoot" : "Missing"
+      with_project(tag) do |proj, _log, _tag|
+        write(proj, "boot.rb", "require_relative \"lib/load_path_calc_#{tag}\"\n")
+        _out, err = capture_subprocess_io do
+          assert_raises(Mutineer::SmokeCheckError) do
+            Mutineer::Runner.execute(config_for(proj, tag, extra: [], boot: boot))
+          end
+        end
+        assert_includes err, "coverage skipped for test/load_path_calc_#{tag}_test.rb", boot.inspect
       end
-      assert_includes err, "coverage skipped for test/load_path_calc_#{tag}_test.rb"
     end
   end
 

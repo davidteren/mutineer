@@ -1695,8 +1695,6 @@ class CliTest < Minitest::Test
     end
   end
 
-  # #8: --verbose is documented and both it and its --debug alias are accepted
-  # flags (not "invalid option") — a clean run still exits 0.
   # #491: every spelling of the flag reaches the config, and each entry must
   # be a directory. A dry run still checks, so a typo exits 2 before any work.
   def test_load_path_flag_forms_and_directory_check
@@ -1739,6 +1737,8 @@ class CliTest < Minitest::Test
     %w[$LOAD_PATH replaces --test-command].each { |word| assert_includes entry, word }
   end
 
+  # #8: --verbose is documented and both it and its --debug alias are accepted
+  # flags (not "invalid option") — a clean run still exits 0.
   def test_help_documents_verbose
     out, _, status = mutineer("--help")
     assert_equal 0, status.exitstatus

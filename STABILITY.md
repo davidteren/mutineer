@@ -50,7 +50,7 @@ These keys are accepted in `.mutineer.yml` in 1.8.0:
 
 `load_path` is new in 1.10.0.
 Its flag is `--load-path DIR`, with the short form `-I DIR`.
-`--test-command` ignores it.
+`--test-command` ignores it (#535).
 An older version warns that the key is unknown and ignores it.
 
 `shared_databases` is new in 1.8.0.

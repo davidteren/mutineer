@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format is based on
   A path that is not a directory exits 2 with `mutineer: not a directory: <path> (<origin>)`. A blank entry, or a value that is not a string or a list of strings, exits 2.
   `--test-command` ignores the setting and warns (#535). The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
   A run without the setting keeps its `$LOAD_PATH` and its coverage cache. A changed order of the entries does not rebuild the coverage cache (#536).
-  `--l` is now ambiguous (`--list-operators` or `--load-path`); `--li` still works.
+  `--l` and `-l` are now ambiguous (`--list-operators` or `--load-path`); `--li` still works.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
@@ -138,7 +138,7 @@ All notable changes to this project are documented here. The format is based on
   `--matrix` still runs every covering test in-process. `--matrix` with `--daemon` still exits 2.
 - **A `--daemon` mutant that cannot load a file now says why (#491).**
   The daemon does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing.
-  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and the `load_path` setting below, and links "Extra load paths" in `docs/rails-setup.md`.
+  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and the `load_path` setting above, and links "Extra load paths" in `docs/rails-setup.md`.
   The note names only the variable, never its value.
 - `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 - **The random-order warning of `--test-command` sees two more fixed seeds (#368).**

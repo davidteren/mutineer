@@ -170,8 +170,13 @@ module Mutineer
       # the require: files can load from them (#491). One splat keeps the
       # written order. No include? filter, as in the capture subprocess and
       # the daemon, so every place gets the same order. The test-helper roots
-      # unshifted below then come first, as in the daemon.
+      # (and lib) unshifted below then come first, as in the daemon.
       $LOAD_PATH.unshift(*JobPlan.extra_load_dirs(config))
+      # With load_path set, lib and the test roots go in front even when they
+      # are on $LOAD_PATH already (bundler, RUBYOPT), so they stay ahead of
+      # the load_path directories, as in the capture subprocess. Without it,
+      # the include? filter keeps the $LOAD_PATH of earlier versions.
+      refront = !config.extra_load_paths.empty?
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -216,7 +221,7 @@ module Mutineer
         # file's helper root here in the parent so loading them in the fork
         # children (both coverage capture and per-mutant) resolves.
         boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
-        JobPlan.test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+        JobPlan.test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) if refront || !$LOAD_PATH.include?(d) }
 
         # Boot mode now uses coverage selection too: capture each test's coverage
         # by forking the booted parent, then select covering tests per mutant.
@@ -237,7 +242,7 @@ module Mutineer
         # As in boot mode, and with lib first as `rake test` does.
         test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
         libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
-        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
+        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| !refront && $LOAD_PATH.include?(d) })
         # Relative, so the cache digest does not depend on the checkout path.
         rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(

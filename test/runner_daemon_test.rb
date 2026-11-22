@@ -149,7 +149,6 @@ class RunnerDaemonTest < Minitest::Test
     assert_equal({ killed: 1, no_coverage: 7 }, with_load.results.map(&:status).tally,
                  "the probe test covers and kills only the subtotal_cents mutant")
     refute_includes File.read(env_log), "extra_load_path", "the daemon still drops the user's RUBYOPT (#100)"
-
   end
 
   # AE2: the CLI with -I gives the same verdicts in-process and under
