@@ -1,0 +1,21 @@
+.expectation-fit/decisions/README.md
+  s_4a7781ab5727b8::t_0498df1d0531d1 34-36,45
+AGENTS.md
+  s_4a7781ab5727b8::t_0498df1d0531d1 347-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "454c6bbf773fe68fe4c3d171200411934f6c1279",
+  "prompts": {},
+  "sessions": {
+    "s_4a7781ab5727b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38f3ef70-f052-4138-b80f-524dcc81a47b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
