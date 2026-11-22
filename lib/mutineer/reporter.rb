@@ -869,8 +869,8 @@ module Mutineer
     # The diff is UTF-8, as JSON is, so `diff_encoding` names the source's
     # encoding when a consumer can transcode the hunk lines back to the file's
     # bytes (#510), and `diff_base64` holds the exact patch whenever the bytes
-    # of `diff` are not that patch (#518), unless the change holds a credential
-    # that redaction would hide (#540). Each caller sets `diff` itself, so
+    # of `diff` are not that patch (#518). Both are withheld when the change
+    # may hold a credential that redaction would hide ({#credential_free?}). Each caller sets `diff` itself, so
     # each list keeps its own key order.
     #
     # @api private
@@ -881,18 +881,34 @@ module Mutineer
       return row unless row[:diff]
 
       encoding = result_diff_encoding(result)
-      row[:diff_encoding] = encoding if encoding
+      patch = exact_patch(result)
       # #518: the exact bytes when the text is not the patch for the file.
       # pack("m0"), not the base64 library, which is a bundled gem since Ruby 3.4.
-      patch = exact_patch(result)
-      return row unless patch && patch.b != row[:diff].b
-      # Base64 would carry a credential past the stdout redaction that hides it
-      # in `diff`, so such a change gets no exact bytes. Check the bytes as
-      # UTF-8 too: a transcoded `diff` can hide what the bytes spell.
-      bytes_text = patch.dup.force_encoding(Encoding::UTF_8).scrub
-      clean = [row[:diff], bytes_text].all? { |text| Redaction.text(text) == text }
-      row[:diff_base64] = [patch].pack("m0") if clean
+      base64 = [patch].pack("m0") if patch && patch.b != row[:diff].b
+      return row unless encoding || base64
+      # Both keys give a consumer the file's bytes, past the stdout redaction
+      # that hides a credential in `diff`. Withhold both when in doubt (#540).
+      return row unless credential_free?(row[:diff], patch)
+
+      row[:diff_encoding] = encoding if encoding
+      row[:diff_base64] = base64 if base64
       row
+    end
+
+    # True when the change can be shown as bytes with no credential in it:
+    # redaction alters neither `diff` nor the patch bytes read as UTF-8, and,
+    # when a credential is configured, those bytes are valid UTF-8, so the
+    # check could read them. Fails closed (#540).
+    #
+    # @api private
+    # @param diff [String] the UTF-8 diff.
+    # @param patch [String] the exact byte patch.
+    # @return [Boolean]
+    def credential_free?(diff, patch)
+      bytes = patch.b.force_encoding(Encoding::UTF_8)
+      return false if !bytes.valid_encoding? && Redaction.source_urls(ENV, []).any?
+
+      [diff, bytes.scrub].all? { |text| Redaction.text(text) == text }
     end
 
     # The unified diff of one mutant, with no context lines.

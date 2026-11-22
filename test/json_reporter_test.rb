@@ -10,6 +10,20 @@ class JsonReporterTest < Minitest::Test
   SRC = "class Pricing\n  def total(price)\n    if price >= 100\n    end\n  end\nend\n"
   FILE = "pricing.rb"
 
+  # The encoded diff keys depend on configured credentials (#540), so each
+  # test starts with none and gets the caller's back after.
+  def setup
+    @saved_database_url = ENV.fetch("DATABASE_URL", nil)
+    @saved_extra_urls = Mutineer::Redaction.extra_urls
+    ENV.delete("DATABASE_URL")
+    Mutineer::Redaction.extra_urls = []
+  end
+
+  def teardown
+    @saved_database_url ? ENV["DATABASE_URL"] = @saved_database_url : ENV.delete("DATABASE_URL")
+    Mutineer::Redaction.extra_urls = @saved_extra_urls
+  end
+
   def mutation_at(token, replacement, operator)
     off = SRC.index(token)
     Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
@@ -222,7 +236,7 @@ class JsonReporterTest < Minitest::Test
     src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"caf\u00e9 s3cretpw\" : 0\nend\n"
     src = src.encode("ISO-8859-1").force_encoding("ISO-8859-1")
     _, row = survivor_row_for(src)
-    assert_equal "ISO-8859-1", row["diff_encoding"]
+    refute row.key?("diff_encoding")
     refute row.key?("diff_base64")
 
     # The bytes count too: a Latin-1 file that holds the UTF-8 bytes of the
@@ -230,6 +244,27 @@ class JsonReporterTest < Minitest::Test
     ENV["DATABASE_URL"] = "postgres://app:p\u00e4sswort9@db/prod"
     src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"p\u00e4sswort9\" : 0\nend\n".b.force_encoding("ISO-8859-1")
     _, row = survivor_row_for(src)
+    refute row.key?("diff_base64")
+    refute row.key?("diff_encoding"), "diff_encoding would let a consumer transcode the mojibake back (#540)"
+  ensure
+    saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
+  end
+
+  # Fail closed: bytes that are not valid UTF-8 cannot be checked against a
+  # configured credential, so both encoded keys stay out. With no credential
+  # configured they are present.
+  def test_no_encoded_keys_for_unreadable_bytes_when_a_credential_is_set
+    saved = ENV.fetch("DATABASE_URL", nil)
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"p\u00e4sswort9\" : 0\nend\n"
+    src = src.encode("ISO-8859-1").force_encoding("ISO-8859-1")
+    ENV.delete("DATABASE_URL")
+    _, row = survivor_row_for(src)
+    assert_equal "ISO-8859-1", row["diff_encoding"]
+    assert row.key?("diff_base64")
+
+    ENV["DATABASE_URL"] = "postgres://app:p\xE4sswort9@db/prod".b
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_encoding")
     refute row.key?("diff_base64")
   ensure
     saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
