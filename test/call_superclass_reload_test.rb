@@ -19,6 +19,14 @@ class CallSuperclassReloadTest < Minitest::Test
   #
   # @return [Hash{String => Array<String>}] each subject's sorted statuses.
   def run_strategy(strategy, sources:, test:)
+    doc = run_report(strategy, sources: sources, test: test)
+    assert_empty doc["details"], "#{strategy} errored"
+    doc["rows"]
+  end
+
+  # @return [Hash] the subjects' sorted statuses ("rows") and the distinct
+  #   details of the errored mutants ("details").
+  def run_report(strategy, sources:, test:)
     Dir.mktmpdir("mutineer-call-superclass") do |cache|
       script = <<~RUBY
         require "mutineer"
@@ -34,9 +42,7 @@ class CallSuperclassReloadTest < Minitest::Test
       RUBY
       out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script, chdir: ROOT)
       assert status.success?, "#{strategy} run failed: #{err}"
-      doc = JSON.parse(out.lines.last)
-      assert_empty doc["details"], "#{strategy} errored"
-      doc["rows"]
+      JSON.parse(out.lines.last)
     end
   end
 
@@ -93,11 +99,24 @@ class CallSuperclassReloadTest < Minitest::Test
     refute Mutineer::Parser.invalid?(rewritten)
   end
 
-  # #512: a superclass that sets a local of the file keeps its text, so a later
-  # line still reads the local. A local set inside a block of the superclass
-  # belongs to that block, so that superclass is still wrapped.
-  def test_a_superclass_that_sets_a_local_is_not_wrapped
-    %w[(base\ =\ Struct.new(:a)) (base\ ||=\ Struct.new(:a)) (base,\ =\ Struct.new(:a))].each do |superclass|
+  # #512: a plain local write in the superclass wraps only the written value,
+  # so the local is still set. Any other local write keeps the text as
+  # written, because the block would scope the local away from a later line.
+  def test_a_superclass_local_write_wraps_only_the_value
+    code = "class Q < (base = Struct.new(:a))\nend\nbase.new(1)\n"
+    assert_equal "class Q < (base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Q) " \
+                 "{ Struct.new(:a) })\nend\nbase.new(1)\n", Mutineer::JobPlan.keep_live_superclasses(code)
+    code = "class Q < base = Struct.new(:a)\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "< base = ::Mutineer::ReloadGuards.kept_superclass("
+    code = "class Q < (a = b = Struct.new(:a))\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "(a = b = ::Mutineer::ReloadGuards.kept_superclass("
+  end
+
+  # #512: these keep the superclass as written, so the file still errors,
+  # visibly, when its call builds a new class (#527).
+  def test_a_superclass_that_sets_a_local_another_way_is_not_wrapped
+    ["(base = Parent)", "(base ||= Struct.new(:a))", "(base, = Struct.new(:a))", "((base = Struct.new(:a)))",
+     "(tmp = 1; Struct.new(:a))"].each do |superclass|
       code = "class Q < #{superclass}\nend\nbase.new(1)\n"
       assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), superclass
     end
@@ -108,6 +127,87 @@ class CallSuperclassReloadTest < Minitest::Test
     assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
     code = "x = 0\nclass R < Struct.new(:a) { -> { x += 1 } }\nend\n"
     assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
+    code = "x = 0\nclass R < (b = Struct.new(:a) { x = 1 })\nend\n"
+    assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
+  end
+
+  # R16 of the #512 plan: an earlier line sets the variable and runs again on
+  # reload, so a kept parent would differ from what the variable then holds.
+  # A method call is still wrapped: nothing else holds its result.
+  def test_a_superclass_that_reads_a_variable_is_not_wrapped
+    %w[base @base @@base $base].each do |read|
+      code = "#{read} = Struct.new(:v)\nclass LocalRow < #{read}\nend\n"
+      assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), read
+    end
+    code = "class Q < base_class\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "kept_superclass(::Module.nesting.first, :Q) { base_class }"
+  end
+
+  # Test the rule, not the example: each superclass text loads, then its
+  # rewrite loads over it. A changed text reopens the class with no error, keeps
+  # its line count, and leaves each local it sets on the live superclass. An
+  # unchanged text is the same String.
+  SUPERCLASS_SHAPES = {
+    "(base = Struct.new(:a))" => %w[base],
+    "base = Struct.new(:a)" => %w[base],
+    "(a = b = Struct.new(:a))" => %w[a b],
+    "(base = Data.define(:a))" => %w[base],
+    "(base = Class.new(StandardError))" => %w[base],
+    "(base = Struct.new(:a) { def x = 1 })" => %w[base],
+    "(base = Struct.new(:a) { y = 1 })" => %w[base],
+    "base = (Struct.new(:a))" => %w[base],
+    "(base =\n  Struct.new(\n    :a\n  ))" => %w[base],
+    "Struct.new(:a)" => [],
+    "(Struct.new(:a))" => [],
+    "(base = String)" => nil,
+    "(base ||= Struct.new(:a))" => nil,
+    "(base, = Struct.new(:a))" => nil,
+    "((base = Struct.new(:a)))" => nil,
+    "(tmp = 1; Struct.new(:a))" => nil
+  }.freeze
+
+  def test_every_local_write_shape_loads_twice_or_stays_as_written
+    SUPERCLASS_SHAPES.each_with_index do |(superclass, locals), index|
+      name = "LocalShape#{index}"
+      code = "class #{name} < #{superclass}\nend\n"
+      rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+      if locals.nil?
+        assert_same code, rewritten, superclass
+        next
+      end
+      refute_equal code, rewritten, superclass
+      assert_equal code.lines.size, rewritten.lines.size, superclass
+      checks = locals.map { |local| "raise #{local.inspect} unless #{local}.equal?(#{name}.superclass)\n" }.join
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "original.rb"), code + checks)
+        File.write(File.join(dir, "rewritten.rb"), rewritten + checks)
+        script = "require 'mutineer/reload_guards'; first = nil\n" \
+                 "load #{File.join(dir, "original.rb").inspect}; first = #{name}\n" \
+                 "load #{File.join(dir, "rewritten.rb").inspect}\n" \
+                 "raise 'a new class' unless first.equal?(#{name})"
+        _out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script)
+        assert status.success?, "#{superclass}: #{err}"
+      end
+    end
+  end
+
+  # #512: AE1. The file sets a local in the superclass expression and reads
+  # it on a later line. Reload scores it like redefine.
+  def test_reload_scores_a_superclass_that_sets_a_local_like_redefine
+    reload = run_strategy("reload", sources: %w[local_superclass.rb], test: "local_superclass_test.rb")
+    redefine = run_strategy("redefine", sources: %w[local_superclass.rb], test: "local_superclass_test.rb")
+    assert_equal ["killed"], reload["Quad#four?"].uniq
+    assert_equal ["killed"], reload["Plain#five?"].uniq
+    assert_equal redefine, reload
+  end
+
+  # R16 of the #512 plan: AE9. A superclass that reads a variable is not
+  # wrapped, so the file errors visibly, as in 1.9.0, instead of giving the
+  # false verdicts of a kept parent.
+  def test_reload_errors_on_a_superclass_that_reads_a_variable
+    doc = run_report("reload", sources: %w[local_read_superclass.rb], test: "local_read_superclass_test.rb")
+    assert_equal ["error"], doc["rows"].values.flatten.uniq
+    assert(doc["details"].all? { |detail| detail.include?("superclass mismatch") }, doc["details"].inspect)
   end
 
   def test_the_rewrite_names_the_scope_each_class_statement_defines_in

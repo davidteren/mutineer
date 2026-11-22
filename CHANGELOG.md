@@ -107,13 +107,22 @@ All notable changes to this project are documented here. The format is based on
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
   A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
   A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
+- **Reload scores a class whose superclass sets a local variable, such as `class Q < (base = Struct.new(:a))` (#512).**
+  `--strategy reload` and `--daemon` now keep the live superclass and still set the local, to that same class, so a later line that reads it works.
+  Before, every mutant of such a file scored `error` with "superclass mismatch".
+  This covers a plain write (`base = ...`), alone or in one pair of parentheses, and a chain (`a = b = ...`).
+  A superclass that sets a local in another way (`||=`, multiple assignment, double parentheses, a write deeper in the expression) keeps its text and still errors, visibly (#527).
+  A superclass that is a bare variable read (`base = Struct.new(:a)`, then `class Q < base`) keeps its text too, so that file errors, as in 1.9.0 (#527).
+  The unreleased #492 change kept the old parent there, but the earlier line builds a new class on each load, so a mutant in that class's block survived falsely and a later read of the variable killed mutants falsely.
+  After the upgrade from 1.9.0, `summary.errored` can fall for a file with a superclass local write, and `killed` and `survived` can rise, so a score can change.
+  The shape is in 0 of 392 Ruby files of the Fizzy sample app.
 - **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
   `class X < Data.define(:a)` builds a new superclass each time Ruby runs it.
   `--strategy reload` and `--daemon` load the mutant file over the class, so Ruby raised `TypeError: superclass mismatch` and every mutant of the file scored `error`.
   Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
-  This covers every superclass that is not a constant and sets no local variable of the file, such as `Struct.new`, `Class.new` and `DelegateClass`.
+  This covers a superclass that is a call, such as `Struct.new`, `Class.new` and `DelegateClass`, and that sets no local variable of the file. A plain local write of such a call is covered too (#512).
   A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
-  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). A superclass expression that sets a local variable (`class Q < (base = Struct.new(:a))`) keeps its text, so that file still errors when the call builds a new class (#512).
+  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). The rare superclass shapes of #527 still error.
 - **A `--daemon` mutant run now stops at the first failing test (#490).**
   Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
   One failing test already kills the mutant, so the daemon now stops there too.

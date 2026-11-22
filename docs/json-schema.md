@@ -140,7 +140,8 @@ class statement's superclass call, such as `class X < Struct.new(:a) do ... end`
 already loaded, reload reopens it with the superclass it already has, so the same class object keeps its
 instances and subclasses, and the superclass call and its block do not run again. A class that is not loaded yet
 runs its superclass call as written. A `Data.define`, `Struct.new`, `Class.new` or other call
-superclass with no method in its block reloads as usual.
+superclass with no method in its block reloads as usual. So does a plain local write of such a call,
+`class Q < (base = Struct.new(:a))`: the local is set to the live superclass (#512).
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).

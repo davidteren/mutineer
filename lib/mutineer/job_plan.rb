@@ -363,8 +363,8 @@ module Mutineer
     # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
-    # Then each class statement with a call superclass keeps its live
-    # superclass ({keep_live_superclasses}, #492).
+    # Then each class statement with a superclass that is not a constant keeps
+    # its live superclass ({keep_live_superclasses}, #492, #512).
     #
     # @param mutated [String] the mutated source text.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -424,21 +424,24 @@ module Mutineer
     # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
     # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
     # file over its classes reopens each one instead of raising "superclass
-    # mismatch" (#492). The superclass text stays as it is, inside the block,
-    # and on its own lines, so line numbers do not move. A wrap puts one
-    # expression in a block, and a class inside a wrapped superclass is not
-    # wrapped again. A bad wrap is not checked here: the child's `load` raises
-    # `SyntaxError`, and the mutant scores `error`. Text with no such class
-    # comes back unchanged.
+    # mismatch" (#492). For a superclass that sets a local
+    # (`class Q < (base = Struct.new(:a))`), only the written value is wrapped,
+    # so the local is still set, to the live superclass (#512). See
+    # {kept_target} for the superclasses it leaves as written. The superclass
+    # text stays as it is, inside the block, and on its own lines, so line
+    # numbers do not move. A wrap puts one expression in a block, and a class
+    # inside a wrapped superclass is not wrapped again. A bad wrap is not
+    # checked here: the child's `load` raises `SyntaxError`, and the mutant
+    # scores `error`. Text with no such class comes back unchanged.
     #
     # @param code [String] the reload text.
     # @return [String]
     def self.keep_live_superclasses(code)
-      nodes = []
+      splices = []
       queue = [Parser.parse_string(code).value]
       while (node = queue.shift)
-        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
-          nodes << node
+        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
+          splices << [target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name]
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
@@ -446,29 +449,55 @@ module Mutineer
           queue.concat(node.compact_child_nodes)
         end
       end
-      return code if nodes.empty?
+      return code if splices.empty?
 
-      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
-        loc = node.superclass.location
+      splices.sort_by { |target, *| -target.location.start_offset }.reduce(code) do |text, (target, guard, scope, name)|
+        loc = target.location
         inner = text.byteslice(loc.start_offset, loc.length)
-        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
-                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        wrapped = "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { #{inner} }"
         text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
       end
     end
 
-    # A superclass the reload text wraps: one that is not a constant, and
-    # that sets no local variable of the file. The wrap is a block, so such a
-    # local would not be set for a later line (`class Q < (base = ...)`).
-    # Those keep the text as written, as before #492 (#512).
+    # The part of a class statement's superclass that the reload text wraps,
+    # or nil to keep the superclass as written. A constant is left alone: it
+    # names the same class on each load. A bare variable read is left alone
+    # too: an earlier line set it, that line runs again, and a kept parent
+    # would differ from what the variable then holds, a silent false verdict
+    # (#512). A plain local write (`base = v`, or `(base = v)` alone in
+    # parentheses, or a chain `a = b = v`) gives the target of its value, so
+    # the write stays outside the block and still sets the local (#512).
+    # Any other superclass that sets a local is left alone, because the block
+    # would scope that local away from a later line. Every other superclass is
+    # wrapped whole.
     #
     # @param node [Prism::Node, nil] a class statement's superclass.
-    # @return [Boolean]
-    def self.call_superclass?(node)
-      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+    # @return [Prism::Node, nil]
+    def self.kept_target(node)
+      return nil if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+      return nil if VARIABLE_READS.any? { |type| node.is_a?(type) }
 
-      !writes_local?(node)
+      write = plain_local_write(node)
+      return kept_target(write.value) if write
+
+      writes_local?(node) ? nil : node
     end
+
+    # The local write `node` is, alone or as the one statement of one pair of
+    # parentheses, or nil.
+    #
+    # @param node [Prism::Node]
+    # @return [Prism::LocalVariableWriteNode, nil]
+    def self.plain_local_write(node)
+      if node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
+        node = node.body.body.first
+      end
+      node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
+    end
+
+    # The Prism nodes that read a variable an earlier statement set (#512).
+    VARIABLE_READS = [Prism::LocalVariableReadNode, Prism::InstanceVariableReadNode,
+                      Prism::ClassVariableReadNode, Prism::GlobalVariableReadNode].freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only
