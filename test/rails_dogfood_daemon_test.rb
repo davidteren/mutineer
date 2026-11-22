@@ -231,10 +231,9 @@ class RailsDogfoodDaemonTest < Minitest::Test
     end
 
     assert_equal 0, aggregate.errored_count, err
-    assert_equal %w[LedgerRow#zero? LedgerRow::Line#single?],
-                 aggregate.results.map { |r| r.subject.qualified_name }.uniq.sort
-    assert_operator aggregate.killed_count, :>, 1
-    assert_equal 100.0, aggregate.mutation_score
+    statuses = aggregate.results.group_by { |r| r.subject.qualified_name }.transform_values { |rs| rs.map(&:status).uniq }
+    # Each shape reaches its test: every mutant of each subject is killed.
+    assert_equal({ "LedgerRow#zero?" => [:killed], "LedgerRow::Line#single?" => [:killed] }, statuses)
   end
 
   # #504: OwnChainNote's body calls `define_callbacks :save`, and its concern

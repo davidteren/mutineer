@@ -21,8 +21,17 @@ Suggested model and effort for the build: Opus 5.5, `high`. The plan settles the
 - **Stop and ask when:** a change alters a verdict, a score or an exit code for a file that R11 says must not change. Stop when `test/integration_test.rb` (the exact-survivor oracle) fails. Stop when a unit needs a change in `lib/mutineer/daemon_server.rb` or `lib/mutineer/daemon_client.rb`. Stop when the real ActiveSupport probe in U7 gives counts other than the table in probe P4.
 - **Execution profile:** one pull request, three commits, in this order: #512, #503, #504. Each commit holds its code, tests, fixtures, docs and CHANGELOG entry, and passes the local gate alone.
 - **Pull request:** title `fix: reload keeps a superclass local, a superclass constant and a defined callback chain (#512, #503, #504)`. Labels `bug`, `priority: low`, `risk: medium`, `v1.10.0`. Body in What, Why, How form with `Closes #512`, `Closes #503`, `Closes #504` (see Q1).
-- **Size:** medium. Five `lib/` files, about 120 new lines of code, the Rails fixture app, six test files, one docs page, `CHANGELOG.md`, one decision file.
+- **Size:** medium. Seven `lib/` files (three with comment-only edits), about 120 new lines of code, the Rails fixture app, six test files, one docs page, `CHANGELOG.md`, one decision file.
 - **Release and semver:** three fixes, patch class, in the v1.10.0 batch. No GitHub Action default changes. The builder does not tag, merge or publish.
+
+---
+
+## Build notes (pull request #541)
+
+The build changed two decisions of this plan after review. The code, `CHANGELOG.md` and `docs/json-schema.md` describe the result.
+
+- **KTD4 and U3 step 3 no longer hold as written.** A bare superclass (`< BaseRow` or `< ::BaseRow`) matches a bare write of that name in any scope. A path superclass (`< Billing::BaseRow`) matches only a path write spelled the same, and a path write's parent must be a constant path or `self` (`Project.kept_constant_write?`).
+- **KTD2 keeps fewer values.** Reload keeps a constant's value only when it is `Struct.new`, `Data.define` or `Class.new` with literal arguments (`Project.kept_builder?`). A builder method of the file or an argument that reads a constant is left as written, so the file errors visibly. Keeping those values gave silent false survivors (#533).
 
 ---
 

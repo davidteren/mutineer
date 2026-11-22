@@ -468,8 +468,8 @@ module Mutineer
     end
 
     # The splice that keeps a constant's value on reload (#503): a constant
-    # write that {Project.kept_constant_write?} matches to a superclass of the
-    # file, when {kept_target} of its value is not nil. `BaseRow = Struct.new(:v)` with
+    # write that {Project.kept_constant_write?} keeps, a class builder call
+    # with literal arguments. `BaseRow = Struct.new(:v)` with
     # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
     # same parent. A `||=` write keeps its text (#529).
     #
@@ -478,11 +478,13 @@ module Mutineer
     # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
     #   wrap, the guard, the scope text and the name; nil for any other node.
     def self.kept_constant_splice(node, names)
-      return nil unless Project.kept_constant_write?(node, names) && (target = kept_target(node.value))
+      return nil unless Project.kept_constant_write?(node, names)
 
-      name = Project.plain_constant_write_name(node)
-      scope = node.is_a?(Prism::ConstantPathWriteNode) ? superclass_scope(node.target) : "::Module.nesting.first"
-      [target, "kept_constant", scope, name]
+      if node.is_a?(Prism::ConstantPathWriteNode)
+        [node.value, "kept_constant", superclass_scope(node.target), node.target.name]
+      else
+        [node.value, "kept_constant", "::Module.nesting.first", node.name]
+      end
     end
 
     # The part of a class statement's superclass that the reload text wraps,
@@ -507,6 +509,7 @@ module Mutineer
       inner = node
       inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
       return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
+      return nil if outer_block_parameter?(node)
 
       write = plain_local_write(node)
       return kept_target(write.value) if write
@@ -522,6 +525,22 @@ module Mutineer
     def self.plain_local_write(node)
       node = node.body.body.first if Project.sole_statement_parentheses?(node)
       node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
+    end
+
+    # Whether `node` reads a numbered parameter (`_1`) or `it` that belongs to
+    # a block around it. The wrap adds a block, so such a read would belong to
+    # the wrap's block and change meaning, or not parse. A block inside `node`
+    # that has its own numbered or `it` parameter is not searched.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.outer_block_parameter?(node)
+      return true if node.type == :it_local_variable_read_node
+      return true if node.is_a?(Prism::LocalVariableReadNode) && node.name.match?(/\A_[1-9]\z/)
+      return false if (node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)) &&
+                      %i[numbered_parameters_node it_parameters_node].include?(node.parameters&.type)
+
+      node.compact_child_nodes.any? { |child| outer_block_parameter?(child) }
     end
 
     # The superclass nodes {kept_target} leaves as written: a constant, and a

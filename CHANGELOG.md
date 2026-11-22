@@ -119,11 +119,12 @@ All notable changes to this project are documented here. The format is based on
 - **Reload scores a class whose superclass is a constant that the same file assigns, such as `BaseRow = Struct.new(:v)` then `class Row < BaseRow` (#503).**
   `--strategy reload` and `--daemon` load the mutant file over its classes. The assignment built a new `BaseRow`, so Ruby raised `TypeError: superclass mismatch` for `Row`, and every mutant of the file scored `error`.
   Now the reload keeps the class that `BaseRow` already has, so `Row` reopens with the same parent, and an instance or a subclass in another file still sees the mutant.
-  A bare superclass (`< BaseRow` or `< ::BaseRow`) matches an assignment of that name in any scope of the file. A path superclass (`< Billing::BaseRow`) matches only an assignment spelled the same, so `Base = ...` beside `class User < ActiveRecord::Base` is not kept. `BaseRow = ...` inside `module Billing` with `class Row < Billing::BaseRow` still errors (#527).
+  The reload keeps only a value it can prove holds no class the file builds again: `Struct.new`, `Data.define` or `Class.new` with literal arguments, with or without a block. Any other value, such as `Class.new(Fields)` or a builder method of the file (`BaseRow = build_base`), keeps its text, so that file still errors visibly (#527).
+  A bare assignment (`BaseRow = ...`) matches a bare superclass (`< BaseRow` or `< ::BaseRow`) in any scope of the file. A path assignment matches only a path superclass spelled the same, so `Base = ...` beside `class User < ActiveRecord::Base` is not kept. `BaseRow = ...` inside `module Billing` with `class Row < Billing::BaseRow` still errors (#527).
   A method inside the kept value, such as one in the block of `BaseRow = Struct.new(:v) do ... end`, is now `unplaceable` under reload, because that block does not run again. `--strategy redefine` runs it.
   After the upgrade, `summary.errored` can fall for such a file, and `killed`, `survived` and `unplaceable` can rise, so a score can change.
   The shape is in 0 of 392 Ruby files of the Fizzy sample app, 0 of 90 files of Mutineer's `lib/`, and 0 of 1,218 files of seven Rails 7.2 gems.
-  Still open: the rare shapes of #527, a `Struct.new ... do` constant with no class statement for it in the same file (#528), a `||=` constant whose block does not run again (#529), and a kept value that reads another class the file builds again or calls a method of the file that builds one (`BaseRow = Class.new(Fields)`, `BaseRow = build_base`, #533).
+  Still open: the shapes of #527 that error visibly, a `Struct.new ... do` constant with no class statement for it in the same file (#528), and a `||=` constant whose block does not run again (#529).
 - **Reload scores a class whose superclass sets a local variable, such as `class Q < (base = Struct.new(:a))` (#512).**
   `--strategy reload` and `--daemon` now keep the live superclass and still set the local, to that same class, so a later line that reads it works.
   Before, every mutant of such a file scored `error` with "superclass mismatch".
@@ -140,7 +141,7 @@ All notable changes to this project are documented here. The format is based on
   Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
   This covers a superclass that is a call, such as `Struct.new`, `Class.new` and `DelegateClass`, and that sets no local variable of the file. A plain local write of such a call is covered too (#512).
   A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
-  A superclass constant that the same file assigns from a call is covered too (#503). The rare superclass shapes of #527 still error when their call builds a new class. A superclass call that reads such a class, such as `Class.new(Fields)` when the file builds `Fields` again, keeps the old one, so a mutant in `Fields` can survive falsely (#533).
+  A superclass constant that the same file assigns from a class builder is covered too (#503). The rare superclass shapes of #527 still error when their call builds a new class. A superclass call that reads a class the file builds again, such as `Class.new(Fields)`, or that calls a builder method of the file, keeps the old class, so a mutant in that class can survive falsely (#533).
 - **A `--daemon` mutant run now stops at the first failing test (#490).**
   Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
   One failing test already kills the mutant, so the daemon now stops there too.

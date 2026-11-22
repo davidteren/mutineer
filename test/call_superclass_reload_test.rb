@@ -131,6 +131,20 @@ class CallSuperclassReloadTest < Minitest::Test
     assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
   end
 
+  # Review of #541: a wrap is a new block, so a numbered parameter or `it` of
+  # an outer block inside the wrapped text would change meaning or not parse.
+  # Such a superclass is left as written.
+  def test_a_superclass_that_reads_an_outer_block_parameter_is_not_wrapped
+    ["[Struct].each { class Q < (b = _1.new(:a)); end }\n",
+     "[Struct].each { class Q < it.new(:a); end }\n",
+     "[1].each { _1\n  class Q < Struct.new(_1); end }\n"].each do |code|
+      assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), code
+    end
+    # A block of the superclass call that uses its own `_1` is still wrapped.
+    code = "class Q < Struct.new(:a) { [1].map { _1 } }\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "kept_superclass"
+  end
+
   # R16 of the #512 plan: an earlier line sets the variable and runs again on
   # reload, so a kept parent would differ from what the variable then holds.
   # A method call is still wrapped: nothing else holds its result.
@@ -248,15 +262,17 @@ class CallSuperclassReloadTest < Minitest::Test
     code = "Billing::Base = Class.new\nclass Billing::Row < Billing::Base\nend\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code),
                     "Billing::Base = ::Mutineer::ReloadGuards.kept_constant(Billing, :Base) { Class.new }"
-    code = "::Base = Class.new\nclass Row < ::Base\nend\nmodule M\n  self::Kid = Class.new\n  class Row < Kid\n  end\nend\n"
+    code = "::Base = Class.new\nclass Row < ::Base\nend\nmodule M\n  self::Kid = Class.new\n  class Row < self::Kid\n  end\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
     assert_includes rewritten, "::Base = ::Mutineer::ReloadGuards.kept_constant(::Object, :Base) { Class.new }"
     assert_includes rewritten, "self::Kid = ::Mutineer::ReloadGuards.kept_constant(self, :Kid) { Class.new }"
     code = "Base = Class.new\nclass Row < ::Base\nend\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "Base = ::Mutineer::ReloadGuards.kept_constant("
-    # A local write in the value keeps the write outside the block.
+    # A local write in the value is not a builder call, so it is left as written.
     code = "Base = (b = Struct.new(:v))\nclass Row < Base\nend\nb\n"
-    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "(b = ::Mutineer::ReloadGuards.kept_constant("
+    assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
+    code = "Base = Struct.new(:v, \"w\", 1, keyword_init: true) do\n  def x = 1\nend\nclass Row < Base\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "Base = ::Mutineer::ReloadGuards.kept_constant("
   end
 
   # #503: AE8. These come back as the same String: no class statement names
@@ -271,7 +287,19 @@ class CallSuperclassReloadTest < Minitest::Test
      "A, BaseRow = 1, Struct.new(:v)\nclass Row < BaseRow\nend\n",
      # A bare write does not match a path superclass, nor a path spelled otherwise.
      "Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n",
-     "Other::Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n"].each do |code|
+     "Other::Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n",
+     # Review of #541: a path write does not match a bare superclass.
+     "Other::Base = Struct.new(:v)\nclass User < Base\nend\n",
+     # Fail closed: only a Struct.new, Data.define or Class.new with literal
+     # arguments is kept. A builder method of the file, or an argument that can
+     # name a class the file builds again, would keep a stale class.
+     "BaseRow = build_base\nclass Row < BaseRow\nend\n",
+     "Fields = Struct.new(:v)\nBaseRow = Class.new(Fields)\nclass Row < BaseRow\nend\n",
+     "BaseRow = Struct.new(*FIELDS)\nclass Row < BaseRow\nend\n",
+     "BaseRow = Struct.new(:v, &BLOCK)\nclass Row < BaseRow\nend\n",
+     "BaseRow = Factory.new(:v)\nclass Row < BaseRow\nend\n",
+     # A path whose parent is not a constant would run that parent twice.
+     "registry.next::Base = Struct.new(:v)\nclass Row < registry.next::Base\nend\n"].each do |code|
       assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), code
     end
   end
@@ -329,7 +357,7 @@ class CallSuperclassReloadTest < Minitest::Test
               "class K < base = Struct.new(:a) { def k3; end }\nend\n",
               "class K < (a = b = Data.define(:a) { def k4; end })\nend\n",
               "BaseRow = Struct.new(:v) do\n  def k5; end\nend\nclass Row < BaseRow\nend\n",
-              "Base = (b = Struct.new(:v) do\n  def k6; end\nend)\nclass Row < Base\nend\n",
+              "Base = Data.define(:v) do\n  def k6; end\nend\nclass Row < Base\nend\n",
               "module M\n  M::Base = Class.new do\n    def k7; end\n  end\nend\nclass Row < M::Base\nend\n"]
     checked = []
     Dir.mktmpdir do |dir|

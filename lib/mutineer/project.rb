@@ -29,8 +29,7 @@ module Mutineer
     # Each class statement's superclass that is a constant, inside any
     # parentheses: the name for a bare constant (`:BaseRow` for
     # `class Row < BaseRow` and for `class Row < ::BaseRow`), and the text as
-    # written for any other path
-    # (`"Billing::BaseRow"`). Reload keeps the value of a constant assignment
+    # written for a path (`"Billing::BaseRow"`, `"::BaseRow"`). Reload keeps the value of a constant assignment
     # that {kept_constant_write?} matches to one of these, and discovery marks
     # a def inside that value (#503). Both read the names here, so discovery
     # marks at least every value the reload text keeps
@@ -48,11 +47,9 @@ module Mutineer
         superclass = node.superclass
         # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
         superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
-        if superclass.is_a?(Prism::ConstantReadNode) || (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
-          names << superclass.name # `< BaseRow` and `< ::BaseRow`
-        elsif superclass.is_a?(Prism::ConstantPathNode)
-          names << superclass.slice
-        end
+        names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) ||
+                                    (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
+        names << superclass.slice if superclass.is_a?(Prism::ConstantPathNode)
       end
       names
     end
@@ -67,37 +64,84 @@ module Mutineer
       node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
     end
 
-    # The constant name a plain `=` assigns (`X = ...`, `A::X = ...`), or
-    # nil for any other node. `||=` is #529.
+    # Whether reload keeps the value of this constant write (#503). It fails
+    # closed: a write it does not keep leaves the file as written, which errors
+    # visibly with "superclass mismatch" when it builds a new class (#527).
+    # All three must hold:
     #
-    # @param node [Prism::Node]
-    # @return [Symbol, nil]
-    def self.plain_constant_write_name(node)
-      if node.is_a?(Prism::ConstantWriteNode)
-        node.name
-      elsif node.is_a?(Prism::ConstantPathWriteNode)
-        node.target.name
-      end
-    end
-
-    # Whether reload keeps the value of this constant write (#503): a plain
-    # `=` whose name a bare superclass of the file reads (`BaseRow = ...` or
-    # `A::BaseRow = ...` with `class Row < BaseRow`), or a path write spelled
-    # as a path superclass is (`Billing::Base = ...` with
-    # `class Row < Billing::Base`). A bare write does not match a path
-    # superclass, so `Base = ...` beside `class User < ActiveRecord::Base` is
-    # not kept; such a file errors on reload when it does mean that constant
-    # (#527). {JobPlan.kept_constant_splice} and discovery both ask here, so
-    # they agree on which writes count.
+    # - The write names a superclass of the file: a bare write (`BaseRow = ...`)
+    #   matches a bare superclass (`< BaseRow` or `< ::BaseRow`), and a path
+    #   write matches a path superclass spelled the same (`Billing::Base = ...`
+    #   with `< Billing::Base`). So `Base = ...` beside
+    #   `class User < ActiveRecord::Base` is not kept.
+    # - A path write's parent is a constant path or `self`, so the scope the
+    #   guard reads runs no code a second time.
+    # - The value is a {kept_builder?} call, which reads nothing the file can
+    #   build again. A builder method of the file (`BaseRow = build_base`) would
+    #   keep a class its mutant never reaches, a silent false survivor.
+    #
+    # {JobPlan.kept_constant_splice} and discovery both ask here, so discovery
+    # marks every def inside a kept value {Subject#in_kept_constant}.
     #
     # @param node [Prism::Node]
     # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
     # @return [Boolean]
     def self.kept_constant_write?(node, names)
-      name = plain_constant_write_name(node)
-      return false unless name
+      if node.is_a?(Prism::ConstantWriteNode)
+        return false unless names.include?(node.name)
+      elsif node.is_a?(Prism::ConstantPathWriteNode)
+        return false unless names.include?(node.target.slice) && constant_scope?(node.target.parent)
+      else
+        return false
+      end
+      kept_builder?(node.value)
+    end
 
-      names.include?(name) || (node.is_a?(Prism::ConstantPathWriteNode) && names.include?(node.target.slice))
+    # The class builders a kept value may call, by receiver name.
+    KEPT_BUILDERS = { Struct: :new, Data: :define, Class: :new }.freeze
+
+    # A `Struct.new`, `Data.define` or `Class.new` call (also `::Struct`) whose
+    # arguments are literals: symbols, strings, numbers, `true`, `false`,
+    # `nil`, and keyword pairs of those. It may have a literal block. A
+    # constant, a variable, a splat or a call in an argument can name a class
+    # or value the file builds again, so such a value is not kept (#533).
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.kept_builder?(node)
+      return false unless node.is_a?(Prism::CallNode)
+      return false unless node.block.nil? || node.block.is_a?(Prism::BlockNode)
+
+      receiver = node.receiver
+      root = receiver.is_a?(Prism::ConstantReadNode) || (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil?)
+      return false unless root && KEPT_BUILDERS[receiver.name] == node.name
+
+      (node.arguments&.arguments || []).all? { |argument| literal_argument?(argument) }
+    end
+
+    # The literal nodes {kept_builder?} accepts as an argument.
+    LITERALS = [Prism::SymbolNode, Prism::StringNode, Prism::IntegerNode, Prism::FloatNode,
+                Prism::TrueNode, Prism::FalseNode, Prism::NilNode].freeze
+
+    # @param node [Prism::Node] one argument of a builder call.
+    # @return [Boolean]
+    def self.literal_argument?(node)
+      return true if LITERALS.any? { |type| node.is_a?(type) }
+
+      node.is_a?(Prism::KeywordHashNode) && node.elements.all? do |pair|
+        pair.is_a?(Prism::AssocNode) && literal_argument?(pair.key) && literal_argument?(pair.value)
+      end
+    end
+
+    # Whether a constant write's parent runs no code: none (`::X`), `self`, or
+    # a chain of constants (`A::B`).
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.constant_scope?(node)
+      return true if node.nil? || node.is_a?(Prism::SelfNode) || node.is_a?(Prism::ConstantReadNode)
+
+      node.is_a?(Prism::ConstantPathNode) && constant_scope?(node.parent)
     end
 
     # Keeps hook defs unplaceable when the raw AST can define another method

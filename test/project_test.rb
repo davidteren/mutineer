@@ -1610,12 +1610,21 @@ class ProjectTest < Minitest::Test
       refute by_name[:three?].unplaceable?("reload")
       refute by_name[:other].in_kept_constant, "no class statement names Other"
     end
+    # Discovery keeps the same writes as the reload text: a path write does not
+    # match a bare superclass, and a builder method's value is not kept.
+    src = "Other::Base = Struct.new(:v) do\n  def path_write; end\nend\nclass User < Base\nend\n" \
+          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n"
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      refute by_name[:path_write].in_kept_constant
+      refute by_name[:built].in_kept_constant
+    end
   end
 
   def test_superclass_constant_names_reads_each_constant_superclass
     program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
                                             "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \
                                             "class J < ::K\nend\n").value
-    assert_equal Set[:B, "D::E", :I, :K], Mutineer::Project.superclass_constant_names(program)
+    assert_equal Set[:B, "D::E", :I, :K, "::K"], Mutineer::Project.superclass_constant_names(program)
   end
 end
