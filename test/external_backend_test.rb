@@ -551,6 +551,39 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #522: the last RSpec order option decides, read in RSpec's order:
+  # .rspec, .rspec-local, the command, SPEC_OPTS. Each row was run for real
+  # with RSpec; "random" rows shuffled, the others kept the seed.
+  def test_random_order_follows_the_rspec_option_order
+    rspec = "Randomized with seed 4242\n"
+    random = [:rspec, "4242"]
+    [
+      [{ ".rspec" => "--seed 7" }, "rspec %{files}", nil, nil],
+      [{ ".rspec" => "--seed 7" }, "rspec --order rand %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec %{files}", "--order rand", random],
+      [{ ".rspec" => "--seed 7", ".rspec-local" => "--order rand" }, "rspec %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec --options other.opts %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec -O other.opts %{files}", nil, random],
+      [{ ".rspec" => "--seed 7" }, "rspec %{files}", "--options other.opts", random],
+      [{}, "rspec --seed 7 --order rand %{files}", nil, random],
+      [{}, "rspec --order rand --seed 7 %{files}", nil, nil],
+      [{}, "rspec --order=rand:9 %{files}", nil, nil],
+      [{}, "rspec --order rand %{files}", "--seed 5", nil],
+      [{ ".rspec" => "--order rand" }, "rspec --seed 3 %{files}", nil, nil]
+    ].each do |files, command, spec_opts, expected|
+      with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => spec_opts) do
+        Dir.mktmpdir do |dir|
+          Dir.chdir(dir) do
+            files.each { |name, body| File.write(name, "#{body}\n") }
+            got = Backend.random_order(command, rspec)
+            row = "#{files.inspect} #{command.inspect} SPEC_OPTS=#{spec_opts.inspect}"
+            expected ? assert_equal(expected, got, row) : assert_nil(got, row)
+          end
+        end
+      end
+    end
+  end
+
   # #368: an unreadable .rspec counts as no seed; it must not abort the run.
   def test_random_order_ignores_an_unreadable_rspec_file
     with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do

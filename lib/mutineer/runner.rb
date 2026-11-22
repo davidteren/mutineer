@@ -375,7 +375,7 @@ module Mutineer
                     "--order rand out of SPEC_OPTS"
                 end
           warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
-               "seed (#{seed}) and Mutineer found no fixed seed, so each mutant run may use a new test " \
+               "seed (#{seed}) and Mutineer found no fixed seed in effect, so each mutant run may use a new test " \
                "order and an order-dependent suite can give a false kill. To fix the order, #{fix}."
         end
 

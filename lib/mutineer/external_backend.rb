@@ -86,9 +86,16 @@ module Mutineer
     # An RSpec seed given on the command or in SPEC_OPTS (`--seed N` or
     # `--order rand:N`). RSpec ignores SEED.
     RSPEC_SEED_GIVEN = /--seed\b|\brand(?:om)?:\d/
-    # RSpec option files in the working directory. RSpec reads them as well,
-    # so a seed there is a fixed seed ({RSPEC_SEED_GIVEN} matches their lines).
+    # RSpec option files in the working directory. RSpec reads them before the
+    # command and SPEC_OPTS, so an order option there counts unless a later
+    # source gives another one (#522).
     RSPEC_OPTION_FILES = %w[.rspec .rspec-local].freeze
+    # An RSpec order option: `--seed N`, `--order X` or `--order=X`. The last
+    # one RSpec reads decides the order.
+    RSPEC_ORDER_OPTION = /--(?:seed|order)(?:=|\s+)\S+/
+    # An RSpec `--options FILE` or `-O FILE`. RSpec then reads that file
+    # instead of `.rspec` and `.rspec-local`.
+    RSPEC_OPTIONS_FILE = /(?:\A|\s)(?:--options\b|-O)/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -418,16 +425,20 @@ module Mutineer
 
     # The runner and seed of a random test order the output shows, or nil.
     # Nil also when Mutineer sees a fixed seed: for Minitest, SEED, TESTOPTS
-    # or the command sets one; for RSpec, SPEC_OPTS, `.rspec`, `.rspec-local`
-    # or the command does. RSpec `--order defined` prints no seed line. Each
-    # runner is checked on its own, so a seeded Minitest suite does not hide
-    # an unseeded RSpec suite that the same command runs. Mutineer only warns:
-    # it cannot know the seed flag of an arbitrary command, so it sets no seed.
-    # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
-    # `test_order`, a seed inside an inactive ERB branch of an option file, or an `--options FILE` that replaces `.rspec`, is not seen,
-    # so the warning still prints. A seed-like argument meant for a wrapper
-    # hides it. So does a seed in `.rspec` that RSpec does not use, because a
-    # later `--order rand` or an `--options FILE` overrides it (#338, #368, #522).
+    # or the command sets one. For RSpec, the last order option decides, read
+    # in RSpec's order: `.rspec`, `.rspec-local`, the command, SPEC_OPTS
+    # (#522). The order is fixed only when that option is `--seed N` or
+    # `--order rand:N`. With `--options FILE` or `-O FILE` in the command or
+    # SPEC_OPTS, RSpec skips the two files, and so does this check. RSpec
+    # `--order defined` prints no seed line. Each runner is checked on its
+    # own, so a seeded Minitest suite does not hide an unseeded RSpec suite
+    # that the same command runs. Mutineer only warns: it cannot know the
+    # seed flag of an arbitrary command, so it sets no seed. Ceiling (#549):
+    # a seed set in a wrapper script, `~/.rspec`, `config.seed`, Minitest's
+    # `test_order`, the file that `--options` names, or an inactive ERB
+    # branch of an option file is not seen, so the warning still prints. A
+    # seed-like argument meant for a wrapper hides it. A `cd` inside a
+    # wrapper makes RSpec read another `.rspec` than this check does.
     #
     # @api private
     # @param command [String] the --test-command template.
@@ -441,7 +452,12 @@ module Mutineer
       end
 
       rspec = text[RSPEC_SEED, 1]
-      [:rspec, rspec] if rspec && [command, ENV["SPEC_OPTS"], *rspec_option_files].none? { |s| s.to_s.match?(RSPEC_SEED_GIVEN) }
+      return unless rspec
+
+      options = [command, ENV["SPEC_OPTS"]].map(&:to_s)
+      files = options.any? { |o| o.match?(RSPEC_OPTIONS_FILE) } ? [] : rspec_option_files
+      last = [*files, *options].join("\n").scan(RSPEC_ORDER_OPTION).last
+      [:rspec, rspec] unless last&.match?(RSPEC_SEED_GIVEN)
     end
 
     # The text of the RSpec option files that exist in the working directory,
