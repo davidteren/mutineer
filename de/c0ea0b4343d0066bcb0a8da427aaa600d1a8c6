@@ -1,0 +1,23 @@
+docs/json-schema.md
+  s_9747bd218c1c67::t_2689ffaf4ba064 151,154-155
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_5fbd68a3be53ed 508,523,558
+lib/mutineer/project.rb
+  s_9747bd218c1c67::t_bd6e395730975f 47,53-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dec0ea0b4343d0066bcb0a8da427aaa600d1a8c6",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
