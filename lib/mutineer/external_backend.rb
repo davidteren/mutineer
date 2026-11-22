@@ -64,8 +64,9 @@ module Mutineer
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
     # The seed line Minitest prints before every run ("Run options:"), or that
-    # minitest-reporters prints ("Started with run options"). Captures the seed.
-    MINITEST_SEED = /^(?:Run options:|Started with run options).*--seed (\d+)/
+    # minitest-reporters prints ("Started with run options", or "# Running tests with run options"
+    # for its DefaultReporter). Captures the seed.
+    MINITEST_SEED = /^(?:Run options:|Started with run options|# Running tests with run options).*--seed (\d+)/
     # The seed line RSpec prints when it shuffles the tests. Captures the seed.
     RSPEC_SEED = /^Randomized with seed (\d+)/
     # A Minitest seed given on the command or in TESTOPTS (`SEED=N`, `--seed N`
@@ -316,7 +317,7 @@ module Mutineer
     # an unseeded RSpec suite that the same command runs. Mutineer only warns:
     # it cannot know the seed flag of an arbitrary command, so it sets no seed.
     # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
-    # `test_order`, or an `--options FILE` that replaces `.rspec`, is not seen,
+    # `test_order`, a seed inside an inactive ERB branch of an option file, or an `--options FILE` that replaces `.rspec`, is not seen,
     # so the warning still prints. A seed-like argument meant for a wrapper
     # hides it. So does a seed in `.rspec` that RSpec does not use, because a
     # later `--order rand` or an `--options FILE` overrides it (#338, #368, #522).

@@ -304,6 +304,7 @@ class ExternalBackendTest < Minitest::Test
   def test_random_order_reads_the_minitest_reporters_seed_line
     with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
       reporters = "Started with run options --seed 4242\n"
+      assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", "# Running tests with run options --seed 4242:\n")
       assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", reporters)
       assert_nil Backend.random_order("ruby %{files} --seed 7", reporters)
       assert_nil Backend.random_order("ruby %{files}", "the seed 4242 is fixed\n")
