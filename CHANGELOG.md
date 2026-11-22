@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Reload warns when a class runs a callback more than once (Refs #479).**
+  Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
+  A test that counts callback runs or errors can then kill every mutant of that file falsely.
+  After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
+  The warning changes no verdict, no score, no JSON field and no exit code.
+  The six cases in #479 remain. The full fix is the full-reload strategy (#389).
+  `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself can lose a concern's callback on reload instead, and this warning does not see that (#504).
 - **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
@@ -100,6 +107,13 @@ All notable changes to this project are documented here. The format is based on
   Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
   A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
   A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
+- **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
+  `class X < Data.define(:a)` builds a new superclass each time Ruby runs it.
+  `--strategy reload` and `--daemon` load the mutant file over the class, so Ruby raised `TypeError: superclass mismatch` and every mutant of the file scored `error`.
+  Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
+  This covers every superclass that is not a constant and sets no local variable of the file, such as `Struct.new`, `Class.new` and `DelegateClass`.
+  A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
+  Still not fixed: a superclass constant that the same file assigns again (`BaseRow = Struct.new(:v)` then `class Row < BaseRow`) still errors (#503). A superclass expression that sets a local variable (`class Q < (base = Struct.new(:a))`) keeps its text, so that file still errors when the call builds a new class (#512).
 - **A `--daemon` mutant run now stops at the first failing test (#490).**
   Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
   One failing test already kills the mutant, so the daemon now stops there too.

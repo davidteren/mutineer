@@ -370,6 +370,36 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
   end
 
+  # #479 and #492: the payload carries the reload text with a call superclass
+  # kept, and the run's callback-growth log when one is set, and only then.
+  def test_the_payload_keeps_a_call_superclass_and_carries_the_growth_log
+    path = File.expand_path("fixtures/call_superclass.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "InclusionValue#switch?").first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    [nil, "/tmp/growth.log"].each do |log|
+      Mutineer::ReloadGuards.callback_growth_log = log
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+      end
+    end
+
+    assert_includes sent.first["code"], "kept_superclass(::Module.nesting.first, :InclusionValue)"
+    refute sent.first.key?("callback_growth_log")
+    assert_equal "/tmp/growth.log", sent.last["callback_growth_log"]
+  ensure
+    Mutineer::ReloadGuards.callback_growth_log = nil
+  end
+
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
   # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
   # only, so it runs on past these.

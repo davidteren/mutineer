@@ -65,7 +65,10 @@ module Mutineer
     # [AggregateResult, source_map, extras], where extras is the hash
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
     # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
-    # `:unscoped_mutants` under `--since`.
+    # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
+    # whose callback count grew after a reload (#479), empty under redefine. A
+    # `--test-command` run and a run that returns before any mutant leave that key
+    # out, so read it with `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -107,12 +110,19 @@ module Mutineer
       # Daemon backend: boot the app ONCE in a persistent subprocess under the
       # app's bundle and fork per mutant. Tool-side we only discover jobs + build
       # payloads (Prism), so branch before any in-process boot.
+      # #479: each reload child logs a class whose callback count grew, and
+      # the run returns them once each in extras[:callback_growth].
+      growth_log = JobPlan.create_callback_growth_log if config.daemon || config.strategy == "reload"
+      ReloadGuards.callback_growth_log = growth_log
+
       if config.daemon
         # The daemon loads these files itself and would report a missing one as
         # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
         # as it is in process.
         check_boot_files!(config)
-        return DaemonBackend.execute(config, operator_classes)
+        result = DaemonBackend.execute(config, operator_classes)
+        result[2][:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+        return result
       end
 
       # Both strategies (whole-file reload and redefine, #279) write
@@ -275,9 +285,12 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
+      extras[:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
       extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
+      ReloadGuards.callback_growth_log = nil
+      File.delete(growth_log) if growth_log && File.exist?(growth_log)
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
       OutputFilter.uninstall if filter_owned
@@ -480,14 +493,16 @@ module Mutineer
       sentinel = kind == :maybe || candidate ? ReachProbe.sentinel : nil
       reach_key = sentinel && ReachProbe.reach_key
       # The reload text is built once, before the fork, so the parent checks
-      # the text that the child loads. Under redefine the child builds the
-      # def text itself ({Isolation.apply_surgical}), from the same values.
-      unless strategy == "redefine" || subject&.reload_hook_call
-        reload_code = ReachProbe.wrap_mutation(mutated, mutation, sentinel&.path, reach_key)
+      # the text that the child loads. It is the same text the daemon loads: a
+      # hook-block def placed (#297), a call superclass kept (#492). Under
+      # redefine the child builds the def text itself
+      # ({Isolation.apply_surgical}), from the same values.
+      unless strategy == "redefine"
+        reload_code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                                                        reach_key: reach_key)
       end
       # No conclusive probe in that text means no evidence, so the verdict
-      # stays. A candidate is never a hook-block def, so its reload text is
-      # `reload_code`.
+      # stays. A candidate is never a hook-block def.
       probed = candidate && ReachProbe.conclusive?(
         reload_code || Isolation.mutated_def(mutation, subject, source, reach_path: sentinel.path,
                                                                         reach_key: reach_key), reach_key
@@ -507,13 +522,8 @@ module Mutineer
             while (s = s.enclosing_subject)
               Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
             end
-          elsif subject&.reload_hook_call
-            # #297: a def in a concern's hook block reaches each class that has it.
-            code, hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source, reach_path: sentinel&.path,
-                                                 reach_key: reach_key)
-            Isolation.apply_whole_file(code, source_file, hook_def: hook_def)
           else
-            Isolation.apply_whole_file(reload_code, source_file)
+            Isolation.apply_whole_file(reload_code, source_file, hook_def: hook_def)
           end
           # A reload can run the expression while the file loads. That is not
           # a test reaching it (#345).

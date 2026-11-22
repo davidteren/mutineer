@@ -359,6 +359,151 @@ module Mutineer
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
     end
 
+    # The whole-file text the reload strategy loads for one mutant, shared by
+    # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
+    # def in a concern's hook block gets {hook_mutant}; any other mutant gets
+    # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
+    # Then each class statement with a call superclass keeps its live
+    # superclass ({keep_live_superclasses}, #492).
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject being mutated.
+    # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @return [Array(String, Hash{Symbol => Object}, nil)] the text to load, and
+    #   the hook-def values of {hook_mutant}, or nil.
+    def self.reload_code(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
+      if subject&.reload_hook_call
+        code, hook_def = hook_mutant(mutated, mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
+      else
+        code = ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
+      end
+      [keep_live_superclasses(code), hook_def]
+    end
+
+    # A new empty file for {ReloadGuards.callback_growth_log} (#479). The
+    # caller deletes it after the run.
+    #
+    # @return [String] its path.
+    def self.create_callback_growth_log
+      file = Tempfile.create(["mutineer-callback-growth", ".log"])
+      file.close
+      file.path
+    rescue SystemCallError => e
+      # Report only (#479): a temp directory that refuses the file must not stop the run.
+      warn "[mutineer] could not create the callback-growth log, so this run does not check " \
+           "callback counts after a reload (#479): #{e.message}"
+      nil
+    end
+
+    # The classes the mutant loads logged, each once, with a project-relative
+    # file, in the order they were first logged. The log is read as bytes, so
+    # a non-ASCII name or path does not raise when `LANG` is unset (#346).
+    #
+    # @param path [String, nil] the log file, or nil when the run had none.
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>] each class name and its source file.
+    def self.callback_growth_rows(path, project_root)
+      return [] unless path && File.exist?(path)
+
+      # Each field is written with `String#dump`, so a newline or tab in a name
+      # or a path cannot split a record.
+      File.binread(path).split("\n".b).filter_map do |line|
+        name, file = line.split("\t".b, 2)
+        next unless file
+
+        [FsPath.read(name.undump), ProjectPath.relative(FsPath.read(file.undump), project_root)]
+      rescue RuntimeError # a line that is not two dumped strings
+        nil
+      end.uniq
+    end
+
+    # Wraps the superclass of each class statement whose superclass is not a
+    # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
+    # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
+    # file over its classes reopens each one instead of raising "superclass
+    # mismatch" (#492). The superclass text stays as it is, inside the block,
+    # and on its own lines, so line numbers do not move. A wrap puts one
+    # expression in a block, and a class inside a wrapped superclass is not
+    # wrapped again. A bad wrap is not checked here: the child's `load` raises
+    # `SyntaxError`, and the mutant scores `error`. Text with no such class
+    # comes back unchanged.
+    #
+    # @param code [String] the reload text.
+    # @return [String]
+    def self.keep_live_superclasses(code)
+      nodes = []
+      queue = [Parser.parse_string(code).value]
+      while (node = queue.shift)
+        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
+          nodes << node
+          # The wrap skips the whole superclass expression, so a class inside it
+          # is not wrapped again: two splices in one range would not parse.
+          queue.concat([node.constant_path, node.body].compact)
+        else
+          queue.concat(node.compact_child_nodes)
+        end
+      end
+      return code if nodes.empty?
+
+      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
+        loc = node.superclass.location
+        inner = text.byteslice(loc.start_offset, loc.length)
+        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
+                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
+      end
+    end
+
+    # A superclass the reload text wraps: one that is not a constant, and
+    # that sets no local variable of the file. The wrap is a block, so such a
+    # local would not be set for a later line (`class Q < (base = ...)`).
+    # Those keep the text as written, as before #492 (#512).
+    #
+    # @param node [Prism::Node, nil] a class statement's superclass.
+    # @return [Boolean]
+    def self.call_superclass?(node)
+      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+
+      !writes_local?(node)
+    end
+
+    # Whether `node` sets a local variable of the scope it runs in. A block or
+    # lambda can set an outer local, so the walk enters it and counts only
+    # writes that reach past it. A def has its own scope and is not entered.
+    #
+    # @param node [Prism::Node]
+    # @param level [Integer] the blocks and lambdas between `node` and that scope.
+    # @return [Boolean]
+    def self.writes_local?(node, level = 0)
+      # Prism's `depth` counts the scopes between the write and its variable,
+      # so a write inside `level` blocks reaches the file's scope at that depth.
+      return node.depth >= level if LOCAL_WRITES.any? { |type| node.is_a?(type) }
+      return false if node.is_a?(Prism::DefNode)
+
+      inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
+      node.compact_child_nodes.any? { |child| writes_local?(child, inner) }
+    end
+
+    # The Prism nodes that set a local variable.
+    LOCAL_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableTargetNode,
+                    Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
+                    Prism::LocalVariableAndWriteNode].freeze
+
+    # The module a class statement defines its constant in, as Ruby text that
+    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
+    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    #
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @return [String]
+    def self.superclass_scope(path)
+      return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
+
+      path.parent ? path.parent.slice : "::Object"
+    end
+
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon
     # paths so both narrow identically (score parity). Returns
     # `[:run, abs_test_paths]` when some test covers the mutant's line, in the
