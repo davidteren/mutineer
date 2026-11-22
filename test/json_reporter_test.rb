@@ -214,6 +214,20 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # Base64 would carry a password past the stdout redaction that hides it in
+  # `diff`, so a change line that redaction alters gets no diff_base64.
+  def test_no_diff_base64_when_the_change_holds_a_credential
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = "postgres://u:s3cretpw@db/app"
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"caf\u00e9 s3cretpw\" : 0\nend\n"
+    src = src.encode("ISO-8859-1").force_encoding("ISO-8859-1")
+    _, row = survivor_row_for(src)
+    assert_equal "ISO-8859-1", row["diff_encoding"]
+    refute row.key?("diff_base64")
+  ensure
+    saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
+  end
+
   # diff_base64 is one line of standard base64, and diff keeps its text.
   def test_diff_base64_is_one_line_of_standard_base64
     src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")

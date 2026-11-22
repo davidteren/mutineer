@@ -884,7 +884,10 @@ module Mutineer
       # #518: the exact bytes when the text is not the patch for the file.
       # pack("m0"), not the base64 library, which is a bundled gem since Ruby 3.4.
       patch = exact_patch(result)
-      row[:diff_base64] = [patch].pack("m0") if patch && patch.b != row[:diff].b
+      return row unless patch && patch.b != row[:diff].b
+      # Base64 would carry a credential past the stdout redaction that hides it
+      # in `diff`, so such a change gets no exact bytes.
+      row[:diff_base64] = [patch].pack("m0") if Redaction.text(row[:diff]) == row[:diff]
       row
     end
 

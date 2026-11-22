@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format is based on
   For a source whose magic encoding is not UTF-8 or binary and a non-ASCII changed line, an invalid byte or a byte with no Unicode mapping on a changed line, or a binary-tagged source whose changed line is not UTF-8, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
   To apply any entry: for a file with a `working-tree-encoding` Git attribute use `diff`; else decode `diff_base64` when present; else use `diff`.
   A byte with no Unicode mapping (such as `0xA5` in ISO-8859-3) on a mutant's line no longer stops the report with `Encoding::UndefinedConversionError`: `diff` prints it as `\xNN`.
+  The key is absent when the changed lines hold a credential that redaction hides in `diff`. A UTF-8 source with an invalid byte still stops the run before the report (#538).
   A project whose files are valid UTF-8 gets no new key. A source path that is not valid UTF-8 still cannot be applied (#532). Additive key (schema `1.11`).
 - **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
   Each row is `{ class, file }`, sorted by file and class, so a JSON-only tool can see which kills of a file a repeated callback may have made false.
