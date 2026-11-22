@@ -1,0 +1,32 @@
+test/daemon_backend_contract_test.rb
+  s_2104026818f077::t_0312a6b898106b 481-489
+docs/json-schema.md
+  s_2104026818f077::t_0312a6b898106b 206,218-221
+CHANGELOG.md
+  s_2104026818f077::t_12361d496ff406 93-96
+  s_2104026818f077::t_94aa48b7d5366f 97-110
+docs/cli.md
+  s_2104026818f077::t_0312a6b898106b 105
+lib/mutineer/reporter.rb
+  s_2104026818f077::t_0312a6b898106b 1473-1474
+test/html_reporter_test.rb
+  s_2104026818f077::t_0312a6b898106b 225-228
+lib/mutineer/daemon_client.rb
+  s_2104026818f077::t_0312a6b898106b 59-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe239866dd16188671c314e65e2e45701b804aa5",
+  "prompts": {},
+  "sessions": {
+    "s_2104026818f077": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18c7f4be-528d-4a58-abac-91dfd0fbc081",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
