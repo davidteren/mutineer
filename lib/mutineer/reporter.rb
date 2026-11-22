@@ -1677,11 +1677,21 @@ module Mutineer
       # ASCII-8BIT is "valid" for every byte, and encode raises on a byte
       # UTF-8 cannot hold. Those bytes fall through and print as \xNN.
       if str.encoding != Encoding::ASCII_8BIT && str.valid_encoding?
-        return str.encode(Encoding::UTF_8)
+        # A valid byte with no Unicode mapping (0xA5 in ISO-8859-3) prints as
+        # \xNN too, so one such byte cannot stop the report.
+        return str.encode(Encoding::UTF_8, fallback: ->(c) { escaped_bytes(c) })
       end
 
-      str.dup.force_encoding(Encoding::UTF_8)
-         .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
+      str.dup.force_encoding(Encoding::UTF_8).scrub { |bytes| escaped_bytes(bytes) }
+    end
+
+    # Each byte of `bytes` as `\xNN`.
+    #
+    # @api private
+    # @param bytes [String]
+    # @return [String]
+    def escaped_bytes(bytes)
+      bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join
     end
 
     # A JSON document with every string as UTF-8 (#346). A path whose bytes

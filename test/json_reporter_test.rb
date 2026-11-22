@@ -166,6 +166,8 @@ class JsonReporterTest < Minitest::Test
       ["Windows-31J 0xFA4A", "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J"), true],
       ["binary UTF-8 bytes", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b, false],
       ["binary FF FE", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFF\xFE\" : 0\nend\n".b, true],
+      ["ISO-8859-3 unmappable comment",
+       "# encoding: ISO-8859-3\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0 # \xA5\nend\n".b.force_encoding("ISO-8859-3"), true],
       ["UTF-8 invalid comment", "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8"), true],
       ["UTF-8 invalid comment, CRLF, no final newline",
        "class Foo\r\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\r\nend".b.force_encoding("UTF-8"), true]
@@ -187,6 +189,28 @@ class JsonReporterTest < Minitest::Test
         assert status.success?, "git apply rejected #{label}: #{err}"
         assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
       end
+    end
+  end
+
+  # A byte with no Unicode mapping (0xA5 in ISO-8859-3) on an errored
+  # mutant's line prints as \xNN, and no format raises.
+  def test_an_unmappable_byte_on_an_errored_line_renders_in_every_format
+    src = "# encoding: ISO-8859-3\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0 # \xA5\nend\n".b.force_encoding("ISO-8859-3")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    result = Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "unmap0000001")
+    %w[json html human].each do |format|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
+                        .report(out: out, err: StringIO.new, format: format, verbose: true)
+      next unless format == "json"
+
+      row = JSON.parse(out.string)["no_verdict"].first
+      assert_includes row["diff"], "# \\xA5"
+      refute row.key?("diff_encoding")
+      assert_includes row["diff_base64"].unpack1("m"), "# \xA5".b
     end
   end
 
