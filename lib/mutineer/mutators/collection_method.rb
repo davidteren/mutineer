@@ -16,7 +16,8 @@ module Mutineer
     # differ only in the value they return. No test can tell such a mutant
     # from the original. `all?` and `any?` stop on different elements, so a
     # block can show the change even when the boolean is discarded. A
-    # truthiness-only read of `each` or `map` is declined too (#468).
+    # truthiness-only read of `each`, `map`, or an argument-free `select` or
+    # `reject` is declined too (#468, #501).
     # `first` has no `last` on a Hash or a Set, so that decline can hide a
     # mutant that raises `NoMethodError` (#501).
     # See docs/equivalent-skips.md.
@@ -44,6 +45,12 @@ module Mutineer
       # true for an ordinary receiver. `first` and `min` are not here: their
       # result can be nil.
       TRUTHY_RESULT_NAMES = %i[each map].freeze
+
+      # Names that return an Array, a Hash or an Enumerator, never nil or
+      # false, so a truthiness-only read cannot tell the swap apart. An empty
+      # Array is true. Only a call with no arguments counts: `IO.select(r)`
+      # can return nil.
+      TRUTHY_ARRAY_NAMES = %i[select reject].freeze
 
       # Parents that pass a child's value through. The child is observable
       # exactly when that parent is. An assignment, an argument, a receiver,
@@ -161,6 +168,8 @@ module Mutineer
 
         if TRUTHY_RESULT_NAMES.include?(node.name)
           !result_used?(node) || truthiness_only?(node)
+        elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && truthiness_only?(node)
+          true
         else
           discarded_statement?(node)
         end
@@ -211,17 +220,20 @@ module Mutineer
         true
       end
 
-      # Returns whether only the truthiness of an `each` or `map` is read.
+      # Returns whether only the truthiness of the call's value is read.
       #
       # The condition of `if`, `unless`, `while`, `until`, the left side of
       # `&&` / `and`, and a `when` condition of a `case` with no subject all
-      # test the value. A successful `each` or `map` is never false, so the
-      # swap cannot change the branch. The left side of `||` / `or` is
-      # excluded: that operator returns the value. A `case` subject is
-      # excluded too: `when Hash` is `Hash === value`, and `each` and `map`
-      # return a Hash and an Array for a Hash receiver.
+      # test the value. A successful `each`, `map`, `select` or `reject` is
+      # never false, so the swap cannot change the branch. The climb goes up
+      # through parentheses, either side of `||` / `or`, and the right side of
+      # `&&` / `and`, when that larger expression is itself only tested, as in
+      # `if a && xs.each { }` (#501). The left side of `||` / `or` is
+      # excluded when the result is kept: that operator returns the value. A
+      # `case` subject is excluded too: `when Hash` is `Hash === value`, and
+      # `each` and `map` return a Hash and an Array for a Hash receiver.
       #
-      # @param node [Prism::CallNode] `each` or `map` call to inspect.
+      # @param node [Prism::Node] call or enclosing expression to inspect.
       # @return [Boolean] true when only the truthiness is read.
       def truthiness_only?(node)
         parent = @parents[node]
@@ -229,7 +241,12 @@ module Mutineer
         when Prism::IfNode, Prism::UnlessNode, Prism::WhileNode, Prism::UntilNode
           parent.predicate.equal?(node)
         when Prism::AndNode
-          parent.left.equal?(node)
+          parent.left.equal?(node) || truthiness_only?(parent)
+        when Prism::OrNode, Prism::ParenthesesNode
+          truthiness_only?(parent)
+        when Prism::StatementsNode
+          parent.body.last.equal?(node) && @parents[parent].is_a?(Prism::ParenthesesNode) &&
+            truthiness_only?(@parents[parent])
         when Prism::WhenNode
           @parents[parent].predicate.nil? && parent.conditions.any? { |condition| condition.equal?(node) }
         else

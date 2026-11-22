@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`collection_method` declines more truthiness-only reads (Refs #501).**
+  A condition that only tests the value no longer gets a swap for `each`, `map`, or a `select` or `reject` with no arguments.
+  That covers a call nested in a larger condition: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a`.
+  Those mutants were equivalent, so the run now counts them as declined.
+  The score can rise a little, and the mutant count falls, when `collection_method` is selected and your code has such a condition.
+  The other limits in #501 stay open. See `docs/equivalent-skips.md`, "Collection method".
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
