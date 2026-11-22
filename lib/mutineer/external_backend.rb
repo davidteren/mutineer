@@ -315,8 +315,8 @@ module Mutineer
     def self.moved_summary_error(code, output)
       error_with_output("test-command exited #{code} and a failing summary is in its output, but not at the " \
                         "start of a line, where the clean run printed its summary (a wrapper or a " \
-                        "parallel runner moved it, or a test printed summary-like text and the suite " \
-                        "crashed; --verbose shows the output)", output)
+                        "parallel runner moved it, or a test printed failing summary-like text; " \
+                        "--verbose shows the output)", output)
     end
 
     # The Minitest and RSpec summary patterns, at the start of a line when

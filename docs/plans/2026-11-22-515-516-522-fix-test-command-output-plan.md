@@ -224,7 +224,7 @@ Checked on 2026-11-22 with Ruby 3.4.9, Minitest 5.27.0 and the RSpec in `Gemfile
   - Add `summary_mode(text)`. It returns `:line`, `true` or `false` (KTD1).
   - `smoke_check!` returns `summary_mode(text)` in its second slot. The value stays truthy when a summary exists, so `Runner.run` needs no code change. Name the slot `summary_mode` in the YARD text.
   - `ExternalBackend.run` reads `check_summary == :line` once and passes it to each predicate, in the SimpleCov branch too.
-  - R6: in the exit 1 branch that returns "exited 1 but its output shows no failing test", when the mode is `:line` and `failure_reported?(text)` is true at any position, use a second reason. Wording: "test-command exited 1 and a failing summary is in its output, but not at the start of a line, where the clean run printed its summary (a wrapper or a parallel runner moved it; --verbose shows the output)".
+  - R6: in the exit 1 branch that returns "exited 1 but its output shows no failing test", when the mode is `:line` and `failure_reported?(text)` is true at any position, use a second reason. Wording: "test-command exited 1 and a failing summary is in its output, but not at the start of a line, where the clean run printed its summary (a wrapper or a parallel runner moved it; --verbose shows the output)". (Build note: review added the other cause, so the reason ends "(a wrapper or a parallel runner moved it, or a test printed failing summary-like text; --verbose shows the output)", and it also applies after a SimpleCov gate.)
   - Leave `SIMPLECOV_GATE` and `RSPEC_OUTSIDE_ERROR` without a line start. SimpleCov writes its message to stderr, which can land inside a buffered stdout line. The RSpec text is in the middle of the summary line by design.
   - Update the YARD text of `run`, `smoke_check!` and the module comment. Rewrite the "Ceiling" comments on `failure_reported?` and `exited_during_tests?`: limit 4 is fixed for line-start output, limits 3 and 8 are accepted, with the follow-up issue (#549) number.
 - **Execution note:** Write the tests first. Run the present table tests in both modes before any change to a predicate.
@@ -312,7 +312,7 @@ Checked on 2026-11-22 with Ruby 3.4.9, Minitest 5.27.0 and the RSpec in `Gemfile
 - **Approach:**
   - `random_order`, RSpec part: join the option files, the command and `SPEC_OPTS` in that order. Take the last `--seed` or `--order` option. Report a random order unless that option matches `RSPEC_SEED_GIVEN`.
   - Add one constant for an order option (`--seed`, `--order X`, `--order=X`) and one for `--options` or `-O`. Each needs a comment.
-  - `rspec_option_files` returns nothing when the command has `--options` or `-O` (build note: not `SPEC_OPTS`, see R10). It still drops comment lines and still treats an unreadable file as no seed.
+  - The option files are skipped when the command has `--options` or `-O` (build note: `random_order` makes this check, not `rspec_option_files`, and not for `SPEC_OPTS`, see R10). It still drops comment lines and still treats an unreadable file as no seed.
   - The Minitest part does not change. Minitest has no option that makes a fixed seed random again, so order between `SEED`, `TESTOPTS` and the command does not matter.
   - `lib/mutineer/runner.rb`, the warning in `Runner.run`: change "found no fixed seed" to "found no fixed seed in effect". A seed in `.rspec` that RSpec overrides is found, but not in effect.
   - Rewrite the "Ceiling" comment on `random_order`: name what is fixed and cite the follow-up issue (#549) for the rest.
