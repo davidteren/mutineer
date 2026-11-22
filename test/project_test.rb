@@ -1614,7 +1614,8 @@ class ProjectTest < Minitest::Test
 
   def test_superclass_constant_names_reads_each_constant_superclass
     program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
-                                            "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n").value
-    assert_equal Set[:B, "D::E", :I], Mutineer::Project.superclass_constant_names(program)
+                                            "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \
+                                            "class J < ::K\nend\n").value
+    assert_equal Set[:B, "D::E", :I, :K], Mutineer::Project.superclass_constant_names(program)
   end
 end

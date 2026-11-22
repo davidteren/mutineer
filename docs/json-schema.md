@@ -146,7 +146,7 @@ superclass with no method in its block reloads as usual. So does a plain local w
 Reload also cannot place a method inside the value of a constant assignment when a class statement in the
 same file inherits from that constant, such as the block of `BaseRow = Struct.new(:v) do ... end` with
 `class Row < BaseRow` (#503). Reload keeps the class that `BaseRow` already has, so `Row` reopens with the
-same parent, and the value and its block do not run again. A bare superclass (`< BaseRow`) matches an
+same parent, and the value and its block do not run again. A bare superclass (`< BaseRow` or `< ::BaseRow`) matches an
 assignment of that name in any scope of the file (`BaseRow = ...` or `Billing::BaseRow = ...`). A path
 superclass (`< Billing::BaseRow`) matches only an assignment spelled the same (`Billing::BaseRow = ...`), so
 `Base = ...` beside `class User < ActiveRecord::Base` is not kept. A file that assigns `BaseRow = ...` inside
@@ -155,7 +155,9 @@ runs these methods. Three shapes are open. The value of a `||=` assignment
 does not run again on reload, and its methods are not marked, so a mutant there can survive falsely (#529).
 A constant with no class statement for it in the same file is built again, so a subclass in another file
 keeps the old class (#528). A kept value that reads another class the file builds again, such as
-`BaseRow = Class.new(Fields)`, keeps the old `Fields`, so a mutant in `Fields` can survive falsely (#533).
+`BaseRow = Class.new(Fields)`, keeps the old `Fields`, so a mutant in `Fields` can survive falsely. The same
+holds for a kept value that calls a method of the file, such as `BaseRow = build_base`, for a def inside
+the class that method builds (#533).
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).

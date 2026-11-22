@@ -252,6 +252,8 @@ class CallSuperclassReloadTest < Minitest::Test
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
     assert_includes rewritten, "::Base = ::Mutineer::ReloadGuards.kept_constant(::Object, :Base) { Class.new }"
     assert_includes rewritten, "self::Kid = ::Mutineer::ReloadGuards.kept_constant(self, :Kid) { Class.new }"
+    code = "Base = Class.new\nclass Row < ::Base\nend\n"
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "Base = ::Mutineer::ReloadGuards.kept_constant("
     # A local write in the value keeps the write outside the block.
     code = "Base = (b = Struct.new(:v))\nclass Row < Base\nend\nb\n"
     assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "(b = ::Mutineer::ReloadGuards.kept_constant("

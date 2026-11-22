@@ -480,7 +480,7 @@ module Mutineer
     def self.kept_constant_splice(node, names)
       return nil unless Project.kept_constant_write?(node, names) && (target = kept_target(node.value))
 
-      name = Project.kept_constant_write_name(node)
+      name = Project.plain_constant_write_name(node)
       scope = node.is_a?(Prism::ConstantPathWriteNode) ? superclass_scope(node.target) : "::Module.nesting.first"
       [target, "kept_constant", scope, name]
     end

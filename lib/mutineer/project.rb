@@ -28,7 +28,8 @@ module Mutineer
 
     # Each class statement's superclass that is a constant, inside any
     # parentheses: the name for a bare constant (`:BaseRow` for
-    # `class Row < BaseRow`), and the text as written for a path
+    # `class Row < BaseRow` and for `class Row < ::BaseRow`), and the text as
+    # written for any other path
     # (`"Billing::BaseRow"`). Reload keeps the value of a constant assignment
     # that {kept_constant_write?} matches to one of these, and discovery marks
     # a def inside that value (#503). Both read the names here, so discovery
@@ -47,8 +48,8 @@ module Mutineer
         superclass = node.superclass
         # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
         superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
-        if superclass.is_a?(Prism::ConstantReadNode)
-          names << superclass.name
+        if superclass.is_a?(Prism::ConstantReadNode) || (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
+          names << superclass.name # `< BaseRow` and `< ::BaseRow`
         elsif superclass.is_a?(Prism::ConstantPathNode)
           names << superclass.slice
         end
@@ -71,7 +72,7 @@ module Mutineer
     #
     # @param node [Prism::Node]
     # @return [Symbol, nil]
-    def self.kept_constant_write_name(node)
+    def self.plain_constant_write_name(node)
       if node.is_a?(Prism::ConstantWriteNode)
         node.name
       elsif node.is_a?(Prism::ConstantPathWriteNode)
@@ -93,7 +94,7 @@ module Mutineer
     # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
     # @return [Boolean]
     def self.kept_constant_write?(node, names)
-      name = kept_constant_write_name(node)
+      name = plain_constant_write_name(node)
       return false unless name
 
       names.include?(name) || (node.is_a?(Prism::ConstantPathWriteNode) && names.include?(node.target.slice))
