@@ -1,0 +1,47 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9747bd218c1c67::t_d6c9187dcb6fe9 17
+CHANGELOG.md
+  s_9747bd218c1c67::t_7b23a465636837 17,110-118
+lib/mutineer/reload_guards.rb
+  s_9747bd218c1c67::t_5748fe4b97fb28 9,14-16,19-22,25,80-100,170,1076-1092,1129
+test/fixtures/rails_app/app/models/concerns/own_stamps.rb
+  s_9747bd218c1c67::t_e6e02ad0de9fe2 1-10
+test/fixtures/rails_app/app/models/own_chain_note.rb
+  s_9747bd218c1c67::t_0c4b8400689ccc 1-21
+test/fixtures/rails_app/test/models/own_chain_note_test.rb
+  s_9747bd218c1c67::t_52317756f286d3 1-14
+test/rails_callback_restore_test.rb
+  s_9747bd218c1c67::t_477d922273c26e 10-11,33-44
+test/rails_dogfood_daemon_test.rb
+  s_9747bd218c1c67::t_29d95452853c5c 240-257
+test/reload_guards_test.rb
+  s_9747bd218c1c67::t_f75bd5520ad365 1612-1664
+test/support/rails_callback_restore_probe.rb
+  s_9747bd218c1c67::t_4a693dfd7ce713 8-10,12,22-50,54-121,176
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_267b6c7cf6d712::t_98e67b9eb9b03b 1-621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a8f035f5c21a7609bcc4cbe8db8d73719931a32",
+  "prompts": {},
+  "sessions": {
+    "s_267b6c7cf6d712": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa28031799d5bd412",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
