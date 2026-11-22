@@ -68,9 +68,8 @@ module Mutineer
     # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
     # whose callback count grew after a reload (#479), empty under redefine, and
     # nil when a reload or `--daemon` run could not create its log, so it checked
-    # nothing (#505). A `--test-command` run and a run that returns before any
-    # mutant leave that key out: they did not reload, so read it with
-    # `fetch(:callback_growth, [])`.
+    # nothing (#505). A `--test-command` run leaves that key out: it does not
+    # reload, so read it with `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -157,6 +156,8 @@ module Mutineer
         since_jobs, since_ignored, since_extras[:unscoped_mutants] =
           JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
         if since_jobs.empty?
+          # As the daemon path reports an empty run (#505).
+          since_extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
           return [AggregateResult.new(since_ignored), since_source_map, since_extras]
         end
         since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
