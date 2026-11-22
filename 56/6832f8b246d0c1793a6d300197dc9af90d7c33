@@ -1,0 +1,26 @@
+.expectation-fit/ways-of-working.yaml
+  s_4a7781ab5727b8::t_0c865341e6d824 60
+.expectation-fit/decisions/README.md
+  s_4a7781ab5727b8::t_88cb8463b7865d 34-36,45
+  s_4a7781ab5727b8::t_e9012c443eaf8c 31-33,44,46-48
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_4a7781ab5727b8::t_cc14d36b7db7eb 5
+AGENTS.md
+  s_4a7781ab5727b8::t_0c865341e6d824 347-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "566832f8b246d0c1793a6d300197dc9af90d7c33",
+  "prompts": {},
+  "sessions": {
+    "s_4a7781ab5727b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38f3ef70-f052-4138-b80f-524dcc81a47b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
