@@ -1332,6 +1332,154 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["blockless select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if xs.select
+            work
+          end
+          :done
+        end
+      RUBY
+      ["blockless reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if xs.reject
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.select { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["select in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.select { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["select in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.select { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["reject in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.reject { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.reject { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["reject in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.reject { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["reject in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.reject { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["each in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.each { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.each { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["each in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.each { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["each in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.each { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["map in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.map { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.map { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["map in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.map { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["map in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.map { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
       ["select on the left of && with the result kept", <<~RUBY, [], 1],
         def m
           ok = xs.select { |u| u } && b

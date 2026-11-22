@@ -48,8 +48,9 @@ module Mutineer
 
       # Names that return an Array, a Hash or an Enumerator, never nil or
       # false, so a truthiness-only read cannot tell the swap apart. An empty
-      # Array is true. Only a call with no arguments counts: `IO.select(r)`
-      # can return nil.
+      # Array is true. Only a call with a block and no arguments counts:
+      # `IO.select(r)` can return nil, and a blockless `rel.reject` can raise
+      # on the swapped name.
       TRUTHY_ARRAY_NAMES = %i[select reject].freeze
 
       # Parents that pass a child's value through. The child is observable
@@ -170,7 +171,7 @@ module Mutineer
 
         if TRUTHY_RESULT_NAMES.include?(node.name)
           !result_used?(node) || truthiness_only?(node)
-        elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && truthiness_only?(node)
+        elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && node.block && truthiness_only?(node)
           true
         else
           discarded_statement?(node)
