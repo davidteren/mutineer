@@ -1,0 +1,19 @@
+test/external_backend_test.rb
+  s_49c48c7d2890a0::t_aa3e66fc4787e5 337-350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2cbf2529572ef0f5515707a50fad81d29ead6e07",
+  "prompts": {},
+  "sessions": {
+    "s_49c48c7d2890a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4b7a35f-e2e1-40f8-86a5-a214d77c36bb",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
