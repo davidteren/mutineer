@@ -1,0 +1,35 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9747bd218c1c67::t_855fb05364ffaf 14-15
+CHANGELOG.md
+  s_9747bd218c1c67::t_99055d928f885d 116,126,131-133,143
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_9747bd218c1c67::t_5ba96787fdfbf9 439
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_d267fd310afa8c 366-367,481,484,493-495,505-509,523,527-539
+lib/mutineer/project.rb
+  s_9747bd218c1c67::t_1d11558b0017d2 30-31,46-50,56-71,423-424
+lib/mutineer/reload_guards.rb
+  s_9747bd218c1c67::t_bf2885a4727ba6 1076,1078-1082
+test/call_superclass_reload_test.rb
+  s_9747bd218c1c67::t_3b8906b63fd8fc 138-139,142-143,251-254,328,346,351-352
+test/project_test.rb
+  s_9747bd218c1c67::t_3e77e013d002e0 1617-1618
+test/reload_guards_test.rb
+  s_9747bd218c1c67::t_9ae9d49f7d4384 1656-1657
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef66677e1b38bde3a1d9e7b266e24cd884adc8a6",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
