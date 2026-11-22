@@ -334,6 +334,20 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #368: an unreadable .rspec counts as no seed; it must not abort the run.
+  def test_random_order_ignores_an_unreadable_rspec_file
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          File.write(".rspec", "--seed 7\n")
+          File.stub(:readlines, ->(*) { raise Errno::EACCES }) do
+            assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", "Randomized with seed 4242\n")
+          end
+        end
+      end
+    end
+  end
+
   # A command that runs a seeded Minitest suite and then an unseeded RSpec
   # suite still reports the RSpec order.
   def test_random_order_checks_each_runner_in_a_combined_run
