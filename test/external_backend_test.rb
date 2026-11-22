@@ -276,6 +276,14 @@ class ExternalBackendTest < Minitest::Test
         end
       end
     end
+    # Under :line a prefixed passing summary is not counted: one line-start
+    # summary against a clean count of 2. Under true both count.
+    moved = "#{passing}app | #{passing}#{GATE}"
+    with_script(%(STDOUT.write #{moved.dump}\nexit 2\n)) do |path|
+      cmd = "#{RUBY} #{path} %{files}"
+      assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: :line, clean_summaries: 2), :error?
+      assert_predicate Backend.run(cmd, ["x"], timeout: 30, check_summary: true, clean_summaries: 2), :survived?
+    end
     result = verdict(passing + GATE, 2, :line)
     assert_predicate result, :survived?, "the default clean_summaries of 0 keeps the 1.9.0 rule"
     with_script(%(STDOUT.write #{(passing + GATE).dump}\nexit 2\n)) do |path|

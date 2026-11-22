@@ -250,7 +250,9 @@ module Mutineer
         # with `SimpleCov.print_error_status = false` the gate prints nothing,
         # and its exit scores error too; a clean run with no summary line keeps
         # the 1.9.0 rule, and so does a gate that stops the plain first suite
-        # of a chain whose second suite is prefixed.
+        # of a chain whose second suite is prefixed. Interleaved parallel
+        # output that moves a passing summary off the line start can turn a
+        # correct survived into error.
         if text.match?(SIMPLECOV_GATE)
           return Result.killed if failure_reported?(text, line: line)
           # A failing test whose summary is off the line start is no proof of
