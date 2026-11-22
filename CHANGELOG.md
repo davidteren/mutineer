@@ -137,14 +137,15 @@ All notable changes to this project are documented here. The format is based on
   This entry changes no scoring on its own.
 - **A `--test-command` crash no longer scores `killed` because of summary-like text away from a line start (#515).**
   When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
-  So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill.
+  So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill, when the run printed its real summary at a line start.
+  A Minitest run that stops after `# Running:` with no real summary still scores `killed`, as before (#342 limits 3 and 8).
   Such a run now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
   Estimate: far below 1 project in 1,000, unmeasured.
   A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start, on exit 1 or after a SimpleCov gate.
   After a SimpleCov gate, a run whose passing summary is only off the line start also scores `error`, not `survived`.
   The reason then says "not at the start of a line". Estimate: below 1 in 100 `--test-command` setups, unmeasured.
   When no summary of the clean run starts a line, such as with a wrapper that prefixes each line, matching stays as in 1.9.0.
-  The same rule moves one case toward `killed`: Minitest printed `# Running:` at a line start, a test printed passing summary-like text away from a line start, and the run then ended with exit 1 and no real summary. That is a run stopped during a test, which scores `killed`, as code under test that calls `exit 1` does. In 1.9.0 it scored `error`.
+  The same rule moves one case toward `killed`: Minitest printed `# Running:` at a line start, passing summary-like text away from a line start followed (a `-v` test name, a test's output, or a real summary that a wrapper moved), and the run then ended with exit 1 and no summary at a line start. That is a run stopped during a test, which scores `killed`, as code under test that calls `exit 1` does. In 1.9.0 it scored `error`.
   Limits 3, 7 and 8 of #342 are accepted and keep their verdicts. #549 tracks them.
 - **A SimpleCov gate that stops a chain of `--test-command` suites scores `error`, not `survived` (#516).**
   With SimpleCov's gate message and a passing summary, a mutant now scores `survived` only when its run printed at least as many summary lines as the clean run.
