@@ -68,6 +68,85 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # #510: the JSON diff is UTF-8. For a source in another encoding the entry
+  # names that encoding in `diff_encoding`; a consumer transcodes the hunk
+  # lines (not the two path headers) back to it, and then git applies the
+  # patch to the file's own bytes.
+  NON_UTF8_SOURCES = [
+    ["EUC-JP", "\u3042\u3044"], ["Shift_JIS", "\u3042\u3044"], ["ISO-8859-1", "caf\u00e9"], ["ISO-8859-1", "cafe"]
+  ].freeze
+
+  # Renders the `>=` -> `>` survivor of `src` (a Foo#bar source) as JSON.
+  # @return [Array(Mutineer::Mutation, Hash)] the mutation and its survivors[] row.
+  def survivor_row_for(src)
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    [mutation, JSON.parse(out.string)["survivors"].first]
+  end
+
+  def test_diff_applies_with_git_after_transcoding_to_diff_encoding
+    NON_UTF8_SOURCES.each do |name, text|
+      label = "#{name} #{text}"
+      enc = Encoding.find(name)
+      src = "# encoding: #{name}\nclass Foo\n  def bar(x) # #{text}\n    x >= 1 ? \"#{text}\" : 0\n  end\nend\n"
+      src = src.encode(enc, undef: :replace).force_encoding(enc)
+      mutation, row = survivor_row_for(src)
+      assert_equal name, row["diff_encoding"], label
+      header, hunk = row["diff"].split(/^(?=@@)/, 2)
+      assert row["diff"].valid_encoding?, label
+      patch = header.b + hunk.encode(enc).b
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, "foo.rb"), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, "git apply rejected #{label}: #{err}"
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
+      end
+    end
+  end
+
+  # #510 with #498: the lists that carry a diff name the source's encoding too.
+  def test_killed_unplaceable_and_ran_at_load_rows_have_diff_encoding
+    src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = %i[killed unplaceable ran_at_load].map.with_index do |status, i|
+      Mutineer::Result.public_send(status).with(subject: subj, mutation: mutation, id: "enc#{i}")
+    end
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    %w[killed unplaceable ran_at_load].each do |list|
+      assert_equal "EUC-JP", doc[list].first["diff_encoding"], list
+    end
+  end
+
+  def test_utf8_source_has_no_diff_encoding
+    refute render([survivor])["survivors"].first.key?("diff_encoding")
+  end
+
+  def test_lossy_roundtrip_source_has_no_diff_encoding
+    src = "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J")
+    refute survivor_row_for(src).last.key?("diff_encoding")
+    kana = src.b.sub("\xFA\x4A".b, "\x82\xA0".b).force_encoding("Windows-31J") # same source, a character that round-trips
+    assert_equal "Windows-31J", survivor_row_for(kana).last["diff_encoding"]
+  end
+
+  def test_binary_source_has_no_diff_encoding
+    src = "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_encoding")
+    assert_includes row["diff"], "\u3042" # read as UTF-8, so it applies as it is
+  end
+
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
     assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
