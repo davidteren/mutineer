@@ -562,22 +562,21 @@ class CliTest < Minitest::Test
     refute_includes err, "(Errno::ENOENT)"
   end
 
-  # Boot mode does no coverage selection, so it requires at least one --test file.
-  def test_boot_without_test_exits_two
+  # A real run in boot mode does no coverage selection, so it requires at least
+  # one --test file. A dry run runs no tests, so it needs none (#410).
+  def test_boot_flags_without_test_exit_two_on_a_real_run_only
     src = File.join(FIXTURES, "boot", "widget.rb")
     app = File.join(FIXTURES, "boot", "app_boot.rb")
-    _, err, status = mutineer("run", src, "--boot", app)
-    assert_equal 2, status.exitstatus
-    assert_includes err, "--boot/--rails requires at least one --test file"
-  end
+    [["--boot", app], ["--rails"]].each do |flags|
+      _, err, status = mutineer("run", src, *flags)
+      assert_equal 2, status.exitstatus, flags.inspect
+      assert_includes err, "--boot/--rails requires at least one --test file"
 
-  # --rails defaults boot to config/environment; with no --test the same usage
-  # error fires first (deterministic, needs no real Rails app or DB).
-  def test_rails_alone_demands_test_first
-    src = File.join(FIXTURES, "boot", "widget.rb")
-    _, err, status = mutineer("run", src, "--rails")
-    assert_equal 2, status.exitstatus
-    assert_includes err, "--boot/--rails requires at least one --test file"
+      out, err, status = mutineer("run", src, "--dry-run", *flags)
+      assert_equal 0, status.exitstatus, "#{flags.inspect}: #{err}"
+      refute_includes err, "requires at least one --test file"
+      assert_match(/[1-9]\d* unpaired \(1 source has no paired test/, out, flags.inspect)
+    end
   end
 
   # --since with a ref git cannot resolve is a usage error (exit 2). Run inside
