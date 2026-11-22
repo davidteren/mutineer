@@ -240,7 +240,7 @@ Every mutant that was attempted and produced no verdict:
 `seconds` is as in `survivors[]` (additive key, schema `1.11`, #495).
 `diff` is the same text a `survivors[]` entry gives for that mutant, and `diff_encoding` is present
 under the same rule, so a consumer can run an errored, timed-out or uncapturable mutant again itself.
-`diff_base64` is there under the same rule (see the recipe in the `survivors[]` `diff` row). It is `null` on an entry with no mutation (see below). Additive key (schema `1.11`, #526).
+`diff_base64` is there under the same rule (see the recipe in the `survivors[]` `diff` row). `diff` is `null` on an entry with no mutation (see below), and `diff_encoding` and `diff_base64` are then absent. Additive key (schema `1.11`, #526).
 `status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
 Filter on `status` `"error"` for the errored mutants: their count equals `summary.errored`.
 `operator` and `token` name the change, as in `no_coverage[]` (additive keys, schema `1.10`, #388).
