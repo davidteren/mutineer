@@ -1,0 +1,57 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9747bd218c1c67::t_ffa1f1eb53326b 14-15
+CHANGELOG.md
+  s_9747bd218c1c67::t_932660505d804b 110-117,133
+docs/json-schema.md
+  s_9747bd218c1c67::t_f90e0133b7ed60 71,146-155,161-162
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_edbd474fd3f1c2 484
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_9aacdaa6cf5efd 367-368,431-436,443-444,446,453-455,470-492,555-558,560-561
+lib/mutineer/project.rb
+  s_9747bd218c1c67::t_8ca1c170be1703 20,29-50,228-231,234,259,392-394,401-402,413-414,422-436,472
+lib/mutineer/reload_guards.rb
+  s_9747bd218c1c67::t_9be18a2ea23ed3 99-122
+lib/mutineer/result.rb
+  s_9747bd218c1c67::t_54875c3924aaad 32-35
+lib/mutineer/runner.rb
+  s_9747bd218c1c67::t_b64da9c748f688 497
+lib/mutineer/subject.rb
+  s_9747bd218c1c67::t_f36c623e351235 30-34,37,60-61,68
+test/call_superclass_reload_test.rb
+  s_9747bd218c1c67::t_03d11933eabbec 213-367
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_8758e047c45851 433-438
+test/fixtures/const_superclass.rb
+  s_9747bd218c1c67::t_386460bf72c253 1-22
+test/fixtures/const_superclass_holders.rb
+  s_9747bd218c1c67::t_bd802a7921f40e 1-9
+test/fixtures/const_superclass_subclass_test.rb
+  s_9747bd218c1c67::t_c2b4f7d9d6cae0 1-19
+test/fixtures/const_superclass_test.rb
+  s_9747bd218c1c67::t_0f602617a18876 1-25
+test/fixtures/rails_app/app/models/ledger_row.rb
+  s_9747bd218c1c67::t_d79a920e96e989 1-16
+test/fixtures/rails_app/test/models/ledger_row_test.rb
+  s_9747bd218c1c67::t_28d3031a1ad2df 1-16
+test/project_test.rb
+  s_9747bd218c1c67::t_a5a6dcc3933e71 1590,1593-1619
+test/rails_dogfood_daemon_test.rb
+  s_9747bd218c1c67::t_b55c0e4faa7767 222-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ffaad2cc99e6046a59def4d2320312e49db3c043",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
