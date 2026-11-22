@@ -1,0 +1,39 @@
+lib/mutineer/coverage_map.rb
+  s_d37da4289dd811::t_836c9b5106bd60 17-24,41-49,314-317,320-329,331-333,336-337,340-346,349-351
+CHANGELOG.md
+  s_d37da4289dd811::t_836c9b5106bd60 19-27
+lib/mutineer/coverage_map/failed_test_blame.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-197
+lib/mutineer/coverage_map/recording.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-435
+lib/mutineer/coverage_map/capture.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-255
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-428
+lib/mutineer/coverage_map/child_scripts.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-354
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-247
+lib/mutineer/coverage_map/cache.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-336
+lib/mutineer/coverage_map/clean_check.rb
+  s_d37da4289dd811::t_836c9b5106bd60 1-286
+docs/plans/2026-11-21-201-refactor-coverage-map-split-plan.md
+  s_d37da4289dd811::t_836c9b5106bd60 1-406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0ea57a6339b4005c6dbd26b7ac854c382b10341c",
+  "prompts": {},
+  "sessions": {
+    "s_d37da4289dd811": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "049f4638-b0a6-41c3-9e27-b38c5046711b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
