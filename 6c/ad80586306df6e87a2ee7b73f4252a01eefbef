@@ -14,16 +14,20 @@ lib/mutineer/reporter.rb
   s_2104026818f077::t_e8e17dea5ca534 116-117,206,208-209,226,458,560-580,1459-1496
   s_2104026818f077::t_d0307757bef218 52-53
   s_2104026818f077::t_6d02e203d6d099 1497
+  s_2104026818f077::t_211cf2e88cb85b 101
 lib/mutineer/minitest_integration/in_test_database_error.rb
   s_2104026818f077::t_570deb7c3a6bd2 190
 lib/mutineer/cli.rb
   s_2104026818f077::t_d1e58c9c4e7287 128-130
+  s_2104026818f077::t_211cf2e88cb85b 1066
 test/test_runners/rspec_test.rb
   s_2104026818f077::t_e8142b240df872 550-557
 docs/results.md
   s_2104026818f077::t_d1e58c9c4e7287 13
 lib/mutineer/test_runners/rspec.rb
   s_2104026818f077::t_570deb7c3a6bd2 86-92
+CHANGELOG.md
+  s_2104026818f077::t_772fd1caf5c5d1 76-89
 ---
 {
   "schema_version": "authorship/3.0.0",
