@@ -117,3 +117,14 @@ test('motion keeps step labels, true numbers and every section visible', async (
   await expect(page.locator('.odo[aria-hidden], .visually-hidden')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('inline code chips keep at least 8px of side padding', async ({ page }) => {
+  await page.goto('/equivalent-skips.html');
+  for (const selector of ['.prose td > code', '.prose p > code']) {
+    const pad = await page.locator(selector).first().evaluate((el) => {
+      const s = getComputedStyle(el);
+      return [parseFloat(s.paddingLeft), parseFloat(s.paddingRight)];
+    });
+    expect(Math.min(...pad), selector).toBeGreaterThanOrEqual(8);
+  }
+});
