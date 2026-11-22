@@ -3407,9 +3407,11 @@ class CliTest < Minitest::Test
       stub = File.join(proj, "no_growth_log.rb")
       File.write(stub, "require \"mutineer\"\n" \
                        "Mutineer::JobPlan.define_singleton_method(:create_callback_growth_log) { nil }\n")
-      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
-                                  "--strategy", "reload", "--format", "json", chdir: proj,
-                                  env: { "RUBYOPT" => "-I#{File.join(ROOT, 'lib')} -r#{stub}" })
+      # -r as its own argument: RUBYOPT would split a path with a space and
+      # drop the bundle's own options.
+      out, err, status = Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-r#{stub}", BIN,
+                                        "run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                        "--strategy", "reload", "--format", "json", chdir: proj)
       assert_equal 0, status.exitstatus, err
       assert_includes out, '"callback_growth":null'
       assert_empty err.lines.grep(/after a reload/)
