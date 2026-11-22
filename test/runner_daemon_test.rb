@@ -122,7 +122,7 @@ class RunnerDaemonTest < Minitest::Test
   def load_path_config(**settings)
     Mutineer::Config.new(
       sources: [File.join(APP, "app/models/order.rb")],
-      tests: [File.join(APP, "test/load_path/load_path_probe_test.rb")],
+      tests: [File.join(APP, "extra_tests/load_path_probe_test.rb")],
       project_root: APP, boot: "config/environment", rails: true, daemon: true, strategy: "reload",
       framework: "minitest", cache_dir: Dir.mktmpdir("mutineer-load-path"), **settings
     )
@@ -162,7 +162,7 @@ class RunnerDaemonTest < Minitest::Test
         report = File.join(dir, "report.json")
         _out, err, status = Open3.capture3(
           env, "bundle", "exec", "mutineer", "run", "app/models/order.rb", "--test",
-          "test/load_path/load_path_probe_test.rb", "--rails", backend, "--strategy", "reload",
+          "extra_tests/load_path_probe_test.rb", "--rails", backend, "--strategy", "reload",
           "-I", "extra_load_path", "--cache-dir", File.join(dir, "cache"), "--format", "json", "--output", report,
           chdir: APP
         )

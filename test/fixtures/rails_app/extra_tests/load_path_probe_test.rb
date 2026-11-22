@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
-require "test_helper"
+require_relative "../test/test_helper"
 require "load_path_probe"
 
-# Needs extra_load_path/ on $LOAD_PATH (#491). The name avoids order_*_test.rb,
+# Needs extra_load_path/ on $LOAD_PATH (#491), so it lives outside test/:
+# a plain `bin/rails test` does not find it. The name avoids order_*_test.rb,
 # so no paired run picks it up for app/models/order.rb.
 class LoadPathProbeTest < ActiveSupport::TestCase
   def test_subtotal_matches_the_probe
