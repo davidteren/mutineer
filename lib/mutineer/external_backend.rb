@@ -316,8 +316,9 @@ module Mutineer
     # an unseeded RSpec suite that the same command runs. Mutineer only warns:
     # it cannot know the seed flag of an arbitrary command, so it sets no seed.
     # Ceiling: a seed set in a wrapper script, `~/.rspec`, or Minitest's
-    # `test_order`, or an `--options FILE` that replaces `.rspec` is not seen, so the warning still prints; a seed-like
-    # argument meant for a wrapper hides it (#338, #368).
+    # `test_order`, or an `--options FILE` that replaces `.rspec` is not seen,
+    # so the warning still prints; a seed-like argument meant for a wrapper
+    # hides it (#338, #368).
     #
     # @api private
     # @param command [String] the --test-command template.
