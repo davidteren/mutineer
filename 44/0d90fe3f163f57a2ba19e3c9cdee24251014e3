@@ -1,0 +1,71 @@
+.expectation-fit/decisions/README.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 31-36,44-46
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-247
+lib/mutineer/coverage_map/recording.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-435
+AGENTS.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 78-87,219-222,285-304,371-372
+.github/workflows/ci.yml
+  s_49c48c7d2890a0::t_8465a8dd9b4923 9-11
+CHANGELOG.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 9-20,23
+docs/cli.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 9
+docs/plans/2026-11-21-201-refactor-coverage-map-split-plan.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-406
+lib/mutineer/coverage_map/clean_check.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-286
+lib/mutineer/coverage_map.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 17-24,41-49,314-317,320-329,331-333,336-337,340-346,349-351
+test/merge_gate_ruleset_test.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-81
+skills/mutineer/SKILL.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 21
+lib/mutineer/coverage_map/child_scripts.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-354
+lib/mutineer/coverage_map/failed_test_blame.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-197
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-428
+lib/mutineer/coverage_map/cache.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-336
+docs/comparison.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 81
+.github/workflows/release-pr.yml
+  s_49c48c7d2890a0::t_8465a8dd9b4923 19-28,109,158,370-372
+docs/plans/2026-11-22-355-merge-gate-ruleset.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-106
+.github/rulesets/main-merge-gate.json
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-97
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 5-6
+docs/getting-started.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 65,68
+lib/mutineer/cli.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 541-543
+lib/mutineer/coverage_map/capture.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 1-255
+.expectation-fit/ways-of-working.yaml
+  s_49c48c7d2890a0::t_8465a8dd9b4923 60
+docs/rails-setup.md
+  s_49c48c7d2890a0::t_8465a8dd9b4923 34
+test/cli_test.rb
+  s_49c48c7d2890a0::t_8465a8dd9b4923 565-567,570-579
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "440d90fe3f163f57a2ba19e3c9cdee24251014e3",
+  "prompts": {},
+  "sessions": {
+    "s_49c48c7d2890a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4b7a35f-e2e1-40f8-86a5-a214d77c36bb",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
