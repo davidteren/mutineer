@@ -1573,4 +1573,20 @@ class ProjectTest < Minitest::Test
       assert_empty Mutineer::Project.discover([path])
     end
   end
+
+  # #492: reload keeps a class statement's live superclass, so a def inside the
+  # superclass call's block cannot be placed. A def in the class body can.
+  def test_a_def_in_a_superclass_block_is_unplaceable_under_reload_only_there
+    src = "class X < Struct.new(:a) do\n  def inner; end\nend\n  def outer; end\nend\n" \
+          "Y = Struct.new(:b) do\n  def built; end\nend\n"
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      assert by_name[:inner].in_superclass_block
+      assert by_name[:inner].unplaceable?("reload")
+      refute by_name[:outer].in_superclass_block
+      refute by_name[:outer].unplaceable?("reload")
+      refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
+      refute by_name[:built].unplaceable?("reload")
+    end
+  end
 end

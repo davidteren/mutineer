@@ -3338,4 +3338,47 @@ class CliTest < Minitest::Test
       refute_includes err, "unknown command"
     end
   end
+
+  # #479 through the real binary: an in-process reload run with two workers.
+  # A require file makes the guard report Calculator after each load, so every
+  # forked child logs it. The run prints it once, and the JSON report has no new
+  # key. The score is the same as without the warning.
+  def test_an_in_process_reload_run_prints_the_callback_growth_warning_once
+    with_project do |proj|
+      File.write(File.join(proj, "growth_stub.rb"),
+                 "require \"mutineer/reload_guards\"\n" \
+                 "Mutineer::ReloadGuards::RepeatedCallbacks.define_singleton_method(:grown_classes) { |_| [Calculator] }\n")
+      File.write(File.join(proj, ".mutineer.yml"), "require:\n  - growth_stub.rb\n")
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                  "--strategy", "reload", "--jobs", "2", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.lines.grep(/\A\[mutineer\] after a reload, 1 class runs a callback/).size, err
+      assert_equal ["[mutineer]   Calculator (calculator.rb)\n"], err.lines.grep(/\A\[mutineer\]   Calculator/)
+      doc = JSON.parse(out)
+      refute_includes out, "callback_growth"
+      assert_equal 100.0, doc["summary"]["score"]
+    end
+  end
+
+  # #479: one header, then one line for each class; nothing when no class grew.
+  def test_callback_growth_warning_prints_one_header_and_one_line_for_each_class
+    out, err = capture_io do
+      Mutineer::CLI.warn_callback_growth([%w[Doubled app/models/doubled.rb], ["Once\e[2J", "app/models/once.rb"]])
+    end
+    assert_empty out
+    lines = err.lines
+    assert_equal 3, lines.size
+    assert_match(/\A\[mutineer\] after a reload, 2 classes run a callback more than once \(#479\)\./, lines[0])
+    assert_includes lines[0], "This warning does not change the score or the exit code."
+    assert_includes lines[0], "--no-daemon --strategy redefine, or with --test-command"
+    assert_equal "[mutineer]   Doubled (app/models/doubled.rb)\n", lines[1]
+    assert_equal "[mutineer]   Once\\e[2J (app/models/once.rb)\n", lines[2], "a control character is escaped"
+
+    _out, err = capture_io { Mutineer::CLI.warn_callback_growth([%w[Doubled a.rb], %w[Doubled b.rb]]) }
+    assert_includes err, "1 class runs a callback", "one class logged from two files counts once"
+    assert_equal 3, err.lines.size
+
+    _out, err = capture_io { Mutineer::CLI.warn_callback_growth([]) }
+    assert_empty err
+  end
 end

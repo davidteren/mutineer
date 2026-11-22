@@ -72,6 +72,30 @@ module Mutineer
       end
     end
 
+    # The superclass a reloaded class statement reopens with (#492).
+    #
+    # `class X < Data.define(:a)` builds a new superclass each time Ruby runs
+    # it, so a second load raises "superclass mismatch". The reload text wraps
+    # such a superclass in a call to this method ({JobPlan.keep_live_superclasses}).
+    # When `scope` already has a class `name`, this returns that class's
+    # superclass, so the class reopens as the same object: its instances,
+    # subclasses and callback chains stay valid. Otherwise it runs the block,
+    # as the original text would.
+    #
+    # @param scope [Module, nil] the module the class statement defines in;
+    #   nil at the top level.
+    # @param name [Symbol] the class name.
+    # @yieldreturn [Class] the superclass the original text builds.
+    # @return [Class]
+    def self.kept_superclass(scope, name)
+      scope ||= Object
+      if scope.const_defined?(name, false)
+        klass = scope.const_get(name, false)
+        return klass.superclass if klass.is_a?(Class)
+      end
+      yield
+    end
+
     # True while a mutant file loads.
     #
     # @return [Boolean]
@@ -91,14 +115,67 @@ module Mutineer
       load_original(source_file)
       install!
       before = RepeatedCallbacks.snapshot
+      sizes = callback_growth_log && growth_check { RepeatedCallbacks.sizes(before) }
       @enums_before_load = {}
       @loading = true
       result = yield
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
+      growth_check { log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) } if sizes
       result
     ensure
       @loading = false
     end
+
+    # Runs one step of the callback-growth check (#479). The check only
+    # reports, so an error in it must not fail the load or change the
+    # verdict. It prints one line on stderr instead, so the check is not lost
+    # without a word.
+    #
+    # @yield the step.
+    # @return [Object, nil] what the step returns, or nil when it raised.
+    def self.growth_check
+      yield
+    rescue StandardError => e
+      warn "[mutineer] could not check callback counts after the reload: #{e.class}: #{e.message}"
+      nil
+    end
+
+    class << self
+      # The file each mutant load appends to, one `class name<TAB>source
+      # file` line for each class whose own callback count grew (#479).
+      # {Runner.execute} sets it in the parent for a reload run, so each
+      # forked child has it. The daemon child gets it from the payload. Nil
+      # turns the check off.
+      #
+      # @return [String, nil]
+      attr_accessor :callback_growth_log
+    end
+
+    # Appends one line for each class to {callback_growth_log}. The name
+    # comes from `Module#name` itself, so a class that defines its own `name`
+    # cannot change it. A write that fails does not fail the load or change
+    # the verdict. It prints one line on stderr instead.
+    #
+    # @param classes [Array<Class>] from {RepeatedCallbacks.grown_classes}.
+    # @param source_file [String] the file the mutant replaces.
+    # @return [void]
+    def self.log_callback_growth(classes, source_file)
+      return if classes.empty?
+
+      # Dumped, so a newline or tab in the name or the path stays in its field.
+      lines = classes.map do |klass|
+        "#{(MODULE_NAME.bind_call(klass) || MODULE_TO_S.bind_call(klass)).dump}\t#{source_file.to_s.dump}\n"
+      end
+      File.write(callback_growth_log, lines.join, mode: "a")
+    rescue SystemCallError => e
+      warn "[mutineer] could not write the callback-growth log: #{e.message}"
+    end
+
+    # `Module#name`, unbound, for a class that defines its own `name`.
+    MODULE_NAME = Module.instance_method(:name)
+
+    # `Module#to_s`, unbound, the label of a class with no name.
+    MODULE_TO_S = Module.instance_method(:to_s)
 
     # Puts back one copy of each callback and validator that a second run of a
     # class body added again (#390).
@@ -144,6 +221,48 @@ module Mutineer
         # Asks the module: a class can define its own `<` (`extend Comparable`).
         classes = ObjectSpace.each_object(Class).select { |klass| ::ActiveSupport::Callbacks > klass }
         classes.to_h { |klass| [klass, klass.__callbacks.dup] }
+      end
+
+      # Each class's own entries in each chain, counted before the load: the
+      # entries that are not the same objects as its parent's. A later restore
+      # can change a chain object in place, so they are counted while they are
+      # still the old ones.
+      #
+      # @param before [Hash{Class => Hash{Symbol => Object}}] a {.snapshot}.
+      # @return [Hash{Class => Hash{Symbol => Integer}}]
+      def self.sizes(before)
+        before.to_h do |klass, chains|
+          parent = before.fetch(klass.superclass, {})
+          [klass, chains.to_h { |name, chain| [name, own_count(chain.to_a, parent[name].to_a)] }]
+        end
+      end
+
+      # The classes that have more own entries in a chain after the load than
+      # before, after {.remove} kept one copy of each entry it could pair
+      # (#479). An entry a subclass shares with its parent is the parent's, so
+      # a subclass that only inherited the growth is left out, and one that
+      # skipped the parent's entry still shows its own. A class that did not
+      # exist before the load is left out. The full fix is the full-reload
+      # strategy (#389).
+      #
+      # @param sizes [Hash{Class => Hash{Symbol => Integer}}] from {.sizes}.
+      # @return [Array<Class>]
+      def self.grown_classes(sizes)
+        sizes.keys.select do |klass|
+          parent = klass.superclass
+          parent_now = parent.respond_to?(:__callbacks) ? parent.__callbacks : {}
+          klass.__callbacks.any? do |name, chain|
+            own_count(chain.to_a, parent_now[name].to_a) > sizes[klass].fetch(name, 0)
+          end
+        end
+      end
+
+      # @param entries [Array] a class's chain entries.
+      # @param parent_entries [Array] its parent's entries in the same chain.
+      # @return [Integer] the entries that are not the same object as one of the parent's.
+      def self.own_count(entries, parent_entries)
+        shared = identity_set(parent_entries)
+        entries.count { |entry| !shared.include?(entry) }
       end
 
       # Keeps one copy of each entry the load added again.

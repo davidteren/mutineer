@@ -348,7 +348,7 @@ module Mutineer
     # @param source [String] the original source text.
     # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
     #   The placed def records a run of the mutated expression.
-    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @param reach_key [String, nil] thread-local key for `reach_path`.
     # @return [Array(String, Hash{Symbol => Object})] the mutant text, and the
     #   original def's `line`, `name` and `singleton`.
     def self.hook_mutant(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
@@ -357,6 +357,151 @@ module Mutineer
                "#{Isolation.mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)}\nend; "
       [mutated.byteslice(0...at) + stored + mutated.byteslice(at..),
        { line: subject.def_node.location.start_line, name: subject.name, singleton: subject.singleton }]
+    end
+
+    # The whole-file text the reload strategy loads for one mutant, shared by
+    # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
+    # def in a concern's hook block gets {hook_mutant}; any other mutant gets
+    # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
+    # Then each class statement with a call superclass keeps its live
+    # superclass ({keep_live_superclasses}, #492).
+    #
+    # @param mutated [String] the mutated source text.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject being mutated.
+    # @param source [String] the original source text.
+    # @param reach_path [String, nil] sentinel for a `:maybe` mutant (#345).
+    # @param reach_key [String, nil] fiber-local key for `reach_path`.
+    # @return [Array(String, Hash{Symbol => Object}, nil)] the text to load, and
+    #   the hook-def values of {hook_mutant}, or nil.
+    def self.reload_code(mutated, mutation, subject, source, reach_path: nil, reach_key: nil)
+      if subject&.reload_hook_call
+        code, hook_def = hook_mutant(mutated, mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
+      else
+        code = ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
+      end
+      [keep_live_superclasses(code), hook_def]
+    end
+
+    # A new empty file for {ReloadGuards.callback_growth_log} (#479). The
+    # caller deletes it after the run.
+    #
+    # @return [String] its path.
+    def self.create_callback_growth_log
+      file = Tempfile.create(["mutineer-callback-growth", ".log"])
+      file.close
+      file.path
+    rescue SystemCallError => e
+      # Report only (#479): a temp directory that refuses the file must not stop the run.
+      warn "[mutineer] could not create the callback-growth log, so this run does not check " \
+           "callback counts after a reload (#479): #{e.message}"
+      nil
+    end
+
+    # The classes the mutant loads logged, each once, with a project-relative
+    # file, in the order they were first logged. The log is read as bytes, so
+    # a non-ASCII name or path does not raise when `LANG` is unset (#346).
+    #
+    # @param path [String, nil] the log file, or nil when the run had none.
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>] each class name and its source file.
+    def self.callback_growth_rows(path, project_root)
+      return [] unless path && File.exist?(path)
+
+      # Each field is written with `String#dump`, so a newline or tab in a name
+      # or a path cannot split a record.
+      File.binread(path).split("\n".b).filter_map do |line|
+        name, file = line.split("\t".b, 2)
+        next unless file
+
+        [FsPath.read(name.undump), ProjectPath.relative(FsPath.read(file.undump), project_root)]
+      rescue RuntimeError # a line that is not two dumped strings
+        nil
+      end.uniq
+    end
+
+    # Wraps the superclass of each class statement whose superclass is not a
+    # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
+    # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
+    # file over its classes reopens each one instead of raising "superclass
+    # mismatch" (#492). The superclass text stays as it is, inside the block,
+    # and on its own lines, so line numbers do not move. A wrap puts one
+    # expression in a block, and a class inside a wrapped superclass is not
+    # wrapped again. A bad wrap is not checked here: the child's `load` raises
+    # `SyntaxError`, and the mutant scores `error`. Text with no such class
+    # comes back unchanged.
+    #
+    # @param code [String] the reload text.
+    # @return [String]
+    def self.keep_live_superclasses(code)
+      nodes = []
+      queue = [Parser.parse_string(code).value]
+      while (node = queue.shift)
+        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
+          nodes << node
+          # The wrap skips the whole superclass expression, so a class inside it
+          # is not wrapped again: two splices in one range would not parse.
+          queue.concat([node.constant_path, node.body].compact)
+        else
+          queue.concat(node.compact_child_nodes)
+        end
+      end
+      return code if nodes.empty?
+
+      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
+        loc = node.superclass.location
+        inner = text.byteslice(loc.start_offset, loc.length)
+        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
+                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
+      end
+    end
+
+    # A superclass the reload text wraps: one that is not a constant, and
+    # that sets no local variable of the file. The wrap is a block, so such a
+    # local would not be set for a later line (`class Q < (base = ...)`).
+    # Those keep the text as written, as before #492 (#512).
+    #
+    # @param node [Prism::Node, nil] a class statement's superclass.
+    # @return [Boolean]
+    def self.call_superclass?(node)
+      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+
+      !writes_local?(node)
+    end
+
+    # Whether `node` sets a local variable of the scope it runs in. A block or
+    # lambda can set an outer local, so the walk enters it and counts only
+    # writes that reach past it. A def has its own scope and is not entered.
+    #
+    # @param node [Prism::Node]
+    # @param level [Integer] the blocks and lambdas between `node` and that scope.
+    # @return [Boolean]
+    def self.writes_local?(node, level = 0)
+      # Prism's `depth` counts the scopes between the write and its variable,
+      # so a write inside `level` blocks reaches the file's scope at that depth.
+      return node.depth >= level if LOCAL_WRITES.any? { |type| node.is_a?(type) }
+      return false if node.is_a?(Prism::DefNode)
+
+      inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
+      node.compact_child_nodes.any? { |child| writes_local?(child, inner) }
+    end
+
+    # The Prism nodes that set a local variable.
+    LOCAL_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableTargetNode,
+                    Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
+                    Prism::LocalVariableAndWriteNode].freeze
+
+    # The module a class statement defines its constant in, as Ruby text that
+    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
+    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    #
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @return [String]
+    def self.superclass_scope(path)
+      return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
+
+      path.parent ? path.parent.slice : "::Object"
     end
 
     # Coverage-based test selection, shared by the in-process ({Runner.run}) and daemon
@@ -457,7 +602,8 @@ module Mutineer
     # as `Greeter` calling `greets`, so a mutant in that call or in the stored
     # block is the original method when the call's line ran at load (#435).
     # The line of `each` on an empty array counts without the block, so a block
-    # that is not one of those calls stays scored (#286). Re-running the
+    # that is not one of those calls is not `ran_at_load` here (#286). The
+    # reach probe decides it ({stored_block_verdict}, #493). Re-running the
     # caller's class body is #389. `CI` is not read here. Rails eager load,
     # which the test env turns on when `CI` is set, is what puts the line in
     # the load set.
@@ -491,6 +637,65 @@ module Mutineer
       return true if ran.call(StatementLines.for(subject.def_node, source, mutation.start_offset))
 
       ran.call(StatementLines.stored_method_lines(subject.def_node, source, mutation.start_offset))
+    end
+
+    # Whether the reach probe decides the survivor verdict of this mutant
+    # (#493): its selection is `:run`, and a block or lambda literal around it
+    # sits in a statement whose line ran at load. A class macro stores such a
+    # block when the caller's class loads, before the mutant is applied. The
+    # tests then run the stored original, and the mutant passes them all. The
+    # syntax does not tell a stored block from one that runs at once (`each`),
+    # so this is only a reason to add the probe. {stored_block_verdict} gives
+    # the verdict.
+    #
+    # False for a `:maybe` selection: {selection_verdict} decides it (#254,
+    # #345). False for a body on the `def` line: that line counts when the
+    # method is defined (#389). False for a def that reload places from a
+    # concern's hook block ({hook_mutant}): the probe is only in the placed
+    # def, and a class that includes the concern during a test gets its def
+    # from the file text, which has no probe. A test can run that def with
+    # no word from the probe, so the probe is not evidence there (#507).
+    #
+    # @param kind [Symbol, nil, false] the first element of {coverage_selection}'s
+    #   answer, or a falsy value when no selection ran.
+    # @param source_file [String] the mutated source file path.
+    # @param mutation [Mutineer::Mutation] the mutation.
+    # @param subject [Mutineer::Subject, nil] the subject (for its method body range).
+    # @param source [String] the original source text.
+    # @param coverage_map [Mutineer::CoverageMap, nil] the coverage map.
+    # @return [Boolean]
+    def self.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
+      loc = subject&.body_loc
+      return false unless kind == :run && loc && coverage_map && !subject.reload_hook_call
+
+      def_line = subject.def_node.location.start_line
+      return false if loc.end_line == def_line
+
+      body = (loc.start_line..loc.end_line)
+      StatementLines.enclosing_block_lines(subject.def_node, source, mutation.start_offset).any? do |l|
+        l != def_line && body.cover?(l) && coverage_map.ran_at_load?(source_file, l)
+      end
+    end
+
+    # A survivor in a block whose call ran at load becomes `ran_at_load` when
+    # the probe was in the mutant's code and did not see the mutated
+    # expression return during a test (#493): the tests ran a copy of the
+    # block that the load stored, or did not run the mutated code. Any other
+    # result comes back unchanged. A `--matrix` row is kept. The callers run
+    # this after {load_verdict} and {selection_verdict}.
+    #
+    # @param result [Mutineer::Result] the mutant's verdict.
+    # @param candidate [Boolean] the answer of {stored_block_candidate?}.
+    # @param probed [Boolean] true when the code the child loaded holds a
+    #   probe that can speak ({ReachProbe.conclusive?}). Without one there is
+    #   no evidence, so the verdict stays.
+    # @param reached [Boolean] true when the mutated expression returned
+    #   during a test ({ReachProbe.reached?}).
+    # @return [Mutineer::Result]
+    def self.stored_block_verdict(result, candidate:, probed:, reached:)
+      return result unless candidate && probed && result.survived? && !reached
+
+      result.with(status: :ran_at_load)
     end
 
     # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});

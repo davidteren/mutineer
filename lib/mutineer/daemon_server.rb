@@ -39,12 +39,14 @@ module Mutineer
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
-  #              (a :maybe mutant also sends "reach_path" and "reach_key" inside
-  #               "payload". The child clears that file, and the fiber-local
+  #              (a mutant with a reach probe, #345 and #493, also sends "reach_path" and "reach_key" inside
+  #               "payload". The child clears that file, and the thread variable
   #               named by reach_key, after load and before tests, so a
   #               load-time call is not a test reaching the expression, #345)
   #              (a mutant of a def in a concern's hook block adds to the payload
   #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
+  #              (a reload run adds "callback_growth_log":"/tmp/...", the file
+  #               the child appends a class whose callback count grew to, #479)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
   #              (an "error" adds "details" when the child sent a cause line:
   #               a raise → "Class: message" (#388); an in-test database error →
@@ -523,13 +525,13 @@ module Mutineer
       # require Prism.
       #
       # @param path [String, nil] sentinel path, inside the run payload.
-      # @param key [String, nil] fiber-local key, `mutineer_r` plus 16 hex
+      # @param key [String, nil] thread-local key, `mutineer_r` plus 16 hex
       #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
       # @return [void]
       def forget_load_reach(path, key)
         return unless path.is_a?(String) && !path.empty?
 
-        Thread.current[key.to_sym] = nil if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
+        Thread.current.thread_variable_set(key.to_sym, nil) if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
         File.write(path, "")
       end
 
@@ -551,6 +553,7 @@ module Mutineer
       def apply_payload(payload)
         hook = payload["hook_def"]
         hook &&= { line: hook.fetch("line"), name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton") }
+        ReloadGuards.callback_growth_log = payload["callback_growth_log"] # #479
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).

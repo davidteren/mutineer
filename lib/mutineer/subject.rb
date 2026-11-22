@@ -24,8 +24,12 @@ module Mutineer
   # when `hook_block` is true (see docs/json-schema.md for the cases).
   # `enclosing_subject` is the subject of the `def` whose body holds this one,
   # or nil, so the redefine strategy can load each enclosing method too (#290).
+  # `in_superclass_block` is true for a def inside a class statement's
+  # superclass expression, such as `class X < Struct.new(:a) do ... end`. A
+  # reload keeps the live superclass, so that block does not run again (#492).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
-                       :hook_block, :reload_hook_call, :enclosing_subject, keyword_init: true) do
+                       :hook_block, :reload_hook_call, :enclosing_subject, :in_superclass_block,
+                       keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
     # @return [String] namespaced method name like `Billing::Invoice#total`.
@@ -46,12 +50,16 @@ module Mutineer
     # loads the whole file again, which redefines everything except what a
     # concern's `included` or `prepended` block defines: that block does not run
     # again in a class that already includes the concern. Reload places such a
-    # def only when discovery found its {#reload_hook_call} (#297).
+    # def only when discovery found its {#reload_hook_call} (#297). Reload also
+    # cannot place a def inside a superclass expression ({#in_superclass_block},
+    # #492).
     #
     # @param strategy [String] `"reload"` or `"redefine"`.
     # @return [Boolean]
     def unplaceable?(strategy)
-      strategy == "redefine" ? owner_unknown == true : hook_block == true && reload_hook_call.nil?
+      return owner_unknown == true if strategy == "redefine"
+
+      (hook_block == true && reload_hook_call.nil?) || in_superclass_block == true
     end
 
     # Returns the body location for the subject, if any.

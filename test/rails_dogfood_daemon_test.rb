@@ -205,6 +205,35 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal aggregate.total, aggregate.survived_count, "every mutant must run and survive"
   end
 
+  # #492: InclusionValue < Data.define(...). Each load of that line builds a new
+  # superclass, so the daemon raised "superclass mismatch" for every mutant. The
+  # test checks both answers of switch?, so each mutant must run and be killed.
+  def test_the_daemon_reloads_a_class_with_a_call_superclass
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, model: "inclusion_value"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.killed_count, :>, 0
+    assert_equal 100.0, aggregate.mutation_score
+  end
+
+  # #479: StampedNote's concern and class body add the same `&:stamp`
+  # callback, so reload keeps both copies. With two workers, the run names the
+  # class once, with its file, and the verdicts do not change: the test checks
+  # both answers of `urgent?`, so its mutants are killed.
+  def test_the_daemon_reports_a_class_whose_callback_count_grew_once
+    aggregate = extras = nil
+    _out, err = capture_subprocess_io do
+      aggregate, _map, extras = Mutineer::Runner.execute(config_for(2, model: "stamped_note"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_equal [%w[StampedNote app/models/stamped_note.rb]], extras[:callback_growth]
+    assert_operator aggregate.killed_count, :>, 0
+  end
+
   # #390: the daemon reloads Parcel's whole file, so its class body runs again
   # and appended a second validator, block callback and `validate` block.
   # ParcelTest counts them, so every `heavy?` mutant was a false kill. The

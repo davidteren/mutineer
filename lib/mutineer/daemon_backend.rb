@@ -474,19 +474,22 @@ module Mutineer
           # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
           sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
-          # Same probe as in-process (#345): the daemon child loads this text.
-          sentinel = sel && sel[0] == :maybe ? ReachProbe.sentinel : nil
+          # Same probe as in-process (#345, #493): the daemon child loads this text.
+          candidate = JobPlan.stored_block_candidate?(sel && sel[0], subject.file, mutation, subject, source,
+                                                      coverage_map)
+          sentinel = (sel && sel[0] == :maybe) || candidate ? ReachProbe.sentinel : nil
           reach_key = sentinel && ReachProbe.reach_key
           begin
-            payload = { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) }
-            if subject.reload_hook_call
-              # #297: the daemon child places the hook-block def, as in-process (Runner.run).
-              payload["code"], hook_def = JobPlan.hook_mutant(mutated, mutation, subject, source,
-                                                              reach_path: sentinel&.path, reach_key: reach_key)
+            # The same text as in-process (Runner.run): a hook-block def placed
+            # (#297), a call superclass kept (#492).
+            code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source,
+                                                 reach_path: sentinel&.path, reach_key: reach_key)
+            payload = { "code" => code, "source_file" => File.expand_path(subject.file, config.project_root) }
+            if hook_def
               payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
-            elsif sentinel
-              payload["code"] = ReachProbe.wrap_mutation(mutated, mutation, sentinel.path, reach_key)
             end
+            # #479: Runner.execute set the log for this run; the child appends to it.
+            payload["callback_growth_log"] = ReloadGuards.callback_growth_log if ReloadGuards.callback_growth_log
             # The daemon clears these after load and before tests (#345).
             if sentinel
               payload["reach_path"] = sentinel.path
@@ -504,7 +507,13 @@ module Mutineer
                                            coverage_map)
             # A :maybe survivor the probe saw run counts; one it did not stays
             # no_coverage, as in-process (#254, #345).
-            JobPlan.selection_verdict(sel && sel[0], loaded, reached: ReachProbe.reached?(sentinel))
+            reached = ReachProbe.reached?(sentinel)
+            selected = JobPlan.selection_verdict(sel && sel[0], loaded, reached: reached)
+            # A survivor in a block whose call ran at load, whose mutated
+            # expression did not return in a test, as in-process (#493). No
+            # conclusive probe in the sent text means no change.
+            JobPlan.stored_block_verdict(selected, candidate: candidate, reached: reached,
+                                                   probed: candidate && ReachProbe.conclusive?(payload["code"], reach_key))
           ensure
             ReachProbe.close_sentinel(sentinel)
           end

@@ -51,6 +51,86 @@ class ReachProbeTest < Minitest::Test
         TEXT
       end
     RUBY
+    # #493: the value of return, next or a command call. A line break before
+    # the wrapper would end that statement and drop the value.
+    ["return value", <<~'RUBY', ".first", "C.f(true)", "C.f(false)"],
+      def self.f(flag, x = 5)
+        return 0 unless flag
+        return [x]
+          .select { |v| v > 1 }
+          .first
+      end
+    RUBY
+    ["next value", <<~'RUBY', ">", "C.f([2])", "C.f([])"],
+      def self.f(xs)
+        xs.map do |x|
+          next x >
+            1
+        end
+      end
+    RUBY
+    ["command call argument", <<~'RUBY', "+", "C.f(true)", "C.f(false)"],
+      def self.keep(v) = v
+      def self.f(flag, x = 1)
+        return unless flag
+        keep x +
+          1
+      end
+    RUBY
+    # #493: a wrapper that parses as something else is not used. After a
+    # string that a backslash continues, `[` would be an index call on it.
+    ["last piece of a backslash string", <<~'RUBY', '""', "C.f(true)", "C.f(false)"],
+      def self.f(flag, a = "n")
+        flag && a + " is " \
+          ""
+      end
+    RUBY
+    # Ruby assigns named captures only when the regexp literal is the receiver.
+    ["named capture", <<~'RUBY', '\d+', "C.f(true)", "C.f(false)"],
+      def self.f(flag, s = "in 2026")
+        flag && (/(?<year>\d+)/ =~ s ? year : nil)
+      end
+    RUBY
+    # A wrapper in place of an assignment target would stop the setter.
+    ["assignment target", <<~'RUBY', "x.name", "C.f(true)", "C.f(false)"],
+      Pair = Struct.new(:name, :kind)
+      def self.f(flag, x = Pair.new)
+        flag && (x.name, x.kind = 1, 2)
+        x.name
+      end
+    RUBY
+    # The body of `begin ... end until c` runs once before the check. A
+    # wrapper around that body would make it a plain value.
+    ["do-while body", <<~'RUBY', "n += 1", "C.f(true)", "C.f(false)"],
+      def self.f(flag, n = 0)
+        return n unless flag
+        begin
+          n += 1
+        end until true
+        n
+      end
+    RUBY
+    # A flip-flop in a condition keeps state. Inside the wrapper it is a range.
+    ["flip-flop condition", <<~'RUBY', "(x == 2)..(x == 3)", "C.f(true)", "C.f(false)"],
+      def self.f(flag)
+        return 0 unless flag
+        [1, 2, 3].count { |x| ((x == 2)..(x == 3)) ? true : false }
+      end
+    RUBY
+    # A flip-flop inside && keeps its state only in place.
+    ["flip-flop in a logical condition", <<~'RUBY', "&&", "C.f(true)", "C.f(false)"],
+      def self.f(flag)
+        return 0 unless flag
+        [1, 2, 3].count { |x| (x > 0 && ((x == 2)..(x == 3))) ? true : false }
+      end
+    RUBY
+    # A namespace can hold its own Thread constant.
+    ["own Thread constant", <<~'RUBY', "a + 1", "C.f(true)", "C.f(false)"],
+      Thread = Class.new
+      def self.f(flag, a = 1)
+        flag && a + 1
+      end
+    RUBY
   ].freeze
 
   def test_the_probe_records_a_run_and_keeps_the_value
@@ -149,6 +229,140 @@ class ReachProbeTest < Minitest::Test
     assert_equal 0, probed.fetch("before")
     assert_operator probed.fetch("after"), :>, 0
     assert_equal "\"AB\"", probed.fetch("value")
+  end
+
+  # #493: a caller that reads "the probe did not fire" as evidence asks first
+  # if the probe can speak. No probe in the text, or a probe around a jump
+  # that leaves the expression before it returns, is not evidence.
+  def test_conclusive_needs_the_probe_and_no_jump_in_the_wrapped_expression
+    source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
+    wrapped = wrap_snippet(source, "a + 1")
+
+    assert Mutineer::ReachProbe.conclusive?(wrapped, probe_key)
+    refute Mutineer::ReachProbe.conclusive?(source, probe_key)
+    refute Mutineer::ReachProbe.conclusive?(wrapped, Mutineer::ReachProbe.reach_key), "the key of another mutant"
+    refute Mutineer::ReachProbe.conclusive?(wrapped, nil)
+    refute Mutineer::ReachProbe.conclusive?("class C; end", "C"), "a key of another shape is not a probe"
+
+    # The deletion point of `not` is in the whole modifier statement. Each
+    # test that takes the jump leaves the probe silent.
+    %w[next break return].each do |jump|
+      body = jump == "return" ? "return if  x.ok?" : "xs.each { |x| #{jump} if  x.ok? }"
+      text = "class C\n  def self.f(xs, x = nil)\n    #{body}\n  end\nend\n"
+      point = text.byteindex("if  x") + 3
+      probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
+      assert_includes probed, "[(#{jump} if  x.ok?), ", jump
+      refute Mutineer::ReachProbe.conclusive?(probed, probe_key), jump
+    end
+
+    # A literal raise or throw leaves the expression in the same way.
+    %w[raise\ ArgumentError throw\ :stop fail Kernel.raise].each do |call|
+      text = "class C\n  def self.f(x)\n    #{call} if  x.ok?\n  end\nend\n"
+      point = text.byteindex("if  x") + 3
+      probed = Mutineer::ReachProbe.wrap(text, point, point, sentinel_path, probe_key)
+      assert_includes probed, "[(#{call} if  x.ok?), ", call
+      refute Mutineer::ReachProbe.conclusive?(probed, probe_key), call
+    end
+
+    # Ruby never runs the operand of defined?, and a wrapper changes its answer.
+    operand = "class C\n  def self.f(x)\n    defined?(x.size)\n  end\nend\n"
+    assert_nil wrap_snippet(operand, "x.size")
+
+    # A bare regexp in a condition matches $_. Inside the wrapper it is a
+    # plain value, so the wrap goes around the whole if. (Ruby warns about
+    # this form under -w, so it is not a row of FORMS.)
+    bare = "class C\n  def self.f\n    if /foo/ then 2 else 1 end\n  end\nend\n"
+    assert_includes wrap_snippet(bare, "/foo/"), "[(if /foo/ then 2 else 1 end), "
+
+    # The body of `begin ... end until c` stays where it is, also when the
+    # mutant emptied it and the wrap starts at the begin keyword.
+    loop_text = "class C\n  def self.f(a, n = 0)\n    begin\n      n += 1\n    end until a\n    n\n  end\nend\n"
+    point = loop_text.byteindex("begin")
+    assert_includes Mutineer::ReachProbe.wrap(loop_text, point, point + 5, sentinel_path, probe_key).to_s,
+                    "    end until a), "
+
+    # A jump outside the wrapped expression does not matter.
+    guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"
+    assert Mutineer::ReachProbe.conclusive?(wrap_snippet(guard, "x > 1"), probe_key)
+  end
+
+  # #493: a test that doubles File must not see the probe's write raise and
+  # score a kill. The expression keeps its value and the sentinel stays empty.
+  def test_a_failing_sentinel_write_does_not_raise_into_the_program
+    source = "class C\n  def self.f(a)\n    a + 1\n  end\nend\n"
+    wrapped = wrap_snippet(source, "a + 1")
+    # A strict File double, and an RSpec mock error, which is an Exception.
+    result = run_source(wrapped, <<~'RUBY', json: false)
+      MockError = Class.new(Exception)
+      File.singleton_class.prepend(Module.new { def write(*) = raise(MockError, "unexpected arguments") })
+      IO.singleton_class.prepend(Module.new { def sysopen(*) = raise(MockError, "unexpected arguments") })
+      puts C.f(1)
+    RUBY
+    assert_equal "2", result
+
+    # A failed write sets no flag, so a later return on the thread writes.
+    result = run_source(wrapped, <<~'RUBY', json: true)
+      require "json"
+      $fail_once = true
+      IO.singleton_class.prepend(Module.new do
+        def sysopen(*)
+          if $fail_once
+            $fail_once = false
+            raise IOError, "mocked"
+          end
+          super
+        end
+      end)
+      C.f(1)
+      first = ::File.size(ARGV[1])
+      C.f(1)
+      puts JSON.generate(first: first, second: ::File.size(ARGV[1]))
+    RUBY
+    assert_equal 0, result.fetch("first")
+    assert_operator result.fetch("second"), :>, 0
+  end
+
+  # #493: an enumerator runs its block on a fiber of its own. A run at load
+  # on that fiber must not hide a later run from a test that resumes it.
+  def test_a_run_at_load_on_an_enumerator_fiber_does_not_hide_a_test_run
+    source = "class C\n  def self.each_value\n    3.times { |i| yield i + 1 }\n  end\nend\n"
+    wrapped = wrap_snippet(source, "i + 1")
+    probe = File.expand_path("../lib/mutineer/reach_probe", __dir__)
+    result = run_source(wrapped, <<~RUBY, json: true)
+      require "json"
+      require #{probe.dump}
+      enum = C.enum_for(:each_value)
+      enum.next
+      at_load = ::File.size(ARGV[1])
+      Mutineer::ReachProbe.forget_load(ARGV[1], #{probe_key.dump})
+      value = enum.next
+      puts JSON.generate(at_load: at_load, after: ::File.size(ARGV[1]), value: value)
+    RUBY
+    assert_operator result.fetch("at_load"), :>, 0
+    assert_equal 2, result.fetch("value")
+    assert_operator result.fetch("after"), :>, 0, "the run on the resumed enumerator fiber was not recorded"
+  end
+
+  # #493: a probe around a block or lambda literal fires when the block is
+  # made, not when its body runs. A wrap that cannot stay in the body gives
+  # no probe, so the caller has no evidence and keeps the verdict.
+  def test_the_wrap_does_not_leave_a_block_or_a_lambda
+    {
+      "class C\n  def self.f(xs)\n    xs.each { |x| next }\n  end\nend\n" => "next",
+      "class C\n  def self.f(h)\n    h[:a] = ->(v) { return v }\n  end\nend\n" => "return v",
+      "class C\n  def self.f(c)\n    c << proc do |r|\n      break\n    end\n  end\nend\n" => "break"
+    }.each do |source, snippet|
+      assert_nil wrap_snippet(source, snippet), snippet
+    end
+
+    # An empty body: the deletion point is in the literal itself.
+    empty = "class C\n  def self.f(h)\n    h[:a] = ->(v) {}\n  end\nend\n"
+    point = empty.byteindex("{}") + 1
+    assert_nil Mutineer::ReachProbe.wrap(empty, point, point, sentinel_path, probe_key)
+
+    # A wrap that stays in the body is still made.
+    inside = "class C\n  def self.f(xs)\n    xs.each { |x| x + 1 }\n  end\nend\n"
+    assert_includes wrap_snippet(inside, "x + 1"), "xs.each { |x| [(x + 1), "
   end
 
   def wrap_snippet(source, snippet)
