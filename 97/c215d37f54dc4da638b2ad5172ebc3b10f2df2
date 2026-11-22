@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_5b2907965bb601 11-16
+docs/equivalent-skips.html
+  s_9747bd218c1c67::t_f521d4a96d1fcc 155,160,162
+docs/equivalent-skips.md
+  s_9747bd218c1c67::t_24b8ff1fc3f3e0 208,213,215
+lib/mutineer/mutators/collection_method.rb
+  s_9747bd218c1c67::t_a784ed31372964 19-20,49-54,171-172,223,227-234,236,244-249
+test/mutators/collection_method_test.rb
+  s_9747bd218c1c67::t_78fdc26a9d3a6a 1063,1065-1361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97c215d37f54dc4da638b2ad5172ebc3b10f2df2",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
