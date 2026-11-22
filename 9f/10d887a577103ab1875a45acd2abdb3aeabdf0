@@ -1,0 +1,21 @@
+test/fixtures/rails_app/extra_tests/load_path_probe_test.rb
+  s_9747bd218c1c67::t_5fd6ae7951b9a8 3,6-7
+test/runner_daemon_test.rb
+  s_9747bd218c1c67::t_8b1e11ce9ece47 125,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9f10d887a577103ab1875a45acd2abdb3aeabdf0",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
