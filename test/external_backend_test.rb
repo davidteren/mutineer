@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 require "tmpdir"
 require "mutineer/external_backend"
 
@@ -296,6 +297,56 @@ class ExternalBackendTest < Minitest::Test
       with_env("SEED" => "7") { assert_nil Backend.random_order("ruby %{files}", text) }
       with_env("TESTOPTS" => "--seed=7") { assert_nil Backend.random_order("rake test", text) }
       with_env("SPEC_OPTS" => "--seed 7") { assert_nil Backend.random_order("rspec %{files}", rspec) }
+    end
+  end
+
+  # #368: minitest-reporters prints its own seed line; a plain "seed" word in other output is no seed line.
+  def test_random_order_reads_the_minitest_reporters_seed_line
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      reporters = "Started with run options --seed 4242\n"
+      assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", "# Running tests with run options --seed 4242:\n")
+      assert_equal [:minitest, "4242"], Backend.random_order("ruby %{files}", reporters)
+      assert_nil Backend.random_order("ruby %{files} --seed 7", reporters)
+      assert_nil Backend.random_order("ruby %{files}", "the seed 4242 is fixed\n")
+    end
+  end
+
+  # #368: a seed in .rspec or .rspec-local is a fixed seed, in any spelling RSpec takes.
+  def test_random_order_sees_a_seed_in_the_rspec_option_files
+    rspec = "Randomized with seed 4242\n"
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
+          File.write(".rspec", "--require spec_helper\n--color\n")
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec)
+          File.write(".rspec", "# --seed 7\n  # --order rand:7\n")
+          assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", rspec), "commented-out seed"
+          File.delete(".rspec")
+          ["--seed 7", "--order rand:7", "--order random:7"].each do |line|
+            File.write(".rspec", "#{line}\n")
+            assert_nil Backend.random_order("rspec %{files}", rspec), line
+            File.delete(".rspec")
+            File.write(".rspec-local", "#{line}\n")
+            assert_nil Backend.random_order("rspec %{files}", rspec), "local #{line}"
+            File.delete(".rspec-local")
+          end
+        end
+      end
+    end
+  end
+
+  # #368: an unreadable .rspec counts as no seed; it must not abort the run.
+  def test_random_order_ignores_an_unreadable_rspec_file
+    with_env("SEED" => nil, "TESTOPTS" => nil, "SPEC_OPTS" => nil) do
+      Dir.mktmpdir do |dir|
+        Dir.chdir(dir) do
+          File.write(".rspec", "--seed 7\n")
+          File.stub(:readlines, ->(*) { raise Errno::EACCES }) do
+            assert_equal [:rspec, "4242"], Backend.random_order("rspec %{files}", "Randomized with seed 4242\n")
+          end
+        end
+      end
     end
   end
 

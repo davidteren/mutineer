@@ -26,6 +26,18 @@ All notable changes to this project are documented here. The format is based on
   public API, the coverage cache format, CLI output and the JSON report do not
   change.
 
+### Fixed
+
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
+- **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
+  It reads the minitest-reporters seed line, so a random order there now gets the warning.
+  It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
+  Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
+- **The 12 known limits of reading `--test-command` output are documented (#342).**
+  `docs/rails-setup.md` lists each one and its result. The code comments cite #342.
+  The limits that can score a crash as `killed` are tracked in #515, and the one that can score `survived` wrongly in #516.
+  No scoring changed.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added

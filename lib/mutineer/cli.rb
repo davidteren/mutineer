@@ -538,8 +538,9 @@ module Mutineer
       warn_unused_coverage_from(config)
       warn_unused_dry_run_settings(config)
 
-      # Boot mode needs at least one --test file (nothing to select from otherwise).
-      if config.boot && config.tests.empty?
+      # A real boot run needs at least one --test file (nothing to select from
+      # otherwise). A dry run runs no tests, so it needs none (#410).
+      if config.boot && config.tests.empty? && !config.dry_run
         warn "mutineer: --boot/--rails requires at least one --test file"
         exit 2
       end
