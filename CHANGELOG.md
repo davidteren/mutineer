@@ -69,7 +69,7 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - **`--daemon --verbose` shows why a test file's coverage capture failed, with the load note (#517).**
-  `--verbose` did not reach the daemon's coverage build, so its `[mutineer] coverage skipped for <file>` warning always said `fork capture produced no result (re-run with --verbose for the error)`, even under `--verbose`.
+  `--verbose` did not reach the daemon's coverage build, so its `[mutineer] coverage skipped for <file>` warning for a failed fork capture said `fork capture produced no result (re-run with --verbose for the error)`, even under `--verbose`.
   The daemon now gets `--verbose`, and the warning shows the real error, as in-process.
   When that error is `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, the first such warning of a run ends with the same `RUBYOPT`/`RUBYLIB` note as a mutant (#491). Later warnings carry no note.
   The note names only the variable, never its value. `--verbose` does not change the coverage cache digest.
@@ -169,7 +169,7 @@ All notable changes to this project are documented here. The format is based on
   `RUBYOPT`/`RUBYLIB` note as a mutant (#491). So does a daemon that fails
   to boot with that error. Before this, those paths printed the bare
   `LoadError`. The daemon's own warning for one test file it could not
-  capture gets the note under `--verbose` (#517).
+  capture gets the note under `--verbose`, on its first such warning (#517).
 
 ## [1.9.0] - 2026-11-16
 
