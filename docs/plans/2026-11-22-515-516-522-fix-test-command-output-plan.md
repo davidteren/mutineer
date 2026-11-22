@@ -83,7 +83,7 @@ A false `killed` raises the score with no test that caught the mutant. A false `
 **Random-order warning (#522)**
 
 - R9. For RSpec, the last order option decides, in this order: `.rspec`, `.rspec-local`, the command, `SPEC_OPTS`. The order is fixed only when that last option is `--seed N`, `--order rand:N` or `--order random:N`.
-- R10. When the command or `SPEC_OPTS` has `--options` or `-O`, Mutineer does not read `.rspec` and `.rspec-local`.
+- R10. When the command has `--options` or `-O`, Mutineer does not read `.rspec` and `.rspec-local`. (Build note: the plan first said the command or `SPEC_OPTS`. RSpec reads `--options` only from the command line and ignores it in `SPEC_OPTS`, so the build checks the command only.)
 - R11. The change decides only if the warning prints, and it changes two words of the warning. No verdict, score, exit code or JSON field changes. The Minitest rule does not change.
 
 **Docs and tracking**
@@ -312,14 +312,14 @@ Checked on 2026-11-22 with Ruby 3.4.9, Minitest 5.27.0 and the RSpec in `Gemfile
 - **Approach:**
   - `random_order`, RSpec part: join the option files, the command and `SPEC_OPTS` in that order. Take the last `--seed` or `--order` option. Report a random order unless that option matches `RSPEC_SEED_GIVEN`.
   - Add one constant for an order option (`--seed`, `--order X`, `--order=X`) and one for `--options` or `-O`. Each needs a comment.
-  - `rspec_option_files` returns nothing when the command or `SPEC_OPTS` has `--options` or `-O`. It still drops comment lines and still treats an unreadable file as no seed.
+  - `rspec_option_files` returns nothing when the command has `--options` or `-O` (build note: not `SPEC_OPTS`, see R10). It still drops comment lines and still treats an unreadable file as no seed.
   - The Minitest part does not change. Minitest has no option that makes a fixed seed random again, so order between `SEED`, `TESTOPTS` and the command does not matter.
   - `lib/mutineer/runner.rb`, the warning in `Runner.run`: change "found no fixed seed" to "found no fixed seed in effect". A seed in `.rspec` that RSpec overrides is found, but not in effect.
   - Rewrite the "Ceiling" comment on `random_order`: name what is fixed and cite the follow-up issue (#549) for the rest.
 - **Test scenarios, `test/external_backend_test.rb`:**
   - Each row of the option-order table in Sources, as a call of `random_order` with a `Randomized with seed 4242` line. Rows with "random seed" return `[:rspec, "4242"]`. Rows with a seed return `nil`.
   - `--options other.opts` and `-O other.opts` with `--seed 7` in `.rspec` return `[:rspec, "4242"]`.
-  - `--options` in `SPEC_OPTS` does the same.
+  - `--options` in `SPEC_OPTS` returns `nil`: RSpec ignores it there (build note, see R10).
   - Each present assertion in `test_random_order_is_nil_when_the_order_is_fixed`, `test_random_order_sees_a_seed_in_the_rspec_option_files`, `test_random_order_ignores_an_unreadable_rspec_file` and `test_random_order_checks_each_runner_in_a_combined_run` stays and passes.
 - **Docs:**
   - `docs/rails-setup.md`, "Test order" row: the last sentence about `.rspec` (the one that links #522) says the precedence case is now seen. List what is left and link the follow-up issue (#549): the `cd` case, a seed in the file that `--options` names, and the cases already in that row.
