@@ -170,7 +170,8 @@ module Mutineer
         return false if lazy_value?(node.receiver)
 
         if TRUTHY_RESULT_NAMES.include?(node.name)
-          !result_used?(node) || (!node.arguments && truthiness_only?(node))
+          !result_used?(node) ||
+            (!node.arguments && !node.block.is_a?(Prism::BlockArgumentNode) && truthiness_only?(node))
         elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && node.block.is_a?(Prism::BlockNode) &&
                 !special_receiver?(node) && truthiness_only?(node)
           true

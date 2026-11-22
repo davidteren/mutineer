@@ -1536,6 +1536,22 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["each with a block argument in a condition stays", <<~RUBY, [%w[each map]], 0],
+        def m
+          if xs.each(&fmt)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map with a block argument in a condition stays", <<~RUBY, [%w[map each]], 0],
+        def m
+          if xs.map(&fmt)
+            work
+          end
+          :done
+        end
+      RUBY
       ["select on the left of && with the result kept", <<~RUBY, [], 1],
         def m
           ok = xs.select { |u| u } && b
