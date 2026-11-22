@@ -99,6 +99,6 @@ they are rebased on `main`. The up-to-date rule asks for that rebase anyway.
 
 The local hook `pre_pr_gate_guard.sh` lives in one maintainer's
 `~/.claude/hooks`, outside this repository. Issue #355 also covers it: it
-blocks `gh pr create` and reads the main checkout's HEAD in a git worktree.
+blocks `gh pr create` on one machine, not a merge.
 This change does not touch it. Once the ruleset is on, the maintainer can
 retire the hook or limit it to a reminder.

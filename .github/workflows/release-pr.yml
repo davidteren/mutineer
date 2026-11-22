@@ -106,7 +106,7 @@ jobs:
         with:
           fetch-depth: 0 # full history + tags for git describe/log
           # git push uses the PAT too when it is set: GitHub's recursion guard starts no
-          # workflow for a push (or PR) made with GITHUB_TOKEN. Falls back to
+          # workflow for a push made with GITHUB_TOKEN. Falls back to
           # GITHUB_TOKEN when the secret is absent; the job then dispatches CI itself.
           token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
       - uses: ruby/setup-ruby@0dafeac902942906541bc140009cdbf32665b601 # v1

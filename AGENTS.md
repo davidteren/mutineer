@@ -81,8 +81,8 @@ and `rails dogfood`, and admins can merge past it. The proposed ruleset
 Socket and GitGuardian on an up-to-date head, and resolved review threads,
 with no bypass. A maintainer applies it by hand (issue #355):
 `docs/plans/2026-11-22-355-merge-gate-ruleset.md`. When you rename or add a
-`ci.yml` job, update that file in the same pull request. Once the ruleset is
-applied, a maintainer re-applies that file before the merge (see the doc).
+`ci.yml` job, update the ruleset JSON in the same pull request. Once the
+ruleset is applied, a maintainer re-applies the JSON before the merge (see the doc).
 
 ## PR review gate (before any merge)
 
