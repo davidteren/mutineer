@@ -1,0 +1,21 @@
+lib/mutineer/reporter.rb
+  s_9747bd218c1c67::t_9a0288a1cae2d0 889-893
+test/json_reporter_test.rb
+  s_9747bd218c1c67::t_58cf35897f9a0d 227-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "950fde74337f3b460fd5e40d61fefc00ac6b5010",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
