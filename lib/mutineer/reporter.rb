@@ -789,7 +789,7 @@ module Mutineer
       }
       # The diff is UTF-8, as JSON is. Name the source's encoding so a consumer
       # can transcode the hunk lines back to the file's bytes (#510).
-      encoding = diff_encoding(source)
+      encoding = diff_encoding(source, original_block, mutated_block)
       row[:diff_encoding] = encoding if encoding
       attach_copies(row, result.id)
     end
@@ -797,16 +797,23 @@ module Mutineer
     # The encoding the {#survivor_json} diff was transcoded from: the source's
     # own, when it is valid and not UTF-8. Nil for a UTF-8 source, which needs
     # no transcoding, for a binary one, whose bytes {#utf8_text} reads as UTF-8,
-    # and for an invalid one, whose bad bytes print as `\xNN` and cannot be restored.
+    # for an invalid one, whose bad bytes print as `\xNN` and cannot be restored,
+    # and when a block does not convert back to its own bytes (CP932 0xFA4A
+    # reads as U+2160, which encodes back as 0x8754), so a consumer could not
+    # restore the line.
     #
     # @api private
     # @param source [String] source text, tagged with its encoding.
+    # @param blocks [Array<String>] the original and mutated blocks of the diff.
     # @return [String, nil] the Ruby encoding name, e.g. "EUC-JP".
-    def diff_encoding(source)
+    def diff_encoding(source, *blocks)
       enc = source.encoding
       return nil if [Encoding::UTF_8, Encoding::US_ASCII, Encoding::BINARY].include?(enc) || !source.valid_encoding?
+      return nil unless blocks.all? { |b| b.encode(Encoding::UTF_8).encode(enc).b == b.b }
 
       enc.name
+    rescue EncodingError
+      nil
     end
 
     # One side of the diff as the file holds it: the {#diff_for} block plus the

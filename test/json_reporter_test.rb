@@ -108,6 +108,18 @@ class JsonReporterTest < Minitest::Test
     refute render([survivor])["survivors"].first.key?("diff_encoding")
   end
 
+  def test_lossy_roundtrip_source_has_no_diff_encoding
+    src = "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    refute JSON.parse(out.string)["survivors"].first.key?("diff_encoding")
+  end
+
   def test_binary_source_has_no_diff_encoding
     src = "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b
     tok = src.byteindex(">=")
