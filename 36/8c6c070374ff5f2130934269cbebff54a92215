@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_3c3267b69df0c6::t_82a6657417c4c0 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "368c6c070374ff5f2130934269cbebff54a92215",
+  "prompts": {},
+  "sessions": {
+    "s_3c3267b69df0c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0898cf5f-e6c8-4c3f-b764-3b7b47cb5ee2",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}

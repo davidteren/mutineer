@@ -1,0 +1,25 @@
+docs/cli.md
+  s_d37da4289dd811::t_a702a9135ac603 9
+docs/comparison.md
+  s_d37da4289dd811::t_aafb80f357c6e9 81
+docs/rails-setup.md
+  s_d37da4289dd811::t_f73ee8686a39f8 34
+test/cli_test.rb
+  s_d37da4289dd811::t_75bd8f94b5f28c 578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37913a94f20b51676a67cea8dadd8b3d5cde8760",
+  "prompts": {},
+  "sessions": {
+    "s_d37da4289dd811": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "049f4638-b0a6-41c3-9e27-b38c5046711b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
