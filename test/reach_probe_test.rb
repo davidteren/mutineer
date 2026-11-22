@@ -267,6 +267,13 @@ class ReachProbeTest < Minitest::Test
     bare = "class C\n  def self.f\n    if /foo/ then 2 else 1 end\n  end\nend\n"
     assert_includes wrap_snippet(bare, "/foo/"), "[(if /foo/ then 2 else 1 end), "
 
+    # The body of `begin ... end until c` stays where it is, also when the
+    # mutant emptied it and the wrap starts at the begin keyword.
+    loop_text = "class C\n  def self.f(a, n = 0)\n    begin\n      n += 1\n    end until a\n    n\n  end\nend\n"
+    point = loop_text.index("begin")
+    assert_includes Mutineer::ReachProbe.wrap(loop_text, point, point + 5, sentinel_path, probe_key).to_s,
+                    "    end until a), "
+
     # A jump outside the wrapped expression does not matter.
     guard = "class C\n  def self.f(xs)\n    xs.each { |x| next if x > 1 }\n  end\nend\n"
     assert Mutineer::ReachProbe.conclusive?(wrap_snippet(guard, "x > 1"), probe_key)

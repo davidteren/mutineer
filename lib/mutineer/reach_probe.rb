@@ -303,9 +303,10 @@ module Mutineer
       end
       return true if IN_PLACE_ONLY.any? { |klass| core.is_a?(klass) }
 
+      # The `begin ... end`, or the one-statement list that holds it.
       loop_node = parents[node]
-      loop_node = parents[loop_node] if loop_node.is_a?(Prism::StatementsNode)
-      node.is_a?(Prism::BeginNode) && (loop_node.is_a?(Prism::WhileNode) || loop_node.is_a?(Prism::UntilNode)) &&
+      loop_node = parents[loop_node] if node.is_a?(Prism::BeginNode) && loop_node.is_a?(Prism::StatementsNode)
+      core.is_a?(Prism::BeginNode) && (loop_node.is_a?(Prism::WhileNode) || loop_node.is_a?(Prism::UntilNode)) &&
         loop_node.begin_modifier?
     end
     private_class_method :keeps_meaning_only_in_place?

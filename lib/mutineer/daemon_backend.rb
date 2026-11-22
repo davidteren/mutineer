@@ -473,7 +473,7 @@ module Mutineer
             # expression did not return in a test, as in-process (#493). No
             # conclusive probe in the sent text means no change.
             JobPlan.stored_block_verdict(selected, candidate: candidate, reached: reached,
-                                                   probed: ReachProbe.conclusive?(payload["code"], reach_key))
+                                                   probed: candidate && ReachProbe.conclusive?(payload["code"], reach_key))
           ensure
             ReachProbe.close_sentinel(sentinel)
           end
