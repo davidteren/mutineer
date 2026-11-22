@@ -40,12 +40,13 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **`collection_method` declines more truthiness-only reads (Refs #501).**
-  A condition that only tests the value no longer gets a swap for `each`, `map`, or a `select` or `reject` with a block and no arguments.
+  A condition that only tests the value no longer gets a swap for `each`, `map`, or a `select` or `reject` with an inline block (not `&blk`) and no arguments.
   That covers a call nested in a larger condition: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a`.
   Those mutants were equivalent, so the run now counts them as declined.
   On Mutineer's own `lib/` the count does not change: 525 swaps and 119 declined, before and after.
   The score can rise a little, and the mutant count falls, when `collection_method` is selected and your code has such a condition.
-  A swap that is declined no longer takes a position: later swaps of the same name in that method get new mutant ids, so refresh a baseline or an `ignore:` list that names them.
+  A swap that is declined no longer takes a position: the ids of later swaps of the same name in that method can shift, so a saved `ignore:` entry or baseline can then match a different mutant without a warning. Check those entries after you upgrade. This is the general id limit tracked in #508.
+  An `each` or `map` call with arguments, and a `select` or `reject` on a bare `ENV` or `IO`, keep their swap.
   A custom method named `select`, `reject`, `each` or `map` that returns `false` or `nil` can differ, and the check does not see the class.
   The other limits in #501 stay open. See `docs/equivalent-skips.md`, "Collection method".
 - **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**

@@ -16,8 +16,8 @@ module Mutineer
     # differ only in the value they return. No test can tell such a mutant
     # from the original. `all?` and `any?` stop on different elements, so a
     # block can show the change even when the boolean is discarded. A
-    # truthiness-only read of `each`, `map`, or a `select` or `reject` with a
-    # block and no arguments is declined too (#468, #501).
+    # truthiness-only read of `each`, `map`, or a `select` or `reject` with an
+    # inline block and no arguments is declined too (#468, #501).
     # `first` has no `last` on a Hash or a Set, so that decline can hide a
     # mutant that raises `NoMethodError` (#501).
     # See docs/equivalent-skips.md.
@@ -48,7 +48,7 @@ module Mutineer
 
       # Names that return an Array, a Hash or an Enumerator, never nil or
       # false, so a truthiness-only read cannot tell the swap apart. An empty
-      # Array is true. Only a call with a block and no arguments counts:
+      # Array is true. Only a call with an inline block (not `&blk`) and no arguments counts:
       # `IO.select(r)` can return nil, and a blockless `rel.reject` can raise
       # on the swapped name.
       TRUTHY_ARRAY_NAMES = %i[select reject].freeze
@@ -170,9 +170,9 @@ module Mutineer
         return false if lazy_value?(node.receiver)
 
         if TRUTHY_RESULT_NAMES.include?(node.name)
-          !result_used?(node) || truthiness_only?(node)
+          !result_used?(node) || (!node.arguments && truthiness_only?(node))
         elsif TRUTHY_ARRAY_NAMES.include?(node.name) && !node.arguments && node.block.is_a?(Prism::BlockNode) &&
-                truthiness_only?(node)
+                !special_receiver?(node) && truthiness_only?(node)
           true
         else
           discarded_statement?(node)
@@ -223,6 +223,18 @@ module Mutineer
           current = parent
         end
         true
+      end
+
+      # Returns whether the receiver is the constant `ENV` or `IO`.
+      #
+      # `ENV.select` reads its values live while `ENV.reject` takes a
+      # snapshot, and `IO.select` is not an Enumerable method.
+      #
+      # @param node [Prism::CallNode] call to inspect.
+      # @return [Boolean] true when the receiver is a bare `ENV` or `IO`.
+      def special_receiver?(node)
+        receiver = node.receiver
+        receiver.is_a?(Prism::ConstantReadNode) && %i[ENV IO].include?(receiver.name)
       end
 
       # Returns whether only the truthiness of the call's value is read.

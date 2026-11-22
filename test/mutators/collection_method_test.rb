@@ -1488,6 +1488,54 @@ class CollectionMethodTest < Minitest::Test
           :done
         end
       RUBY
+      ["each with arguments in a nested condition stays", <<~RUBY, [%w[each map]], 0],
+        def m
+          if enabled && io.each(separator) { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map with arguments in a nested condition stays", <<~RUBY, [%w[map each]], 0],
+        def m
+          if enabled && io.map(separator) { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["ENV.select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if ENV.select { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["ENV.reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if ENV.reject { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["IO.select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if IO.select { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["IO.reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if IO.reject { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
       ["select on the left of && with the result kept", <<~RUBY, [], 1],
         def m
           ok = xs.select { |u| u } && b
