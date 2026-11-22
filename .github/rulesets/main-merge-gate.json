@@ -1,0 +1,97 @@
+{
+  "name": "main merge gate",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "test (ruby 3.4 on ubuntu-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ruby 3.4 on macos-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ruby 4.0 on ubuntu-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ruby 3.4, minitest 6)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ruby 3.4, prism 2)",
+            "integration_id": 15368
+          },
+          {
+            "context": "yard strict (ruby 3.4)",
+            "integration_id": 15368
+          },
+          {
+            "context": "rails dogfood (ruby 3.4)",
+            "integration_id": 15368
+          },
+          {
+            "context": "rails daemon postgres 16 (ruby 3.4)",
+            "integration_id": 15368
+          },
+          {
+            "context": "rails daemon mysql 8 (mysql2, ruby 3.4)",
+            "integration_id": 15368
+          },
+          {
+            "context": "rails daemon mysql 8 (trilogy, ruby 3.4)",
+            "integration_id": 15368
+          },
+          {
+            "context": "website browser tests",
+            "integration_id": 15368
+          },
+          {
+            "context": "self-dogfood (threshold 85)",
+            "integration_id": 15368
+          },
+          {
+            "context": "GitGuardian Security Checks",
+            "integration_id": 46505
+          },
+          {
+            "context": "Socket Security: Pull Request Alerts",
+            "integration_id": 156372
+          }
+        ]
+      }
+    }
+  ]
+}
