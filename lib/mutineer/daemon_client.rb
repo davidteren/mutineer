@@ -284,7 +284,7 @@ module Mutineer
       return cause if names.empty?
 
       "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if the missing file is in a " \
-        "directory set there, add that directory with load_path: in .mutineer.yml or with -I DIR, " \
+        "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
         "see #{LOAD_PATH_GUIDE})"
     end
 

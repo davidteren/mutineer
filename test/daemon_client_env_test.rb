@@ -254,7 +254,7 @@ class DaemonClientEnvTest < Minitest::Test
       assert noted.start_with?(cause)
       assert_includes noted, "does not pass RUBYOPT to the app"
       assert_equal "#{cause} (the daemon does not pass RUBYOPT to the app; if the missing file is in a directory " \
-                   "set there, add that directory with load_path: in .mutineer.yml or with -I DIR, " \
+                   "set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
                    "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})", noted
       assert Mutineer::DaemonClient::LOAD_PATH_GUIDE.end_with?("/docs/rails-setup.md#extra-load-paths")
       refute_includes noted, "secret-token-123"

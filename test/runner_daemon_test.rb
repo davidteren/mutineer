@@ -142,8 +142,8 @@ class RunnerDaemonTest < Minitest::Test
 
     assert_equal [:error], without.results.map(&:status).uniq
     assert_equal "LoadError: cannot load such file -- load_path_probe (the daemon does not pass RUBYOPT to the app; " \
-                 "if the missing file is in a directory set there, add that directory with load_path: in " \
-                 ".mutineer.yml or with -I DIR, see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})",
+                 "if the missing file is in a directory set there, add that directory to load_path: in " \
+                 ".mutineer.yml, or pass -I DIR (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})",
                  without.results.first.details
 
     assert_equal({ killed: 1, no_coverage: 7 }, with_load.results.map(&:status).tally,

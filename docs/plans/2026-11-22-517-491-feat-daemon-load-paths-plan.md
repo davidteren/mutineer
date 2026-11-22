@@ -363,7 +363,7 @@ The pull request then follows "PR review gate" in `AGENTS.md`.
 
 ## Limits left open
 
-The rule "Track every limitation" in `.expectation-fit/ways-of-working.yaml` needs an issue number in the same change. The builder filed #535, #536 and #537 before the first push, with these steps:
+The rule "Track every limitation" in `.expectation-fit/ways-of-working.yaml` needs an issue number in the same change. Before the first push, the builder followed these steps. They gave the issue numbers #535, #536 and #537:
 
 1. File the three new issues in the table.
 2. Search the open issues for the two existing limits in the table. Cite the issue that exists, or file one.

@@ -52,6 +52,8 @@ These keys are accepted in `.mutineer.yml` in 1.8.0:
 Its flag is `--load-path DIR`, with the short form `-I DIR`.
 `--test-command` ignores it (#535).
 An older version warns that the key is unknown and ignores it.
+An abbreviated flag is not part of this contract: a new flag can make a prefix ambiguous.
+`--load-path` made `--l` and `-l` ambiguous in 1.10.0; before, they meant `--list-operators`.
 
 `shared_databases` is new in 1.8.0.
 It is a file key with no flag.
