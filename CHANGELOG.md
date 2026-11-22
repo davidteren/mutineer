@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format is based on
   When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and links the `boot:` workaround in `docs/rails-setup.md`.
   The note names only the variable, never its value.
   A setting that adds load paths for the daemon is still open in #491.
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 
 ## [1.9.0] - 2026-11-16
 
