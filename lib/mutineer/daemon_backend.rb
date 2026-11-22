@@ -536,6 +536,7 @@ module Mutineer
     #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
     def self.boot_config(config, abs_tests, coverage: false, db_role: nil, parallel: false)
+      extra_dirs = JobPlan.extra_load_dirs(config)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
@@ -545,9 +546,9 @@ module Mutineer
         # DaemonServer#boot! unshifts one entry at a time, so the last is
         # searched first: the test-helper roots, then the load_path
         # directories in the written order (#491), as in-process.
-        load_paths: JobPlan.extra_load_dirs(config).reverse + JobPlan.test_load_roots(abs_tests),
+        load_paths: extra_dirs.reverse + JobPlan.test_load_roots(abs_tests),
         # The same directories in the written order, for the coverage cache key.
-        extra_load_paths: JobPlan.extra_load_dirs(config),
+        extra_load_paths: extra_dirs,
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,

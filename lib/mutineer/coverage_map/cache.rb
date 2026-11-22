@@ -315,7 +315,8 @@ module Mutineer
       # root, where loaded files are not fingerprinted (#539). Each forces a
       # full capture. The run's sources and tests are left out: their own
       # fingerprints decide a partial recapture (#421). Adds nothing without
-      # load_path, so those runs keep their digest.
+      # load_path, so those runs keep their digest. The files are read once
+      # for each map, though a run computes its digests more than once.
       #
       # @api private
       # @param digest [Digest::SHA256]
@@ -323,18 +324,29 @@ module Mutineer
       def digest_extra_load_dirs(digest)
         return if @extra_load_paths.empty?
 
+        digest.update(@extra_load_dirs_key ||= extra_load_dirs_key)
+      end
+
+      # Hex digest of the load_path directories and their files, for
+      # {#digest_extra_load_dirs}.
+      #
+      # @api private
+      # @return [String]
+      def extra_load_dirs_key
         own = (@source_paths + @test_paths).to_set { |path| absolute(path) }
+        key = Digest::SHA256.new
         @extra_load_paths.each do |dir|
           root = absolute(dir)
-          digest.update("extraload\0#{dir}\0")
+          key.update("extraload\0#{dir}\0")
           Dir.glob("**/*.rb", base: root).sort.each do |rel|
             path = File.join(root, rel)
             next if own.include?(absolute(path))
 
-            digest.update("extrafile\0#{rel}\0")
-            digest.update(File.file?(path) && File.readable?(path) ? Digest::SHA256.file(path).hexdigest : "unreadable")
+            key.update("extrafile\0#{rel}\0")
+            key.update(File.file?(path) && File.readable?(path) ? Digest::SHA256.file(path).hexdigest : "unreadable")
           end
         end
+        "extraloaddirs\0#{key.hexdigest}\0"
       end
 
       # Digest of everything that forces a full capture except source and test
