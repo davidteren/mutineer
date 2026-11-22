@@ -898,9 +898,9 @@ module Mutineer
       build_patch(result) { |piece| utf8_text(piece) }
     end
 
-    # The same patch as {#unified_diff}, in the file's own bytes (#518): the
-    # path and every side line are kept as bytes, so `git apply` accepts it
-    # for any source encoding.
+    # The same patch as {#unified_diff}, with each side line in the file's own
+    # bytes (#518), so `git apply` accepts it for any source encoding. The
+    # path keeps the UTF-8 text `diff` shows (#532).
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.
