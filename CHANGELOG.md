@@ -23,6 +23,18 @@ All notable changes to this project are documented here. The format is based on
   A report from a CLI older than 1.9.0 has no such key, and the line stays out.
   No Action input or default changes.
 
+### Changed
+
+- **126 private methods of `Mutineer::CoverageMap` moved into eight modules
+  (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
+  `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
+  `Recording`, `CleanCheck` and `ChildScripts`. `CoverageMap` includes each
+  module. Each method keeps its name, body and private visibility. The public
+  methods, the constants, the constructor, the path helpers and three script
+  helpers that read `__dir__` stay in `lib/mutineer/coverage_map.rb`. The
+  public API, the coverage cache format, CLI output and the JSON report do not
+  change.
+
 ## [1.9.0] - 2026-11-16
 
 ### Added
