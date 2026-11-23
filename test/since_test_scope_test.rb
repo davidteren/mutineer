@@ -38,6 +38,8 @@ class SinceTestScopeTest < Minitest::Test
       "--coverage-from ignored by --daemon" => [%w[lib/a.rb], { coverage_from: "cov.json", boot: "b.rb", daemon: true },
                                                  %w[test/a_test.rb test/shared_test.rb]],
       "live source with no row" => [%w[lib/a.rb lib/other.rb], {}, ALL_TESTS],
+      "--baseline set (#552 item 3)" => [%w[lib/a.rb], { baseline: "base.json" }, ALL_TESTS],
+      "--baseline set, every live source" => [%w[lib/a.rb lib/b.rb lib/c.rb], { baseline: "base.json" }, ALL_TESTS],
       "no jobs" => [[], {}, ALL_TESTS]
     }
     cases.each do |label, (files, overrides, expected)|
@@ -55,6 +57,18 @@ class SinceTestScopeTest < Minitest::Test
     assert_empty err
   end
 
+  # #552 item 3: a narrowed run can hide a new survivor as no_coverage, which
+  # the --baseline check leaves out, so a baseline keeps the full list. The
+  # same config without a baseline narrows.
+  def test_a_baseline_turns_narrowing_off
+    jobs = [[Subject.new("lib/c.rb"), nil, "x"]]
+    config = scope_config(baseline: "base.json")
+    _out, err = capture_io { assert_same config, Mutineer::JobPlan.narrow_tests_for_since(config, jobs) }
+    assert_empty err
+    assert_equal ALL_TESTS, config.tests
+    capture_io { assert_equal %w[test/c_test.rb], Mutineer::JobPlan.narrow_tests_for_since(scope_config, jobs).tests }
+  end
+
   def test_narrow_tests_for_since_copies_the_config_and_keeps_every_source
     config = scope_config
     jobs = [[Subject.new("lib/c.rb"), nil, "x"], [Subject.new("lib/c.rb"), nil, "y"]]
@@ -67,7 +81,8 @@ class SinceTestScopeTest < Minitest::Test
     assert_equal "[mutineer] --since: running 1 of 4 test files, the ones paired with the 1 of 3 paired " \
                  "sources that has a mutant on a changed line. A mutant that only another test reaches " \
                  "shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the " \
-                 "score and the --baseline check: gate on a full run.\n", err
+                 "score, so a --threshold gate can pass where a full run fails: gate on a full run. A --baseline run " \
+                 "keeps every test.\n", err
   end
 
   def test_narrowing_line_for_one_and_for_many
@@ -77,8 +92,9 @@ class SinceTestScopeTest < Minitest::Test
     }.each do |counts, fragment|
       line = Mutineer::JobPlan.since_narrowing_line(*counts)
       assert line.start_with?("[mutineer] --since: #{fragment} mutant on a changed line."), line
-      assert line.end_with?("so a kill or a survivor can be missed. no_coverage is outside the score and the " \
-                            "--baseline check: gate on a full run."), line
+      assert line.end_with?("so a kill or a survivor can be missed. no_coverage is outside the score, so a " \
+                            "--threshold gate can pass where a full run fails: gate on a full run. A --baseline " \
+                            "run keeps every test."), line
     end
   end
 

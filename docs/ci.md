@@ -22,7 +22,7 @@ bundle exec mutineer run lib --no-since
 A `--since` run still captures coverage for the tests of every source you pass.
 To run only the tests of the changed sources, turn on `since_paired_tests` (off by default).
 It applies to in-process and `--daemon` runs whose tests Mutineer paired.
-`--test`, `--test-command`, `--coverage-from` on an in-process `--rails` or `--boot` run, and a dry run keep the full test list.
+`--test`, `--test-command`, `--baseline`, `--coverage-from` on an in-process `--rails` or `--boot` run, and a dry run keep the full test list.
 Every source still loads.
 See [Tests of the changed sources](cli.md#tests-of-the-changed-sources).
 
@@ -31,6 +31,7 @@ RAILS_ENV=test bundle exec mutineer run app --rails --since origin/main --since-
 ```
 
 In the GitHub Action, set `since_paired_tests: true` in `.mutineer.yml`, or pass `extra-args: "--since-paired-tests"`.
+A `baseline` input turns it off for that run, as `--baseline` does.
 The test list is part of the coverage cache key, so a narrowed run replaces a full-run cache in the same folder.
 `--cache-dir .mutineer/since` keeps the two apart.
 
@@ -39,8 +40,10 @@ The test list is part of the coverage cache key, so a narrowed run replaces a fu
 A narrowed run does not run a test that pairs only with an unchanged source.
 A mutant that only such a test kills shows as `survived` or `no_coverage`.
 A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`.
-`no_coverage` is outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
-Use a full run (without the setting) for a `--threshold` or `--baseline` gate you rely on.
+`no_coverage` is outside the score, so a narrowed `--threshold` gate can pass where a full run fails.
+Use a full run (without the setting) for a `--threshold` gate you rely on.
+A `--baseline` run does not narrow: it keeps every test, so its new-survivor check sees that mutant as `survived`.
+Stderr says the setting has no effect, except on a dry run, which runs no tests.
 
 1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
 2. Run the same command with `--no-since-paired-tests`, which beats the `.mutineer.yml` key.

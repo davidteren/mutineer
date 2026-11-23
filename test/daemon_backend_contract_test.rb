@@ -293,8 +293,14 @@ class DaemonBackendContractTest < Minitest::Test
   end
 
   # #496: with `since_paired_tests`, the coverage daemon gets only the tests
-  # paired with the source that has a job, and still gets every source.
+  # paired with the source that has a job, and still gets every source. With
+  # `--baseline` (#552 item 3), it gets every test and nothing narrows.
   def test_since_paired_tests_narrows_the_tests_sent_to_the_daemon
+    [nil, "base.json"].each { |baseline| assert_daemon_since_tests(baseline) }
+  end
+
+  # One `--daemon` run of {test_since_paired_tests_narrows_the_tests_sent_to_the_daemon}.
+  def assert_daemon_since_tests(baseline)
     Dir.mktmpdir("mutineer-daemon-since") do |root|
       FileUtils.mkdir_p(File.join(root, "app"))
       %w[a b].each { |n| File.write(File.join(root, "app/#{n}.rb"), "class Scope#{n.upcase}\n  def t(x) = x + 1\nend\n") }
@@ -302,7 +308,7 @@ class DaemonBackendContractTest < Minitest::Test
       tests = %w[test/a_test.rb test/b_test.rb]
       config = Mutineer::Config.new(sources: sources, tests: tests, project_root: root, framework: "minitest",
                                     since: "HEAD", since_paired_tests: true, rails: true, daemon: true,
-                                    tests_by_source: sources.zip(tests.map { |t| [t] }).to_h)
+                                    baseline: baseline, tests_by_source: sources.zip(tests.map { |t| [t] }).to_h)
       stop = Class.new(StandardError)
       boots = []
       narrowed_flags = []
@@ -324,11 +330,17 @@ class DaemonBackendContractTest < Minitest::Test
         end
       end
 
-      assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
       assert_equal sources, boots.first[:sources]
       assert_equal tests, config.tests, "the caller's config keeps the full list"
-      assert_includes err, "running 1 of 2 test files"
-      assert_equal [true], narrowed_flags, "the map build is told the list was narrowed"
+      if baseline
+        assert_equal tests.map { |t| File.join(root, t) }, boots.first[:tests]
+        refute_includes err, "--since: running"
+        assert_equal [false], narrowed_flags
+      else
+        assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
+        assert_includes err, "running 1 of 2 test files"
+        assert_equal [true], narrowed_flags, "the map build is told the list was narrowed"
+      end
     end
   end
 

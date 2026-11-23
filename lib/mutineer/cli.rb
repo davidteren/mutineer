@@ -82,9 +82,9 @@ module Mutineer
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
         --since-paired-tests With --since, run only the tests paired with the sources
                              that have a mutant on a changed line (in-process and
-                             --daemon; not with --test, --test-command, or
-                             --coverage-from on an in-process --rails/--boot run;
-                             default: off)
+                             --daemon; not with --test, --test-command,
+                             --baseline, or --coverage-from on an in-process
+                             --rails/--boot run; default: off)
         --no-since-paired-tests  Turn it off for one run (beats a .mutineer.yml
                              since_paired_tests:)
         --jobs N             Parallel worker count (default: processor count);
@@ -662,11 +662,12 @@ module Mutineer
 
     # Says when `since_paired_tests` is on under `--since` but the run keeps
     # its full test list anyway (#496): an explicit `--test` list, a
-    # `--test-command` run, or a `--coverage-from` capture that the run reuses
-    # (its test list must match; {JobPlan.coverage_from_reused?}). Names the
-    # first that applies. A run without
-    # `--since`, or with the setting off, prints nothing. A dry run runs no
-    # tests and prints nothing.
+    # `--test-command` run, a `--coverage-from` capture that the run reuses
+    # (its test list must match; {JobPlan.coverage_from_reused?}), or a
+    # `--baseline` gate (flag or file key), which a narrowed run could pass
+    # with a new survivor hidden as `no_coverage`. Names the first that
+    # applies. A run without `--since`, or with the setting off, prints
+    # nothing. A dry run runs no tests and prints nothing.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -677,6 +678,7 @@ module Mutineer
       reason = if config.explicit?(:tests) then "--test is given"
                elsif config.test_command then "--test-command is given"
                elsif JobPlan.coverage_from_reused?(config) then "--coverage-from is given"
+               elsif config.baseline then "#{config.origin(:baseline)} is given"
                end
       warn "[mutineer] #{config.origin(:since_paired_tests)} has no effect when #{reason}" if reason
     end

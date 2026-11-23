@@ -231,7 +231,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention and apply any `tests:` map. Unmatched sources are skipped and counted in the report. |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
-| `--[no-]since-paired-tests` | With `--since`, run only the tests paired with the sources that have a mutant on a changed line (in-process and `--daemon`; off by default). Not with `--test`, `--test-command`, or `--coverage-from` on an in-process `--rails` or `--boot` run |
+| `--[no-]since-paired-tests` | With `--since`, run only the tests paired with the sources that have a mutant on a changed line (in-process and `--daemon`; off by default). Not with `--test`, `--test-command`, `--baseline`, or `--coverage-from` on an in-process `--rails` or `--boot` run |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
 | `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb`. `require:` files load after this file |

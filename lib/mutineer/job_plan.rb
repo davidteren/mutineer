@@ -910,16 +910,18 @@ module Mutineer
     # `config.tests`. Returns `config.tests` itself when the run must keep its
     # full list: the setting is off, there is no `--since`, a `--coverage-from`
     # capture is reused (its test list must match, {coverage_from_reused?}),
-    # pairing stored no rows (an
-    # explicit `--test` list, or a caller that built its own Config), there
-    # are no jobs, or a source with a job has no pairing row. Reads only.
+    # `--baseline` is set (a narrowed run can turn a new survivor into
+    # `no_coverage`, which the new-survivor check leaves out), pairing stored
+    # no rows (an explicit `--test` list, or a caller that built its own
+    # Config), there are no jobs, or a source with a job has no pairing row.
+    # Reads only.
     #
     # @param config [Mutineer::Config] run configuration after pairing.
     # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
     # @return [Array<String>] the narrowed test list, or `config.tests`.
     def self.since_tests(config, jobs)
       return config.tests unless config.since && config.since_paired_tests && !coverage_from_reused?(config)
-      return config.tests if config.tests_by_source.empty? || jobs.empty?
+      return config.tests if config.baseline || config.tests_by_source.empty? || jobs.empty?
 
       rows = config.tests_by_source.keys
       wanted = Set.new
@@ -974,7 +976,8 @@ module Mutineer
       "[mutineer] --since: running #{kept_tests} of #{all_tests} test files, the ones paired with the " \
         "#{live_sources} of #{all_sources} paired sources that #{verb} a mutant on a changed line. " \
         "A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. " \
-        "no_coverage is outside the score and the --baseline check: gate on a full run."
+        "no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run. " \
+        "A --baseline run keeps every test."
     end
 
     # Narrows the jobs and the suppressed (ignored) results to --since when it

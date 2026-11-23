@@ -3517,6 +3517,119 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #552 item 3: a mutant that only another source's test covers, and does not
+  # kill. lib/price.rb has the changed line; test/price_test.rb never calls
+  # Price#total; test/cart_test.rb (paired with lib/cart.rb) calls it with no
+  # assertion. Each test file writes a marker when it loads.
+  def with_hidden_survivor_project(yaml: "threshold: 0\n")
+    Dir.mktmpdir("mutineer-hidden-survivor") do |proj|
+      FileUtils.mkdir_p([File.join(proj, "lib"), File.join(proj, "test")])
+      File.write(File.join(proj, "lib/price.rb"), <<~RUBY)
+        class Price
+          def total(a, b)
+            a + b
+          end
+
+          def label
+            "price"
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "lib/cart.rb"), "class Cart\n  def size\n    1\n  end\nend\n")
+      File.write(File.join(proj, "test/price_test.rb"), <<~RUBY)
+        File.write(File.join(__dir__, "price_loaded.txt"), "x", mode: "a")
+        require "minitest/autorun"
+        require_relative "../lib/price"
+        class PriceTest < Minitest::Test
+          def test_label
+            assert_equal "price", Price.new.label
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "test/cart_test.rb"), <<~RUBY)
+        File.write(File.join(__dir__, "cart_loaded.txt"), "x", mode: "a")
+        require "minitest/autorun"
+        require_relative "../lib/cart"
+        require_relative "../lib/price"
+        class CartTest < Minitest::Test
+          def test_size
+            Price.new.total(1, 2)
+            assert_equal 1, Cart.new.size
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "base.json"), JSON.generate("schema_version" => Mutineer::Reporter::SCHEMA_VERSION,
+                                                             "survivors" => []))
+      File.write(File.join(proj, ".mutineer.yml"), yaml)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t], %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), args.join(" ")
+      end
+      price = File.join(proj, "lib/price.rb")
+      File.write(price, File.read(price).sub("a + b", "a + b # touched"))
+      yield proj
+    end
+  end
+
+  BASELINE_GUARD = "[mutineer] --since-paired-tests has no effect when --baseline is given"
+
+  # #552 item 3: without --baseline, narrowing drops cart_test.rb and the
+  # mutant hides as no_coverage. With --baseline (flag or file key), the run
+  # keeps cart_test.rb, the mutant survives, the gate names it as new and
+  # exits 1, and stderr says so once. The guarded run equals a run without
+  # the setting.
+  def test_since_paired_tests_keeps_every_test_under_baseline
+    with_hidden_survivor_project do |proj|
+      args = ["run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--format", "json"]
+      cart_loaded = File.join(proj, "test/cart_loaded.txt")
+      out, err, status = mutineer(*args, "--since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "--since: running 1 of 2 test files"
+      refute_path_exists cart_loaded, "the narrowed run never loads cart_test.rb"
+      hidden = JSON.parse(out)
+      assert_empty hidden["survivors"]
+      refute_empty hidden["no_coverage"]
+      assert hidden["no_coverage"].all? { |m| m["file"] == "lib/price.rb" }, hidden["no_coverage"].inspect
+
+      out, err, status = mutineer(*args, "--since-paired-tests", "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_equal 1, err.scan(BASELINE_GUARD).size, err
+      assert_equal "#{BASELINE_GUARD}\n", err.lines.grep(/has no effect/).join
+      refute_includes err, "--since: running"
+      assert_path_exists cart_loaded, "the guarded run captures cart_test.rb"
+      guarded = JSON.parse(out)
+      assert_empty guarded["no_coverage"]
+      ids = hidden["no_coverage"].map { |m| m["id"] }.sort
+      assert_equal ids, guarded["survivors"].map { |m| m["id"] }.sort, "the hidden mutants now survive"
+      assert_equal ids, guarded["baseline"]["new_survivors"].map { |m| m["id"] }.sort
+      assert guarded["baseline"]["regressed"], guarded["baseline"].inspect
+
+      out, err, status = mutineer(*args, "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      refute_includes err, "has no effect"
+      no_timing = ->(doc) { doc["survivors"].map { |m| m.except("seconds") } }
+      assert_equal no_timing.call(guarded), no_timing.call(JSON.parse(out))
+    end
+
+    with_hidden_survivor_project(yaml: "threshold: 0\nbaseline: base.json\nsince_paired_tests: true\n") do |proj|
+      _out, err, status = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_equal 1, err.scan("[mutineer] since_paired_tests in .mutineer.yml has no effect when " \
+                               "baseline in .mutineer.yml is given").size, err
+      refute_includes err, "--since: running"
+
+      # The note names the first reason that applies: --test and a reused
+      # --coverage-from come before the baseline.
+      _out, err, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--test", "test", chdir: proj)
+      assert_equal ["[mutineer] since_paired_tests in .mutineer.yml has no effect when --test is given\n"],
+                   err.lines.grep(/has no effect when/), err
+      File.write(File.join(proj, "cov.json"), "{}")
+      _out, err, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--boot", "lib/price.rb",
+                            "--coverage-from", "cov.json", chdir: proj)
+      assert_equal ["[mutineer] since_paired_tests in .mutineer.yml has no effect when --coverage-from is given\n"],
+                   err.lines.grep(/has no effect when/), err
+    end
+  end
+
   # --- #494 Packwerk pairing --------------------------------------------------
 
   def with_packs_project
