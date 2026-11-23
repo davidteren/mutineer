@@ -239,11 +239,14 @@ source that another source loads keeps working. Stderr prints one line with the 
 
 The run keeps its full test list when you give `--test`, `--test-command`, `--coverage-from` on an in-process
 `--rails` or `--boot` run, or `--baseline` (flag or `baseline` key), and stderr says the setting has no
-effect, naming the first of these that applies:
+effect, naming the first of these that applies. With the flags:
 
 ```text
 [mutineer] --since-paired-tests has no effect when --baseline is given
 ```
+
+When `since_paired_tests` or `baseline` comes from `.mutineer.yml`, the line names that key and the file
+instead of the flag, for example `baseline in .mutineer.yml`. The other reasons always name the flag.
 
 A run that ignores `--coverage-from` (no boot file, or `--daemon`) still narrows. A dry run runs no tests and prints nothing. When the tests of the sources
 with a mutant on a changed line already make up the full list, no line prints: for example, every paired source
