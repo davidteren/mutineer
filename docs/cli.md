@@ -23,6 +23,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--timeout SECONDS` | Per-mutant limit, in-process | `10` |
 | `--capture-timeout SECONDS` | In-process and `--daemon` coverage capture and clean-run limit; `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times the summed capture time of its files, rounded up | `120` |
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |
+| `--load-path DIR`, `-I DIR` | Put `DIR` on `$LOAD_PATH` before the boot file, the sources and the tests; repeat for more. Replaces `load_path:` in `.mutineer.yml` (unlike `ruby -I`, which adds). See the `load_path` key | None |
 | `--coverage-from FILE` | Reuse previous `coverage.json` (CLI only) | None |
 | `--format human\|json\|html` | Report format (CLI only) | `human` |
 | `--output FILE` | Report file | stdout |
@@ -111,6 +112,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `timeout` | Positive integer; seconds per mutant (default 10) |
 | `capture_timeout` | Positive integer; coverage capture and clean-run seconds (default 120); `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times its files' summed capture time, rounded up |
 | `cache_dir` | Coverage cache directory (default `.mutineer`) |
+| `load_path` | Directory or list of directories, relative to the project root or absolute. Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require` files and the tests, in-process and under `--daemon` (the daemon does not pass `RUBYOPT` or `RUBYLIB` to the app). Ruby searches them in the written order, after the test-helper directories Mutineer finds itself; with no boot file, `lib` comes first. `--load-path DIR` or `-I DIR` replaces the list. `--test-command` ignores it and warns; pass `-I` inside that command instead ([#535](https://github.com/davidteren/mutineer/issues/535)). The coverage cache key holds these directories in order and every `.rb` file under them (not the run's sources and tests), so a reorder, a new file or an edit there captures every test again. Mutineer reads and hashes those files on every run, also on a cache hit, so a large directory adds read time. Other files there, such as YAML or JSON data, are not part of the key ([#548](https://github.com/davidteren/mutineer/issues/548)) |
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
 | `shared_databases` | File only. Test database names that parallel `--daemon` workers may share; needs Rails 7.1 or later (on Rails 7.0 every parallel mutant scores `error`). Listing the primary database exits 2. If the test environment registers a pool for a listed database, every parallel mutant scores `error`. See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database) |
@@ -131,6 +133,7 @@ A dry run does not load the sources, so it does not report this.
 | No known operator names remain | Exit 2 |
 | `--operators` | Replaces blank or unknown configuration lists |
 | `require`, `ignore` | Empty lists allowed |
+| `load_path` | Each entry must be a directory, or the run exits 2 with `mutineer: not a directory: <path> (<origin>)`, every bad path on one line. A blank entry, or a value that is not a string or a list of strings, exits 2. `load_path: []` is allowed. `--test-command` skips the directory check, but a blank entry or a wrong shape still exits 2 there |
 | Booleans | `true` or `false`, including quoted forms; not `"yes"` |
 | `jobs` | Positive; strings contain digits only |
 | `threshold`, CLI-only `--baseline-epsilon` | Strings use plain decimals: `90`, `0.5`; not `+2`, `1e2`, `1_0` |

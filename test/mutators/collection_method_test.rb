@@ -1060,9 +1060,537 @@ class CollectionMethodTest < Minitest::Test
           end
         end
       RUBY
-      ["select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+      ["each in a condition is truthiness only", <<~RUBY, [], 1],
         def m
-          if xs.select { |item| item }
+          if users.each { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each on the right of && in a condition", <<~RUBY, [], 1],
+        def m
+          if a && users.each { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each in parentheses in a condition", <<~RUBY, [], 1],
+        def m
+          if (users.each { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each on the left of || in a condition", <<~RUBY, [], 1],
+        def m
+          if users.each { |u| u } || a
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each on the right of || in an unless condition", <<~RUBY, [], 1],
+        def m
+          unless a || users.each { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each in a nested && and || in a while condition", <<~RUBY, [], 1],
+        def m
+          while a && (b || users.each { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each on the right of && with the result kept", <<~RUBY, [%w[each map]], 0],
+        def m
+          ok = a && users.each { |u| u }
+          :done
+        end
+      RUBY
+      ["each on the left of || with the result kept", <<~RUBY, [%w[each map]], 0],
+        def m
+          ok = users.each { |u| u } || a
+          :done
+        end
+      RUBY
+      ["each in a condition with a call on its result", <<~RUBY, [%w[each map]], 0],
+        def m
+          if users.each { |u| u }.empty?
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in a condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if users.map { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map on the right of && in a condition", <<~RUBY, [], 1],
+        def m
+          if a && users.map { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in parentheses in a condition", <<~RUBY, [], 1],
+        def m
+          if (users.map { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map on the left of || in a condition", <<~RUBY, [], 1],
+        def m
+          if users.map { |u| u } || a
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map on the right of || in an unless condition", <<~RUBY, [], 1],
+        def m
+          unless a || users.map { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in a nested && and || in a while condition", <<~RUBY, [], 1],
+        def m
+          while a && (b || users.map { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map on the right of && with the result kept", <<~RUBY, [%w[map each]], 0],
+        def m
+          ok = a && users.map { |u| u }
+          :done
+        end
+      RUBY
+      ["map on the left of || with the result kept", <<~RUBY, [%w[map each]], 0],
+        def m
+          ok = users.map { |u| u } || a
+          :done
+        end
+      RUBY
+      ["map in a condition with a call on its result", <<~RUBY, [%w[map each]], 0],
+        def m
+          if users.map { |u| u }.empty?
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in a condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if xs.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select on the right of && in a condition", <<~RUBY, [], 1],
+        def m
+          if a && xs.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in parentheses in a condition", <<~RUBY, [], 1],
+        def m
+          if (xs.select { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select on the left of || in a condition", <<~RUBY, [], 1],
+        def m
+          if xs.select { |u| u } || a
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select on the right of || in an unless condition", <<~RUBY, [], 1],
+        def m
+          unless a || xs.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in a nested && and || in a while condition", <<~RUBY, [], 1],
+        def m
+          while a && (b || xs.select { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select on the right of && with the result kept", <<~RUBY, [%w[select reject]], 0],
+        def m
+          ok = a && xs.select { |u| u }
+          :done
+        end
+      RUBY
+      ["select on the left of || with the result kept", <<~RUBY, [%w[select reject]], 0],
+        def m
+          ok = xs.select { |u| u } || a
+          :done
+        end
+      RUBY
+      ["select in a condition with a call on its result", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if xs.select { |u| u }.empty?
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject in a condition is truthiness only", <<~RUBY, [], 1],
+        def m
+          if xs.reject { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject on the right of && in a condition", <<~RUBY, [], 1],
+        def m
+          if a && xs.reject { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject in parentheses in a condition", <<~RUBY, [], 1],
+        def m
+          if (xs.reject { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject on the left of || in a condition", <<~RUBY, [], 1],
+        def m
+          if xs.reject { |u| u } || a
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject on the right of || in an unless condition", <<~RUBY, [], 1],
+        def m
+          unless a || xs.reject { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject in a nested && and || in a while condition", <<~RUBY, [], 1],
+        def m
+          while a && (b || xs.reject { |u| u })
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject on the right of && with the result kept", <<~RUBY, [%w[reject select]], 0],
+        def m
+          ok = a && xs.reject { |u| u }
+          :done
+        end
+      RUBY
+      ["reject on the left of || with the result kept", <<~RUBY, [%w[reject select]], 0],
+        def m
+          ok = xs.reject { |u| u } || a
+          :done
+        end
+      RUBY
+      ["reject in a condition with a call on its result", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if xs.reject { |u| u }.empty?
+            work
+          end
+          :done
+        end
+      RUBY
+      ["blockless select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if xs.select
+            work
+          end
+          :done
+        end
+      RUBY
+      ["blockless reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if xs.reject
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.select { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["select in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.select { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["select in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.select { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["reject in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.reject { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.reject { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["reject in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.reject { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["reject in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.reject { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["each in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.each { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.each { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["each in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.each { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["each in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.each { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["map in an until condition", <<~RUBY, [], 1],
+        def m
+          until xs.map { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map in an elsif condition", <<~RUBY, [], 1],
+        def m
+          if a
+            work
+          elsif xs.map { |u| u }
+            more
+          end
+          :done
+        end
+      RUBY
+      ["map in a ternary condition", <<~RUBY, [], 1],
+        def m
+          xs.map { |u| u } ? 1 : 2
+          :done
+        end
+      RUBY
+      ["map in a subjectless when condition", <<~RUBY, [], 1],
+        def m
+          case
+          when xs.map { |u| u }
+            1
+          end
+          :done
+        end
+      RUBY
+      ["reject with a block argument in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if xs.reject(&blk)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each with arguments in a nested condition stays", <<~RUBY, [%w[each map]], 0],
+        def m
+          if enabled && io.each(separator) { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map with arguments in a nested condition stays", <<~RUBY, [%w[map each]], 0],
+        def m
+          if enabled && io.map(separator) { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["ENV.select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if ENV.select { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["ENV.reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if ENV.reject { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["IO.select in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if IO.select { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["IO.reject in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if IO.reject { |k, v| v }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["each with a block argument in a condition stays", <<~RUBY, [%w[each map]], 0],
+        def m
+          if xs.each(&fmt)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["map with a block argument in a condition stays", <<~RUBY, [%w[map each]], 0],
+        def m
+          if xs.map(&fmt)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["select on the left of && with the result kept", <<~RUBY, [], 1],
+        def m
+          ok = xs.select { |u| u } && b
+          :done
+        end
+      RUBY
+      ["reject on the left of && as a statement", <<~RUBY, [], 1],
+        def m
+          xs.reject { |u| u } && b
+          :done
+        end
+      RUBY
+      ["select with arguments in a condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if IO.select([reader], nil, nil, 1)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["reject with arguments in a condition stays", <<~RUBY, [%w[reject select]], 0],
+        def m
+          if reject(a)
+            work
+          end
+          :done
+        end
+      RUBY
+      ["lazy select in an && condition stays", <<~RUBY, [%w[select reject]], 0],
+        def m
+          if a && xs.lazy.select { |u| u }
+            work
+          end
+          :done
+        end
+      RUBY
+      ["first in a nested condition stays", <<~RUBY, [%w[first last]], 0],
+        def m
+          if a && xs.first
             work
           end
           :done

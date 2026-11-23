@@ -91,6 +91,10 @@ module Mutineer
                              1.5x its files' summed capture time, rounded up
         --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
                              not with --test-command)
+        --load-path DIR, -I DIR  Put DIR on $LOAD_PATH before the boot file, the sources
+                             and the tests (repeat for more; relative to the project
+                             root; replaces load_path: in .mutineer.yml; not with
+                             --test-command)
         --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over
                              these sources or more; runs alone only the tests that
                              cover these sources
@@ -193,6 +197,10 @@ module Mutineer
         o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
         o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
         o.on("--cache-dir DIR") { |v| opts[:cache_dir] = Config.parse(:cache_dir, v) }
+        # Repeats add to the flag's list. The whole list replaces the file's (#491).
+        o.on("-I DIR", "--load-path DIR") do |v|
+          (opts[:extra_load_paths] ||= []).concat(Config.parse(:extra_load_paths, v))
+        end
         o.on("--coverage-from FILE") { |v| opts[:coverage_from] = Config.parse(:coverage_from, v) }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
@@ -571,7 +579,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
-      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir])
+      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir extra_load_paths])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -632,7 +640,8 @@ module Mutineer
       timeout: "in-process runs only",
       capture_timeout: "in-process and --daemon coverage capture",
       cache_dir: "the in-process and --daemon coverage cache",
-      coverage_from: "in-process --rails/--boot runs"
+      coverage_from: "in-process --rails/--boot runs",
+      extra_load_paths: "in-process and --daemon runs"
     }.freeze
 
     # Warns when `--coverage-from` is set on a run that captures no coverage.
@@ -747,7 +756,10 @@ module Mutineer
 
     # Validate path existence up front so a typo is a clean usage error (exit 2),
     # not an Errno::ENOENT backtrace from deep in the run. Flag checks run first
-    # so a bad flag still reports the flag, not the missing file.
+    # so a bad flag still reports the flag, not the missing file. A `load_path`
+    # entry must be a directory (#491). --test-command skips that check: it
+    # does not use the directories and only warns. Config.parse has already
+    # checked the value's shape in every mode.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -755,9 +767,16 @@ module Mutineer
     def self.validate_paths!(config)
       missing = (config.sources + config.tests)
                 .reject { |p| File.exist?(File.expand_path(p, config.project_root)) }
-      return if missing.empty?
+      unless missing.empty?
+        warn "mutineer: no such file: #{missing.join(', ')}"
+        exit 2
+      end
+      return if config.test_command
 
-      warn "mutineer: no such file: #{missing.join(', ')}"
+      not_dirs = JobPlan.extra_load_dirs(config).reject { |dir| File.directory?(dir) }
+      return if not_dirs.empty?
+
+      warn "mutineer: not a directory: #{not_dirs.join(', ')} (#{config.origin(:extra_load_paths)})"
       exit 2
     end
 
@@ -1054,6 +1073,7 @@ module Mutineer
       legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
       phases = extras.fetch(:timing, {})
+      growth_rows = extras.fetch(:callback_growth, [])
       timing = { total_seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started,
                  boot_seconds: phases[:boot_seconds], coverage_seconds: phases[:coverage_seconds],
                  clean_check_seconds: phases[:clean_check_seconds], mutants_seconds: phases[:mutants_seconds] }
@@ -1063,9 +1083,11 @@ module Mutineer
                       unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
-                      copies: extras.fetch(:copies, {}), timing: timing, verbose: config.verbose)
+                      copies: extras.fetch(:copies, {}), timing: timing,
+                      callback_growth: growth_rows, verbose: config.verbose)
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
-      warn_callback_growth(extras.fetch(:callback_growth, []))
+      # nil: the run could not create its log, and a stderr line said so.
+      warn_callback_growth(growth_rows || [])
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -1242,11 +1264,13 @@ module Mutineer
     end
 
     # Warns when a reload left a class with more callbacks than it had (#479):
-    # one header, then one line for each class. Reload keeps both copies of a
+    # one header that counts each class once, then one line for each class and
+    # file, so a class logged from two files has two lines. Reload keeps both copies of a
     # callback when it cannot tell which old one a new one repeats, so the
     # class runs it twice and a test that counts runs can kill falsely. Report
-    # only: no verdict, score, JSON field or exit code changes. Names and paths
-    # are escaped, so a control character cannot reach the terminal.
+    # only: no verdict, score or exit code changes, and `--format json` lists
+    # the same rows in `summary.callback_growth` (#505). Names and paths are
+    # escaped, so a control character cannot reach the terminal.
     #
     # @param rows [Array<Array(String, String)>] each class name and its file,
     #   from {JobPlan.callback_growth_rows}.

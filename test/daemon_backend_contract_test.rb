@@ -125,9 +125,35 @@ class DaemonBackendContractTest < Minitest::Test
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
+      assert_equal false, boot[:verbose], "#517: no --verbose, so the capture warning stays generic"
+      config.verbose = true
+      assert_equal true, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:verbose],
+                   "#517: --verbose reaches the map-building daemon"
+      config.verbose = false
       config.capture_timeout = 300
       assert_equal 300, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:capture_timeout],
                    "PR #183 review: the map-building daemon gets --capture-timeout"
+    end
+  end
+
+  # #491: DaemonServer#boot! unshifts each load_paths entry in turn, so the
+  # list carries the load_path directories reversed, then the test roots.
+  # With no load_path the list is the test roots alone, as before.
+  def test_boot_config_puts_load_path_directories_behind_the_test_roots
+    Dir.mktmpdir("mutineer-contract") do |root|
+      test = File.join(root, "test/models/order_test.rb")
+      FileUtils.mkdir_p(File.dirname(test))
+      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+      roots = Mutineer::JobPlan.test_load_roots([test])
+
+      config = Mutineer::Config.new(sources: [], tests: [test], project_root: root, framework: "minitest")
+      assert_equal roots, Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+
+      config.extra_load_paths = ["a", "b", "/abs/c"]
+      boot = Mutineer::DaemonBackend.boot_config(config, [test])
+      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots], boot[:load_paths]
+      assert_equal [File.join(root, "a"), File.join(root, "b"), "/abs/c"], boot[:extra_load_paths],
+                   "the written order, for the coverage cache key"
     end
   end
 
@@ -401,6 +427,42 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal "/tmp/growth.log", sent.last["callback_growth_log"]
   ensure
     Mutineer::ReloadGuards.callback_growth_log = nil
+  end
+
+  # The reload text the daemon payload carries for the first mutant of `only`.
+  #
+  # @return [String]
+  def payload_code(fixture, only)
+    path = File.expand_path("fixtures/#{fixture}", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: only).first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+    sent.first["code"]
+  end
+
+  # #512: the payload wraps only the value a superclass local write sets, as
+  # in process, so the daemon child still sets the local.
+  def test_the_payload_keeps_a_superclass_that_sets_a_local
+    code = payload_code("local_superclass.rb", "Quad#four?")
+    assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
+  end
+
+  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  def test_the_payload_keeps_a_superclass_constant_the_file_assigns
+    code = payload_code("const_superclass.rb", "Row#three?")
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
   end
 
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on

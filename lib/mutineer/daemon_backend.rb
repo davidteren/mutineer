@@ -500,7 +500,7 @@ module Mutineer
           reach_key = sentinel && ReachProbe.reach_key
           begin
             # The same text as in-process (Runner.run): a hook-block def placed
-            # (#297), a call superclass kept (#492).
+            # (#297), a live superclass kept (#492, #512, #503).
             code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source,
                                                  reach_path: sentinel&.path, reach_key: reach_key)
             payload = { "code" => code, "source_file" => File.expand_path(subject.file, config.project_root) }
@@ -542,8 +542,9 @@ module Mutineer
 
     # The boot config the daemon needs to boot the app once: where to boot, the
     # --require files to load after it, the test load roots (so
-    # `require "test_helper"` resolves in every fork), framework, and whether this
-    # is Rails.
+    # `require "test_helper"` resolves in every fork) and the `load_path`
+    # directories, framework, whether this
+    # is Rails, and --verbose for the coverage build's capture warnings.
     #
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
@@ -556,13 +557,19 @@ module Mutineer
     #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
     def self.boot_config(config, abs_tests, coverage: false, db_role: nil, parallel: false)
+      extra_dirs = JobPlan.extra_load_dirs(config)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
         # Required after the boot, as in-process (Runner.execute); also part of
         # the coverage digest.
         require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
-        load_paths: JobPlan.test_load_roots(abs_tests),
+        # DaemonServer#boot! unshifts one entry at a time, so the last is
+        # searched first: the test-helper roots, then the load_path
+        # directories in the written order (#491), as in-process.
+        load_paths: extra_dirs.reverse + JobPlan.test_load_roots(abs_tests),
+        # The same directories in the written order, for the coverage cache key.
+        extra_load_paths: extra_dirs,
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
@@ -581,6 +588,9 @@ module Mutineer
         db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,
+        # --verbose: the map-building daemon's capture warning shows the real
+        # error, as in-process (#517). Not part of the coverage digest.
+        verbose: config.verbose,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }
