@@ -51,7 +51,7 @@ Stderr says the setting has no effect, except on a dry run, which runs no tests.
 
 A full run (`--no-since`) sees both cases.
 
-A baseline refresh does not help here. A baseline comes from a full run, and a full run is not narrowed.
+A `--baseline` run never shows this case, because it does not narrow.
 The limits are in #552.
 
 ## Baseline

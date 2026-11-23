@@ -231,12 +231,12 @@ paired with the sources that have a mutant on a changed line: their convention t
 source that another source loads keeps working. Stderr prints one line with the counts:
 
 ```text
-[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run. A --baseline run keeps every test.
+[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run, or add --baseline, which keeps every test.
 ```
 
-The run keeps its full test list when you give `--test`, `--test-command`, or `--baseline` (flag or
-`baseline` key), or `--coverage-from` on an in-process `--rails` or `--boot` run, and stderr says the setting
-has no effect, naming the first of these that applies:
+The run keeps its full test list when you give `--test`, `--test-command`, `--coverage-from` on an in-process
+`--rails` or `--boot` run, or `--baseline` (flag or `baseline` key), and stderr says the setting has no
+effect, naming the first of these that applies:
 
 ```text
 [mutineer] --since-paired-tests has no effect when --baseline is given
