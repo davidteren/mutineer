@@ -18,7 +18,7 @@ conventions:
       it in that change, or take that code out, unless a maintainer accepts
       it in writing on the pull request. A defect older than the change, an
       error or warning the user can see, and a limit a maintainer accepted
-      each get an issue. Every new issue gets its labels when it is
+      in writing each get an issue. Every new issue gets its labels when it is
       created (AGENTS.md, "Labels"). A person who cannot set labels files
       the issue, and a maintainer adds them.'
     - 'Cover the siblings: A fix to one path or surface names its siblings

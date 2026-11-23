@@ -135,7 +135,9 @@ filing an issue, not a later pass. Pass them to `gh issue create` with
 `gh label list` gives the meaning of each priority and risk label. Add
 `needs decision` when work cannot start until a maintainer decides. An issue
 template sets only the type label. A person who cannot set labels files the
-issue without the rest, and a maintainer adds them.
+issue without the rest, and a maintainer adds them. An older plan in
+`docs/plans/` can show an issue command with fewer labels. This rule applies
+to that command too: add the missing labels when you file the issue.
 
 ### Fix it in the pull request, or file an issue?
 
@@ -147,8 +149,9 @@ issue for something a pull request found, ask what caused it:
   warning): fix it in this pull request, or take that code out. Do not file
   it for later, unless a maintainer accepts it in writing on the pull request.
 - **The defect is older than this pull request**, or the user sees an error
-  or a warning, or a maintainer accepted the limit: file an issue, with its labels, and
-  name its number in the change (see "Shift-left rules" below).
+  or a warning, or a maintainer accepted the limit in writing on the pull
+  request: file an issue, with its labels, and name its number in the change
+  (see "Shift-left rules" below).
 
 ### After the pull request is open
 
