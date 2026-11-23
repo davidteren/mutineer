@@ -1,0 +1,21 @@
+.claude/skills/author-self-check/SKILL.md
+  s_aa0d4f7c37254a::t_58458c21459702 29-30
+AGENTS.md
+  s_aa0d4f7c37254a::t_6d22113cec0069 157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f60fe0f0b3ef971420a8a86cfc65bfb53a8b0205",
+  "prompts": {},
+  "sessions": {
+    "s_aa0d4f7c37254a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70450988-d29c-444a-8f4e-53f91d5d39c5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
