@@ -10,7 +10,7 @@ execution: code
 
 # Run lock gaps after the SQLite run lock - Plan
 
-> **Build status (2026-11-23):** units U1, U2 and U4 are built in the pull request for #416. **U3 (the early SQLite lock) is not built.** It waits for the maintainer's answer to Open Question 1. Limit L2 below therefore stays as one limit, not L2a to L2d.
+> **Build status (2026-11-23):** units U1, U2 and U4 are built in the pull request for #416. **U3 (the early SQLite lock) is not built.** It waits for the maintainer's answer to Open Question 1. Limit L2 below therefore stays as one limit, not L2a to L2d. One change from KTD6: a serial run without `--rails` still quits its first daemon once the worker has booted, because such a run takes no database lock.
 
 ## Goal Capsule
 

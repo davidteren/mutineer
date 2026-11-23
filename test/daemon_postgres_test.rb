@@ -256,7 +256,8 @@ class DaemonPostgresTest < Minitest::Test
   def test_a_fallback_run_alone_copies_its_worker_database_in_a_solo_daemon
     Dir.mktmpdir do |dir|
       roles = File.join(dir, "roles.log")
-      out, status = run_cli_with_roles(dir, roles)
+      out, status = run_cli(1, boot: write_coverage_failing_boot(dir, APP),
+                               require_paths: [write_role_file(dir, roles)])
       assert_equal 0, status.exitstatus, out
       assert_includes out, "daemon coverage map unavailable"
       assert_includes out, "provisioned 1 postgres worker database(s) from #{BASE}"
@@ -327,14 +328,14 @@ class DaemonPostgresTest < Minitest::Test
     nil
   end
 
-  def run_cli(jobs, extra_env = {}, boot: "config/environment")
+  def run_cli(jobs, extra_env = {}, boot: "config/environment", require_paths: [])
     script = <<~RUBY
       require "mutineer"
       config = Mutineer::Config.new(
         sources: [#{ORDER.inspect}],
         tests: [#{TEST_FILE.inspect}],
         project_root: #{APP.inspect},
-        boot: #{boot.inspect},
+        boot: #{boot.inspect}, require_paths: #{require_paths.inspect},
         rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: #{jobs}
       )
       Mutineer::CLI.run(config)
@@ -343,20 +344,4 @@ class DaemonPostgresTest < Minitest::Test
                     chdir: ROOT)
   end
 
-  # A fallback run of the CLI whose daemons log their db_role to `roles`.
-  def run_cli_with_roles(dir, roles)
-    script = <<~RUBY
-      require "mutineer"
-      config = Mutineer::Config.new(
-        sources: [#{ORDER.inspect}],
-        tests: [#{TEST_FILE.inspect}],
-        project_root: #{APP.inspect},
-        boot: #{write_coverage_failing_boot(dir, APP).inspect},
-        require_paths: [#{write_role_file(dir, roles).inspect}],
-        rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: 1
-      )
-      Mutineer::CLI.run(config)
-    RUBY
-    Open3.capture2e(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
-  end
 end
