@@ -1,0 +1,19 @@
+docs/results.md
+  s_9ad04fc3dbec64::t_af4b5fa6b3cba3 118,124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21f76797f19102fc954f4d37f69dddcd3e057df8",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
