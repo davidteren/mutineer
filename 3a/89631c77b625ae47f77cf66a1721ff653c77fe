@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_cf233f78a90d79 37
+test/coverage_map_test.rb
+  s_9747bd218c1c67::t_4a30faf040d7ae 3134-3135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a89631c77b625ae47f77cf66a1721ff653c77fe",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
