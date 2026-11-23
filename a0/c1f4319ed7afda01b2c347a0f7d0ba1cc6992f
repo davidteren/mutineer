@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_adfe87cecf7417 142
+docs/rails-setup.md
+  s_9747bd218c1c67::t_57a579ee2677e8 301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0c1f4319ed7afda01b2c347a0f7d0ba1cc6992f",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
