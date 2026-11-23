@@ -139,6 +139,7 @@ All notable changes to this project are documented here. The format is based on
   When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
   So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill, when the run printed its real summary at a line start.
   Such a crash now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
   A Minitest run that stops after `# Running:` with no summary text after it still scores `killed`, as before (#342 limits 3 and 8).
   Estimate: far below 1 project in 1,000, unmeasured.
   A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start, on exit 1 or after a SimpleCov gate.
