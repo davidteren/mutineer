@@ -191,18 +191,21 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
-  def test_worker_db_load_error_log_hides_the_password
+  # #416: a LoadError after the adapter file loaded fails the boot, so it
+  # reaches the client through the boot reply. That reply hides the password.
+  def test_worker_db_load_error_boot_reply_hides_the_password
     errio = StringIO.new
     Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
     require "mutineer/rails_worker_db"
 
-    Mutineer::RailsWorkerDb.stub(:available?, -> { raise LoadError, "cannot load adapter for #{BAD_URL}" }) do
-      Mutineer::DaemonServer.send(:setup_worker_db, {})
+    error = Mutineer::RailsWorkerDb.stub(:available?, -> { raise LoadError, "cannot load adapter for #{BAD_URL}" }) do
+      assert_raises(LoadError) { Mutineer::DaemonServer.send(:setup_worker_db, {}) }
     end
+    reply = Mutineer::DaemonServer.send(:describe_error, error)
 
-    assert_includes errio.string, "worker-DB routing unavailable"
-    assert_includes errio.string, "[REDACTED]"
-    refute_includes errio.string, "s3cret"
+    assert_includes reply, "LoadError: cannot load adapter for postgres://u:[REDACTED]@ho st/db"
+    refute_includes reply, "s3cret"
+    refute_includes errio.string, "worker-DB routing unavailable"
   end
 
   def test_redact_hides_a_malformed_password_with_a_space_or_a_quote

@@ -231,10 +231,10 @@ module Mutineer
       # never sends the command needs. SQLite takes the run lock and copies
       # files on first use.
       #
-      # Only a LoadError while the adapter loads turns routing off. A failed
-      # lock, or a failed PostgreSQL or MySQL copy, raises, so the boot fails:
-      # a daemon with routing off would run mutants against the app's own test
-      # database (#416).
+      # Only a LoadError from loading the adapter file turns routing off. Any
+      # later failure (the schema lookup, the lock, or a PostgreSQL or MySQL
+      # copy) raises, so the boot fails: a daemon with routing off would run
+      # mutants against the app's own test database (#416).
       def setup_worker_db(cfg)
         # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
         @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)
@@ -243,13 +243,14 @@ module Mutineer
         @slot_ready = {}
         begin
           require_relative "rails_worker_db"
-          @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-          # Only the booted app knows its schema file (`schema_dump:` can rename it).
-          @schema_path = @worker_db&.ruby_schema_path
         rescue LoadError => e
           @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
           @worker_db = nil
+          return
         end
+        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         return unless @worker_db
 
         case cfg["db_role"]

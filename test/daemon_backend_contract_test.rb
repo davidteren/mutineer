@@ -5,6 +5,8 @@ require "English"
 require "minitest/mock"
 require "timeout"
 require "tmpdir"
+require "open3"
+require "json"
 require "stringio"
 require "mutineer/config"
 require "mutineer/daemon_backend"
@@ -1236,6 +1238,37 @@ class DaemonBackendContractTest < Minitest::Test
   ensure
     %i[@worker_db @schema_path @shared_databases @slot_ready @errio].each do |ivar|
       Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review (cubic): a LoadError while the daemon finds the schema file
+  # (ruby_schema_path reaches ActiveRecord::Tasks) must fail the boot, not turn
+  # routing off. Drives the real DaemonServer.run in a child process: the boot
+  # reply is ready false, the daemon exits 1, and the mutant request after it
+  # gets no verdict, so no mutant runs against the app's own test database.
+  def test_a_load_error_while_finding_the_schema_fails_the_boot_before_any_mutant
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      require "mutineer/daemon_server"
+      require "mutineer/rails_worker_db"
+      db = Mutineer::RailsWorkerDb
+      db.define_singleton_method(:available?) { true }
+      db.define_singleton_method(:ruby_schema_path) { raise LoadError, "cannot load such file -- active_record/tasks/missing" }
+      db.define_singleton_method(:provision) { |_slots| nil }
+      db.define_singleton_method(:prepare_worker!) { nil }
+      Mutineer::DaemonServer.run
+    RUBY
+    Dir.mktmpdir("mutineer-boot") do |root|
+      boot = { cmd: "boot", project_root: root, rails: true, db_role: "worker", framework: "minitest" }
+      mutant = { id: 1, worker: 0, timeout: 5, tests: [], payload: { code: "", source_file: File.join(root, "a.rb") } }
+      input = "#{JSON.generate(boot)}\n#{JSON.generate(mutant)}\n"
+      out, err, status = Open3.capture3({ "LANG" => "C.UTF-8" }, RbConfig.ruby, "-I#{lib}", "-e", script,
+                                        stdin_data: input, unsetenv_others: true)
+      replies = out.lines.map { |line| JSON.parse(line) }
+      assert_equal 1, status.exitstatus, "#{out}\n#{err}"
+      assert_equal [false], replies.map { |r| r["ready"] }, "the boot must fail and no verdict may follow\n#{out}"
+      assert_includes replies.first["error"], "LoadError: cannot load such file -- active_record/tasks/missing"
+      refute_includes err, "worker-DB routing unavailable"
     end
   end
 
