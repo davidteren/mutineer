@@ -1,0 +1,41 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9ad04fc3dbec64::t_19cd8e5b90e400 20
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_dde5647e8f3336 115,119
+docs/json-schema.md
+  s_9ad04fc3dbec64::t_8411d91a795154 71,167-176,187
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_9ad04fc3dbec64::t_1949e8466d4ea9 153,447
+lib/mutineer/project.rb
+  s_9ad04fc3dbec64::t_c5056cb5511634 24,148-206
+lib/mutineer/reload_guards.rb
+  s_9ad04fc3dbec64::t_481751e111cc41 87-90
+lib/mutineer/result.rb
+  s_9ad04fc3dbec64::t_b04470608617b1 35-36
+lib/mutineer/subject.rb
+  s_9ad04fc3dbec64::t_a8b6ba0e24af15 35-38,41,64-66,73-74
+test/fixtures/rails_app/app/models/helper_chain_note.rb
+  s_9ad04fc3dbec64::t_7bdf2b0201bc89 1-20
+test/fixtures/rails_app/test/models/helper_chain_note_test.rb
+  s_9ad04fc3dbec64::t_000be3e8011062 1-13
+test/project_test.rb
+  s_9ad04fc3dbec64::t_067563151c2459 1624-1658
+test/rails_dogfood_daemon_test.rb
+  s_9ad04fc3dbec64::t_f7824de7c6733a 6-7,259-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eeba5035d923d29aed2138155df244b3956c909d",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
