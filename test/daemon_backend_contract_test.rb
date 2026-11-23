@@ -5,6 +5,7 @@ require "English"
 require "minitest/mock"
 require "timeout"
 require "tmpdir"
+require "stringio"
 require "mutineer/config"
 require "mutineer/daemon_backend"
 
@@ -1183,6 +1184,33 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal [1], slots
   ensure
     %i[@worker_db @schema_path @shared_databases @slot_ready].each do |ivar|
+      Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review: a solo daemon copies its database inside setup_worker_db. A
+  # LoadError from that copy (a MySQL schema.rb that requires a missing file)
+  # must fail the boot. Rescued as "routing unavailable", it would let the
+  # daemon run mutants against the app's own test database.
+  def test_a_load_error_while_a_solo_daemon_copies_fails_the_boot
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    errio = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
+    failing_copy = ->(_count) { raise LoadError, "cannot load such file -- missing_schema_helper" }
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, failing_copy) do
+          error = assert_raises(LoadError) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+          assert_includes error.message, "missing_schema_helper"
+        end
+      end
+    end
+    refute_includes errio.string, "worker-DB routing unavailable"
+  ensure
+    %i[@worker_db @schema_path @shared_databases @slot_ready @errio].each do |ivar|
       Mutineer::DaemonServer.instance_variable_set(ivar, nil)
     end
   end

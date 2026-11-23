@@ -72,6 +72,7 @@ All notable changes to this project are documented here. The format is based on
   When another run holds the lock, the run exits 1 with `mutineer: daemon failed to boot under the app bundle: RuntimeError: another Mutineer run is using <base>`.
   On PostgreSQL and MySQL this run now copies its worker database. Before, it used the copy an earlier run left, or none. It needs the same database rights as a normal run, and it exits 1 when the copy fails.
   On SQLite the worker file was already copied on first use, so only the lock changes.
+  A `LoadError` while a worker daemon takes its lock or copies its database now fails the boot with exit 1. Before, the daemon printed `worker-DB routing unavailable` and ran mutants against the app's own test database. A `LoadError` while the worker-database adapter loads still turns routing off, as before.
   When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again and copies the worker database again. So the run stops with the lock message if another run took the lock, and on PostgreSQL and MySQL it exits 1 if that copy fails, for example while another session uses the PostgreSQL test database (#416).
 - **`docs/rails-setup.md` lists the run lock limits that stay open (Refs #416).**
   A run without `--daemon` takes no database lock. A run takes its lock after its boot file and `--require` files have loaded. A parallel run whose worker daemons are all down at once holds no lock. A fallback run holds no lock while its one worker daemon respawns.

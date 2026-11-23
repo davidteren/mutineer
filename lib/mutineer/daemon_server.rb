@@ -230,16 +230,25 @@ module Mutineer
       # Anything else provisions now, which is what a direct client that
       # never sends the command needs. SQLite takes the run lock and copies
       # files on first use.
+      #
+      # Only a LoadError while the adapter loads turns routing off. A failed
+      # lock or copy raises, so the boot fails: a daemon with routing off would
+      # run mutants against the app's own test database (#416).
       def setup_worker_db(cfg)
-        require_relative "rails_worker_db"
-        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        # Only the booted app knows its schema file (`schema_dump:` can rename it).
-        @schema_path = @worker_db&.ruby_schema_path
         # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
         @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
+        begin
+          require_relative "rails_worker_db"
+          @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
+          # Only the booted app knows its schema file (`schema_dump:` can rename it).
+          @schema_path = @worker_db&.ruby_schema_path
+        rescue LoadError => e
+          @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
+          @worker_db = nil
+        end
         return unless @worker_db
 
         case cfg["db_role"]
@@ -252,9 +261,6 @@ module Mutineer
         else
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end
-      rescue LoadError => e
-        @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
-        @worker_db = nil
       end
 
       # The booted test environment's database config names and the one each
