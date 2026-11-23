@@ -1,0 +1,21 @@
+README.md
+  s_9747bd218c1c67::t_2a5580bfdab671 125
+docs/rails-setup.md
+  s_9747bd218c1c67::t_2cc68a7bcc2bf9 248,304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "63078fe52e5dcc8000628de44adceb144579ec88",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
