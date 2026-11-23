@@ -115,7 +115,7 @@ Duplicate names can occur with two top-level `def index` definitions in separate
 | Rename the method or its class | Ids change |
 | Add an identical mutant earlier in the method | Later identical mutants' ids change |
 | Add a same-named method earlier in the file | Affected methods' ids change |
-| Upgrade to a version where an operator starts or stops declining a swap | Later swaps of the same name in that method can change id (see `STABILITY.md`) |
+| Upgrade to a version where an operator starts or stops declining a swap | Later swaps of the same name in that method can change id (see [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md)) |
 | Change the run directory | Relative paths can change ids |
 | Use sources outside the project root | Absolute paths make ids differ between machines |
 
