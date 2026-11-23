@@ -23,7 +23,8 @@ module Mutineer
       # The parent reads one line, not until EOF: a process that a test leaves
       # running can inherit fd {RESULT_FD} (a `fork` without `exec` keeps it
       # despite close-on-exec) and hold the pipe open long after the child exits.
-      # A clean check reports only through its exit status, so it gets no pipe.
+      # The capture and the clean check both use `result: true`, and each reads
+      # one JSON line. `result: false` opens no pipe, so the result line is `""`.
       #
       # @api private
       # @param script [String] Ruby script text.
