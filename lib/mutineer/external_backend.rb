@@ -489,11 +489,12 @@ module Mutineer
     # branch of an option file is not seen, so the warning still prints. A
     # seed-like argument meant for a wrapper hides it. A `cd` inside a
     # wrapper makes RSpec read another `.rspec` than this check does. The
-    # filter rule of {rspec_tokens} reads tokens, not programs: it also
-    # drops the value after another program's `-e` or `-t` (`docker run -e
-    # SPEC_OPTS='--seed 7'`), it keeps a filter value inside a nested
-    # command or in the attached form `-e'...'`, and a `-O` inside a nested
-    # command skips the option files. Each can only add a false warning.
+    # filter rule of {rspec_tokens} reads tokens, not programs. It drops the
+    # value after another program's `-e` or `-t` (`docker run -e
+    # SPEC_OPTS=...`), and it reads a filter value inside a nested command
+    # or in the attached form `-e'...'`. Either can add a false warning or
+    # hide a real one. A `-O` given to another program, or inside a nested
+    # command, skips `.rspec` and `.rspec-local`: a false warning at worst.
     #
     # @api private
     # @param command [String] the --test-command template.
