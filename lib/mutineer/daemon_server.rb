@@ -32,7 +32,10 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true}
+  #               "load_paths":["test"],"framework":"minitest","rails":true,"db_role":"worker"}
+  #              (db_role: "prepare" copies databases on the provision command, "worker"
+  #               takes the shared lock, "solo" provisions one slot at boot (#416),
+  #               absent provisions "slots" at boot)
   #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
   #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
@@ -221,9 +224,12 @@ module Mutineer
       #
       # `db_role` "prepare" waits for a provision command (the first daemon).
       # "worker" only takes the shared lock (a worker daemon, including a
-      # respawn). Anything else provisions now, which is what a direct client
-      # that never sends the command needs. SQLite takes the run lock and
-      # copies files on first use.
+      # respawn). "solo" provisions one slot now: it is the one worker of a
+      # run whose first daemon did not boot, so it must take the exclusive
+      # lock and copy its own database (#416). A respawn does the same.
+      # Anything else provisions now, which is what a direct client that
+      # never sends the command needs. SQLite takes the run lock and copies
+      # files on first use.
       def setup_worker_db(cfg)
         require_relative "rails_worker_db"
         @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
@@ -241,6 +247,8 @@ module Mutineer
           nil
         when "worker"
           @worker_db.prepare_worker!
+        when "solo"
+          @worker_db.provision(1)
         else
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end

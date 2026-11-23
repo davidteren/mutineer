@@ -324,14 +324,17 @@ module Mutineer
     #
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
-    #   the databases. Quit when this run ends, after the last mutant.
+    #   the databases. Quit when this run ends, after the last mutant. nil when
+    #   the first daemon did not boot: a Rails worker then boots as "solo", so
+    #   it takes the run lock and copies its own database itself (#416).
     # @param timing [Hash] phase seconds; this adds the worker boot and sets the mutant runs.
     # @return [Array<Mutineer::Result>] results in input order.
     def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil, timing = {})
       client = nil
       begin
         boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        client = DaemonClient.new(boot: boot_config(config, abs_tests),
+        db_role = prepare_client.nil? && config.rails ? "solo" : nil
+        client = DaemonClient.new(boot: boot_config(config, abs_tests, db_role: db_role),
                                   app_root: config.project_root).start
         timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
         results = []
@@ -533,7 +536,9 @@ module Mutineer
     # @param abs_tests [Array<String>] absolute --test paths.
     # @param coverage [Boolean] whether this daemon builds the coverage map.
     # @param db_role [String, nil] "prepare" (copy databases on command),
-    #   "worker" (lock only), or nil to pick from `coverage`.
+    #   "worker" (lock only), "solo" (the one worker of a run whose first
+    #   daemon did not boot: lock and copy one slot at boot), or nil to pick
+    #   from `coverage`.
     # @param parallel [Boolean] whether this daemon is one of several workers.
     #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
@@ -558,7 +563,8 @@ module Mutineer
         # map-build inputs.
         coverage: coverage,
         # "prepare" copies worker databases when asked. "worker" only locks.
-        # A direct client that omits this provisions at boot instead.
+        # "solo" locks and copies one slot at boot (#416). A direct client
+        # that omits this provisions at boot instead.
         db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,

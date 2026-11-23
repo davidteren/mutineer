@@ -31,6 +31,19 @@ module RunLockHelpers
     path
   end
 
+  # A boot file that fails only in the coverage daemon, so the run falls back
+  # to one worker daemon with no prepare daemon (#416, gap 3). Coverage runs
+  # in that daemon before its boot file loads, and in no worker daemon.
+  def write_coverage_failing_boot(dir, app)
+    path = File.join(dir, "fallback_boot.rb")
+    File.write(path, <<~RUBY)
+      raise "the coverage daemon fails on purpose" if defined?(Coverage) && Coverage.running?
+
+      require #{File.join(app, "config/environment").inspect}
+    RUBY
+    path
+  end
+
   # The pids that `write_role_file` logged for `role`, in boot order.
   def daemon_pids(log, role)
     return [] unless File.exist?(log)
@@ -52,6 +65,23 @@ module RunLockHelpers
       sleep 0.05
     end
     false
+  end
+
+  # Start a one-worker daemon run of `source` against `test` in its own process
+  # group, with its output in `log`. The run prints SCORE=<score> at the end.
+  def spawn_fixture_run(log, app:, source:, test:, boot:, require_paths:)
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.new(
+        sources: [#{source.inspect}], tests: [#{test.inspect}], project_root: #{app.inspect},
+        boot: #{boot.inspect}, require_paths: #{require_paths.inspect},
+        rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: 1
+      )
+      aggregate, = Mutineer::Runner.execute(config)
+      warn "SCORE=\#{aggregate.mutation_score}"
+    RUBY
+    Process.spawn(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script,
+                  chdir: File.expand_path("..", __dir__), out: log, err: log, pgroup: true)
   end
 
   # The tool's environment for a fixture run, without the settings that would

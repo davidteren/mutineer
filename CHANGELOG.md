@@ -65,6 +65,13 @@ All notable changes to this project are documented here. The format is based on
   The first daemon now stays up until the run ends, on SQLite, PostgreSQL and MySQL.
   The cost is one more booted copy of the app in memory during the mutant phase of every one-worker `--daemon` run, `--boot` runs included. It adds no boot and uses no CPU.
   A parallel run still quits its first daemon once its worker daemons hold their locks. While all of its worker daemons are down at once, it holds no lock (#416).
+- **A `--rails --daemon` run whose first daemon did not boot now takes the run lock and copies its worker database (Refs #416).**
+  When the first daemon failed to boot, the run went on with one worker daemon. That daemon took only the shared lock and copied nothing, so two such runs on the same test database did not stop each other.
+  The one worker daemon of such a run now asks for the exclusive lock, copies its worker database, and then shares the lock, as a first daemon does.
+  When another run holds the lock, the run exits 1 with `mutineer: daemon failed to boot under the app bundle: RuntimeError: another Mutineer run is using <base>`.
+  On PostgreSQL and MySQL this run now copies its worker database. Before, it used the copy an earlier run left, or none. It needs the same database rights as a normal run, and it exits 1 when the copy fails.
+  On SQLite the worker file was already copied on first use, so only the lock changes.
+  When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again, so the run stops with the lock message if another run took it (#416).
 - **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
   A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
   A class that calls the macro while it loads keeps the original blocks.

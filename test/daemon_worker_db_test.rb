@@ -335,6 +335,79 @@ class DaemonWorkerDbTest < Minitest::Test
     stop_holder(pid, signal: "KILL")
   end
 
+  # #416, gap 3: a run whose first daemon did not boot takes the exclusive
+  # lock in its one worker daemon, so it stops beside another run.
+  def test_a_fallback_run_stops_while_another_run_holds_the_sqlite_lock
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    Dir.mktmpdir do |dir|
+      out, status = run_cli(1, boot: write_coverage_failing_boot(dir, APP))
+      assert_equal 1, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+      refute_match(/mutation score/i, out)
+    end
+  ensure
+    stop_holder(holder)
+  end
+
+  # #416, gap 3: alone, the fallback run's one daemon boots as "solo", holds
+  # the lock through the mutant phase, and the run scores.
+  def test_a_fallback_run_alone_holds_the_sqlite_lock_in_a_solo_daemon
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, boot: write_coverage_failing_boot(dir, APP),
+                                  require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      held = run_holds_sqlite_lock?(pid, log)
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert held, "the fallback run never held the lock\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_match(/SCORE=\d/, out)
+      # The coverage daemon failed in its boot file, before the --require files.
+      assert_equal ["solo"], File.readlines(roles, chomp: true).map { |line| line.split(" ", 2).last }
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
+  # #416, gap 3: a respawn of the solo daemon asks for the exclusive lock
+  # again. Nothing its dead daemon left behind may hold it.
+  def test_a_fallback_run_survives_a_respawn_of_its_solo_daemon
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, boot: write_coverage_failing_boot(dir, APP),
+                                  require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
+      Process.kill("KILL", daemon_pids(roles, "solo").fetch(0))
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "respawning (1/3)"
+      refute_includes out, "another Mutineer run"
+      assert_equal 2, daemon_pids(roles, "solo").size, "the respawn booted as solo\n#{File.read(roles)}"
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
   # Start a process under the fixture bundle that runs `script` and wait for its READY line.
   def spawn_holder(script)
     read, write = IO.pipe

@@ -1119,6 +1119,53 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #416, gap 3: with no prepare daemon, a Rails run's one worker boots as
+  # "solo", so it takes the exclusive lock and copies its own database. A
+  # --boot run without --rails, or a run with a prepare daemon, keeps "worker".
+  def test_a_serial_run_without_a_prepare_daemon_boots_a_solo_worker_on_rails
+    with_jobs do |jobs, config, source_map|
+      roles = []
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { nil }
+      worker.define_singleton_method(:request) { |**| "killed" }
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { nil }
+      new_client = lambda do |boot:, **|
+        roles << boot[:db_role]
+        worker
+      end
+
+      Mutineer::DaemonClient.stub(:new, new_client) do
+        [[true, nil], [false, nil], [true, prepare]].each do |rails, prepare_client|
+          config.rails = rails
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare_client)
+        end
+      end
+      assert_equal %w[solo worker worker], roles
+    end
+  end
+
+  # #416, gap 3: a "solo" daemon provisions exactly one slot at boot. An
+  # unknown role provisions the default two, so this fails without the branch.
+  def test_a_solo_daemon_provisions_one_slot_at_boot
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    slots = []
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, ->(count) { slots << count }) do
+          Mutineer::RailsWorkerDb.stub(:prepare_worker!, -> { flunk "a solo daemon must not take only the shared lock" }) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+        end
+      end
+    end
+    assert_equal [1], slots
+  ensure
+    Mutineer::DaemonServer.instance_variable_set(:@worker_db, nil)
+  end
+
   def test_prepare_run_keeps_the_client_until_the_caller_quits_it
     Dir.mktmpdir("mutineer-prepare") do |root|
       config = Mutineer::Config.new(sources: [], tests: [], project_root: root, framework: "minitest")

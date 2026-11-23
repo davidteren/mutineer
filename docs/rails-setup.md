@@ -168,7 +168,7 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
-| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. |
+| Concurrent runs | A second `--rails --daemon` run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. A one-worker run keeps its first daemon, and that daemon's lock, until the run ends. When the first daemon does not boot, the run's one worker daemon takes the lock itself, and the run copies its worker database as a normal run does. That run also stops with this message when another run holds the lock. |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
@@ -211,7 +211,7 @@ One worker shares nothing, so it skips the check.
 | `shared_databases` lists the primary database | The run stops with exit 2. |
 | A name matches no test database | A warning. The name lifts nothing. |
 | Mutineer cannot list the app's databases | One worker. |
-| The first daemon does not boot, with `--rails` | One worker. With `--boot` alone, the run keeps its worker count. |
+| The first daemon does not boot, with `--rails` | One worker. For its database lock, see "Concurrent runs" above. With `--boot` alone, the run keeps its worker count. |
 
 Transactional tests connect every database that has a connection pool in the test environment.
 So if the test environment registers a pool for a shared database, every mutant scores `error`.
