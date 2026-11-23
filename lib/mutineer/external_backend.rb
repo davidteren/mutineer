@@ -488,7 +488,12 @@ module Mutineer
     # `test_order`, the file that `--options` names, or an inactive ERB
     # branch of an option file is not seen, so the warning still prints. A
     # seed-like argument meant for a wrapper hides it. A `cd` inside a
-    # wrapper makes RSpec read another `.rspec` than this check does.
+    # wrapper makes RSpec read another `.rspec` than this check does. The
+    # filter rule of {rspec_tokens} reads tokens, not programs: it also
+    # drops the value after another program's `-e` or `-t` (`docker run -e
+    # SPEC_OPTS='--seed 7'`), it keeps a filter value inside a nested
+    # command or in the attached form `-e'...'`, and a `-O` inside a nested
+    # command skips the option files. Each can only add a false warning.
     #
     # @api private
     # @param command [String] the --test-command template.

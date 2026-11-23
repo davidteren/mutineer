@@ -614,7 +614,7 @@ class ExternalBackendTest < Minitest::Test
       [{ ".rspec" => "--seed 7" }, "rspec --options other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -O other.opts %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec --options=other.opts %{files}", nil, random],
-      # A quoted argument is one shell token: its text is not an option.
+      # The quoted value of an example filter is free text, not an option.
       [{}, "rspec --seed 7 --example 'handles --order rand' %{files}", nil, nil],
       [{}, "rspec --order rand -e \"--seed 9\" %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -e 'reads --options x' %{files}", nil, nil],
