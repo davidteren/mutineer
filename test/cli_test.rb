@@ -3447,8 +3447,9 @@ class CliTest < Minitest::Test
     end
   end
 
-  # AE3, AE5, R3: --test and --coverage-from keep the full list and say the
-  # setting has no effect. A dry run prints neither line.
+  # AE3, AE5, R3: --test and a reused --coverage-from (a --boot run) keep the
+  # full list and say the setting has no effect. A --coverage-from that the
+  # run ignores (no --boot) does not stop narrowing. A dry run prints neither line.
   def test_since_paired_tests_has_no_effect_with_test_or_coverage_from
     with_since_autopair_project do |proj|
       base = ["run", "lib", "--since", "HEAD", "--since-paired-tests", "--operators", "arithmetic"]
@@ -3460,6 +3461,11 @@ class CliTest < Minitest::Test
       File.write(File.join(proj, "cov.json"), "{}")
       _out, err, status = mutineer(*base, "--coverage-from", "cov.json", chdir: proj)
       assert_equal 0, status.exitstatus, err
+      assert_includes err, "--coverage-from has no effect with a run without --rails/--boot"
+      refute_includes err, "--since-paired-tests has no effect"
+      assert_includes err, NARROWED
+
+      _out, err, = mutineer(*base, "--boot", "lib/calc.rb", "--coverage-from", "cov.json", chdir: proj)
       assert_includes err, "[mutineer] --since-paired-tests has no effect when --coverage-from is given"
       refute_includes err, "--since: running"
 
@@ -3483,7 +3489,8 @@ class CliTest < Minitest::Test
       _out, err, = mutineer(*base, "--since", "HEAD", "--test", "test", chdir: proj)
       assert_includes err, "[mutineer] since_paired_tests in .mutineer.yml has no effect when --test is given"
 
-      _out, err, = mutineer(*base, "--since", "HEAD", "--no-since-paired-tests", "--test", "test", chdir: proj)
+      _out, err, status = mutineer(*base, "--since", "HEAD", "--no-since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
       refute_includes err, "since_paired_tests"
       refute_includes err, "--since: running"
 

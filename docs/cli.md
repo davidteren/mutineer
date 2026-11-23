@@ -11,7 +11,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
 | `--since REF` / `--no-since` | Mutate lines changed since git `REF` | Off |
-| `--[no-]since-paired-tests` | With `--since`, an in-process or `--daemon` run uses only the tests paired with the sources that have a mutant on a changed line. Every source still loads. `--test`, `--coverage-from`, `--test-command` and `--dry-run` keep the full test list. See [Tests of the changed sources](#tests-of-the-changed-sources) | Off |
+| `--[no-]since-paired-tests` | With `--since`, an in-process or `--daemon` run uses only the tests paired with the sources that have a mutant on a changed line. Every source still loads. `--test`, `--test-command`, `--coverage-from` on an in-process `--rails` or `--boot` run, and `--dry-run` keep the full test list. See [Tests of the changed sources](#tests-of-the-changed-sources) | Off |
 | `--threshold FLOAT` | Exit 1 below this score (0 to 100); see the README [options table](https://github.com/davidteren/mutineer#options) for every exit-1 case | `0` (off) |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior `--format json` report from a full run | None |
 | `--baseline-epsilon FLOAT` | Allowed baseline score drop (CLI only) | `0` |
@@ -231,8 +231,9 @@ source that another source loads keeps working. Stderr prints one line with the 
 [mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test kills shows as survived or no_coverage.
 ```
 
-The run keeps its full test list when you give `--test`, `--coverage-from` or `--test-command`, and stderr
-says the setting has no effect. A dry run runs no tests and prints nothing. When every paired source has a
+The run keeps its full test list when you give `--test` or `--test-command`, or `--coverage-from` on an
+in-process `--rails` or `--boot` run, and stderr says the setting has no effect. A run that ignores
+`--coverage-from` (no boot file, or `--daemon`) still narrows. A dry run runs no tests and prints nothing. When every paired source has a
 mutant on a changed line, the list is already the full list, and no line prints. A library caller that builds
 its own `Config` with no pairing rows also keeps the full list. When no changed line holds a mutant, the run
 returns before it runs any test, with or without the setting.

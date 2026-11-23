@@ -909,7 +909,8 @@ module Mutineer
     # tests paired with each source that still has a job, in the order of
     # `config.tests`. Returns `config.tests` itself when the run must keep its
     # full list: the setting is off, there is no `--since`, a `--coverage-from`
-    # capture is given (its test list must match), pairing stored no rows (an
+    # capture is reused (its test list must match, {coverage_from_reused?}),
+    # pairing stored no rows (an
     # explicit `--test` list, or a caller that built its own Config), there
     # are no jobs, or a source with a job has no pairing row. Reads only.
     #
@@ -917,7 +918,7 @@ module Mutineer
     # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
     # @return [Array<String>] the narrowed test list, or `config.tests`.
     def self.since_tests(config, jobs)
-      return config.tests unless config.since && config.since_paired_tests && config.coverage_from.nil?
+      return config.tests unless config.since && config.since_paired_tests && !coverage_from_reused?(config)
       return config.tests if config.tests_by_source.empty? || jobs.empty?
 
       rows = config.tests_by_source.keys
@@ -929,6 +930,16 @@ module Mutineer
         config.tests_by_source.fetch(key).each { |test| wanted << File.expand_path(test, config.project_root) }
       end
       config.tests.select { |test| wanted.include?(File.expand_path(test, config.project_root)) }
+    end
+
+    # True when the run reuses a `--coverage-from` capture: an in-process
+    # `--rails` or `--boot` run. Other runs ignore the flag (the CLI warns),
+    # so it does not stop `since_paired_tests` there.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Boolean]
+    def self.coverage_from_reused?(config)
+      !config.coverage_from.nil? && !config.boot.nil? && !config.daemon && config.test_command.nil?
     end
 
     # Applies {since_tests} for {Runner.execute} and {DaemonBackend.execute}.

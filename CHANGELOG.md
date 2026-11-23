@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format is based on
   Every source still loads, and the jobs, the mutant ids and the report's source list do not change.
   It is off by default, so no run changes without it. That includes a GitHub Action run on a `pull_request` event with default inputs.
   A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. Run the same command without the setting, and if the mutant is killed there, add that test to the `tests:` map for the changed source.
-  `--test`, `--coverage-from` and `--test-command` keep the full test list, and stderr says the setting has no effect. A dry run is not changed.
+  `--test`, `--test-command`, and `--coverage-from` on an in-process `--rails` or `--boot` run keep the full test list, and stderr says the setting has no effect. A run that ignores `--coverage-from` still narrows. A dry run is not changed.
   The test list is part of the coverage cache key, so a narrowed run replaces a full-run cache in the same folder. Pass `--cache-dir .mutineer/since` to keep both.
   No rate of lost kills is measured yet. A self-run on Mutineer's own `lib/` for pull request #525 ran 3 of 37 test files in 4.0 s, but its full run exited 1 after 164.6 s, so the two could not be compared (#553).
   The limits are in #552. Making it the default is #553 (2.0).

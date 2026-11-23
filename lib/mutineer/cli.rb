@@ -82,8 +82,9 @@ module Mutineer
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
         --since-paired-tests With --since, run only the tests paired with the sources
                              that have a mutant on a changed line (in-process and
-                             --daemon; not with --test, --coverage-from or
-                             --test-command; default: off; --no-since-paired-tests
+                             --daemon; not with --test, --test-command, or
+                             --coverage-from on a --rails/--boot run; default: off;
+                             --no-since-paired-tests
                              beats a .mutineer.yml since_paired_tests:)
         --jobs N             Parallel worker count (default: processor count);
                              --test-command, --fail-fast, or --rails
@@ -660,8 +661,9 @@ module Mutineer
 
     # Says when `since_paired_tests` is on under `--since` but the run keeps
     # its full test list anyway (#496): an explicit `--test` list, a
-    # `--coverage-from` capture (its test list must match) or a
-    # `--test-command` run. Names the first that applies. A run without
+    # `--test-command` run, or a `--coverage-from` capture that the run reuses
+    # (its test list must match; {JobPlan.coverage_from_reused?}). Names the
+    # first that applies. A run without
     # `--since`, or with the setting off, prints nothing. A dry run runs no
     # tests and prints nothing.
     #
@@ -672,8 +674,8 @@ module Mutineer
       return unless config.since_paired_tests && config.since && !config.dry_run
 
       reason = if config.explicit?(:tests) then "--test is given"
-               elsif config.coverage_from then "--coverage-from is given"
                elsif config.test_command then "--test-command is given"
+               elsif JobPlan.coverage_from_reused?(config) then "--coverage-from is given"
                end
       warn "[mutineer] #{config.origin(:since_paired_tests)} has no effect when #{reason}" if reason
     end

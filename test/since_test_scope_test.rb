@@ -32,7 +32,11 @@ class SinceTestScopeTest < Minitest::Test
       "setting off" => [%w[lib/a.rb], { since_paired_tests: false }, ALL_TESTS],
       "no --since" => [%w[lib/a.rb], { since: nil }, ALL_TESTS],
       "no pairing rows" => [%w[lib/a.rb], { tests_by_source: {} }, ALL_TESTS],
-      "--coverage-from set" => [%w[lib/a.rb], { coverage_from: "cov.json" }, ALL_TESTS],
+      "--coverage-from reused by a boot run" => [%w[lib/a.rb], { coverage_from: "cov.json", boot: "boot.rb" }, ALL_TESTS],
+      "--coverage-from ignored without a boot" => [%w[lib/a.rb], { coverage_from: "cov.json" },
+                                                    %w[test/a_test.rb test/shared_test.rb]],
+      "--coverage-from ignored by --daemon" => [%w[lib/a.rb], { coverage_from: "cov.json", boot: "b.rb", daemon: true },
+                                                 %w[test/a_test.rb test/shared_test.rb]],
       "live source with no row" => [%w[lib/a.rb lib/other.rb], {}, ALL_TESTS],
       "no jobs" => [[], {}, ALL_TESTS]
     }

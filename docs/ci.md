@@ -22,12 +22,12 @@ bundle exec mutineer run lib --no-since
 A `--since` run still captures coverage for the tests of every source you pass.
 To run only the tests of the changed sources, turn on `since_paired_tests` (off by default).
 It applies to in-process and `--daemon` runs whose tests Mutineer paired.
-`--test`, `--coverage-from`, `--test-command` and a dry run keep the full test list.
+`--test`, `--test-command`, `--coverage-from` on an in-process `--rails` or `--boot` run, and a dry run keep the full test list.
 Every source still loads.
 See [Tests of the changed sources](cli.md#tests-of-the-changed-sources).
 
 ```sh
-bundle exec mutineer run app --since origin/main --since-paired-tests --cache-dir .mutineer/since
+RAILS_ENV=test bundle exec mutineer run app --rails --since origin/main --since-paired-tests --cache-dir .mutineer/since
 ```
 
 In the GitHub Action, set `since_paired_tests: true` in `.mutineer.yml`, or pass `extra-args: "--since-paired-tests"`.
