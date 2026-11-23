@@ -373,6 +373,8 @@ class DaemonWorkerDbTest < Minitest::Test
       held = run_holds_sqlite_lock?(pid, log)
       status = wait_child(pid, timeout: 240)
       out = File.read(log)
+      # The old "worker" role held the shared lock too, so `held` alone passes
+      # on main. The role log below is what proves the change.
       assert held, "the fallback run never held the lock\n#{out}"
       assert_equal 0, status.exitstatus, out
       assert_includes out, "daemon coverage map unavailable"

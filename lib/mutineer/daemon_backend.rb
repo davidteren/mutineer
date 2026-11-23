@@ -80,8 +80,8 @@ module Mutineer
       # One booted process copies worker databases, then builds the coverage map.
       # A cached map still provisions: the copy has to happen while no worker is
       # connected to the template database. That process keeps its database lock
-      # until the run ends in a serial run, and until the worker daemons have
-      # taken theirs in a parallel run (#416).
+      # until the run ends in a serial Rails run, and until the worker daemons
+      # have taken theirs in a parallel run (#416).
       prepare_client = nil
       # #495: phase seconds for the report. The worker daemons' boots add to boot_seconds.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
@@ -95,8 +95,8 @@ module Mutineer
             run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           end
       ensure
-        # run_serial quits this client when its run ends, and run_parallel once
-        # workers hold locks. Quit again here when they never reached that point.
+        # run_serial quits this client when a Rails run ends, and run_parallel
+        # once workers hold locks. Quit again here when they never reached that point.
         # A second quit is a no-op.
         prepare_client&.quit
       end
@@ -168,8 +168,8 @@ module Mutineer
     # @param abs_tests [Array<String>]
     # @param worker_count [Integer] slots requested before the database count is known.
     # @return [Array] the coverage map (or nil), the worker count to start, and
-    #   the prepare daemon. The caller quits that daemon when a serial run ends,
-    #   or after the worker daemons of a parallel run hold their locks. It is nil
+    #   the prepare daemon. The caller quits that daemon when a serial Rails
+    #   run ends, or after the worker daemons of a parallel run hold their locks. It is nil
     #   when this process could not boot one.
     # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
     def self.prepare_run(config, abs_tests, worker_count, timing = {})
@@ -318,9 +318,11 @@ module Mutineer
     private_class_method :warn_coverage_fallback
 
     # Serial path: one worker daemon (worker 0), one mutant at a time. Honors
-    # --fail-fast (stop at the first survivor). The prepare daemon stays up
-    # until the run ends, so its lock still covers the databases while the
-    # worker daemon respawns after a crash (#416).
+    # --fail-fast (stop at the first survivor). In a Rails run the prepare
+    # daemon stays up until the run ends, so its lock still covers the
+    # databases while the worker daemon respawns after a crash (#416). A run
+    # without `rails` takes no database lock, so it quits that daemon once
+    # the worker has booted.
     #
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
@@ -334,9 +336,15 @@ module Mutineer
       begin
         boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         db_role = prepare_client.nil? && config.rails ? "solo" : nil
+        # Assigned before start, so the ensure quits a daemon interrupted mid-boot.
         client = DaemonClient.new(boot: boot_config(config, abs_tests, db_role: db_role),
-                                  app_root: config.project_root).start
+                                  app_root: config.project_root)
+        client.start
         timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
+        unless config.rails
+          prepare_client&.quit
+          prepare_client = nil
+        end
         results = []
         progress = Progress.new(jobs.size)
         mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -349,8 +357,11 @@ module Mutineer
         timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         results
       ensure
-        prepare_client&.quit
-        client&.quit
+        begin
+          prepare_client&.quit
+        ensure
+          client&.quit
+        end
       end
     end
 
