@@ -1695,6 +1695,48 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #491: every spelling of the flag reaches the config, and each entry must
+  # be a directory. A dry run still checks, so a typo exits 2 before any work.
+  def test_load_path_flag_forms_and_directory_check
+    with_project do |proj|
+      root = File.realpath(proj)
+      FileUtils.mkdir_p(File.join(proj, "support"))
+      ["-Inope", "-I nope", "--load-path nope", "--load-path=nope"].each do |form|
+        _, err, status = mutineer("run", "--dry-run", "calculator.rb", *form.split, chdir: proj)
+        assert_equal 2, status.exitstatus, form
+        assert_equal "mutineer: not a directory: #{root}/nope (--load-path)\n", err, form
+      end
+
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "a", "-I", "support", "-I", "calculator.rb",
+                                chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_equal "mutineer: not a directory: #{root}/a, #{root}/calculator.rb (--load-path)\n", err,
+                   "every bad entry on one line; a file is not a directory"
+
+      File.write(File.join(proj, ".mutineer.yml"), "load_path: gone\n")
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "mutineer: not a directory: #{root}/gone (load_path in .mutineer.yml)"
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "support", chdir: proj)
+      assert_equal 0, status.exitstatus, "-I replaces the file's list: #{err}"
+      File.delete(File.join(proj, ".mutineer.yml"))
+
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_equal "mutineer: --load-path must name a directory, not blank (got: \"\")\n", err
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "missing argument: -I"
+    end
+  end
+
+  def test_help_documents_load_path
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    entry = out[/^  --load-path DIR, -I DIR.*?(?=^  --)/m].to_s
+    %w[$LOAD_PATH replaces --test-command].each { |word| assert_includes entry, word }
+  end
+
   # #8: --verbose is documented and both it and its --debug alias are accepted
   # flags (not "invalid option") — a clean run still exits 0.
   def test_help_documents_verbose
@@ -3339,10 +3381,39 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #526 through the real binary: a test that ends its own process on a wrong
+  # sum, as a container's memory limit would, leaves the add mutant errored.
+  # Its no_verdict[] entry carries the diff, and git applies it.
+  def test_an_errored_mutant_has_a_diff_that_git_applies
+    with_project do |proj|
+      File.write(File.join(proj, "calculator_kill_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "calculator"
+
+        class CalculatorKillTest < Minitest::Test
+          def test_add
+            Process.kill(:KILL, Process.pid) unless Calculator.new.add(2, 3) == 5
+            assert_equal 5, Calculator.new.add(2, 3)
+          end
+        end
+      RUBY
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_kill_test.rb",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      entry = JSON.parse(out)["no_verdict"].find { |e| e["status"] == "error" }
+      refute_nil entry, out
+      assert_equal "calculator.rb", entry["file"]
+      File.write(File.join(proj, "m.patch"), entry["diff"])
+      _, apply_err, apply = Open3.capture3("git", "apply", "--unidiff-zero", "--check", "m.patch", chdir: proj)
+      assert apply.success?, "git apply rejected the diff: #{apply_err}\n#{entry["diff"]}"
+    end
+  end
+
   # #479 through the real binary: an in-process reload run with two workers.
   # A require file makes the guard report Calculator after each load, so every
-  # forked child logs it. The run prints it once, and the JSON report has no new
-  # key. The score is the same as without the warning.
+  # forked child logs it. The run prints it once, and the JSON report lists the
+  # same rows in summary.callback_growth (#505). The score and the exit code are
+  # the same as in a redefine run, which does not reload.
   def test_an_in_process_reload_run_prints_the_callback_growth_warning_once
     with_project do |proj|
       File.write(File.join(proj, "growth_stub.rb"),
@@ -3355,8 +3426,38 @@ class CliTest < Minitest::Test
       assert_equal 1, err.lines.grep(/\A\[mutineer\] after a reload, 1 class runs a callback/).size, err
       assert_equal ["[mutineer]   Calculator (calculator.rb)\n"], err.lines.grep(/\A\[mutineer\]   Calculator/)
       doc = JSON.parse(out)
-      refute_includes out, "callback_growth"
+      rows = doc["summary"]["callback_growth"]
+      assert_equal [{ "class" => "Calculator", "file" => "calculator.rb" }], rows
+      warned = err.lines.grep(/\A\[mutineer\]   /).map { |l| l.chomp.match(/\A\[mutineer\]   (.*) \((.*)\)\z/).captures }
+      assert_equal rows.map { |r| r.values_at("class", "file") }, warned, "stderr and JSON name the same rows"
+      assert_includes doc["killed"].map { |k| k["file"] }, rows.first["file"]
       assert_equal 100.0, doc["summary"]["score"]
+
+      redefine_out, redefine_err, redefine = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                                      "--strategy", "redefine", "--format", "json", chdir: proj)
+      assert_equal status.exitstatus, redefine.exitstatus, redefine_err
+      redefine_doc = JSON.parse(redefine_out)
+      assert_equal [], redefine_doc["summary"]["callback_growth"], "a run that does not reload grows nothing"
+      assert_equal doc["summary"]["score"], redefine_doc["summary"]["score"]
+    end
+  end
+
+  # #505: a reload run with no log writes callback_growth: null, prints no
+  # growth header, and finishes as before.
+  def test_a_reload_run_without_a_growth_log_reports_null
+    with_project do |proj|
+      stub = File.join(proj, "no_growth_log.rb")
+      File.write(stub, "require \"mutineer\"\n" \
+                       "Mutineer::JobPlan.define_singleton_method(:create_callback_growth_log) { nil }\n")
+      # -r as its own argument: RUBYOPT would split a path with a space and
+      # drop the bundle's own options.
+      out, err, status = Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, 'lib')}", "-r#{stub}", BIN,
+                                        "run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                        "--strategy", "reload", "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, '"callback_growth":null'
+      assert_empty err.lines.grep(/after a reload/)
+      assert_equal 100.0, JSON.parse(out)["summary"]["score"]
     end
   end
 

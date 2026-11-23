@@ -363,8 +363,9 @@ module Mutineer
     # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
-    # Then each class statement with a call superclass keeps its live
-    # superclass ({keep_live_superclasses}, #492).
+    # Then each class statement whose superclass {kept_target} wraps keeps its
+    # live superclass, and each superclass constant the file assigns keeps
+    # its class ({keep_live_superclasses}, #492, #512, #503).
     #
     # @param mutated [String] the mutated source text.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -424,51 +425,129 @@ module Mutineer
     # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
     # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
     # file over its classes reopens each one instead of raising "superclass
-    # mismatch" (#492). The superclass text stays as it is, inside the block,
-    # and on its own lines, so line numbers do not move. A wrap puts one
-    # expression in a block, and a class inside a wrapped superclass is not
-    # wrapped again. A bad wrap is not checked here: the child's `load` raises
-    # `SyntaxError`, and the mutant scores `error`. Text with no such class
-    # comes back unchanged.
+    # mismatch" (#492). For a superclass that sets a local
+    # (`class Q < (base = Struct.new(:a))`), only the written value is wrapped,
+    # so the local is still set, to the live superclass (#512). See
+    # {kept_target} for the superclasses it leaves as written. It also wraps
+    # the value of a constant that a class statement in the file inherits from
+    # in {ReloadGuards.kept_constant} ({kept_constant_splice}, #503). The
+    # wrapped text stays as it is, inside the block, and on its own lines, so
+    # line numbers do not move. A wrap puts one expression in a block, and a
+    # class inside a wrapped superclass or a kept value is not wrapped again. A bad wrap is not
+    # checked here: the child's `load` raises `SyntaxError`, and the mutant
+    # scores `error`. Text with no such class comes back unchanged.
     #
     # @param code [String] the reload text.
     # @return [String]
     def self.keep_live_superclasses(code)
-      nodes = []
-      queue = [Parser.parse_string(code).value]
+      program = Parser.parse_string(code).value
+      names = Project.superclass_constant_names(program)
+      splices = []
+      queue = [program]
       while (node = queue.shift)
-        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
-          nodes << node
+        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
+          splices << [target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name]
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
+        elsif (splice = kept_constant_splice(node, names))
+          # A kept value does not run again, so nothing inside it is wrapped.
+          splices << splice
         else
           queue.concat(node.compact_child_nodes)
         end
       end
-      return code if nodes.empty?
+      return code if splices.empty?
 
-      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
-        loc = node.superclass.location
+      splices.sort_by { |target, *| -target.location.start_offset }.reduce(code) do |text, (target, guard, scope, name)|
+        loc = target.location
         inner = text.byteslice(loc.start_offset, loc.length)
-        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
-                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        wrapped = "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { #{inner} }"
         text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
       end
     end
 
-    # A superclass the reload text wraps: one that is not a constant, and
-    # that sets no local variable of the file. The wrap is a block, so such a
-    # local would not be set for a later line (`class Q < (base = ...)`).
-    # Those keep the text as written, as before #492 (#512).
+    # The splice that keeps a constant's value on reload (#503): a constant
+    # write that {Project.kept_constant_write?} keeps, a class builder call
+    # with literal arguments. `BaseRow = Struct.new(:v)` with
+    # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
+    # same parent. A `||=` write keeps its text (#529).
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol, String>] {Project.superclass_constant_names} of the file.
+    # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
+    #   wrap, the guard, the scope text and the name; nil for any other node.
+    def self.kept_constant_splice(node, names)
+      return nil unless Project.kept_constant_write?(node, names)
+
+      if node.is_a?(Prism::ConstantPathWriteNode)
+        [node.value, "kept_constant", superclass_scope(node.target), node.target.name]
+      else
+        [node.value, "kept_constant", "::Module.nesting.first", node.name]
+      end
+    end
+
+    # The part of a class statement's superclass that the reload text wraps,
+    # or nil to keep the superclass as written. A constant is left alone: it
+    # names the same class on each load. A bare variable read is left alone
+    # too: an earlier line set it, that line runs again, and a kept parent
+    # would differ from what the variable then holds, a silent false verdict
+    # (#512). Both hold inside any number of parentheses (`(base)`). A read
+    # deeper in the expression (`Class.new(base)`) is still wrapped (#533).
+    # A plain local write (`base = v`, or `(base = v)` alone in
+    # parentheses, or a chain `a = b = v`) gives the target of its value, so
+    # the write stays outside the block and still sets the local (#512).
+    # Any other superclass that sets a local is left alone, because the block
+    # would scope that local away from a later line. Every other superclass is
+    # wrapped whole.
     #
     # @param node [Prism::Node, nil] a class statement's superclass.
-    # @return [Boolean]
-    def self.call_superclass?(node)
-      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+    # @return [Prism::Node, nil]
+    def self.kept_target(node)
+      return nil if node.nil?
 
-      !writes_local?(node)
+      inner = node
+      inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
+      return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
+      return nil if outer_block_parameter?(node)
+
+      write = plain_local_write(node)
+      return kept_target(write.value) if write
+
+      writes_local?(node) ? nil : node
     end
+
+    # The local write `node` is, alone or as the one statement of one pair of
+    # parentheses, or nil.
+    #
+    # @param node [Prism::Node]
+    # @return [Prism::LocalVariableWriteNode, nil]
+    def self.plain_local_write(node)
+      node = node.body.body.first if Project.sole_statement_parentheses?(node)
+      node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
+    end
+
+    # Whether `node` reads a numbered parameter (`_1`) or `it` that belongs to
+    # a block around it. The wrap adds a block, so such a read would belong to
+    # the wrap's block and change meaning, or not parse. A block inside `node`
+    # that has its own numbered or `it` parameter is not searched.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.outer_block_parameter?(node)
+      return true if node.type == :it_local_variable_read_node
+      return true if node.is_a?(Prism::LocalVariableReadNode) && node.name.match?(/\A_[1-9]\z/)
+      return false if (node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)) &&
+                      %i[numbered_parameters_node it_parameters_node].include?(node.parameters&.type)
+
+      node.compact_child_nodes.any? { |child| outer_block_parameter?(child) }
+    end
+
+    # The superclass nodes {kept_target} leaves as written: a constant, and a
+    # read of a variable an earlier statement set (#512).
+    LEFT_AS_WRITTEN = [Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
+                       Prism::InstanceVariableReadNode, Prism::ClassVariableReadNode,
+                       Prism::GlobalVariableReadNode].freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only
@@ -492,11 +571,13 @@ module Mutineer
                     Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
                     Prism::LocalVariableAndWriteNode].freeze
 
-    # The module a class statement defines its constant in, as Ruby text that
-    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
-    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    # The module a class statement or a constant write defines its constant
+    # in, as Ruby text that runs where the superclass or the value runs:
+    # `::Module.nesting.first` for `class X`, the written parent for
+    # `class A::X` and `A::X = ...`, and `::Object` for `class ::X` and `::X = ...`.
     #
-    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode]
+    #   the class or constant name.
     # @return [String]
     def self.superclass_scope(path)
       return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
@@ -1076,6 +1157,19 @@ module Mutineer
         abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end
+    end
+
+    # The `load_path` directories (#491), absolute, in the order the user wrote
+    # them. Relative entries resolve against the project root. The runner,
+    # the daemon boot config and the CLI check all read this one list. An
+    # existing directory resolves through its symlinks, as CoverageMap's
+    # capture subprocess resolves the same entry ({ProjectPath.absolute}), so
+    # `link/../support` names one directory in every place.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] absolute directories; [] when none is set.
+    def self.extra_load_dirs(config)
+      config.extra_load_paths.map { |dir| ProjectPath.absolute(dir, config.project_root) }
     end
 
     # For each test file, the directory to add to $LOAD_PATH so its

@@ -623,6 +623,58 @@ class CoverageMapTest < Minitest::Test
                  second.tests_for(CALC, line_of("a + b"))
   end
 
+  # #517: the daemon now gets --verbose for its coverage build. The flag only
+  # changes the warning text, so a --verbose run reuses the map a plain run
+  # saved, and the reverse.
+  def test_verbose_does_not_change_the_cache_digest
+    dir = Dir.mktmpdir("mutineer-cache")
+    build_with = lambda do |verbose|
+      Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                project_root: ROOT, verbose: verbose).build_or_load
+    end
+    assert build_with.(false).phase_a_ran
+    refute build_with.(true).phase_a_ran, "--verbose must not rebuild a saved map"
+    refute build_with.(false).phase_a_ran
+  end
+
+  # #536, #539, #544: a load_path directory can change which file a test
+  # loads while every file the last capture loaded stays the same. A reorder,
+  # a new file that shadows one in a later directory, and an edit in a
+  # directory outside the project root each capture every test again.
+  def test_load_path_directories_are_part_of_the_cache_key
+    Dir.mktmpdir("mutineer-xload") do |outside|
+      dir = Dir.mktmpdir("mutineer-cache")
+      local = File.join(outside, "local")
+      defaults = File.join(outside, "defaults")
+      FileUtils.mkdir_p([local, defaults])
+      File.write(File.join(defaults, "pricing_probe.rb"), "# v1\n")
+      build_with = lambda do |extra|
+        Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                  project_root: ROOT, extra_load_paths: extra).build_or_load
+      end
+
+      assert build_with.([local, defaults]).phase_a_ran
+      refute build_with.([local, defaults]).phase_a_ran, "nothing changed: the map is reused"
+      assert build_with.([defaults, local]).phase_a_ran, "#536: a reorder captures again"
+      refute build_with.([defaults, local]).phase_a_ran
+      File.write(File.join(defaults, "pricing_probe.rb"), "# v2\n")
+      assert build_with.([defaults, local]).phase_a_ran, "#539: an edit outside the root captures again"
+      File.write(File.join(local, "pricing_probe.rb"), "# shadow\n")
+      assert build_with.([local, defaults]).phase_a_ran
+      File.write(File.join(local, "other.rb"), "\n")
+      assert build_with.([local, defaults]).phase_a_ran, "#544: a new file in a directory captures again"
+    end
+  end
+
+  # A run without load_path keeps the digest of earlier versions.
+  def test_no_load_path_directory_keeps_the_cache_key
+    dir = Dir.mktmpdir("mutineer-cache")
+    build = ->(**kw) { Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                                 project_root: ROOT, **kw).build_or_load }
+    assert build.().phase_a_ran
+    refute build.(extra_load_paths: []).phase_a_ran
+  end
+
   def test_content_change_invalidates_cache_and_rebuilds
     dir = Dir.mktmpdir("mutineer-proj")
     cache = Dir.mktmpdir("mutineer-cache")
@@ -714,6 +766,10 @@ class CoverageMapTest < Minitest::Test
                                          /no source fingerprints/],
       "a malformed owner list" => [->(_root, cache) { edit_cache.(cache) { |c| c["owners"] = [1] } },
                                    /not the shape a coverage cache saves/],
+      "a non-numeric timing" => [->(_root, cache) { edit_cache.(cache) { |c| c["timings"] = { "alpha_test.rb" => "fast" } } },
+                                 /not the shape a coverage cache saves/],
+      "an infinite timing" => [->(_root, cache) { File.write(cache, File.read(cache).sub(/"timings":\{/, '"timings":{"zz_test.rb":1e400,')) },
+                               /not the shape a coverage cache saves/],
       "a malformed map" => [->(_root, cache) { edit_cache.(cache) { |c| c["map"] = { "alpha.rb:5" => "alpha_test.rb" } } },
                             /not the shape a coverage cache saves/],
       "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]

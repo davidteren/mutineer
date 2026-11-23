@@ -174,13 +174,16 @@ module Mutineer
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
-                   framework: "minitest", verbose: false, require_paths: [], coverage_from: nil)
+                   framework: "minitest", verbose: false, require_paths: [], coverage_from: nil,
+                   extra_load_paths: [])
       @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
       @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
       @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }
       @cache_dir    = FsPath.read(cache_dir)
       @coverage_from = coverage_from && FsPath.read(coverage_from)
       @load_paths   = Array(load_paths).map { |path| FsPath.read(path) }
+      # The user's load_path directories (#491), in order; part of the cache key.
+      @extra_load_paths = Array(extra_load_paths).map { |path| FsPath.read(path) }
       @project_root = FsPath.read(project_root)
       @capture_timeout = capture_timeout
       @boot_path    = boot_path

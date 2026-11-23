@@ -191,18 +191,32 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
-  def test_worker_db_load_error_log_hides_the_password
-    errio = StringIO.new
-    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
-    require "mutineer/rails_worker_db"
+  # #416: a LoadError after the adapter file loaded fails the boot, so it
+  # reaches the client in the ready-false reply. Drives the real boot path
+  # in a child process: that reply, and stderr, hide the password.
+  def test_worker_db_load_error_boot_reply_hides_the_password
+    Dir.mktmpdir do |dir|
+      lib = File.expand_path("../lib", __dir__)
+      script = <<~RUBY
+        require "mutineer/daemon_server"
+        require "mutineer/rails_worker_db"
+        Mutineer::RailsWorkerDb.define_singleton_method(:available?) do
+          raise LoadError, "cannot load adapter for \#{ENV.fetch("DATABASE_URL")}"
+        end
+        Mutineer::DaemonServer.run
+      RUBY
+      # A real solo boot line. available? raises before the role is read.
+      stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "rails" => true, "db_role" => "solo")
+      out, err, status = Open3.capture3({ "DATABASE_URL" => BAD_URL }, RbConfig.ruby, "-I", lib, "-e", script,
+                                        stdin_data: "#{stdin}\n")
+      assert_equal 1, status.exitstatus, err
+      reply = JSON.parse(out.lines.last)
 
-    Mutineer::RailsWorkerDb.stub(:available?, -> { raise LoadError, "cannot load adapter for #{BAD_URL}" }) do
-      Mutineer::DaemonServer.send(:setup_worker_db, {})
+      refute reply["ready"]
+      assert_equal "LoadError: cannot load adapter for postgres://u:[REDACTED]@ho st/db", reply["error"]
+      refute_includes out + err, "s3cret"
+      refute_includes err, "worker-DB routing unavailable"
     end
-
-    assert_includes errio.string, "worker-DB routing unavailable"
-    assert_includes errio.string, "[REDACTED]"
-    refute_includes errio.string, "s3cret"
   end
 
   def test_redact_hides_a_malformed_password_with_a_space_or_a_quote
@@ -255,6 +269,61 @@ class DaemonRedactionTest < Minitest::Test
     errio.string
   ensure
     rd&.close
+  end
+
+  # #517: the exact warning CoverageMap::Capture#fail_test prints, so a
+  # reworded warning fails here instead of losing the note silently.
+  def capture_warning(reason)
+    Dir.mktmpdir("mutineer-517") do |cache_dir|
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: Dir.pwd, cache_dir: cache_dir)
+      _out, err = capture_io { map.send(:fail_test, File.join(Dir.pwd, "test/models/order_test.rb"), reason) }
+      err
+    end
+  end
+
+  # Only the user's load variables count; the tool's own Bundler values do not.
+  NO_LOAD_ENV = { "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYOPT" => nil,
+                  "BUNDLER_ORIG_RUBYLIB" => nil }.freeze
+
+  def test_drain_adds_the_load_note_to_the_first_missing_file_capture_warning
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+    out = with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support", "RUBYOPT" => "-Isecret/opt")) do
+      drain(missing + missing)
+    end
+    first, second = out.lines
+
+    assert first.start_with?(missing.chomp), first
+    assert_includes first, "(the daemon does not pass RUBYOPT or RUBYLIB to the app;"
+    assert_equal missing, second, "one note for each daemon: a later warning has no note"
+    refute_includes out, "test/support", "the note names the variable, never its value"
+    refute_includes out, "secret/opt"
+  end
+
+  def test_drain_leaves_other_capture_and_child_lines_alone
+    generic = capture_warning("fork capture produced no result (re-run with --verbose for the error)")
+    child = "[daemon-child] LoadError: cannot load such file -- x\n"
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+
+    with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support")) do
+      assert_equal generic + child, drain(generic + child), "no error text, or not a capture warning: no note"
+    end
+    with_env(NO_LOAD_ENV) do
+      assert_equal missing, drain(missing), "no load variable set: no note"
+    end
+  end
+
+  # The drain hands with_capture_note a whole piece, with more than one line,
+  # when a password form spans a newline. The warning can be its second line.
+  def test_capture_note_finds_the_warning_on_a_later_line_of_a_piece
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: StringIO.new)
+    with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support")) do
+      noted = client.send(:with_capture_note, "app line\n#{missing.chomp}")
+      first, second = noted.split("\n")
+
+      assert_equal "app line", first
+      assert_includes second, "does not pass RUBYLIB to the app"
+    end
   end
 
   def test_daemon_stderr_drain_hides_the_password

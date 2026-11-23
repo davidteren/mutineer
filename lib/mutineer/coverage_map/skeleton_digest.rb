@@ -246,6 +246,7 @@ module Mutineer
           d.update("\0")
         end
         @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
+        digest_extra_load_dirs(d)
         d.update("framework\0#{@framework}\0")
         digest_test_seed(d)
         d.hexdigest

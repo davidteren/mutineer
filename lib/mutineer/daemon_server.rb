@@ -32,7 +32,14 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true}
+  #               "load_paths":["test"],"framework":"minitest","rails":true,"verbose":false,"db_role":"worker"}
+  #              (db_role: "prepare" copies databases on the provision command, "worker"
+  #               takes the shared lock, "solo" provisions one slot at boot (#416),
+  #               absent provisions "slots" at boot)
+  #              ("load_paths" holds the test-helper roots and the user's
+  #               load_path directories; boot! unshifts each in turn, #491;
+  #               "extra_load_paths" repeats those directories in order for
+  #               the coverage cache key)
   #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
   #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
@@ -221,19 +228,33 @@ module Mutineer
       #
       # `db_role` "prepare" waits for a provision command (the first daemon).
       # "worker" only takes the shared lock (a worker daemon, including a
-      # respawn). Anything else provisions now, which is what a direct client
-      # that never sends the command needs. SQLite takes the run lock and
-      # copies files on first use.
+      # respawn). "solo" provisions one slot now: it is the one worker of a
+      # run whose first daemon did not boot, so it must take the exclusive
+      # lock and copy its own database (#416). A respawn does the same.
+      # Anything else provisions now, which is what a direct client that
+      # never sends the command needs. SQLite takes the run lock and copies
+      # files on first use.
+      #
+      # Only a LoadError from loading the adapter file turns routing off. Any
+      # later failure (the schema lookup, the lock, or a PostgreSQL or MySQL
+      # copy) raises, so the boot fails: a daemon with routing off would run
+      # mutants against the app's own test database (#416).
       def setup_worker_db(cfg)
-        require_relative "rails_worker_db"
-        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        # Only the booted app knows its schema file (`schema_dump:` can rename it).
-        @schema_path = @worker_db&.ruby_schema_path
         # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
         @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
+        begin
+          require_relative "rails_worker_db"
+        rescue LoadError => e
+          @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
+          @worker_db = nil
+          return
+        end
+        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         return unless @worker_db
 
         case cfg["db_role"]
@@ -241,12 +262,11 @@ module Mutineer
           nil
         when "worker"
           @worker_db.prepare_worker!
+        when "solo"
+          @worker_db.provision(1)
         else
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end
-      rescue LoadError => e
-        @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
-        @worker_db = nil
       end
 
       # The booted test environment's database config names and the one each
@@ -312,9 +332,11 @@ module Mutineer
         cmap = CoverageMap.new(
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
+          extra_load_paths: Array(@cfg["extra_load_paths"]),
           boot_path: @cfg["boot"], require_paths: Array(@cfg["require_paths"]),
           framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
-          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
+          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT,
+          verbose: @cfg["verbose"] == true # the capture warning shows the real error (#517)
         ).build_via_fork(after_fork: coverage_after_fork)
         # Nothing reads Coverage after the map, so a mutant forked from this
         # daemon does not pay for it (#228).

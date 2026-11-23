@@ -3,6 +3,8 @@
 require_relative "test_helper"
 require "mutineer/config"
 require "mutineer/runner"
+require "mutineer/reporter"
+require "json"
 
 # #26/U9 — end-to-end dogfood of the daemon backend on the bundled Rails fixture app
 # (SQLite). The holistic proof that ties the phase together: a parallel run's verdicts
@@ -217,6 +219,64 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 0, aggregate.errored_count, err
     assert_operator aggregate.killed_count, :>, 0
     assert_equal 100.0, aggregate.mutation_score
+  end
+
+  # #503 and #512: LedgerRow inherits from a constant its file assigns, and
+  # LedgerRow::Line's superclass sets a local a later line reads. Each load
+  # built a new class, so the daemon raised "superclass mismatch" for every
+  # mutant. The test checks both answers of each predicate and the local, so
+  # each mutant must run and be killed.
+  def test_the_daemon_reloads_a_superclass_constant_and_a_superclass_local
+    aggregate = nil
+    _out, err = capture_subprocess_io do
+      aggregate, = Mutineer::Runner.execute(config_for(1, model: "ledger_row"))
+    end
+
+    assert_equal 0, aggregate.errored_count, err
+    statuses = aggregate.results.group_by { |r| r.subject.qualified_name }.transform_values { |rs| rs.map(&:status).uniq }
+    # Each shape reaches its test: every mutant of each subject is killed.
+    assert_equal({ "LedgerRow#zero?" => [:killed], "LedgerRow::Line#single?" => [:killed] }, statuses)
+  end
+
+  # #504: OwnChainNote's body calls `define_callbacks :save`, and its concern
+  # adds `before_save :stamp`. The daemon ran that call again for each mutant,
+  # which cleared the chain, so the test of the callback log failed and every
+  # `urgent?` mutant was a false kill. No test checks `urgent?`, so each of
+  # its mutants must survive. `only` keeps out the mutants of `stamp`, `log`
+  # and `save`, which the log test kills for a true reason.
+  def test_the_daemon_keeps_a_chain_the_class_body_defines
+    config = config_for(1, model: "own_chain_note")
+    config.only = "OwnChainNote#urgent?"
+    aggregate = extras = nil
+    _out, err = capture_subprocess_io { aggregate, _map, extras = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.total, :>, 0
+    assert_equal aggregate.total, aggregate.survived_count, "every urgent? mutant must run and survive"
+    assert_empty extras[:callback_growth]
+  end
+
+  # #504: HelperChainNote's body defines its chain through `note_callbacks`.
+  # The reload guard skips a chain the class already has, so a mutant in the
+  # helper (such as `true` to `false` for `skip_after_callbacks_if_terminated`)
+  # never reached Rails and scored `survived` unapplied. Discovery now marks
+  # the helper, so each of its mutants is `unplaceable` and counted apart.
+  def test_the_daemon_marks_a_helper_that_defines_a_chain_unplaceable
+    config = config_for(1, model: "helper_chain_note")
+    config.only = "HelperChainNote.note_callbacks"
+    aggregate = source_map = nil
+    _out, err = capture_subprocess_io { aggregate, source_map, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.total, :>, 0
+    assert_equal [:unplaceable], aggregate.results.map(&:status).uniq
+    assert(aggregate.results.all? { |r| r.subject.calls_define_callbacks }, "the cause is the #504 mark")
+    out = StringIO.new
+    Mutineer::Reporter.new(aggregate, source_map).report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    assert_equal aggregate.total, doc["summary"]["unplaceable"]
+    assert_equal aggregate.total, doc["unplaceable"].size
+    assert_equal 0, doc["summary"]["survived"]
   end
 
   # #479: StampedNote's concern and class body add the same `&:stamp`
