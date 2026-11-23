@@ -3131,8 +3131,8 @@ class CoverageMapTest < Minitest::Test
   end
 
   # cubic on #557 (#554 item 5): a failed exact test blames a pack source only
-  # when pairing gives it that test. A same-named test in another pack, or at
-  # the project root that does not mirror the pack path, does not mark it.
+  # when pairing gives it that test. A same-named test in another pack does
+  # not mark it.
   def test_failing_exact_test_in_another_pack_does_not_mark_a_pack_source
     Dir.mktmpdir do |dir|
       mine = File.join(dir, "packs/catalog/app/models/item.rb")
