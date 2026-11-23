@@ -1,0 +1,23 @@
+.claude/skills/author-self-check/SKILL.md
+  s_aa0d4f7c37254a::t_d165c41f730404 26-28
+.expectation-fit/ways-of-working.yaml
+  s_aa0d4f7c37254a::t_995aa5b7ef735a 15-21
+AGENTS.md
+  s_aa0d4f7c37254a::t_6db92b118c04e4 124-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "674dd843777bf9987323a342e71485fc77bcf8bd",
+  "prompts": {},
+  "sessions": {
+    "s_aa0d4f7c37254a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70450988-d29c-444a-8f4e-53f91d5d39c5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
