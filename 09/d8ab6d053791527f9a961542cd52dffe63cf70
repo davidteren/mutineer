@@ -1,0 +1,35 @@
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9747bd218c1c67::t_a6e782fa692a19 18
+CHANGELOG.md
+  s_9747bd218c1c67::t_8b93ca05bfbf78 17
+README.md
+  s_9747bd218c1c67::t_4ca2c6de0e8ce1 234
+docs/ci.md
+  s_9747bd218c1c67::t_741d045cecacf9 25,30
+docs/cli.md
+  s_9747bd218c1c67::t_2c0d6fd428fc03 14,234-236
+lib/mutineer/cli.rb
+  s_9747bd218c1c67::t_e1c9df55213268 85-87,664-666,678
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_1764dd99cb14f3 912-913,921,935-944
+test/cli_test.rb
+  s_9747bd218c1c67::t_b3c725bc38d49f 3450-3452,3464-3468,3492-3493
+test/since_test_scope_test.rb
+  s_9747bd218c1c67::t_a05a6cef1f0b12 35-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09d8ab6d053791527f9a961542cd52dffe63cf70",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
