@@ -115,12 +115,13 @@ Duplicate names can occur with two top-level `def index` definitions in separate
 | Rename the method or its class | Ids change |
 | Add an identical mutant earlier in the method | Later identical mutants' ids change |
 | Add a same-named method earlier in the file | Affected methods' ids change |
+| Upgrade to a version where an operator starts or stops declining a swap | Later swaps of the same name in that method can change id (see `STABILITY.md`) |
 | Change the run directory | Relative paths can change ids |
 | Use sources outside the project root | Absolute paths make ids differ between machines |
 
 The project root is the run directory, or the Action's `working-directory`. Use the same root for stable ids.
 
-A current-format `ignore:` entry stays in the file when its mutant's id changes. It then matches nothing. If the entry has a reason, that reason still reads as if it applied. An old-format entry that still matches a mutant is not one of these: the old-id warning names it.
+A current-format `ignore:` entry stays in the file when its mutant's id changes. It then usually matches nothing, but after an operator starts or stops declining a swap it can match a different mutant. If the entry has a reason, that reason still reads as if it applied. An old-format entry that still matches a mutant is not one of these: the old-id warning names it.
 
 `run` warns once for each such entry and still exits 0:
 
