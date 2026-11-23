@@ -246,5 +246,6 @@ A mutant that only a test of an unchanged source kills shows as `survived` or `n
 only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`. `no_coverage` is
 outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
 Use a full run (without the setting) for a `--threshold` or `--baseline` gate you rely on.
+When the kept tests cover no source line at all, a `--daemon` run says so on stderr.
 To check one, run the same command with `--no-since-paired-tests`. If the mutant is killed there, add that test
 to the `tests:` map for the changed source. If it survives there, it is a real survivor. The limits are in #552.
