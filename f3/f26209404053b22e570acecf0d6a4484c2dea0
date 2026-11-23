@@ -1,0 +1,23 @@
+.expectation-fit/decisions/release-and-process.md
+  s_aa0d4f7c37254a::t_c3838507b40a66 7
+.expectation-fit/ways-of-working.yaml
+  s_aa0d4f7c37254a::t_b103c85a5019c0 21
+AGENTS.md
+  s_aa0d4f7c37254a::t_9262155555d1c5 138-140,152-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3f26209404053b22e570acecf0d6a4484c2dea0",
+  "prompts": {},
+  "sessions": {
+    "s_aa0d4f7c37254a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70450988-d29c-444a-8f4e-53f91d5d39c5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
