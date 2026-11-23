@@ -3108,16 +3108,17 @@ class CoverageMapTest < Minitest::Test
 
   # --- #494 pack sources ------------------------------------------------------
 
-  # A failed split test inside a pack marks its pack source. The same split
-  # name in another directory of the pack does not mark another source.
+  # A failed split test inside a pack marks its pack source. A source of the
+  # same name in another directory of the pack (app/services/item.rb) does
+  # not take it: the split sits in the mirror of app/models only.
   def test_failing_pack_split_test_marks_only_its_pack_source
     Dir.mktmpdir do |dir|
       src = File.join(dir, "packs/catalog/app/models/item.rb")
-      other = File.join(dir, "packs/catalog/app/services/stock.rb")
+      other = File.join(dir, "packs/catalog/app/services/item.rb")
       bad = File.join(dir, "packs/catalog/test/models/item_upsert_test.rb")
       [src, other, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
       File.write(src, "class Item; def n; 1; end; end\n")
-      File.write(other, "class Stock; def n; 1; end; end\n")
+      File.write(other, "class ServiceItem; def n; 1; end; end\n")
       File.write(bad, "require 'does/not/exist'\n")
       map = nil
       capture_subprocess_io do

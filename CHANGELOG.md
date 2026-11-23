@@ -33,7 +33,7 @@ All notable changes to this project are documented here. The format is based on
   See `docs/ci.md`, "Refresh the baseline".
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
-  An app that already maps each pack with `tests:` runs the same tests. The pack test now runs first for each mutant of its source, and the coverage cache rebuilds once. A suite that depends on test order can give a different verdict.
+  An app that already maps each pack with `tests:` runs the same tests. The pack test now runs first for each mutant of its source. A standalone run can rebuild its coverage cache once. A suite that depends on test order can give a different verdict.
   Pass the source folders, such as `packs/*/app`. A source folder that holds test files, such as `packs`, lists each test file as an unpaired source.
   Pack roots other than `packs/`, a `{path}` placeholder for the `tests:` map, and the other limits are in #554.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
