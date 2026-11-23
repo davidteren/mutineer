@@ -1053,9 +1053,6 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # The prepare daemon holds the database lock. It must stay up until each
-  # worker daemon has booted, then quit. Quitting first lets another run drop
-  # the worker databases.
   # #416: a serial Rails run keeps the prepare daemon until its last mutant
   # has run, so a lock still covers the databases while the worker respawns.
   def test_a_serial_rails_run_keeps_the_prepare_daemon_until_the_last_mutant
@@ -1116,8 +1113,9 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # A parallel run quits the prepare daemon once every worker has booted and
-  # holds its lock, before the first worker quits.
+  # The prepare daemon holds the database lock. In a parallel run it must stay
+  # up until each worker daemon has booted, then quit. Quitting first lets
+  # another run drop the worker databases.
   def test_a_parallel_run_keeps_the_prepare_daemon_until_workers_boot
     with_jobs do |jobs, config, source_map|
       order = []

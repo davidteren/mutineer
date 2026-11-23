@@ -95,8 +95,9 @@ module Mutineer
             run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           end
       ensure
-        # run_serial quits this client when a Rails run ends, and run_parallel
-        # once workers hold locks. Quit again here when they never reached that point.
+        # run_serial quits this client when a Rails run ends, or once its worker
+        # has booted in a run without rails. run_parallel quits it once workers
+        # hold locks. Quit again here when they never reached that point.
         # A second quit is a no-op.
         prepare_client&.quit
       end
@@ -169,7 +170,8 @@ module Mutineer
     # @param worker_count [Integer] slots requested before the database count is known.
     # @return [Array] the coverage map (or nil), the worker count to start, and
     #   the prepare daemon. The caller quits that daemon when a serial Rails
-    #   run ends, or after the worker daemons of a parallel run hold their locks. It is nil
+    #   run ends, once the worker has booted in a serial run without rails, or
+    #   after the worker daemons of a parallel run hold their locks. It is nil
     #   when this process could not boot one.
     # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
     def self.prepare_run(config, abs_tests, worker_count, timing = {})
