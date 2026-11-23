@@ -55,6 +55,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`collection_method` declines more truthiness-only reads (Refs #501).**
+  A condition that only tests the value no longer gets a swap for `each`, `map`, or a `select` or `reject` with an inline block (not `&blk`) and no arguments.
+  That covers a call nested in a larger condition: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a`.
+  Those mutants were equivalent, so the run now counts them as declined.
+  On Mutineer's own `lib/` the count does not change: 525 swaps and 119 declined, before and after.
+  The score can rise a little, and the mutant count falls, when `collection_method` is selected and your code has such a condition.
+  A swap that is declined no longer takes a position: the ids of later swaps of the same name in that method can shift, so a saved `ignore:` entry or baseline can then match a different mutant without a warning. Check those entries after you upgrade. `STABILITY.md` names this as an exception, and #508 tracks the general fix, planned for 2.0.
+  In a condition, an `each` or `map` call with arguments or with a `&blk` argument, and a `select` or `reject` on a bare `ENV` or `IO`, keep their swap. A bare statement such as `xs.each(1)` is still declined, as before.
+  A custom method named `select`, `reject`, `each` or `map` that returns `false` or `nil` can differ, and the check does not see the class.
+  The other limits in #501 stay open. See `docs/equivalent-skips.md`, "Collection method".
 - **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**
   It now declines `select` / `reject` (no arguments), `first` / `last`, and `min` / `max` (no block) when the call is a statement of its own and its value is discarded. `all?` / `any?` still swap.
   It also declines `each` / `map` when only its truthiness is read: an `if`, `unless`, `while`, `until`, or subjectless `when` condition, or the left side of `&&` / `and`.
