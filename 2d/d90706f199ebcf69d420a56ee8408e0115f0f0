@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_b385cd46e6b15c 75,78
+test/daemon_mysql_test.rb
+  s_9747bd218c1c67::t_c9136740baf344 372-373
+test/daemon_postgres_test.rb
+  s_9747bd218c1c67::t_6d4e436236b449 264-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2dd90706f199ebcf69d420a56ee8408e0115f0f0",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
