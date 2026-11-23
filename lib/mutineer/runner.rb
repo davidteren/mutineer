@@ -494,7 +494,7 @@ module Mutineer
       reach_key = sentinel && ReachProbe.reach_key
       # The reload text is built once, before the fork, so the parent checks
       # the text that the child loads. It is the same text the daemon loads: a
-      # hook-block def placed (#297), a call superclass kept (#492). Under
+      # hook-block def placed (#297), a live superclass kept (#492, #512, #503). Under
       # redefine the child builds the def text itself
       # ({Isolation.apply_surgical}), from the same values.
       unless strategy == "redefine"

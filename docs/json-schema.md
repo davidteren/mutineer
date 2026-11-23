@@ -68,7 +68,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant on a later line of a multi-line statement (#254, #289) — the right side of `a &&` on its own line, or a call inside a one-line block — when the tests of that statement did not kill it and the probe did not see the mutated expression return during a test (#345). The probe is a sentinel the child writes the first time that expression returns during a test; a load-time call and a raise inside the expression do not write it. Mutineer ran the tests that ran the statement's other lines (for a one-line block, the first or last line, never the `def` line). A survivor the probe saw return is `survived` and counts in the score. The probe covers a trailing operator, a method chain, a multi-line argument, a hash entry, and a heredoc interpolation. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block, and a method inside the block of a class statement's superclass call (#492). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block, a method inside the block of a class statement's superclass call (#492), a method inside the value of a superclass constant that the same file assigns (#503), and a method that calls `define_callbacks` or `define_model_callbacks` (#504). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. After 1.9.0, an in-process or `--daemon` run also counts a survivor in a block or lambda literal here when the call that holds the block ran at load and the mutated expression did not return during a test. The line of such a mutant need not have run at load (#493). Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, a string with no quotes of its own (a heredoc line, a `%(...)` part, a `%w[]` element, a regex, backtick or interpolated-symbol part) that `literal_mutation` cannot empty (#469), or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
@@ -140,14 +140,54 @@ class statement's superclass call, such as `class X < Struct.new(:a) do ... end`
 already loaded, reload reopens it with the superclass it already has, so the same class object keeps its
 instances and subclasses, and the superclass call and its block do not run again. A class that is not loaded yet
 runs its superclass call as written. A `Data.define`, `Struct.new`, `Class.new` or other call
-superclass with no method in its block reloads as usual.
+superclass with no method in its block reloads as usual. So does a plain local write of such a call,
+`class Q < (base = Struct.new(:a))`: the local is set to the live superclass (#512). A superclass that
+sets a local in another way (`||=`, multiple assignment, a write deeper in the expression), or that is a
+bare variable read such as `class Q < base`, keeps its text and still errors on reload when it builds a new
+class (#527). A superclass call that reads a class the file builds again, such as `Class.new(Fields)`, or
+that calls a builder method of the file, keeps the old class, so a mutant in that class can survive falsely
+(#533).
+
+Reload also cannot place a method inside the value of a constant assignment when a class statement in the
+same file inherits from that constant, such as the block of `BaseRow = Struct.new(:v) do ... end` with
+`class Row < BaseRow` (#503). Reload keeps the class that `BaseRow` already has, so `Row` reopens with the
+same parent, and the value and its block do not run again. `--strategy redefine` runs these methods.
+Reload keeps such a value only when all of these hold, and otherwise leaves the file as written, which
+errors on reload when it builds a new class (#527):
+
+- the value is `Struct.new`, `Data.define` or `Class.new` with literal arguments only (symbols, strings,
+  numbers, `true`, `false`, `nil` and keyword pairs of those), with or without a block. A constant, a
+  variable or a call in an argument (`Class.new(Fields)`), or a builder method of the file
+  (`BaseRow = build_base`), is left as written;
+- a bare assignment (`BaseRow = ...`) matches a bare superclass (`< BaseRow` or `< ::BaseRow`) in any
+  scope of the file, and a path assignment (`Billing::BaseRow = ...`) matches only a path superclass
+  spelled the same. So `Base = ...` beside `class User < ActiveRecord::Base` is not kept;
+- a path assignment has no parent (`::BaseRow = ...`), or its parent is a constant path or `self`.
+
+Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in
+its body (with any receiver), or that calls such a method of the same file by name (with any receiver) or
+through `super`, through any chain of such calls (#504). During the mutant load, reload skips a chain that the class already has, with the options the call
+gives, so that a concern's callbacks stay. A mutant that changes the names or options in such a method
+therefore never reaches Rails. The match is by name and fails closed: the whole method is marked, so its
+other lines lose their verdicts under reload too, and so do such a method that only a test calls, a
+same-named method in another class of the file, and such a method in a project without ActiveSupport, where
+no guard runs. A mutant on a later line of a multi-line statement there stays `no_coverage`, as for the other
+causes. Still not marked, so a mutant there can survive unapplied (#530): a method that only computes the
+names or options (`define_callbacks :save, **opts`), a call through `send`, `public_send`, `__send__` or
+`method`, and a caller in another file. `--strategy redefine` does not run the class body again, and its
+verdicts are unchanged. `--test-command` boots the app with the mutant file, so it applies these mutants.
+
+Two constant shapes can still give a false survivor. The value of a `||=` assignment does not run again on
+reload, and its methods are not marked (#529). A constant with no class statement for it in the same file
+is built again, so a subclass in another file keeps the old class (#528).
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).
 For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
 host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
 again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
-mutant's method is inside the block of a class statement's superclass call (#492, see above), or is a
+mutant's method is inside the block of a class statement's superclass call (#492, see above), is inside
+the kept value of a superclass constant (#503, see above), calls `define_callbacks` (#504, see above), or is a
 hook-block method that is one of these:
 
 - a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
