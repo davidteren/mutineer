@@ -1624,7 +1624,8 @@ class ProjectTest < Minitest::Test
   # #504: during a reload the guard skips a chain the class already has, with
   # the options the call gives. So a def that calls `define_callbacks` (or
   # `define_model_callbacks`, any receiver), or a def of the file that calls
-  # such a def without a receiver or on `self`, is unplaceable under reload.
+  # such a def by name (any receiver) or through `super`, is unplaceable under
+  # reload. The match is by name, so it fails closed for a same-named call.
   def test_a_def_that_defines_a_callback_chain_is_unplaceable_under_reload_only
     src = <<~RUBY
       class Job
@@ -1638,21 +1639,37 @@ class ProjectTest < Minitest::Test
 
         def self.included_hook(base) = base.define_callbacks(:save)
 
-        def self.other_receiver = Other.job_callbacks(:x)
+        def self.constant_receiver = Job.job_callbacks(:x)
+
+        def self.outer
+          def self.nested = define_callbacks(:nested)
+        end
+
+        class << self
+          def eigen_helper = define_callbacks(:eigen)
+          def eigen_caller = eigen_helper
+        end
 
         def perform = 1
       end
+
+      class SubJob < Job
+        def self.job_callbacks(*names) = super
+
+        def self.unrelated = job_callbacks
+      end
     RUBY
     with_source(src) do |path|
-      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      %i[job_callbacks all_callbacks model_callbacks included_hook].each do |name|
-        assert by_name[name].calls_define_callbacks, name
-        assert by_name[name].unplaceable?("reload"), name
-        refute by_name[name].unplaceable?("redefine"), name
+      subjects = Mutineer::Project.discover([path])
+      by_name = subjects.to_h { |s| [s.qualified_name, s] }
+      %w[Job.job_callbacks Job.all_callbacks Job.model_callbacks Job.included_hook Job.constant_receiver
+         Job.outer Job.nested Job.eigen_helper Job.eigen_caller SubJob.job_callbacks SubJob.unrelated].each do |name|
+        assert by_name.fetch(name).calls_define_callbacks, name
+        assert by_name.fetch(name).unplaceable?("reload"), name
+        refute by_name.fetch(name).unplaceable?("redefine"), name
       end
-      refute by_name[:other_receiver].calls_define_callbacks, "another receiver's job_callbacks is not this file's"
-      refute by_name[:perform].calls_define_callbacks
-      refute by_name[:perform].unplaceable?("reload")
+      refute by_name.fetch("Job#perform").calls_define_callbacks
+      refute by_name.fetch("Job#perform").unplaceable?("reload")
     end
   end
 

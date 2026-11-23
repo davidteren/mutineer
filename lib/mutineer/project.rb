@@ -158,12 +158,15 @@ module Mutineer
     # never reaches Rails. It would score `survived` unapplied (#504).
     #
     # It fails closed. A {CALLBACK_DEFINERS} call counts with any receiver.
-    # A def that calls a marked def of the same file without a receiver or on
-    # `self` is marked too, so a helper that calls another helper is covered.
-    # The whole def is marked, because any line of it can change the names or
+    # A def that calls a marked def of the same file by name (any receiver),
+    # or through `super` from a def of the same name, is marked too, so a
+    # helper that calls another helper is covered. The match is by name, so a
+    # same-named call in another class of the file is marked as well. The
+    # whole def is marked, because any line of it can change the names or
     # options it passes. A def the class body never calls loses real verdicts
     # under reload. Still unmarked (#530): a def that only computes the names
-    # or options (`define_callbacks :save, **opts`), and a call through `send`.
+    # or options (`define_callbacks :save, **opts`), a call through `send`,
+    # `public_send`, `__send__` or `method`, and a caller in another file.
     #
     # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
     # @param program [Prism::ProgramNode] the complete parsed file.
@@ -187,8 +190,8 @@ module Mutineer
       subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
     end
 
-    # Whether a def calls a {CALLBACK_DEFINERS} method (any receiver), or one
-    # of `helpers` without a receiver or on `self`.
+    # Whether a def calls a {CALLBACK_DEFINERS} method or one of `helpers`
+    # (any receiver), or is one of `helpers` by name and calls `super`.
     #
     # @param def_node [Prism::DefNode]
     # @param helpers [Set<Symbol>] the names of the file's marked defs.
@@ -197,9 +200,9 @@ module Mutineer
       nodes = def_node.compact_child_nodes
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
-        next unless node.is_a?(Prism::CallNode)
-        return true if CALLBACK_DEFINERS.include?(node.name)
-        return true if helpers.include?(node.name) && (node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode))
+        return true if node.is_a?(Prism::CallNode) && (CALLBACK_DEFINERS.include?(node.name) || helpers.include?(node.name))
+        return true if (node.is_a?(Prism::SuperNode) || node.is_a?(Prism::ForwardingSuperNode)) &&
+                       helpers.include?(def_node.name)
       end
       false
     end

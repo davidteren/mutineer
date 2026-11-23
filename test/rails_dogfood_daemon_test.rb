@@ -270,6 +270,7 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal 0, aggregate.errored_count, err
     assert_operator aggregate.total, :>, 0
     assert_equal [:unplaceable], aggregate.results.map(&:status).uniq
+    assert(aggregate.results.all? { |r| r.subject.calls_define_callbacks }, "the cause is the #504 mark")
     out = StringIO.new
     Mutineer::Reporter.new(aggregate, source_map).report(out: out, err: StringIO.new, format: "json")
     doc = JSON.parse(out.string)
