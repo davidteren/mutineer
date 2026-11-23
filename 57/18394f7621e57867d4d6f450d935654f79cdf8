@@ -1,0 +1,27 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_9747bd218c1c67::t_186e92d9f580e2 10
+CHANGELOG.md
+  s_9747bd218c1c67::t_ee2f7dcc577a2a 142,148
+docs/plans/2026-11-22-515-516-522-fix-test-command-output-plan.md
+  s_9747bd218c1c67::t_d1a1905b2b1ed3 161,238
+docs/rails-setup.md
+  s_9747bd218c1c67::t_91dcaca4f8b1b9 301
+test/external_backend_test.rb
+  s_9747bd218c1c67::t_9b0b6abc9c85f8 163,258-259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5718394f7621e57867d4d6f450d935654f79cdf8",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
