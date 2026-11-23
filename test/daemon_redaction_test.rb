@@ -205,12 +205,13 @@ class DaemonRedactionTest < Minitest::Test
         end
         Mutineer::DaemonServer.run
       RUBY
+      # A real solo boot line. available? raises before the role is read.
       stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "rails" => true, "db_role" => "solo")
       out, err, status = Open3.capture3({ "DATABASE_URL" => BAD_URL }, RbConfig.ruby, "-I", lib, "-e", script,
                                         stdin_data: "#{stdin}\n")
+      assert_equal 1, status.exitstatus, err
       reply = JSON.parse(out.lines.last)
 
-      assert_equal 1, status.exitstatus, err
       refute reply["ready"]
       assert_equal "LoadError: cannot load adapter for postgres://u:[REDACTED]@ho st/db", reply["error"]
       refute_includes out + err, "s3cret"
