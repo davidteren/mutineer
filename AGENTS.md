@@ -121,6 +121,34 @@ request, except the release pull requests that `release-pr.yml` opens:
 
 Use existing labels only (`gh label list`). Ask a maintainer before adding a new label.
 
+**Issues get their labels when they are created.** Labelling is part of
+filing an issue, not a later pass. Pass them to `gh issue create` with
+`--label`. Every issue gets all four:
+
+| Category | Required |
+|---|---|
+| Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
+| Priority | `priority: high`, `priority: medium`, or `priority: low` |
+| Risk | `risk: high`, `risk: medium`, or `risk: low` |
+| Target | A version label, such as `v1.10.0` or `v2.0`. Use `backlog` when no release is planned for it. |
+
+`gh label list` gives the meaning of each priority and risk label. Add
+`needs decision` when work cannot start until a maintainer decides. A person
+who cannot set labels files the issue without them, and a maintainer adds them.
+
+### Fix it in the pull request, or file an issue?
+
+A follow-up issue is not a substitute for a fix. Before you file an issue
+for something a pull request found, ask what caused it:
+
+- **New code in this pull request gives a silent wrong result** (a false
+  survivor, a false kill, a wrong score or exit code, with no error or
+  warning): fix it in this pull request, or take that code out. Do not file
+  it for later.
+- **The defect is older than this pull request**, or the user sees an error,
+  or a maintainer accepted the limit: file an issue, with its labels, and
+  name it in the change ("Track every limitation").
+
 ### After the pull request is open
 
 1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.

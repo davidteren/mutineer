@@ -23,7 +23,9 @@ It checks committed changes only, so commit first. Deal with each item it
 lists before you go on:
 
 - An added line that names a limitation ("not yet", "deferred", "TODO") with
-  no issue number. Add the issue, or create one. The script exits 1 until
+  no issue number. Add the issue, or create one with its labels (AGENTS.md,
+  "Labels"). If your own new code gives a silent wrong verdict, fix it in
+  this branch and do not file it for later. The script exits 1 until
   every such line has one. It matches keywords only, so also look for
   limits worded as "only", "stays", "ignores" or "same rule as".
 - A test file that loses assertions, or gains a skip or a timeout. Give the
