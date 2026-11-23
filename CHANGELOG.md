@@ -12,13 +12,29 @@ All notable changes to this project are documented here. The format is based on
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
   After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
-  The warning changes no verdict, no score, no JSON field and no exit code.
+  The warning changes no verdict, no score and no exit code. `--format json` lists the same classes in `summary.callback_growth` (#505).
   The six cases in #479 remain. The full fix is the full-reload strategy (#389).
-  `--format json` does not list these classes yet (#505). A class body that calls `define_callbacks` itself now keeps its chain on reload (#504), so such a class can show here too. A class body that calls `reset_callbacks` still loses a concern's callback, and this warning does not see that (#530).
+  A class body that calls `define_callbacks` itself now keeps its chain on reload (#504), so such a class can show here too. A class body that calls `reset_callbacks` still loses a concern's callback, and this warning does not see that (#530).
 - **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
   It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
   It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
   The JSON `schema_version` is now `1.11`.
+- **Entries with a `diff` carry `diff_base64` when the text is not the exact patch (#518).**
+  For a source whose magic encoding is not UTF-8 or binary and a non-ASCII changed line, an invalid byte or a byte with no Unicode mapping on a changed line, or a binary-tagged source whose changed line is not UTF-8, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
+  To apply any entry: for a file with a `working-tree-encoding` Git attribute use `diff`; else decode `diff_base64` when present; else use `diff`.
+  A byte with no Unicode mapping (such as `0xA5` in ISO-8859-3) on a mutant's line no longer stops the report with `Encoding::UndefinedConversionError`: `diff` prints it as `\xNN`.
+  The key and `diff_encoding` are absent when the change may hold a credential: redaction would change the text or the bytes, or a credential is configured and the bytes are not valid UTF-8. This holds under `--output` too. Such an entry has no exact patch (#540). A UTF-8 source with an invalid byte still stops the run before the report (#538).
+  A project whose files are valid UTF-8 gets no new key. A source path that is not valid UTF-8 still cannot be applied (#532). Additive key (schema `1.11`).
+- **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
+  Each row is `{ class, file }`, sorted by file and class, so a JSON-only tool can see which kills of a file a repeated callback may have made false.
+  `[]` means that the run logged no growth, and a run that does not reload has `[]`. `null` means that a reload or `--daemon` run could not create its log, so it checked nothing.
+  `[]` is not proof that no class grew: a check that fails inside a mutant's child logs nothing (#531).
+  No verdict, score, count or exit code changes. Additive key (schema `1.11`).
+- **`no_verdict[]` entries in `--format json` carry `diff` (#526).**
+  An errored, timed-out or uncapturable mutant's entry has the same `diff` (and `diff_encoding`) as a `survivors[]` entry, so a consumer can run that mutant again itself, for example after a container's memory limit killed its child.
+  An entry with no mutation, such as a failure before the fork, has `diff: null`.
+  Each entry with a diff grows by about 224 bytes (the #498 measure: 52,242 bytes for 233 diffs).
+  `uncapturable[]` entries stay as they are. Additive key (schema `1.11`).
 - **The JSON report and the human summary show timing (#495).**
   `--format json` has a top-level `timing` object: `total_seconds`, `boot_seconds`, `coverage_seconds`, `clean_check_seconds` and `mutants_seconds`, with `null` for a phase the run did not have.
   Each `survivors[]`, `killed[]` and `no_verdict[]` entry has `seconds`, the wall-clock time of its run, so slow tests and timeouts near the limit show.
@@ -33,7 +49,7 @@ All notable changes to this project are documented here. The format is based on
   The JSON `diff` is UTF-8, so `git apply` rejected it for a source with `# encoding: EUC-JP` (or `Shift_JIS`, `ISO-8859-1`) and a changed line with non-ASCII text.
   The entry now has `diff_encoding`, the source's encoding. Transcode the hunk lines to it, and `git apply --unidiff-zero` accepts the patch.
   The exception is a file with a `working-tree-encoding` Git attribute: Git applies the UTF-8 form there, so use `diff` as it is.
-  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source, `git apply` still rejects the diff when the changed lines hold bytes that cannot be restored, so edit the file by hand. A diff whose changed lines are all ASCII still applies. Those cases are tracked in #518. See `docs/json-schema.md`.
+  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source, `git apply` still rejects the diff when the changed lines hold bytes that cannot be restored. Such an entry carries `diff_base64`, the exact patch (#518). A diff whose changed lines are all ASCII still applies. See `docs/json-schema.md`.
   The same key is on a `killed[]`, `unplaceable[]` or `ran_at_load[]` entry, which carries `diff` (#498).
   Additive key (schema `1.11`).
 
