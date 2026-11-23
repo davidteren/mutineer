@@ -16,8 +16,8 @@ conventions:
       substitute for a fix: when new code in the change itself makes a
       verdict, a score or an exit code wrong with no error or warning, fix
       it in that change, or take that code out. A defect older than the
-      change, an error the user can see, and a limit a maintainer accepted
-      each get an issue. Every new issue gets its labels when it is
+      change, an error or warning the user can see, and a limit a maintainer
+      accepted each get an issue. Every new issue gets its labels when it is
       created (AGENTS.md, "Labels").'
     - 'Cover the siblings: A fix to one path or surface names its siblings
       and covers or tracks each one (reload vs redefine, daemon vs
