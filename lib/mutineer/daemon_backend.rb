@@ -56,13 +56,17 @@ module Mutineer
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       jobs, ignored_results, extras[:unscoped_mutants] =
         JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
-      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Nothing to mutate (`--since` matched no changed line, or every mutant is
       # suppressed). Return before booting anything: the coverage daemon and the
       # worker daemons below each boot the whole app, and README documents
       # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
       return [AggregateResult.new(ignored_results), source_map, extras] if jobs.empty?
+
+      # With `since_paired_tests`, keep only the tests paired with the sources
+      # that have a job (#496). The daemon still gets every source.
+      config = JobPlan.narrow_tests_for_since(config, jobs)
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Worker count = resolved --jobs, capped at the job count (no idle daemons).
       # >1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the

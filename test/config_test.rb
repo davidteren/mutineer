@@ -732,6 +732,7 @@ class ConfigTest < Minitest::Test
     fail_fast: [false, true],
     matrix: [false, true],
     allow_empty: [false, true],
+    since_paired_tests: [false, true],
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],

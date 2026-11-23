@@ -19,6 +19,33 @@ Untracked files are scored in full unless Git ignores them. Override `.mutineer.
 bundle exec mutineer run lib --no-since
 ```
 
+A `--since` run still captures coverage for the tests of every source you pass.
+To run only the tests of the changed sources, turn on `since_paired_tests` (off by default).
+It applies to in-process and `--daemon` runs whose tests Mutineer paired.
+`--test`, `--coverage-from`, `--test-command` and a dry run keep the full test list.
+Every source still loads.
+See [Tests of the changed sources](cli.md#tests-of-the-changed-sources).
+
+```sh
+bundle exec mutineer run app --since origin/main --since-paired-tests --cache-dir .mutineer/since
+```
+
+In the GitHub Action, set `since_paired_tests: true` in `.mutineer.yml`, or pass `extra-args: "--since-paired-tests"`.
+The test list is part of the coverage cache key, so a narrowed run replaces a full-run cache in the same folder.
+`--cache-dir .mutineer/since` keeps the two apart.
+
+### A survivor that appears only with `since_paired_tests`
+
+A narrowed run does not run a test that pairs only with an unchanged source.
+A mutant that only such a test kills shows as `survived` or `no_coverage`.
+
+1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
+2. Run the same command without the setting.
+3. If the mutant is killed there, a test paired with another source kills it. Add that test to the [`tests:` map](cli.md#extra-tests-for-a-source) for the changed source.
+
+A baseline refresh does not help here. A baseline comes from a full run, and a full run is not narrowed.
+The limits are in #552.
+
 ## Baseline
 
 Leave `only:` and `baseline:` unset in `.mutineer.yml` when you create or refresh the baseline; pass the baseline only to the PR gate. Create and refresh the saved JSON report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate).

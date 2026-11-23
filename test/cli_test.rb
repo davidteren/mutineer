@@ -3381,4 +3381,133 @@ class CliTest < Minitest::Test
     _out, err = capture_io { Mutineer::CLI.warn_callback_growth([]) }
     assert_empty err
   end
+
+  # --- #496 since_paired_tests ----------------------------------------------
+
+  # AE4: pairing keeps each source's rows, convention tests then mapped tests,
+  # and since_tests unions the rows of the live sources in full-list order.
+  def test_autopair_records_tests_by_source
+    with_test_map_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "app/controllers", "app/models")
+      Mutineer::CLI.autopair!(config)
+      rows = config.tests_by_source
+      assert_equal config.sources, rows.keys
+      assert_equal %w[test/controllers/boards_controller_test.rb test/controllers/concerns/authentication_test.rb],
+                   rows["app/controllers/concerns/board_scoped.rb"].sort
+      assert_equal "test/controllers/concerns/authentication_test.rb", rows["app/controllers/concerns/authentication.rb"].first
+      assert_includes rows["app/controllers/concerns/authentication.rb"], "test/controllers/boards_controller_test.rb"
+      assert_equal ["test/models/board_test.rb"], rows["app/models/board.rb"]
+      assert_equal rows.values.flatten.uniq.sort, config.tests.sort
+
+      config.since = "HEAD"
+      config.since_paired_tests = true
+      live = [[Struct.new(:file).new("app/models/board.rb"), nil, "x"],
+              [Struct.new(:file).new("app/controllers/boards_controller.rb"), nil, "y"]]
+      expected = config.tests.select do |t|
+        %w[test/controllers/boards_controller_test.rb test/models/board_test.rb].include?(t)
+      end
+      refute_equal config.tests, expected, "the fixture must leave a test out"
+      assert_equal expected, Mutineer::JobPlan.since_tests(config, live)
+    end
+  end
+
+  # The autopair fixture in a git repository, with one changed arithmetic
+  # line in lib/calc.rb and none in lib/greeter.rb.
+  def with_since_autopair_project(yaml: "threshold: 0\n")
+    with_autopair_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), yaml)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t], %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), args.join(" ")
+      end
+      calc = File.join(proj, "lib/calc.rb")
+      File.write(calc, File.read(calc).sub("a + b", "a + b # touched"))
+      yield proj
+    end
+  end
+
+  NARROWED = "[mutineer] --since: running 1 of 2 test files, the ones paired with the 1 of 2 paired sources " \
+             "that has a mutant on a changed line."
+
+  # AE1, AE2: the flag narrows a --since run and prints one line; without it
+  # the run is the 1.9.0 run. The jobs and the report do not change (R7).
+  def test_since_paired_tests_narrows_a_since_run
+    with_since_autopair_project do |proj|
+      args = ["run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--format", "json"]
+      out, err, status = mutineer(*args, "--since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan(NARROWED).size, err
+      narrowed = JSON.parse(out)
+
+      out, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "--since: running"
+      full = JSON.parse(out)
+      assert_equal full["summary"].except("seconds"), narrowed["summary"].except("seconds")
+      assert_equal full["per_source"].map { |r| r["file"] }, narrowed["per_source"].map { |r| r["file"] }
+    end
+  end
+
+  # AE3, AE5, R3: --test and --coverage-from keep the full list and say the
+  # setting has no effect. A dry run prints neither line.
+  def test_since_paired_tests_has_no_effect_with_test_or_coverage_from
+    with_since_autopair_project do |proj|
+      base = ["run", "lib", "--since", "HEAD", "--since-paired-tests", "--operators", "arithmetic"]
+      _out, err, status = mutineer(*base, "--test", "test", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --since-paired-tests has no effect when --test is given"
+      refute_includes err, "--since: running"
+
+      File.write(File.join(proj, "cov.json"), "{}")
+      _out, err, status = mutineer(*base, "--coverage-from", "cov.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --since-paired-tests has no effect when --coverage-from is given"
+      refute_includes err, "--since: running"
+
+      out, err, status = mutineer(*base, "--dry-run", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      dry_without, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--dry-run", chdir: proj)
+      assert_equal dry_without, out
+      refute_includes err, "since-paired-tests"
+      refute_includes err, "--since: running"
+    end
+  end
+
+  # The file key turns it on; a typed --no-since-paired-tests beats it.
+  # `since_paired_tests: false` and a run without --since print nothing.
+  def test_since_paired_tests_file_key_and_negation
+    with_since_autopair_project(yaml: "since_paired_tests: true\n") do |proj|
+      base = ["run", "lib", "--operators", "arithmetic"]
+      _out, err, = mutineer(*base, "--since", "HEAD", chdir: proj)
+      assert_includes err, NARROWED
+
+      _out, err, = mutineer(*base, "--since", "HEAD", "--test", "test", chdir: proj)
+      assert_includes err, "[mutineer] since_paired_tests in .mutineer.yml has no effect when --test is given"
+
+      _out, err, = mutineer(*base, "--since", "HEAD", "--no-since-paired-tests", "--test", "test", chdir: proj)
+      refute_includes err, "since_paired_tests"
+      refute_includes err, "--since: running"
+
+      _out, err, = mutineer(*base, "--test", "test", chdir: proj)
+      refute_includes err, "since_paired_tests", "no --since: the key stays silent"
+    end
+  end
+
+  # R3: a --test-command run never narrows, and says so once.
+  def test_since_paired_tests_has_no_effect_with_test_command
+    with_since_autopair_project do |proj|
+      File.write(File.join(proj, "run.rb"), <<~RUBY)
+        File.write("files.txt", ARGV.join(" ") + "\n", mode: "a")
+        ARGV.each { |f| require File.expand_path(f) }
+      RUBY
+      _out, err, status = mutineer("run", "lib", "--since", "HEAD", "--since-paired-tests", "--operators", "arithmetic",
+                                   "--test-command", "#{RbConfig.ruby} run.rb %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan("[mutineer] --since-paired-tests has no effect when --test-command is given").size, err
+      refute_includes err, "--since: running"
+      runs = File.readlines(File.join(proj, "files.txt"), chomp: true)
+      refute_empty runs
+      runs.each { |line| assert_equal %w[calc_test.rb greeter_test.rb], line.split.map { |f| File.basename(f) } }
+    end
+  end
+
 end

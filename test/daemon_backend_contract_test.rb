@@ -238,6 +238,38 @@ class DaemonBackendContractTest < Minitest::Test
     assert_includes err, "could not list this app's databases (no pool)"
   end
 
+  # #496: with `since_paired_tests`, the coverage daemon gets only the tests
+  # paired with the source that has a job, and still gets every source.
+  def test_since_paired_tests_narrows_the_tests_sent_to_the_daemon
+    Dir.mktmpdir("mutineer-daemon-since") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      %w[a b].each { |n| File.write(File.join(root, "app/#{n}.rb"), "class Scope#{n.upcase}\n  def t(x) = x + 1\nend\n") }
+      sources = %w[app/a.rb app/b.rb].map { |s| File.join(root, s) }
+      tests = %w[test/a_test.rb test/b_test.rb]
+      config = Mutineer::Config.new(sources: sources, tests: tests, project_root: root, framework: "minitest",
+                                    since: "HEAD", since_paired_tests: true, rails: true, daemon: true,
+                                    tests_by_source: sources.zip(tests.map { |t| [t] }).to_h)
+      stop = Class.new(StandardError)
+      boots = []
+      keep_a = ->(jobs, ignored, *_rest, **_kw) { [jobs.select { |s,| s.file.end_with?("a.rb") }, ignored, jobs.size] }
+      _out, err = capture_io do
+        Mutineer::JobPlan.stub(:scope_since, keep_a) do
+          Mutineer::DaemonClient.stub(:new, lambda { |boot:, **|
+            boots << boot
+            raise stop
+          }) do
+            assert_raises(stop) { Mutineer::DaemonBackend.execute(config, [Mutineer::Mutators::Arithmetic]) }
+          end
+        end
+      end
+
+      assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
+      assert_equal sources, boots.first[:sources]
+      assert_equal tests, config.tests, "the caller's config keeps the full list"
+      assert_includes err, "running 1 of 2 test files"
+    end
+  end
+
   # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
   # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"

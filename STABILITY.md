@@ -41,12 +41,14 @@ Exit code 3 does not exist in 1.x.
 
 ### Config keys
 
-These keys are accepted in `.mutineer.yml` in 1.8.0:
+These keys are accepted in `.mutineer.yml` in 1.10.0:
 
 `operators`, `jobs`, `threshold`, `only`, `require`, `boot`, `rails`, `since`,
 `framework`, `verbose`, `ignore`, `baseline`, `fail_fast`, `matrix`,
 `test_command`, `daemon`, `timeout`, `capture_timeout`, `cache_dir`,
-`allow_empty`, `shared_databases`.
+`allow_empty`, `since_paired_tests`, `shared_databases`, `tests`.
+
+`since_paired_tests` is new in 1.10.0. It is off by default. An older version warns that the key is unknown and ignores it.
 
 `shared_databases` is new in 1.8.0.
 It is a file key with no flag.

@@ -11,6 +11,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--operators LIST` | Comma-separated operator names | Tier-1 (default) set; see `mutineer --list-operators` |
 | `--only NAME` | Mutate one subject, such as `Calculator#add` | All subjects |
 | `--since REF` / `--no-since` | Mutate lines changed since git `REF` | Off |
+| `--[no-]since-paired-tests` | With `--since`, an in-process or `--daemon` run uses only the tests paired with the sources that have a mutant on a changed line. Every source still loads. `--test`, `--coverage-from`, `--test-command` and `--dry-run` keep the full test list. See [Tests of the changed sources](#tests-of-the-changed-sources) | Off |
 | `--threshold FLOAT` | Exit 1 below this score (0 to 100); see the README [options table](https://github.com/davidteren/mutineer#options) for every exit-1 case | `0` (off) |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior `--format json` report from a full run | None |
 | `--baseline-epsilon FLOAT` | Allowed baseline score drop (CLI only) | `0` |
@@ -100,6 +101,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `boot` | File to require once before the sources. An app entry point, or a gem's entry file (`lib/<name>.rb`) |
 | `rails` | Boolean; enables Rails boot defaults |
 | `since` | Nonblank git ref; `false` disables diff scoping |
+| `since_paired_tests` | Boolean; under `--since`, run only the tests paired with the changed sources (in-process and `--daemon`). See [Tests of the changed sources](#tests-of-the-changed-sources) |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
 | `tests` | File only. List of mappings with `sources` and `tests` patterns; adds those tests to the run when a matching source is in the run. See [Extra tests for a source](#extra-tests-for-a-source) |
 | `verbose` | Boolean; shows capture diagnostics, and lists each errored mutant and its cause in the human report |
@@ -163,6 +165,7 @@ tests:
 ```
 
 An entry adds its tests to the whole run when the run holds one of its sources.
+A run with `since_paired_tests` under `--since` keeps an entry's tests only when one of its sources has a mutant on a changed line.
 A `tests:` glob that matches a directory expands that directory with the same
 name filter as a typed `--test` directory (`*_test.rb`, `*_spec.rb`, `test_*.rb`).
 A file the glob matches stays unfiltered. `--test` globs still drop directories.
@@ -184,6 +187,10 @@ cover that source, plus any test file that was added or edited. The map matches 
 edit, an added or removed source line, a load-time method, a change to which test pairs with a source, a
 `--require` file, or another project file the tests load still recaptures every test (#421).
 
+The test list is part of the cache key. A run with `since_paired_tests` under `--since` that narrows its
+test list misses a full-run cache and saves its own map over it. The next full run captures again. Pass
+`--cache-dir .mutineer/since` to the narrowed runs to keep both maps (#552).
+
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 
 - **Fresh capture.** Every test file runs alone. A failure stops the run. The test files that cover a
@@ -198,6 +205,8 @@ Before the mutants run, Mutineer checks that the unchanged tests pass:
   runs after the sources load covers that test, as on a boot or daemon run.
 - **`--coverage-from`** (in-process `--rails` or `--boot` runs only; other runs ignore it). As on a cache hit: only the test files that cover a source line run, alone and then
   together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.
+  The capture's test list must equal this run's, so `since_paired_tests` does not narrow a run with
+  `--coverage-from`. A capture saved by a narrowed run does not fit a later full `--coverage-from` run (#552).
 - **`--test-command`.** No coverage map is built. The clean run runs every `--test` file.
 
 Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
@@ -207,3 +216,25 @@ Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:
 ```
 
 Keep `.mutineer/` ignored: `--test-command` writes locks there beside each source file.
+
+### Tests of the changed sources
+
+`since_paired_tests` (`--since-paired-tests`) is off by default. Turn it on for a `--since` run that passes
+whole folders, such as a pull request check. An in-process or `--daemon` run then uses only the test files
+paired with the sources that have a mutant on a changed line: their convention tests and the tests of each
+`tests:` map entry that holds them. The list keeps the order of the full list. Every source still loads, so a
+source that another source loads keeps working. Stderr prints one line with the counts:
+
+```text
+[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test kills shows as survived or no_coverage.
+```
+
+The run keeps its full test list when you give `--test`, `--coverage-from` or `--test-command`, and stderr
+says the setting has no effect. A dry run runs no tests and prints nothing. When every paired source has a
+mutant on a changed line, the list is already the full list, and no line prints. A library caller that builds
+its own `Config` with no pairing rows also keeps the full list. When no changed line holds a mutant, the run
+returns before it runs any test, with or without the setting.
+Without `--since`, the setting does nothing, so the key can stay in a `.mutineer.yml` that full runs read.
+A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. To check one,
+run the same command without the setting. If the mutant is killed there, add that test to the `tests:` map
+for the changed source. The limits are in #552.

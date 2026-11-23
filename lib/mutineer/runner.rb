@@ -142,7 +142,9 @@ module Mutineer
       # and scope once before loading the app or capturing coverage so an empty
       # scope can return without paying for a full clean-suite run. Nonempty
       # scopes reuse this work after coverage capture instead of repeating source
-      # discovery, parsing, and git diff.
+      # discovery, parsing, and git diff. With `since_paired_tests`, a nonempty
+      # scope then keeps only the tests paired with the sources that have a job
+      # (#496). Every source still loads.
       since_scope = nil
       if config.since
         # The empty-scope return skips the later require calls, so keep missing
@@ -156,6 +158,7 @@ module Mutineer
         if since_jobs.empty?
           return [AggregateResult.new(since_ignored), since_source_map, since_extras]
         end
+        config = JobPlan.narrow_tests_for_since(config, since_jobs)
         since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
       end
 
