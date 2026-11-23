@@ -38,10 +38,14 @@ The test list is part of the coverage cache key, so a narrowed run replaces a fu
 
 A narrowed run does not run a test that pairs only with an unchanged source.
 A mutant that only such a test kills shows as `survived` or `no_coverage`.
+A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`.
+`no_coverage` is outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
 
 1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
 2. Run the same command with `--no-since-paired-tests`, which beats the `.mutineer.yml` key.
-3. If the mutant is killed there, a test paired with another source kills it. Add that test to the [`tests:` map](cli.md#extra-tests-for-a-source) for the changed source.
+3. If the mutant is killed there, a test paired with another source kills it. Add that test to the [`tests:` map](cli.md#extra-tests-for-a-source) for the changed source. If it survives there, it is a real survivor.
+
+A full run (`--no-since`) sees both cases.
 
 A baseline refresh does not help here. A baseline comes from a full run, and a full run is not narrowed.
 The limits are in #552.

@@ -228,7 +228,7 @@ paired with the sources that have a mutant on a changed line: their convention t
 source that another source loads keeps working. Stderr prints one line with the counts:
 
 ```text
-[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test kills shows as survived or no_coverage.
+[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed.
 ```
 
 The run keeps its full test list when you give `--test` or `--test-command`, or `--coverage-from` on an
@@ -239,6 +239,8 @@ has such a mutant, or a `tests:` map entry adds every test. A library caller tha
 its own `Config` with no pairing rows also keeps the full list. When no changed line holds a mutant, the run
 returns before it runs any test, with or without the setting.
 Without `--since`, the setting does nothing, so the key can stay in a `.mutineer.yml` that full runs read.
-A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. To check one,
-run the same command with `--no-since-paired-tests`. If the mutant is killed there, add that test to the `tests:` map
-for the changed source. The limits are in #552.
+A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. A mutant that
+only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`. `no_coverage` is
+outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
+To check one, run the same command with `--no-since-paired-tests`. If the mutant is killed there, add that test
+to the `tests:` map for the changed source. If it survives there, it is a real survivor. The limits are in #552.

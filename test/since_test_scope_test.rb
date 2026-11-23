@@ -65,8 +65,8 @@ class SinceTestScopeTest < Minitest::Test
     assert_equal ALL_TESTS, config.tests, "the caller's config keeps the full list"
     assert_equal ROWS.keys, narrowed.sources
     assert_equal "[mutineer] --since: running 1 of 4 test files, the ones paired with the 1 of 3 paired " \
-                 "sources that has a mutant on a changed line. A mutant that only another test kills " \
-                 "shows as survived or no_coverage.\n", err
+                 "sources that has a mutant on a changed line. A mutant that only another test reaches " \
+                 "shows as survived or no_coverage, so a kill or a survivor can be missed.\n", err
   end
 
   def test_narrowing_line_for_one_and_for_many
@@ -76,7 +76,7 @@ class SinceTestScopeTest < Minitest::Test
     }.each do |counts, fragment|
       line = Mutineer::JobPlan.since_narrowing_line(*counts)
       assert line.start_with?("[mutineer] --since: #{fragment} mutant on a changed line."), line
-      assert line.end_with?("A mutant that only another test kills shows as survived or no_coverage."), line
+      assert line.end_with?("A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed."), line
     end
   end
 

@@ -973,7 +973,7 @@ module Mutineer
       verb = live_sources == 1 ? "has" : "have"
       "[mutineer] --since: running #{kept_tests} of #{all_tests} test files, the ones paired with the " \
         "#{live_sources} of #{all_sources} paired sources that #{verb} a mutant on a changed line. " \
-        "A mutant that only another test kills shows as survived or no_coverage."
+        "A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed."
     end
 
     # Narrows the jobs and the suppressed (ignored) results to --since when it
