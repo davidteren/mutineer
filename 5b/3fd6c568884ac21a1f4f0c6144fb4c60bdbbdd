@@ -1,0 +1,51 @@
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_17593bf6c157bd 916-917
+  s_9ad04fc3dbec64::t_b4a37e55a6eb1d 913-915,924,979-980
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9ad04fc3dbec64::t_a7aa6c4db0550a 18
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_9ef93378e615e9 16-17
+docs/cli.md
+  s_9747bd218c1c67::t_a00aa2eb362740 170
+  s_9ad04fc3dbec64::t_f40a0bad25769a 14,104,197,234,237-245,253-255
+test/daemon_backend_contract_test.rb
+  s_9ad04fc3dbec64::t_586918b9e04bc8 296-297,299-303,311,335-343
+test/since_test_scope_test.rb
+  s_9ad04fc3dbec64::t_73409ae6fae09f 41-42,60-71,84-85,95-97
+docs/ci.md
+  s_9ad04fc3dbec64::t_38b7b95b8db3ec 25,34,43-46
+test/cli_test.rb
+  s_9ad04fc3dbec64::t_88a7c83fcb4344 3609-3610
+  s_9ad04fc3dbec64::t_b44a15bae6ab4d 3619-3629
+  s_9ad04fc3dbec64::t_6faef8a23a510b 3520-3608,3611-3618,3630-3632
+README.md
+  s_9ad04fc3dbec64::t_482cfad742b4ef 234
+lib/mutineer/cli.rb
+  s_9ad04fc3dbec64::t_6605151cf087ec 85-87,665-670,681
+docs/plans/2026-11-22-496-494-feat-coverage-capture-scope-plan.md
+  s_9ad04fc3dbec64::t_d35ab387d2e7ac 138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b3fd6c568884ac21a1f4f0c6144fb4c60bdbbdd",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
