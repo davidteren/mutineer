@@ -437,7 +437,7 @@ class DaemonMysqlTest < Minitest::Test
     nil
   end
 
-  def run_cli(jobs, extra_env = {}, boot: "config/environment", require_paths: [])
+  def run_cli(jobs, env: {}, boot: "config/environment", require_paths: [])
     script = <<~RUBY
       require "mutineer"
       config = Mutineer::Config.new(
@@ -449,7 +449,7 @@ class DaemonMysqlTest < Minitest::Test
       )
       Mutineer::CLI.run(config)
     RUBY
-    Open3.capture2e(fixture_run_env(extra_env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
+    Open3.capture2e(fixture_run_env(env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
                     chdir: ROOT)
   end
 

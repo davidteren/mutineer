@@ -156,7 +156,7 @@ class DaemonPostgresTest < Minitest::Test
     RUBY
     assert status.success?, out
 
-    out, status = run_cli(1, "PGUSER" => "mutineer_no_createdb", "PGPASSWORD" => "mutineer_no_createdb")
+    out, status = run_cli(1, env: { "PGUSER" => "mutineer_no_createdb", "PGPASSWORD" => "mutineer_no_createdb" })
     assert_equal 1, status.exitstatus, out
     assert_match(/permission denied/i, out)
     assert_includes out, BASE
@@ -328,7 +328,7 @@ class DaemonPostgresTest < Minitest::Test
     nil
   end
 
-  def run_cli(jobs, extra_env = {}, boot: "config/environment", require_paths: [])
+  def run_cli(jobs, env: {}, boot: "config/environment", require_paths: [])
     script = <<~RUBY
       require "mutineer"
       config = Mutineer::Config.new(
@@ -340,7 +340,7 @@ class DaemonPostgresTest < Minitest::Test
       )
       Mutineer::CLI.run(config)
     RUBY
-    Open3.capture2e(fixture_run_env(extra_env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
+    Open3.capture2e(fixture_run_env(env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
                     chdir: ROOT)
   end
 
