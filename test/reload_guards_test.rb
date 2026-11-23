@@ -1609,4 +1609,57 @@ class ReloadGuardsTest < Minitest::Test
     klass._validators = { title: [concern.filter, old_entry.filter, new_entry.filter] } if validators
     klass
   end
+
+  # #504: stands in for ActiveSupport's `define_callbacks`. Like Rails, it
+  # writes `_run_<name>_callbacks` on the calling class, and here it records
+  # each call that reaches it.
+  class DefineHost
+    class << self
+      def calls = (@calls ||= [])
+
+      def define_callbacks(*names)
+        options = names.last.is_a?(Hash) ? names.pop : {}
+        calls << [names, options]
+        names.each { |name| class_eval("def _run_#{name}_callbacks = nil", __FILE__, __LINE__) }
+      end
+    end
+    singleton_class.prepend(Mutineer::ReloadGuards::CallbackRedefinition)
+  end
+
+  def test_define_callbacks_runs_every_name_outside_a_load
+    host = Class.new(DefineHost)
+    host.define_callbacks(:save)
+    host.define_callbacks(:save, :create, terminator: :t)
+    assert_equal [[[:save], {}], [%i[save create], { terminator: :t }]], host.calls
+  end
+
+  # The class body ran `define_callbacks :save` before the load, so a second
+  # run during the load would clear the chain and every subclass's chain.
+  def test_a_chain_the_class_defined_is_not_defined_again_during_a_load
+    host = Class.new(DefineHost)
+    host.define_callbacks(:save)
+    Mutineer::ReloadGuards.during_load("unused.rb") { host.define_callbacks(:save, terminator: :t) }
+    assert_equal [[[:save], {}]], host.calls, "super must not run when no name is left"
+  end
+
+  def test_only_a_new_name_reaches_rails_during_a_load_with_its_options
+    host = Class.new(DefineHost)
+    host.define_callbacks(:save)
+    Mutineer::ReloadGuards.during_load("unused.rb") do
+      host.define_callbacks("save", :create, terminator: :t)
+      host.define_callbacks(:create)
+    end
+    # The answer is read once a load, so :create stays new for its second call.
+    assert_equal [[[:save], {}], [[:create], { terminator: :t }], [[:create], {}]], host.calls
+  end
+
+  # A subclass inherits `_run_save_callbacks` and does not own it, so its
+  # own `define_callbacks :save` is new and reaches Rails.
+  def test_a_subclass_that_inherited_the_chain_defines_it_during_a_load
+    parent = Class.new(DefineHost)
+    parent.define_callbacks(:save)
+    child = Class.new(parent)
+    Mutineer::ReloadGuards.during_load("unused.rb") { child.define_callbacks(:save) }
+    assert_equal [[[:save], {}]], child.calls
+  end
 end
