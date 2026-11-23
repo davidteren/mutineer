@@ -24,7 +24,10 @@ module Mutineer
   #                     A concern at app/<dir>/concerns/<rest>.rb with no test
   #                     there also tries exact and split names at <dir>/<rest>.
   #                     A longer source keeps its file. A model keeps a split
-  #                     file it already pairs with (#408).
+  #                     file it already pairs with (#408). When none of these
+  #                     finds a test, a source at packs/<pack>/app/ or
+  #                     packs/<pack>/lib/ gets the same rules with the pack
+  #                     folder as the root (#494).
   #   * test_given_as_source? — whether a positional argument is a test file
   #                     by these same names, given as a source by mistake
   #                     after `--test` (#293).
@@ -407,7 +410,9 @@ module Mutineer
     # exact and split names at its namespace path (#408). The `concerns/` path
     # still wins when it has any test. A longer source, including a longer
     # concern, keeps a split file. A model keeps a split file it already pairs
-    # with: this fallback does not take one away.
+    # with: this fallback does not take one away. When both find nothing, a
+    # source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` gets the
+    # same rules with the pack folder as the root ({#pack_tests}, #494).
     #
     # @param source_rel [String] relative source path.
     # @param project_root [String] repository root for existence checks.
@@ -420,9 +425,45 @@ module Mutineer
       return found unless found.empty?
 
       ns = namespace_base(source_rel)
-      return found unless ns
+      found = namespace_tests(ns, root, prefer) if ns
+      return found unless found.empty?
 
-      namespace_tests(ns, root, prefer)
+      pack_tests(source_rel, root, prefer)
+    end
+
+    # A source in a Packwerk pack: `packs/<pack path>/app/...` or
+    # `packs/<pack path>/lib/...` (#494). The shortest pack path wins.
+    PACK_SOURCE = %r{\A(packs/.+?)/((?:app|lib)/.+\.rb)\z}
+
+    # Splits a pack source into its pack folder and its path inside the pack.
+    # Path text only: no `packwerk.yml` or `packs.yml` is read. A path with a
+    # `..` or `.` segment is not a pack source, so the pack root stays inside
+    # the project.
+    #
+    # @param source_rel [String] relative source path.
+    # @return [Array(String, String), nil] e.g. `["packs/catalog", "app/models/item.rb"]`, or nil.
+    def pack_split(source_rel)
+      # A `..` or `.` segment could move the pack root outside the project.
+      return if source_rel.split("/").any? { |segment| segment == ".." || segment == "." }
+
+      match = PACK_SOURCE.match(source_rel)
+      match && [match[1], match[2]]
+    end
+
+    # The tests the rules of {#infer_tests} find for a pack source when its
+    # pack folder is read as the project root, with the pack path put back in
+    # front (#494). `[]` for a source outside `packs/`. The inner path starts
+    # with `app/` or `lib/`, so the inner call never reaches this rule again.
+    #
+    # @param source_rel [String] relative source path.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] project-relative test paths.
+    def pack_tests(source_rel, root, prefer)
+      pack, inner = pack_split(source_rel)
+      return [] unless pack
+
+      infer_tests(inner, project_root: File.join(root, pack), prefer: prefer).map { |test| File.join(pack, test) }
     end
 
     # Exact and split tests for one logical base. A spec stays the only file.

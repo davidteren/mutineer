@@ -67,6 +67,8 @@ module Mutineer
     # tests, in-process and in the daemon (#491). `-I` is its short flag.
     ConfigOption.new(field: :extra_load_paths, type: :string_list, yaml_key: "load_path", flag: "--load-path"),
     ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
+    ConfigOption.new(field: :since_paired_tests, type: :bool, yaml_key: "since_paired_tests",
+                     flag: "--since-paired-tests"),
     ConfigOption.new(field: :shared_databases, type: :string_list, yaml_key: "shared_databases"),
     # YAML-only: pairs source patterns with extra test patterns for pairing (#382).
     ConfigOption.new(field: :test_map, type: :test_map, yaml_key: "tests"),
@@ -111,6 +113,14 @@ module Mutineer
   # `unpaired_sources` is code only. Pairing stores each source it skips
   # because no conventional test exists. An explicit test list leaves it empty.
   # There is no flag and no config-file key.
+  #
+  # `tests_by_source` is code only, as `unpaired_sources` is. Pairing stores
+  # each paired source with its tests (convention tests, then `tests:` map
+  # tests). An explicit test list leaves it empty.
+  #
+  # `since_paired_tests` (off by default) narrows the test list of an
+  # in-process or `--daemon` run under `--since` to the tests paired with the
+  # sources that have a mutant on a changed line ({JobPlan.since_tests}, #496).
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
@@ -121,7 +131,7 @@ module Mutineer
     # :unpaired_sources stays programmatic (set by pairing; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
-    :shared_databases, :unpaired_sources, :test_map, :extra_load_paths,
+    :shared_databases, :unpaired_sources, :tests_by_source, :test_map, :since_paired_tests, :extra_load_paths,
     keyword_init: true
   ) do
     # Config file name.
@@ -160,7 +170,9 @@ module Mutineer
       self.allow_empty   = false if allow_empty.nil?
       self.shared_databases ||= []
       self.unpaired_sources ||= []
+      self.tests_by_source ||= {}
       self.test_map      ||= []
+      self.since_paired_tests = false if since_paired_tests.nil?
       self.extra_load_paths ||= []
     end
 

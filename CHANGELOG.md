@@ -8,6 +8,35 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`since_paired_tests` runs only the tests of the changed sources under `--since` (#496).**
+  Turn it on with `since_paired_tests: true` in `.mutineer.yml` or with `--since-paired-tests`.
+  An in-process or `--daemon` run under `--since` then uses only the test files paired with the sources that have a mutant on a changed line: their convention tests and the tests of each matching `tests:` map entry.
+  Every source still loads, and the jobs, the mutant ids and the report's source list do not change.
+  It is off by default, so no run changes without it. That includes a GitHub Action run on a `pull_request` event with default inputs.
+  A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`, which is outside the score, so a narrowed `--threshold` gate can pass where a full run fails. Use a full run for a `--threshold` gate you rely on. A `--baseline` run (flag or `baseline` key) does not narrow, so its new-survivor check sees that mutant as `survived` (#552). Run the same command with `--no-since-paired-tests`, and if the mutant is killed there, add that test to the `tests:` map for the changed source.
+  `--test`, `--test-command`, `--baseline`, and `--coverage-from` on an in-process `--rails` or `--boot` run keep the full test list, and stderr says the setting has no effect. A run that ignores `--coverage-from` still narrows. A dry run is not changed.
+  The test list is part of the coverage cache key, so a narrowed run never gets a full cache hit on a full-run map. Partial recapture can reuse the entries of the tests it kept, when the tests it dropped pair with no source by convention. The narrowed run then saves its map over the full-run one in the same folder. Pass `--cache-dir .mutineer/since` to keep both.
+  No rate of lost kills is measured yet. A self-run on Mutineer's own `lib/` for pull request #525 ran 3 of 37 test files in 4.0 s, but its full run exited 1 after 164.6 s, so the two could not be compared (#553).
+  The limits are in #552. Making it the default is #553 (2.0).
+- **A source in a `packs/` folder pairs with the test in its pack (#494).**
+  `packs/catalog/app/models/item.rb` can pair with `packs/catalog/test/models/item_test.rb` or `packs/catalog/spec/models/item_spec.rb`.
+  The rule applies to a source at `packs/<pack path>/app/` or `packs/<pack path>/lib/`, only when the other rules find no test.
+  Inside the pack, the same rules apply with the pack folder as the root: split tests, `test/lib/`, the concern namespace path, and a longer source keeping its file.
+  Existing convention pairs stay the same.
+  An app with no `packs/` folder does not change.
+  Before this, a pack source with no `tests:` map entry was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A pack source that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  A `tests:` map entry still adds its tests to the pack tests. A pack source that the map paired with other tests, such as integration tests only, now also runs its pack tests. An app whose map entry for each pack already names that pack's test folder runs the same tests. The pack test now runs first for each mutant of its source. A standalone run can rebuild its coverage cache once. A suite that depends on test order can give a different verdict.
+  A failed test marks a pack source `uncapturable` only when pairing gives the source that test. A same-named test elsewhere, also one given with `--test` or a `tests:` map, no longer marks it, so its uncovered mutants show `no_coverage`.
+  Pass the source folders, such as `packs/*/app`. A source folder that holds test files, such as `packs`, lists each test file as an unpaired source.
+  Pack roots other than `packs/`, a `{path}` placeholder for the `tests:` map, and the other limits are in #554.
 - **`load_path:` in `.mutineer.yml` and `--load-path DIR` (short `-I DIR`) put directories on `$LOAD_PATH` (#491).**
   A suite that needs an extra directory, such as `test/support`, set it with `RUBYOPT=-I` before. `--daemon` does not pass `RUBYOPT` or `RUBYLIB` to the app (#100), so every mutant of such a suite scored `error` there.
   The value is a directory or a list of directories, relative to the project root or absolute. Repeat the flag for more. The command-line list replaces the file's list, unlike `ruby -I`, which adds.

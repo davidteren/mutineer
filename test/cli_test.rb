@@ -3482,4 +3482,342 @@ class CliTest < Minitest::Test
     _out, err = capture_io { Mutineer::CLI.warn_callback_growth([]) }
     assert_empty err
   end
+
+  # --- #496 since_paired_tests ----------------------------------------------
+
+  # AE4: pairing keeps each source's rows, convention tests then mapped tests,
+  # and since_tests unions the rows of the live sources in full-list order.
+  def test_autopair_records_tests_by_source
+    with_test_map_project do |proj|
+      config = config_resolved_by_cli(proj, "run", "app/controllers", "app/models")
+      Mutineer::CLI.autopair!(config)
+      rows = config.tests_by_source
+      assert_equal config.sources, rows.keys
+      assert_equal %w[test/controllers/boards_controller_test.rb test/controllers/concerns/authentication_test.rb],
+                   rows["app/controllers/concerns/board_scoped.rb"].sort
+      assert_equal "test/controllers/concerns/authentication_test.rb", rows["app/controllers/concerns/authentication.rb"].first
+      assert_includes rows["app/controllers/concerns/authentication.rb"], "test/controllers/boards_controller_test.rb"
+      assert_equal ["test/models/board_test.rb"], rows["app/models/board.rb"]
+      assert_equal rows.values.flatten.uniq.sort, config.tests.sort
+
+      config.since = "HEAD"
+      config.since_paired_tests = true
+      live = [[Struct.new(:file).new("app/models/board.rb"), nil, "x"],
+              [Struct.new(:file).new("app/controllers/boards_controller.rb"), nil, "y"]]
+      expected = config.tests.select do |t|
+        %w[test/controllers/boards_controller_test.rb test/models/board_test.rb].include?(t)
+      end
+      refute_equal config.tests, expected, "the fixture must leave a test out"
+      assert_equal expected, Mutineer::JobPlan.since_tests(config, live)
+    end
+  end
+
+  # The autopair fixture in a git repository, with one changed arithmetic
+  # line in lib/calc.rb and none in lib/greeter.rb.
+  def with_since_autopair_project(yaml: "threshold: 0\n")
+    with_autopair_project do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), yaml)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t], %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), args.join(" ")
+      end
+      calc = File.join(proj, "lib/calc.rb")
+      File.write(calc, File.read(calc).sub("a + b", "a + b # touched"))
+      yield proj
+    end
+  end
+
+  NARROWED = "[mutineer] --since: running 1 of 2 test files, the ones paired with the 1 of 2 paired sources " \
+             "that has a mutant on a changed line."
+
+  # AE1, AE2: the flag narrows a --since run and prints one line; without it
+  # the run is the 1.9.0 run. The jobs and the report do not change (R7).
+  def test_since_paired_tests_narrows_a_since_run
+    with_since_autopair_project do |proj|
+      args = ["run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--format", "json"]
+      out, err, status = mutineer(*args, "--since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan(NARROWED).size, err
+      narrowed = JSON.parse(out)
+
+      out, err, status = mutineer(*args, chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "--since: running"
+      full = JSON.parse(out)
+      assert_equal full["summary"].except("seconds"), narrowed["summary"].except("seconds")
+      assert_equal full["per_source"].map { |r| r["file"] }, narrowed["per_source"].map { |r| r["file"] }
+    end
+  end
+
+  # AE3, AE5, R3: --test and a reused --coverage-from (a --boot run) keep the
+  # full list and say the setting has no effect. A --coverage-from that the
+  # run ignores (no --boot) does not stop narrowing. A dry run prints neither line.
+  def test_since_paired_tests_has_no_effect_with_test_or_coverage_from
+    with_since_autopair_project do |proj|
+      base = ["run", "lib", "--since", "HEAD", "--since-paired-tests", "--operators", "arithmetic"]
+      _out, err, status = mutineer(*base, "--test", "test", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --since-paired-tests has no effect when --test is given"
+      refute_includes err, "--since: running"
+
+      File.write(File.join(proj, "cov.json"), "{}")
+      _out, err, status = mutineer(*base, "--coverage-from", "cov.json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "--coverage-from has no effect with a run without --rails/--boot"
+      refute_includes err, "--since-paired-tests has no effect"
+      assert_includes err, NARROWED
+
+      _out, err, = mutineer(*base, "--boot", "lib/calc.rb", "--coverage-from", "cov.json", chdir: proj)
+      assert_includes err, "[mutineer] --since-paired-tests has no effect when --coverage-from is given"
+      refute_includes err, "--since: running"
+
+      out, err, status = mutineer(*base, "--dry-run", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      dry_without, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--dry-run", chdir: proj)
+      assert_equal dry_without, out
+      refute_includes err, "since-paired-tests"
+      refute_includes err, "--since: running"
+    end
+  end
+
+  # The file key turns it on; a typed --no-since-paired-tests beats it.
+  # `since_paired_tests: false` and a run without --since print nothing.
+  def test_since_paired_tests_file_key_and_negation
+    with_since_autopair_project(yaml: "since_paired_tests: true\n") do |proj|
+      base = ["run", "lib", "--operators", "arithmetic"]
+      _out, err, = mutineer(*base, "--since", "HEAD", chdir: proj)
+      assert_includes err, NARROWED
+
+      _out, err, = mutineer(*base, "--since", "HEAD", "--test", "test", chdir: proj)
+      assert_includes err, "[mutineer] since_paired_tests in .mutineer.yml has no effect when --test is given"
+
+      _out, err, status = mutineer(*base, "--since", "HEAD", "--no-since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "since_paired_tests"
+      refute_includes err, "--since: running"
+
+      _out, err, = mutineer(*base, "--test", "test", chdir: proj)
+      refute_includes err, "since_paired_tests", "no --since: the key stays silent"
+    end
+  end
+
+  # R3: a --test-command run never narrows, and says so once.
+  def test_since_paired_tests_has_no_effect_with_test_command
+    with_since_autopair_project do |proj|
+      File.write(File.join(proj, "run.rb"), <<~RUBY)
+        File.write("files.txt", ARGV.join(" ") + "\n", mode: "a")
+        ARGV.each { |f| require File.expand_path(f) }
+      RUBY
+      _out, err, status = mutineer("run", "lib", "--since", "HEAD", "--since-paired-tests", "--operators", "arithmetic",
+                                   "--test-command", "#{RbConfig.ruby} run.rb %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 1, err.scan("[mutineer] --since-paired-tests has no effect when --test-command is given").size, err
+      refute_includes err, "--since: running"
+      runs = File.readlines(File.join(proj, "files.txt"), chomp: true)
+      refute_empty runs
+      runs.each { |line| assert_equal %w[calc_test.rb greeter_test.rb], line.split.map { |f| File.basename(f) } }
+    end
+  end
+
+  # #552 item 3: a mutant that only another source's test covers, and does not
+  # kill. lib/price.rb has the changed line; test/price_test.rb never calls
+  # Price#total; test/cart_test.rb (paired with lib/cart.rb) calls it with no
+  # assertion. Each test file writes a marker when it loads.
+  def with_hidden_survivor_project(yaml: "threshold: 0\n")
+    Dir.mktmpdir("mutineer-hidden-survivor") do |proj|
+      FileUtils.mkdir_p([File.join(proj, "lib"), File.join(proj, "test")])
+      File.write(File.join(proj, "lib/price.rb"), <<~RUBY)
+        class Price
+          def total(a, b)
+            a + b
+          end
+
+          def label
+            "price"
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "lib/cart.rb"), "class Cart\n  def size\n    1\n  end\nend\n")
+      File.write(File.join(proj, "test/price_test.rb"), <<~RUBY)
+        File.write(File.join(__dir__, "price_loaded.txt"), "x", mode: "a")
+        require "minitest/autorun"
+        require_relative "../lib/price"
+        class PriceTest < Minitest::Test
+          def test_label
+            assert_equal "price", Price.new.label
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "test/cart_test.rb"), <<~RUBY)
+        File.write(File.join(__dir__, "cart_loaded.txt"), "x", mode: "a")
+        require "minitest/autorun"
+        require_relative "../lib/cart"
+        require_relative "../lib/price"
+        class CartTest < Minitest::Test
+          def test_size
+            Price.new.total(1, 2)
+            assert_equal 1, Cart.new.size
+          end
+        end
+      RUBY
+      File.write(File.join(proj, "base.json"), JSON.generate("schema_version" => Mutineer::Reporter::SCHEMA_VERSION,
+                                                             "survivors" => []))
+      File.write(File.join(proj, ".mutineer.yml"), yaml)
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t], %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, *args, out: File::NULL, err: File::NULL), args.join(" ")
+      end
+      price = File.join(proj, "lib/price.rb")
+      File.write(price, File.read(price).sub("a + b", "a + b # touched"))
+      yield proj
+    end
+  end
+
+  BASELINE_GUARD = "[mutineer] --since-paired-tests has no effect when --baseline is given"
+
+  # #552 item 3: without --baseline, narrowing drops cart_test.rb and the
+  # mutant hides as no_coverage. With --baseline (flag or file key), the run
+  # keeps cart_test.rb, the mutant survives, the gate names it as new and
+  # exits 1, and stderr says so once. The guarded run equals a run without
+  # the setting.
+  def test_since_paired_tests_keeps_every_test_under_baseline
+    with_hidden_survivor_project do |proj|
+      args = ["run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--format", "json"]
+      cart_loaded = File.join(proj, "test/cart_loaded.txt")
+      out, err, status = mutineer(*args, "--since-paired-tests", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "--since: running 1 of 2 test files"
+      refute_path_exists cart_loaded, "the narrowed run never loads cart_test.rb"
+      hidden = JSON.parse(out)
+      assert_empty hidden["survivors"]
+      refute_empty hidden["no_coverage"]
+      assert hidden["no_coverage"].all? { |m| m["file"] == "lib/price.rb" }, hidden["no_coverage"].inspect
+
+      out, err, status = mutineer(*args, "--since-paired-tests", "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_equal 1, err.scan(BASELINE_GUARD).size, err
+      assert_equal "#{BASELINE_GUARD}\n", err.lines.grep(/has no effect/).join
+      refute_includes err, "--since: running"
+      assert_path_exists cart_loaded, "the guarded run captures cart_test.rb"
+      guarded = JSON.parse(out)
+      assert_empty guarded["no_coverage"]
+      ids = hidden["no_coverage"].map { |m| m["id"] }.sort
+      assert_equal ids, guarded["survivors"].map { |m| m["id"] }.sort, "the hidden mutants now survive"
+      assert_equal ids, guarded["baseline"]["new_survivors"].map { |m| m["id"] }.sort
+      assert guarded["baseline"]["regressed"], guarded["baseline"].inspect
+
+      out, err, status = mutineer(*args, "--baseline", "base.json", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      refute_includes err, "has no effect"
+      no_timing = ->(doc) { doc["survivors"].map { |m| m.except("seconds") } }
+      assert_equal no_timing.call(guarded), no_timing.call(JSON.parse(out))
+    end
+
+    with_hidden_survivor_project(yaml: "threshold: 0\nbaseline: base.json\nsince_paired_tests: true\n") do |proj|
+      _out, err, status = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      assert_equal 1, err.scan("[mutineer] since_paired_tests in .mutineer.yml has no effect when " \
+                               "baseline in .mutineer.yml is given").size, err
+      refute_includes err, "--since: running"
+
+      # The note names the first reason that applies: --test and a reused
+      # --coverage-from come before the baseline.
+      _out, err, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--test", "test", chdir: proj)
+      assert_equal ["[mutineer] since_paired_tests in .mutineer.yml has no effect when --test is given\n"],
+                   err.lines.grep(/has no effect when/), err
+      File.write(File.join(proj, "cov.json"), "{}")
+      _out, err, = mutineer("run", "lib", "--since", "HEAD", "--operators", "arithmetic", "--boot", "lib/price.rb",
+                            "--coverage-from", "cov.json", chdir: proj)
+      assert_equal ["[mutineer] since_paired_tests in .mutineer.yml has no effect when --coverage-from is given\n"],
+                   err.lines.grep(/has no effect when/), err
+    end
+  end
+
+  # --- #494 Packwerk pairing --------------------------------------------------
+
+  def with_packs_project
+    Dir.mktmpdir("mutineer-packs") do |proj|
+      FileUtils.cp_r(File.join(FIXTURES, "packs_layout", "."), proj)
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      yield proj
+    end
+  end
+
+  # AE7, AE11, R10, R11: a pack source pairs with its pack test, which kills
+  # its mutants. A pack source with no test stays unpaired and counted, in the
+  # real run and in the dry run.
+  def test_pack_source_pairs_with_the_test_in_its_pack
+    with_packs_project do |proj|
+      out, err, status = mutineer("run", "packs/catalog/app", "packs/billing/app", "--format", "json", "--matrix",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
+      killers = doc["matrix"]["mutants"].flat_map { |m| m["killed_by"] }.map { |i| doc["matrix"]["tests"][i]["file"] }
+      refute_empty killers
+      assert_equal ["packs/catalog/test/models/item_test.rb"], killers.uniq
+      assert_equal doc["summary"]["total"], doc["summary"]["killed"]
+      assert_equal 1, doc["summary"]["unpaired_sources"]
+      assert_equal [{ "file" => "packs/billing/app/models/invoice.rb", "mutants" => 1 }], doc["unpaired_sources"]
+      assert_equal 1, err.scan("no test found by convention").size, err
+      assert_includes err, "no test found by convention for packs/billing/app/models/invoice.rb"
+
+      out, err, status = mutineer("run", "packs/catalog/app", "packs/billing/app", "--dry-run", "--operators",
+                                  "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 unpaired (1 source has no paired test"
+    end
+  end
+
+  # Devin on #557: a pack test that requires the app's root test/test_helper.rb
+  # by name must load it. Without the root test/ on the load path, capture
+  # fails and the pack source's mutants score uncapturable.
+  def test_pack_test_loads_the_root_test_helper
+    with_packs_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      File.write(File.join(proj, "test/test_helper.rb"), "require \"minitest/autorun\"\nPACKS_HELPER = true\n")
+      test = File.join(proj, "packs/catalog/test/models/item_test.rb")
+      File.write(test, File.read(test).sub('require "minitest/autorun"', 'require "test_helper"'))
+      out, err, status = mutineer("run", "packs/catalog/app", "--format", "json", "--operators", "arithmetic",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_operator doc["summary"]["total"], :>, 0
+      assert_equal doc["summary"]["total"], doc["summary"]["killed"], err
+      refute_includes err, "cannot load such file -- test_helper"
+    end
+  end
+
+  # The load-root rule: a test under packs/ with no helper above it gets the
+  # nearest ancestor's test/ or spec/ helper folder. Other tests do not.
+  def test_test_load_roots_adds_the_root_helper_folder_for_a_pack_test
+    Dir.mktmpdir do |dir|
+      %w[test/test_helper.rb packs/a/test/models/x_test.rb packs/b/test/test_helper.rb packs/b/test/y_test.rb
+         lone/z_test.rb spec/spec_helper.rb packs/c/spec/w_spec.rb].each do |rel|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, rel)))
+        FileUtils.touch(File.join(dir, rel))
+      end
+      roots = ->(rel) { Mutineer::JobPlan.test_load_roots([File.join(dir, rel)], project_root: dir) }
+      assert_equal [File.join(dir, "test"), File.join(dir, "packs/a/test/models")], roots.call("packs/a/test/models/x_test.rb")
+      assert_equal [File.join(dir, "packs/b/test")], roots.call("packs/b/test/y_test.rb")
+      assert_equal [File.join(dir, "lone")], roots.call("lone/z_test.rb"), "a test outside packs/ keeps the 1.9.0 roots"
+      assert_includes roots.call("packs/c/spec/w_spec.rb"), File.join(dir, "spec")
+      assert_equal [File.join(dir, "packs/a/test/models")],
+                   Mutineer::JobPlan.test_load_roots([File.join(dir, "packs/a/test/models/x_test.rb")]),
+                   "without a project root there is no pack rule"
+    end
+  end
+
+  # A directory source of the whole `packs` folder lists the pack test file
+  # as a source too (1.9.0 Pairing.expand_sources behavior), so it is
+  # reported unpaired. The docs say to pass `packs/*/app` (#554).
+  def test_packs_directory_source_lists_the_pack_test_as_unpaired
+    with_packs_project do |proj|
+      out, err, status = mutineer("run", "packs", "--format", "json", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal %w[packs/billing/app/models/invoice.rb packs/catalog/test/models/item_test.rb],
+                   doc["unpaired_sources"].map { |row| row["file"] }
+      assert_equal 2, err.scan("no test found by convention").size, err
+      assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
+    end
+  end
 end

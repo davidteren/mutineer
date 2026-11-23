@@ -986,6 +986,81 @@ module Mutineer
       files.find { |file| File.expand_path(file, project_root) == absolute }
     end
 
+    # The test list a `--since` run with `since_paired_tests` uses (#496): the
+    # tests paired with each source that still has a job, in the order of
+    # `config.tests`. Returns `config.tests` itself when the run must keep its
+    # full list: the setting is off, there is no `--since`, a `--coverage-from`
+    # capture is reused (its test list must match, {coverage_from_reused?}),
+    # `--baseline` is set (a narrowed run can turn a new survivor into
+    # `no_coverage`, which the new-survivor check leaves out), pairing stored
+    # no rows (an explicit `--test` list, or a caller that built its own
+    # Config), there are no jobs, or a source with a job has no pairing row.
+    # Reads only.
+    #
+    # @param config [Mutineer::Config] run configuration after pairing.
+    # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
+    # @return [Array<String>] the narrowed test list, or `config.tests`.
+    def self.since_tests(config, jobs)
+      return config.tests unless config.since && config.since_paired_tests && !coverage_from_reused?(config)
+      return config.tests if config.baseline || config.tests_by_source.empty? || jobs.empty?
+
+      rows = config.tests_by_source.keys
+      wanted = Set.new
+      jobs.map { |subject,| subject.file }.uniq.each do |file|
+        key = unpaired_path(file, rows, config.project_root)
+        return config.tests unless key
+
+        config.tests_by_source.fetch(key).each { |test| wanted << File.expand_path(test, config.project_root) }
+      end
+      config.tests.select { |test| wanted.include?(File.expand_path(test, config.project_root)) }
+    end
+
+    # True when the run reuses a `--coverage-from` capture: an in-process
+    # `--rails` or `--boot` run. Other runs ignore the flag (the CLI warns),
+    # so it does not stop `since_paired_tests` there.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Boolean]
+    def self.coverage_from_reused?(config)
+      !config.coverage_from.nil? && !config.boot.nil? && !config.daemon && config.test_command.nil?
+    end
+
+    # Applies {since_tests} for {Runner.execute} and {DaemonBackend.execute}.
+    # Returns `config` itself when nothing narrows. Otherwise prints one stderr
+    # line with the counts and returns a copy of `config` with the narrowed
+    # test list. The source list is not narrowed, and the caller's config is
+    # not changed, so the CLI still reports the whole run.
+    #
+    # @param config [Mutineer::Config] run configuration after pairing.
+    # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
+    # @return [Mutineer::Config] `config`, or a narrowed copy.
+    def self.narrow_tests_for_since(config, jobs)
+      tests = since_tests(config, jobs)
+      return config if tests.size == config.tests.size
+
+      live = jobs.map { |subject,| File.expand_path(subject.file, config.project_root) }.uniq.size
+      warn since_narrowing_line(tests.size, config.tests.size, live, config.sources.size)
+      narrowed = config.dup
+      narrowed.tests = tests
+      narrowed
+    end
+
+    # The stderr line of a narrowed `--since` run (#496).
+    #
+    # @param kept_tests [Integer] test files the run uses.
+    # @param all_tests [Integer] test files pairing found.
+    # @param live_sources [Integer] paired sources with a mutant on a changed line.
+    # @param all_sources [Integer] paired sources.
+    # @return [String]
+    def self.since_narrowing_line(kept_tests, all_tests, live_sources, all_sources)
+      verb = live_sources == 1 ? "has" : "have"
+      "[mutineer] --since: running #{kept_tests} of #{all_tests} test files, the ones paired with the " \
+        "#{live_sources} of #{all_sources} paired sources that #{verb} a mutant on a changed line. " \
+        "A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. " \
+        "no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run, " \
+        "or add --baseline, which keeps every test."
+    end
+
     # Narrows the jobs and the suppressed (ignored) results to --since when it
     # is set, as the dry run does, so a scoped report lists only mutants on
     # changed lines. Also returns how many mutants there were before narrowing
@@ -1099,23 +1174,53 @@ module Mutineer
 
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
-    # holding that helper, plus the file's own dir as a fallback.
-    def self.test_load_roots(test_files)
+    # holding that helper, plus the file's own dir as a fallback. A test under
+    # the project's `packs/` folder with no helper above it also gets the `test/` or
+    # `spec/` folder (`spec/` first for a `_spec.rb` file) of the nearest
+    # ancestor that holds one, because a pack test requires the app's helper
+    # by name (#494).
+    #
+    # @param test_files [Array<String>] absolute test paths.
+    # @param project_root [String, nil] project root; nil skips the pack rule.
+    # @return [Array<String>] unique absolute directories.
+    def self.test_load_roots(test_files, project_root: nil)
+      packs = project_root && "#{File.expand_path(project_root)}/packs/"
       test_files.flat_map do |f|
-        dir = File.dirname(f)
-        root = nil
-        loop do
-          if File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
-            root = dir
-            break
+        root = helper_ancestor(File.dirname(f)) { |dir| helper_dir?(dir) ? dir : nil }
+        if root.nil? && packs && f.start_with?(packs)
+          names = f.end_with?("_spec.rb") ? %w[spec test] : %w[test spec]
+          root = helper_ancestor(File.dirname(f)) do |dir|
+            names.map { |name| File.join(dir, name) }.find { |sub| helper_dir?(sub) }
           end
-          parent = File.dirname(dir)
-          break if parent == dir
-
-          dir = parent
         end
         [root, File.dirname(f)].compact
       end.uniq
+    end
+
+    # Walks from `dir` up to the filesystem root and returns the first
+    # non-nil value the block gives for a directory.
+    #
+    # @param dir [String] absolute directory to start from.
+    # @yieldparam dir [String] each directory on the way up.
+    # @return [String, nil]
+    def self.helper_ancestor(dir)
+      loop do
+        found = yield dir
+        return found if found
+
+        parent = File.dirname(dir)
+        return nil if parent == dir
+
+        dir = parent
+      end
+    end
+
+    # True when `dir` holds `test_helper.rb` or `spec_helper.rb`.
+    #
+    # @param dir [String]
+    # @return [Boolean]
+    def self.helper_dir?(dir)
+      File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
     end
 
     # The unique absolute directories holding the sources. Sweep target for both

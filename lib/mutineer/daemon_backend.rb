@@ -56,13 +56,19 @@ module Mutineer
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
       jobs, ignored_results, extras[:unscoped_mutants] =
         JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
-      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Nothing to mutate (`--since` matched no changed line, or every mutant is
       # suppressed). Return before booting anything: the coverage daemon and the
       # worker daemons below each boot the whole app, and README documents
       # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
       return [AggregateResult.new(ignored_results), source_map, extras] if jobs.empty?
+
+      # With `since_paired_tests`, keep only the tests paired with the sources
+      # that have a job (#496). The daemon still gets every source.
+      narrowed_config = JobPlan.narrow_tests_for_since(config, jobs)
+      narrowed = !narrowed_config.equal?(config)
+      config = narrowed_config
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Worker count = resolved --jobs, capped at the job count (no idle daemons).
       # >1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the
@@ -86,7 +92,8 @@ module Mutineer
       # #495: phase seconds for the report. The worker daemons' boots add to boot_seconds.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
       begin
-        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count, timing)
+        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count, timing,
+                                                                 narrowed: narrowed)
 
         results =
           if worker_count > 1
@@ -174,7 +181,8 @@ module Mutineer
     #   after the worker daemons of a parallel run hold their locks. It is nil
     #   when this process could not boot one.
     # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
-    def self.prepare_run(config, abs_tests, worker_count, timing = {})
+    # @param narrowed [Boolean] passed to {coverage_map_from_client} (#496).
+    def self.prepare_run(config, abs_tests, worker_count, timing = {}, narrowed: false)
       client = nil
       boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       begin
@@ -183,7 +191,7 @@ module Mutineer
       rescue DaemonBootTimeout
         raise
       rescue DaemonBootError => e
-        warn_coverage_fallback("#{e.class}: #{e.message}")
+        warn_coverage_fallback("#{e.class}: #{e.message}", narrowed: narrowed)
         # No daemon listed a Rails app's databases, so no second worker may
         # share them. A --boot app without --rails has no database routing.
         unknown = { "error" => "the first daemon did not boot" }
@@ -198,7 +206,7 @@ module Mutineer
         client.provision(worker_count)
         timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
         coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        coverage_map = coverage_map_from_client(client, config, timing)
+        coverage_map = coverage_map_from_client(client, config, timing, narrowed: narrowed)
         # The daemon runs the clean checks inside its map build; report them apart.
         timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
         [coverage_map, worker_count, client]
@@ -260,8 +268,11 @@ module Mutineer
     # @param client [Mutineer::DaemonClient]
     # @param config [Mutineer::Config]
     # @param timing [Hash] phase seconds; this sets the clean check from the reply.
+    # @param narrowed [Boolean] true when `since_paired_tests` narrowed the
+    #   test list. An empty map from a capture that worked is then a real map
+    #   (its mutants are no_coverage, as in the full run), not a fallback (#496).
     # @return [Mutineer::CoverageMap, nil]
-    def self.coverage_map_from_client(client, config, timing = {})
+    def self.coverage_map_from_client(client, config, timing = {}, narrowed: false)
       data = client.coverage
       # #495: read it here, so a reply with an empty map keeps it too.
       timing[:clean_check_seconds] = data["clean_check_seconds"] if data.is_a?(Hash)
@@ -283,9 +294,21 @@ module Mutineer
         end
       end
 
+      if narrowed && data.is_a?(Hash) && data["map"] == {} && data["error"].nil?
+        empty = CoverageMap.from_data(map: {}, failed_test_files: data["failed_test_files"] || [],
+                                      project_root: config.project_root, load_lines: data["load_lines"] || [],
+                                      load_methods: data["load_methods"] || [],
+                                      clean_check_seconds: data["clean_check_seconds"])
+        # As in process: no coverage and a failed capture stops the run.
+        JobPlan.abort_if_unclean!(empty, framework: config.framework)
+        warn "[mutineer] --since: the test files since_paired_tests kept cover no source line, so every mutant " \
+             "that did not run at load scores no_coverage. Run without --since-paired-tests to check."
+        return empty
+      end
+
       unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
-        warn_coverage_fallback(reason)
+        warn_coverage_fallback(reason, narrowed: narrowed)
         # No narrowing ({job_result} runs every test), but the lines and
         # methods that ran at boot still classify a survivor on one of them.
         load_lines = data.is_a?(Hash) ? Array(data["load_lines"]) : []
@@ -293,7 +316,7 @@ module Mutineer
         return nil if load_lines.empty? && load_methods.empty?
 
         return CoverageMap.from_data(map: {}, failed_test_files: [], project_root: config.project_root,
-                                     load_lines: load_lines, load_methods: load_methods)
+                                     load_lines: load_lines, load_methods: load_methods, fallback: true)
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
@@ -303,19 +326,22 @@ module Mutineer
     rescue DaemonBootTimeout
       raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e
-      warn_coverage_fallback("#{e.class}: #{e.message}")
+      warn_coverage_fallback("#{e.class}: #{e.message}", narrowed: narrowed)
       nil
     end
 
-    # Stderr note when daemon coverage is unavailable (full --test set per mutant).
+    # Stderr note when daemon coverage is unavailable (every kept test per mutant).
     #
     # @api private
     # @param reason [String] short cause (boot error message, empty map, …).
+    # @param narrowed [Boolean] `since_paired_tests` narrowed the test list, so
+    #   the mutants run against that narrowed list, not the full one (#496).
     # @return [void]
-    def self.warn_coverage_fallback(reason = "unknown")
+    def self.warn_coverage_fallback(reason = "unknown", narrowed: false)
+      tests = narrowed ? "the test files since_paired_tests kept" : "the full --test set"
       # A missing file gets the dropped RUBYOPT/RUBYLIB note, as a mutant does (#500).
       warn "[mutineer] daemon coverage map unavailable (#{DaemonClient.with_load_env_hint(reason)}); running every " \
-           "mutant against the full --test set (score not comparable to an in-process run)."
+           "mutant against #{tests} (score not comparable to an in-process run)."
     end
     private_class_method :warn_coverage_fallback
 
@@ -480,9 +506,11 @@ module Mutineer
       # load and read as a false `killed`.
       # Narrow to covering tests (shared with the in-process path via
       # JobPlan.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
-      # no fork. No map, or an empty one (build failed) → run the full --test set
-      # (fallback, not narrowed).
-      sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      # no fork. No map, or the fallback map of a failed build (boot lines only)
+      # → run every test the run kept, not narrowed by coverage. A narrowed
+      # run's empty map from a capture that worked is a real map (#496).
+      sel = coverage_map && (!coverage_map.map.empty? || !coverage_map.fallback?) &&
+            JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
       seconds = nil # #495: set only when a request ran the mutant
       r =
         if Parser.invalid?(mutated)
@@ -567,7 +595,7 @@ module Mutineer
         # DaemonServer#boot! unshifts one entry at a time, so the last is
         # searched first: the test-helper roots, then the load_path
         # directories in the written order (#491), as in-process.
-        load_paths: extra_dirs.reverse + JobPlan.test_load_roots(abs_tests),
+        load_paths: extra_dirs.reverse + JobPlan.test_load_roots(abs_tests, project_root: config.project_root),
         # The same directories in the written order, for the coverage cache key.
         extra_load_paths: extra_dirs,
         cache_dir: File.expand_path(config.cache_dir, config.project_root),

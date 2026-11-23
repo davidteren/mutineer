@@ -267,6 +267,112 @@ class DaemonBackendContractTest < Minitest::Test
     assert_includes err, "could not list this app's databases (no pool)"
   end
 
+  # Devin on #557 (#496): a narrowed run whose kept tests pass but cover no
+  # source line gets an empty map from a capture that worked. That is a real
+  # map: an uncovered mutant is no_coverage, as in the full run, where other
+  # tests keep the map non-empty. Without narrowing, the 1.9.0 fallback (run
+  # every test) stays.
+  def test_a_narrowed_run_keeps_an_empty_daemon_map_as_a_real_map
+    with_jobs do |jobs, config, source_map|
+      reply = { "map" => {}, "failed_test_files" => [], "clean_check_seconds" => 1.0 }
+      client = Struct.new(:coverage).new(reply)
+      map = nil
+      _out, err = capture_io do
+        map = Mutineer::DaemonBackend.send(:coverage_map_from_client, client, config, {}, narrowed: true)
+      end
+      refute_nil map, "a narrowed empty map must not fall back to every test"
+      refute_includes err, "coverage map unavailable"
+      assert_includes err, "kept cover no source line, so every mutant that did not run at load scores no_coverage"
+      refute_predicate map, :fallback?
+      never_runs = Object.new
+      def never_runs.request(**) = raise("a mutant with no covering test must not run")
+      result = Mutineer::DaemonBackend.send(:job_result, jobs.first, 0, never_runs, 0, config, map, [], source_map)
+      assert_predicate result, :no_coverage?, "job_result gives the coverage verdict, as in process"
+
+      # The fallback map of a failed build still runs every kept test.
+      broken = { "map" => {}, "error" => "boom", "load_lines" => ["app/other.rb:1"] }
+      fallback = nil
+      _out, err = capture_io do
+        fallback = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(broken), config,
+                                                {}, narrowed: true)
+      end
+      assert_predicate fallback, :fallback?
+      assert_includes err, "the test files since_paired_tests kept"
+      runs = Object.new
+      def runs.request(**) = "killed"
+      def runs.last_cause = nil
+      result = Mutineer::DaemonBackend.send(:job_result, jobs.first, 0, runs, 0, config, fallback, [], source_map)
+      assert_predicate result, :killed?
+
+      capture_io do
+        assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, client, config, {}),
+                   "an empty map without narrowing keeps the full-suite fallback"
+      end
+      failed = { "map" => {}, "failed_test_files" => ["test/a_test.rb"] }
+      assert_raises(Mutineer::SmokeCheckError, "no coverage and a failed capture stops the run, as in process") do
+        Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(failed), config, {},
+                                     narrowed: true)
+      end
+      error = { "map" => {}, "error" => "boom" }
+      capture_io do
+        assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(error), config,
+                                                {}, narrowed: true), "a failed capture still falls back"
+      end
+    end
+  end
+
+  # #496: with `since_paired_tests`, the coverage daemon gets only the tests
+  # paired with the source that has a job, and still gets every source. With
+  # `--baseline` (#552 item 3), it gets every test and nothing narrows.
+  def test_since_paired_tests_narrows_the_tests_sent_to_the_daemon
+    [nil, "base.json"].each { |baseline| assert_daemon_since_tests(baseline) }
+  end
+
+  # One `--daemon` run of {test_since_paired_tests_narrows_the_tests_sent_to_the_daemon}.
+  def assert_daemon_since_tests(baseline)
+    Dir.mktmpdir("mutineer-daemon-since") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      %w[a b].each { |n| File.write(File.join(root, "app/#{n}.rb"), "class Scope#{n.upcase}\n  def t(x) = x + 1\nend\n") }
+      sources = %w[app/a.rb app/b.rb].map { |s| File.join(root, s) }
+      tests = %w[test/a_test.rb test/b_test.rb]
+      config = Mutineer::Config.new(sources: sources, tests: tests, project_root: root, framework: "minitest",
+                                    since: "HEAD", since_paired_tests: true, rails: true, daemon: true,
+                                    baseline: baseline, tests_by_source: sources.zip(tests.map { |t| [t] }).to_h)
+      stop = Class.new(StandardError)
+      boots = []
+      narrowed_flags = []
+      real_prepare = Mutineer::DaemonBackend.method(:prepare_run)
+      keep_a = ->(jobs, ignored, *_rest, **_kw) { [jobs.select { |s,| s.file.end_with?("a.rb") }, ignored, jobs.size] }
+      _out, err = capture_io do
+        Mutineer::JobPlan.stub(:scope_since, keep_a) do
+          Mutineer::DaemonClient.stub(:new, lambda { |boot:, **|
+            boots << boot
+            raise stop
+          }) do
+            Mutineer::DaemonBackend.stub(:prepare_run, lambda { |*args, narrowed: false|
+              narrowed_flags << narrowed
+              real_prepare.call(*args, narrowed: narrowed)
+            }) do
+              assert_raises(stop) { Mutineer::DaemonBackend.execute(config, [Mutineer::Mutators::Arithmetic]) }
+            end
+          end
+        end
+      end
+
+      assert_equal sources, boots.first[:sources]
+      assert_equal tests, config.tests, "the caller's config keeps the full list"
+      if baseline
+        assert_equal tests.map { |t| File.join(root, t) }, boots.first[:tests]
+        refute_includes err, "--since: running"
+        assert_equal [false], narrowed_flags
+      else
+        assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
+        assert_includes err, "running 1 of 2 test files"
+        assert_equal [true], narrowed_flags, "the map build is told the list was narrowed"
+      end
+    end
+  end
+
   # Mutatable fixture for the daemon-path tests: one arithmetic operator, so the
   # Arithmetic mutator yields a real Mutation to send through job_result.
   SOURCE = "class Order\n  def total(a, b)\n    a + b\n  end\nend\n"

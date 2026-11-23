@@ -68,7 +68,9 @@ module Mutineer
                              and any tests: map in .mutineer.yml (not under
                              --dry-run). A source at app/<dir>/concerns/ with no
                              test there also pairs with a split test at its
-                             namespace path.
+                             namespace path. A source at packs/<pack>/app/ or
+                             packs/<pack>/lib/ with no test by those rules pairs
+                             by the same rules inside its pack.
                              --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
@@ -78,6 +80,13 @@ module Mutineer
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
+        --since-paired-tests With --since, run only the tests paired with the sources
+                             that have a mutant on a changed line (in-process and
+                             --daemon; not with --test, --test-command,
+                             --baseline, or --coverage-from on an in-process
+                             --rails/--boot run; default: off)
+        --no-since-paired-tests  Turn it off for one run (beats a .mutineer.yml
+                             since_paired_tests:)
         --jobs N             Parallel worker count (default: processor count);
                              --test-command, --fail-fast, or --rails
                              without --daemon forces 1
@@ -183,6 +192,7 @@ module Mutineer
         o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
         o.on("--[no-]matrix") { |on| opts[:matrix] = on }
         o.on("--[no-]allow-empty") { |on| opts[:allow_empty] = on }
+        o.on("--[no-]since-paired-tests") { |on| opts[:since_paired_tests] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -545,6 +555,7 @@ module Mutineer
       # validated before discovery).
       validate_daemon!(config) if config.daemon
       warn_unused_coverage_from(config)
+      warn_unused_since_paired_tests(config)
       warn_unused_dry_run_settings(config)
 
       # A real boot run needs at least one --test file (nothing to select from
@@ -653,9 +664,32 @@ module Mutineer
       mode = if config.test_command then "--test-command"
              elsif config.daemon then "--daemon"
              elsif config.dry_run then "--dry-run"
-             elsif !config.boot then "a run without --rails/--boot"
+             elsif !JobPlan.coverage_from_reused?(config) then "a run without --rails/--boot"
              end
       warn_unused_settings(config, mode, %i[coverage_from]) if mode
+    end
+
+    # Says when `since_paired_tests` is on under `--since` but the run keeps
+    # its full test list anyway (#496): an explicit `--test` list, a
+    # `--test-command` run, a `--coverage-from` capture that the run reuses
+    # (its test list must match; {JobPlan.coverage_from_reused?}), or a
+    # `--baseline` gate (flag or file key), which a narrowed run could pass
+    # with a new survivor hidden as `no_coverage`. Names the first that
+    # applies. A run without `--since`, or with the setting off, prints
+    # nothing. A dry run runs no tests and prints nothing.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_unused_since_paired_tests(config)
+      return unless config.since_paired_tests && config.since && !config.dry_run
+
+      reason = if config.explicit?(:tests) then "--test is given"
+               elsif config.test_command then "--test-command is given"
+               elsif JobPlan.coverage_from_reused?(config) then "--coverage-from is given"
+               elsif config.baseline then "#{config.origin(:baseline)} is given"
+               end
+      warn "[mutineer] #{config.origin(:since_paired_tests)} has no effect when #{reason}" if reason
     end
 
     # `--dry-run` prints a candidate list; `--format html` never renders one,
@@ -926,8 +960,10 @@ module Mutineer
     # mode the dedicated --boot/--rails-requires-test check reports it;
     # otherwise exit 2 with a usage message. The framework is re-detected from
     # the inferred set unless it was set explicitly (a spec-only project
-    # loads/reports as rspec). An explicit test list leaves `unpaired_sources`
-    # empty and does not drop sources.
+    # loads/reports as rspec). The paired rows are kept on
+    # `config.tests_by_source`, for `since_paired_tests` (#496). An explicit
+    # test list leaves `unpaired_sources` and `tests_by_source` empty and does
+    # not drop sources.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -947,6 +983,7 @@ module Mutineer
       end
       config.unpaired_sources = unpaired
       config.sources = paired.map(&:first)
+      config.tests_by_source = paired.to_h
       config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
