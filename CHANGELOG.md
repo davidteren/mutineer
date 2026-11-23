@@ -72,6 +72,9 @@ All notable changes to this project are documented here. The format is based on
   On PostgreSQL and MySQL this run now copies its worker database. Before, it used the copy an earlier run left, or none. It needs the same database rights as a normal run, and it exits 1 when the copy fails.
   On SQLite the worker file was already copied on first use, so only the lock changes.
   When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again, so the run stops with the lock message if another run took it (#416).
+- **`docs/rails-setup.md` lists the run lock limits that stay open (Refs #416).**
+  A run without `--daemon` takes no database lock. A run takes its lock after its boot file and `--require` files have loaded. A parallel run whose worker daemons are all down at once holds no lock. A fallback run holds no lock while its one worker daemon respawns.
+  Each limit is tracked in #416. The fifth gap in #416, `file:` URI SQLite names, was already fixed in 1.9.0 by pull request #461 (#412).
 - **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
   A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
   A class that calls the macro while it loads keeps the original blocks.

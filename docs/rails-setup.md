@@ -170,6 +170,17 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | `:memory:` | Not supported by `--daemon`. |
 | Concurrent runs | A second `--rails --daemon` run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. A one-worker run keeps its first daemon, and that daemon's lock, until the run ends. When the first daemon does not boot, the run's one worker daemon takes the lock itself, and the run copies its worker database as a normal run does. That run also stops with this message when another run holds the lock. |
 
+The run lock does not cover every case. Each limit below is tracked in #416.
+In each case, run one Mutineer run per test database at a time.
+When a run stops with `another Mutineer run is using <base>`, wait for the other run to finish, or stop it.
+
+| Run lock limit | Detail |
+| --- | --- |
+| Runs without `--daemon` | A `--rails` run without `--daemon`, and a `--test-command` run, take no database lock. Beside a `--daemon` run, such a run can change the test database while a worker copies from it. A SQLite worker can copy it more than once during a run. |
+| Boot file and `--require` files | A run takes its lock after its boot file and its `--require` files have loaded. A second run can write the test database in those files before it stops. |
+| Parallel worker respawn | A parallel run holds no lock while all of its worker daemons are down at the same moment, until one of them has booted again. |
+| Fallback run respawn | A run whose first daemon did not boot holds no lock while its one worker daemon respawns. The new daemon asks for the lock again, so the run stops with the lock message when another run took the lock in that window. |
+
 | MySQL requirement or limit | Detail |
 | --- | --- |
 | Adapters | Supports `mysql2` and `trilogy`. |
