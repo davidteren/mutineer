@@ -26,9 +26,8 @@ lists before you go on:
   no issue number. Add the issue, or create one with its labels (AGENTS.md,
   "Labels"). The script exits 1 until every such line has one. It matches
   keywords only, so also look for limits worded as "only", "stays",
-  "ignores" or "same rule as". Before you file one, check AGENTS.md, "Fix
-  it in the pull request, or file an issue?": a silent wrong result from
-  your own new code is fixed in this branch, not filed.
+  "ignores" or "same rule as". Before you file one, read AGENTS.md, "Fix
+  it in the pull request, or file an issue?".
 - A test file that loses assertions, or gains a skip or a timeout. Give the
   reason for each in the pull request body.
 - Doc sync: a sentence you removed or changed that another doc still has, and
