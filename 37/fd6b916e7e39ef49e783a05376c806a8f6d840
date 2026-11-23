@@ -1,0 +1,37 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_60dbb8d43ba949 68-74
+test/daemon_worker_db_test.rb
+  s_9747bd218c1c67::t_137a558824dd9b 338-410
+test/run_lock_helpers.rb
+  s_9747bd218c1c67::t_e2e36f7174bade 34-46,85
+  s_9747bd218c1c67::t_c94da078ba7267 70-84
+  s_9747bd218c1c67::t_25bdfa559188ce 86
+docs/rails-setup.md
+  s_9747bd218c1c67::t_e79557f4c670ba 171,214
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_eca4adb9902e78 327-329,336-337,539-541,566-567
+lib/mutineer/daemon_server.rb
+  s_9747bd218c1c67::t_e1c2ccd8c4eadc 35-38,227-232,250-251
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_4da516032eaf4f 1122-1168
+test/daemon_mysql_test.rb
+  s_9747bd218c1c67::t_d06078d4e6f449 4,15-16,340-400,439,446,451,454-470
+test/daemon_postgres_test.rb
+  s_9747bd218c1c67::t_1e5d3701c5dce1 4,15-16,232-292,330,337,342,345-361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37fd6b916e7e39ef49e783a05376c806a8f6d840",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
