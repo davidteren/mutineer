@@ -191,9 +191,36 @@ All notable changes to this project are documented here. The format is based on
   It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
   Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
 - **The 12 known limits of reading `--test-command` output are documented (#342).**
-  `docs/rails-setup.md` lists each one and its result. The code comments cite #342.
-  The limits that can score a crash as `killed` are tracked in #515, and the one that can score `survived` wrongly in #516.
-  No scoring changed.
+  `docs/rails-setup.md` lists each one and its result.
+  The #515 and #516 entries below fix most of limits 4 and 9. #549 tracks each limit that stays open, and the code comments cite it.
+  This entry changes no scoring on its own.
+- **A `--test-command` crash no longer scores `killed` because of summary-like text away from a line start (#515).**
+  When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
+  So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill, when the run printed its real summary at a line start.
+  Such a crash now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
+  A Minitest run that stops after `# Running:` with no summary text after it still scores `killed`, as before (#342 limits 3 and 8).
+  Estimate: far below 1 project in 1,000, unmeasured.
+  A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start, on exit 1 or after a SimpleCov gate.
+  After a SimpleCov gate, a run whose passing summary is only off the line start also scores `error`, not `survived`.
+  The reason then says "not at the start of a line". Estimate: below 1 in 100 `--test-command` setups, unmeasured.
+  When no summary of the clean run starts a line, such as with a wrapper that prefixes each line, matching stays as in 1.9.0.
+  On exit 1, a line-start `# Running:` followed only by passing summary text away from a line start (a `-v` test name before a stop, or a real summary a wrapper moved) also scores `error` with that reason, never `killed`. 1.9.0 also scored it `error`.
+  Limits 3, 7 and 8 of #342 are accepted and keep their verdicts. #549 tracks them.
+- **A SimpleCov gate that stops a chain of `--test-command` suites scores `error`, not `survived` (#516).**
+  With SimpleCov's gate message and a passing summary, a mutant now scores `survived` only when its run printed at least as many summary lines as the clean run.
+  With fewer, a suite of the chain did not run and could have killed the mutant, so it scores `error`. The reason gives both counts.
+  Such a mutant leaves the score and counts in `no_verdict[]`, so the mutation score can change.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
+  Turn the coverage gate off for mutation runs.
+  Estimate: below 1 in 100 `--test-command` setups, unmeasured.
+  When the clean run printed no summary line, the rule stays as in 1.9.0. #549 tracks the cases that still score `survived`.
+- **The random-order warning of `--test-command` follows RSpec's option order (#522).**
+  RSpec reads `.rspec`, `.rspec-local`, the command, then `SPEC_OPTS`, and the last order option wins.
+  Mutineer now reads them the same way. A seed in `.rspec` that a later `--order rand` overrides now gets the warning.
+  With `--options FILE` or `-O FILE` in the command, Mutineer skips `.rspec` and `.rspec-local`, as RSpec does.
+  The warning now says "found no fixed seed in effect". It is a warning only: no verdict, score, exit code or JSON field changes.
+  #549 tracks the blind spots that stay, such as a `cd` inside a wrapper.
 - **A red clean check under `--rails` names the failing test and its error
   (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
   The clean check built its failure report on one, so under `--rails` the
