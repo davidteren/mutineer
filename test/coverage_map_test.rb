@@ -3152,6 +3152,16 @@ class CoverageMapTest < Minitest::Test
       File.write(longer, "class ItemPrice; end\n")
       refute_equal before_pack, digest.call(pack_src)
       assert_equal before_plain, digest.call(plain_src)
+
+      # A pack concern also sees a longer file at its namespace path in the pack.
+      concern = "packs/catalog/app/models/concerns/storage/totaled.rb"
+      FileUtils.mkdir_p(File.dirname(File.join(dir, concern)))
+      File.write(File.join(dir, concern), "module Totaled; end\n")
+      before_concern = digest.call(concern)
+      owner = File.join(dir, "packs/catalog/app/models/storage/totaled_bytes.rb")
+      FileUtils.mkdir_p(File.dirname(owner))
+      File.write(owner, "class TotaledBytes; end\n")
+      refute_equal before_concern, digest.call(concern)
     end
   end
 
