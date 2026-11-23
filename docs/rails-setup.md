@@ -39,6 +39,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test
 
 A file at `app/<dir>/concerns/<rest>.rb` pairs with a namespace test when the `concerns/` path has no pairable test.
 For example, `app/models/concerns/storage/totaled.rb` pairs with `test/models/storage/totaled_test.rb` or an unclaimed split such as `test/models/storage/totaled_bytes_test.rb`; a longer source or an already-paired model can retain that split.
+A source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` with no test by those rules pairs by the same rules inside its pack. For example, `packs/catalog/app/models/item.rb` pairs with `packs/catalog/test/models/item_test.rb`.
 See the [pairing table](ci.md).
 
 A controller concern often has no test at the conventional path.

@@ -3510,4 +3510,54 @@ class CliTest < Minitest::Test
     end
   end
 
+  # --- #494 Packwerk pairing --------------------------------------------------
+
+  def with_packs_project
+    Dir.mktmpdir("mutineer-packs") do |proj|
+      FileUtils.cp_r(File.join(FIXTURES, "packs_layout", "."), proj)
+      File.write(File.join(proj, ".mutineer.yml"), "threshold: 0\n")
+      yield proj
+    end
+  end
+
+  # AE7, AE11, R10, R11: a pack source pairs with its pack test, which kills
+  # its mutants. A pack source with no test stays unpaired and counted, in the
+  # real run and in the dry run.
+  def test_pack_source_pairs_with_the_test_in_its_pack
+    with_packs_project do |proj|
+      out, err, status = mutineer("run", "packs/catalog/app", "packs/billing/app", "--format", "json", "--matrix",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
+      killers = doc["matrix"]["mutants"].flat_map { |m| m["killed_by"] }.map { |i| doc["matrix"]["tests"][i]["file"] }
+      refute_empty killers
+      assert_equal ["packs/catalog/test/models/item_test.rb"], killers.uniq
+      assert_equal doc["summary"]["total"], doc["summary"]["killed"]
+      assert_equal 1, doc["summary"]["unpaired_sources"]
+      assert_equal [{ "file" => "packs/billing/app/models/invoice.rb", "mutants" => 1 }], doc["unpaired_sources"]
+      assert_equal 1, err.scan("no test found by convention").size, err
+      assert_includes err, "no test found by convention for packs/billing/app/models/invoice.rb"
+
+      out, err, status = mutineer("run", "packs/catalog/app", "packs/billing/app", "--dry-run", "--operators",
+                                  "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes out, "1 unpaired (1 source has no paired test"
+    end
+  end
+
+  # A directory source of the whole `packs` folder lists the pack test file
+  # as a source too (1.9.0 Pairing.expand_sources behavior), so it is
+  # reported unpaired. The docs say to pass `packs/*/app` (#554).
+  def test_packs_directory_source_lists_the_pack_test_as_unpaired
+    with_packs_project do |proj|
+      out, err, status = mutineer("run", "packs", "--format", "json", "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal %w[packs/billing/app/models/invoice.rb packs/catalog/test/models/item_test.rb],
+                   doc["unpaired_sources"].map { |row| row["file"] }
+      assert_equal 2, err.scan("no test found by convention").size, err
+      assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
+    end
+  end
 end

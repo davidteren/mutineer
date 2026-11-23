@@ -68,7 +68,9 @@ module Mutineer
                              and any tests: map in .mutineer.yml (not under
                              --dry-run). A source at app/<dir>/concerns/ with no
                              test there also pairs with a split test at its
-                             namespace path.
+                             namespace path. A source at packs/<pack>/app/ or
+                             packs/<pack>/lib/ with no test by those rules pairs
+                             by the same rules inside its pack.
                              --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)

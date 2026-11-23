@@ -18,6 +18,24 @@ All notable changes to this project are documented here. The format is based on
   The test list is part of the coverage cache key, so a narrowed run replaces a full-run cache in the same folder. Pass `--cache-dir .mutineer/since` to keep both.
   No rate of lost kills is measured yet. A self-run on Mutineer's own `lib/` for pull request #525 ran 3 of 37 test files in 4.0 s, but its full run exited 1 after 164.6 s, so the two could not be compared (#553).
   The limits are in #552. Making it the default is #553 (2.0).
+- **A source in a `packs/` folder pairs with the test in its pack (#494).**
+  `packs/catalog/app/models/item.rb` can pair with `packs/catalog/test/models/item_test.rb` or `packs/catalog/spec/models/item_spec.rb`.
+  The rule applies to a source at `packs/<pack path>/app/` or `packs/<pack path>/lib/`, only when the other rules find no test.
+  Inside the pack, the same rules apply with the pack folder as the root: split tests, `test/lib/`, the concern namespace path, and a longer source keeping its file.
+  Existing pairs stay the same.
+  An app with no `packs/` folder does not change.
+  Before this, a pack source with no `tests:` map entry was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A pack source that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  An app that already maps each pack with `tests:` runs the same tests. The pack test now runs first for each mutant of its source, and the coverage cache rebuilds once. A suite that depends on test order can give a different verdict.
+  Pass the source folders, such as `packs/*/app`. A source folder that holds test files, such as `packs`, lists each test file as an unpaired source.
+  Pack roots other than `packs/`, a `{path}` placeholder for the `tests:` map, and the other limits are in #554.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.

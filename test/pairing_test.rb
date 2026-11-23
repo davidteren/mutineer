@@ -940,4 +940,69 @@ class PairingTest < Minitest::Test
       assert_equal [], Mutineer::Pairing.mapped_tests_for("lib/missing.rb", resolved)
     end
   end
+
+  # --- #494 pack pairing ------------------------------------------------------
+
+  # AE7 to AE10: the pack rule, row by row. Each row is a tree, a source and
+  # the expected list. Rows with no pack (AE10) and a source that pairs at the
+  # project root (AE8) keep the 1.9.0 answer.
+  PACK_ROWS = [
+    ["AE7 exact", %w[packs/catalog/test/models/item_test.rb],
+     "packs/catalog/app/models/item.rb", %w[packs/catalog/test/models/item_test.rb]],
+    ["AE8 root rule wins", %w[test/packs/catalog/app/models/item_test.rb packs/catalog/test/models/item_test.rb],
+     "packs/catalog/app/models/item.rb", %w[test/packs/catalog/app/models/item_test.rb]],
+    ["nested pack", %w[packs/a/packs/b/test/x_test.rb], "packs/a/packs/b/app/x.rb", %w[packs/a/packs/b/test/x_test.rb]],
+    ["grouped pack", %w[packs/group/a/test/models/x_test.rb], "packs/group/a/app/models/x.rb",
+     %w[packs/group/a/test/models/x_test.rb]],
+    ["lib source, test/lib", %w[packs/a/test/lib/tools/x_test.rb], "packs/a/lib/tools/x.rb",
+     %w[packs/a/test/lib/tools/x_test.rb]],
+    ["lib source, test", %w[packs/a/test/tools/x_test.rb], "packs/a/lib/tools/x.rb", %w[packs/a/test/tools/x_test.rb]],
+    ["spec", %w[packs/a/spec/models/x_spec.rb], "packs/a/app/models/x.rb", %w[packs/a/spec/models/x_spec.rb]],
+    ["split test", %w[packs/a/test/models/item_test.rb packs/a/test/models/item_price_test.rb],
+     "packs/a/app/models/item.rb", %w[packs/a/test/models/item_test.rb packs/a/test/models/item_price_test.rb]],
+    ["longer source keeps its split", %w[packs/a/app/models/item_price.rb packs/a/test/models/item_test.rb
+                                         packs/a/test/models/item_price_test.rb],
+     "packs/a/app/models/item.rb", %w[packs/a/test/models/item_test.rb]],
+    ["concern namespace", %w[packs/a/test/models/storage/totaled_test.rb],
+     "packs/a/app/models/concerns/storage/totaled.rb", %w[packs/a/test/models/storage/totaled_test.rb]],
+    ["app/public", %w[packs/a/test/public/x_test.rb], "packs/a/app/public/x.rb", %w[packs/a/test/public/x_test.rb]],
+    ["pack named app", %w[packs/app/test/x_test.rb], "packs/app/app/x.rb", %w[packs/app/test/x_test.rb]],
+    ["no test in the pack", %w[packs/a/test/models/other_test.rb], "packs/a/app/models/x.rb", []],
+    ["AE10 packsx", %w[packsx/a/test/x_test.rb], "packsx/a/app/x.rb", []],
+    ["AE10 app/packs", %w[app/packs/a/test/x_test.rb], "app/packs/a/app/x.rb", []],
+    ["AE10 no app or lib", %w[packs/a/test/x_test.rb], "packs/a/x.rb", []],
+    ["AE10 lib", %w[test/x_test.rb], "lib/x.rb", %w[test/x_test.rb]],
+    ["AE10 app", %w[test/models/x_test.rb], "app/models/x.rb", %w[test/models/x_test.rb]]
+  ].freeze
+
+  def test_pack_rule_across_layouts
+    PACK_ROWS.each do |label, tree, source, expected|
+      with_tree(*tree) do |root|
+        assert_equal expected, Mutineer::Pairing.infer_tests(source, project_root: root), label
+      end
+    end
+  end
+
+  def test_pack_split
+    {
+      "packs/catalog/app/models/item.rb" => ["packs/catalog", "app/models/item.rb"],
+      "packs/catalog/lib/tools/x.rb" => ["packs/catalog", "lib/tools/x.rb"],
+      "packs/a/packs/b/app/x.rb" => ["packs/a/packs/b", "app/x.rb"],
+      "packs/group/a/app/x.rb" => ["packs/group/a", "app/x.rb"],
+      "packs/app/app/x.rb" => ["packs/app", "app/x.rb"],
+      "packs/a/app/models/packs/b/app/x.rb" => ["packs/a", "app/models/packs/b/app/x.rb"],
+      "packs/a/x.rb" => nil,
+      "packs/app/x.rb" => nil,
+      "packsx/a/app/x.rb" => nil,
+      "app/packs/a/app/x.rb" => nil,
+      "lib/x.rb" => nil,
+      "packs/a/app/x.txt" => nil
+    }.each do |path, expected|
+      if expected
+        assert_equal expected, Mutineer::Pairing.pack_split(path), path
+      else
+        assert_nil Mutineer::Pairing.pack_split(path), path
+      end
+    end
+  end
 end

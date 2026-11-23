@@ -29,7 +29,22 @@ module Mutineer
         @blame_for ||= {}
         return @blame_for[source_rel] if @blame_for.key?(source_rel)
 
-        @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+        @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel) ||
+                                 pack_failed_test?(source_rel)
+      end
+
+      # True when a failed test file is one that {Pairing.infer_tests} pairs
+      # with a pack source (`packs/<pack path>/app/` or `lib/`, #494). The
+      # mirror checks above look under the project's own `test/`, so a split
+      # test inside the pack would blame nothing without this.
+      #
+      # @param source_rel [String] project-relative source path.
+      # @return [Boolean]
+      def pack_failed_test?(source_rel)
+        return false unless Pairing.pack_split(source_rel)
+
+        paired = Pairing.infer_tests(source_rel, project_root: @project_root, prefer: @framework || "minitest")
+        @failed_test_files.any? { |test_path| paired.include?(relativize(test_path)) }
       end
 
       # True when a failed exact `_test` / `_spec` / `test_` file pairs with

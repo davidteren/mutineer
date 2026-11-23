@@ -3105,4 +3105,69 @@ class CoverageMapTest < Minitest::Test
       end
     end
   end
+
+  # --- #494 pack sources ------------------------------------------------------
+
+  # A failed split test inside a pack marks its pack source. The same split
+  # name in another directory of the pack does not mark another source.
+  def test_failing_pack_split_test_marks_only_its_pack_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "packs/catalog/app/models/item.rb")
+      other = File.join(dir, "packs/catalog/app/services/stock.rb")
+      bad = File.join(dir, "packs/catalog/test/models/item_upsert_test.rb")
+      [src, other, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(src, "class Item; def n; 1; end; end\n")
+      File.write(other, "class Stock; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src, other], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+      refute map.uncapturable_source?(other)
+    end
+  end
+
+  # A longer file in another root of the pack can own a split name of a pack
+  # source, so its presence changes the digest. A source outside packs/ keeps
+  # the digest it had.
+  def test_digest_of_a_pack_source_sees_a_longer_file_in_its_pack
+    Dir.mktmpdir do |dir|
+      pack_src = "packs/catalog/app/models/item.rb"
+      plain_src = "app/models/item.rb"
+      [pack_src, plain_src].each do |rel|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, rel)))
+        File.write(File.join(dir, rel), "class Item; end\n")
+      end
+      digest = lambda do |src|
+        Mutineer::CoverageMap.new(source_paths: [src], test_paths: [], cache_dir: dir, project_root: dir)
+                             .send(:compute_digest)
+      end
+      before_pack = digest.call(pack_src)
+      before_plain = digest.call(plain_src)
+      longer = File.join(dir, "packs/catalog/lib/models/item_price.rb")
+      FileUtils.mkdir_p(File.dirname(longer))
+      File.write(longer, "class ItemPrice; end\n")
+      refute_equal before_pack, digest.call(pack_src)
+      assert_equal before_plain, digest.call(plain_src)
+    end
+  end
+
+  # The pack test of a pack source runs first for its mutants.
+  def test_order_tests_puts_the_pack_test_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "packs/catalog/app/models/item.rb"
+    paired = "packs/catalog/test/models/item_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
+  end
 end
