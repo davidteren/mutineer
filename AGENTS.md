@@ -138,8 +138,8 @@ who cannot set labels files the issue without them, and a maintainer adds them.
 
 ### Fix it in the pull request, or file an issue?
 
-A follow-up issue is not a substitute for a fix. Before you file an issue
-for something a pull request found, ask what caused it:
+An issue filed for later is not a substitute for a fix. Before you file an
+issue for something a pull request found, ask what caused it:
 
 - **New code in this pull request gives a silent wrong result** (a false
   survivor, a false kill, a wrong score or exit code, with no error or
@@ -147,7 +147,7 @@ for something a pull request found, ask what caused it:
   it for later.
 - **The defect is older than this pull request**, or the user sees an error,
   or a maintainer accepted the limit: file an issue, with its labels, and
-  name it in the change ("Track every limitation").
+  name its number in the change (see "Shift-left rules" below).
 
 ### After the pull request is open
 
