@@ -651,6 +651,8 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.warn_unused_coverage_from(config)
+      return if JobPlan.coverage_from_reused?(config) && !config.dry_run
+
       mode = if config.test_command then "--test-command"
              elsif config.daemon then "--daemon"
              elsif config.dry_run then "--dry-run"
