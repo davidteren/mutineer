@@ -1,0 +1,23 @@
+docs/rails-setup.md
+  s_9747bd218c1c67::t_6afc1c256d481a 173-183
+CHANGELOG.md
+  s_9747bd218c1c67::t_a5d6fb3b33fd23 75-77
+docs/plans/2026-11-22-416-fix-run-lock-gaps-plan.md
+  s_9747bd218c1c67::t_e69af35c9b506f 1-378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5cdc48b681c47e55839952d2640d5bcb6ccf234",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
