@@ -1,0 +1,23 @@
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_b8a19ebad8b7e8 1117-1139
+test/daemon_worker_db_test.rb
+  s_9747bd218c1c67::t_18c19ba18091be 311-312,319,321-322,327-330,332
+test/run_lock_helpers.rb
+  s_9747bd218c1c67::t_07047070b75d45 24-28,30,33-36,41-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8794798726acdee75344222f6c8f786f5ba6f0a9",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
