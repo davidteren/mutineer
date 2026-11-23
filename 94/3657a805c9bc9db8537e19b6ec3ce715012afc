@@ -1,0 +1,21 @@
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_ad2c7ffd012c4c 98-100,173-174
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_6bece958f5c2c6 1116-1118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "943657a805c9bc9db8537e19b6ec3ce715012afc",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
