@@ -1,0 +1,187 @@
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9ad04fc3dbec64::t_fedef89c53d8b3 16
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_9ad04fc3dbec64::t_f173ac141ab892 18
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_9ad04fc3dbec64::t_69bb6eeb9c51e8 17
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9ad04fc3dbec64::t_72db9eee6c977d 14-21
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_9ad04fc3dbec64::t_9aa4950627d90b 9-10,15
+AGENTS.md
+  s_9ad04fc3dbec64::t_798ea1b6d9ef2f 107-112
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_625377157bed5a 11-20,25,27,32-47,62,68-77,121-130,179-207,212,214,224,232-261,282
+README.md
+  s_9ad04fc3dbec64::t_a197bd360a8868 124-125
+STABILITY.md
+  s_9ad04fc3dbec64::t_b03f3795de5556 26-30,56-62
+docs/agentic-coding.html
+  s_9ad04fc3dbec64::t_ee0ed31e635863 27
+docs/assets/mutineer.css
+  s_9ad04fc3dbec64::t_6d194b7183b909 187
+docs/cli.md
+  s_9ad04fc3dbec64::t_fc4525daf44a6a 26,115,136
+docs/equivalent-skips.html
+  s_9ad04fc3dbec64::t_1c4a551c14711a 27,133,155,158,160,162
+docs/equivalent-skips.md
+  s_9ad04fc3dbec64::t_7823b17e4fdda3 184,208,211,213,215
+docs/index.html
+  s_9ad04fc3dbec64::t_671588830fb43d 27
+docs/json-schema.md
+  s_9ad04fc3dbec64::t_e8213c4476ed08 51,71,91,105-107,123-124,133,146-185,192-193,279,281-283,300-301,328-329,483
+docs/learn.html
+  s_9ad04fc3dbec64::t_df2968e1cf9dd9 27
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_9ad04fc3dbec64::t_f5b216a7aa346f 1-630
+docs/plans/2026-11-22-515-516-522-fix-test-command-output-plan.md
+  s_9ad04fc3dbec64::t_c1465e914fdced 1-415
+docs/plans/2026-11-22-517-491-feat-daemon-load-paths-plan.md
+  s_9ad04fc3dbec64::t_dbb1ab4cde58fb 1-396
+docs/plans/2026-11-22-526-505-518-feat-report-fields-plan.md
+  s_9ad04fc3dbec64::t_d16f2339a3af3a 1-381
+docs/rails-setup.md
+  s_9ad04fc3dbec64::t_4b35eed04e74bb 69,143,199-217,279,331-332,334-335,339,341,343,349-350,353-355
+docs/rails.html
+  s_9ad04fc3dbec64::t_78a7238137a79a 27
+docs/results.md
+  s_9ad04fc3dbec64::t_0c0d3862c4dad1 118,124
+docs/sample-report.html
+  s_9ad04fc3dbec64::t_14009e1b40ec29 21
+lib/mutineer/cli.rb
+  s_9ad04fc3dbec64::t_2261687290ab45 94-97,200-203,582,643-644,759-762,770-777,779,1076,1086-1087,1089-1090,1267-1268,1271-1273
+lib/mutineer/config.rb
+  s_9ad04fc3dbec64::t_2fbd9d3a12a40f 66-68,106-110,124,164,383,419-437
+lib/mutineer/coverage_map.rb
+  s_9ad04fc3dbec64::t_400bf869fda86e 174-175,182-183
+lib/mutineer/coverage_map/cache.rb
+  s_9ad04fc3dbec64::t_6b4a653159d982 310-351,373
+lib/mutineer/coverage_map/capture.rb
+  s_9ad04fc3dbec64::t_c4e5d44d0ffd9c 98-99,209-210
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_9ad04fc3dbec64::t_ac8d8bcfdb5464 219
+lib/mutineer/coverage_map/child_scripts.rb
+  s_9ad04fc3dbec64::t_405a4153d83200 26-27
+lib/mutineer/coverage_map/failed_test_blame.rb
+  s_9ad04fc3dbec64::t_e43b7c37e154ca 41-42
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_9ad04fc3dbec64::t_e637a2624ee7b9 249
+lib/mutineer/daemon_backend.rb
+  s_9ad04fc3dbec64::t_8617a2d117bd8d 503,545-547,560,567-572,591-593
+lib/mutineer/daemon_client.rb
+  s_9ad04fc3dbec64::t_bd28180557f227 57-58,67-72,75,89,271-272,286-287,587,591-612
+lib/mutineer/daemon_server.rb
+  s_9ad04fc3dbec64::t_278f35a87eecba 35,39-42,335,338-339
+lib/mutineer/external_backend.rb
+  s_9ad04fc3dbec64::t_66b43dfe91427f 63-71,86-88,90-92,94-106,210-218,220,244,252-262,264-280,288-293,298-304,324-374,379,381-382,389-398,402,404-407,416-425,429,431-432,435,439-451,459,461-462,478-497,511-543,561-564,569-570,576-577
+lib/mutineer/job_plan.rb
+  s_9ad04fc3dbec64::t_405a5d3c063219 366-368,428-438,443-446,448-449,453-455,460,462-463,465,470-502,505-535,537-541,543,546-551,574-577,579-580,1087-1099
+lib/mutineer/mutators/collection_method.rb
+  s_9ad04fc3dbec64::t_d1f91bee28678a 19-20,49-55,108-109,147-148,173-177,186-187,229-241,245-252,254,262-267
+lib/mutineer/project.rb
+  s_9ad04fc3dbec64::t_b1cb39fcac96cb 20,24,30-209,387-390,393,418,551-553,560-561,572-573,616-617
+lib/mutineer/reload_guards.rb
+  s_9ad04fc3dbec64::t_95904f26ea20d6 9,14-16,19-22,25,80-103,128-151,173,1079-1099,1136
+lib/mutineer/reporter.rb
+  s_9ad04fc3dbec64::t_d81219388b8a19 71,99-102,106-107,110,342-346,377-378,813-823,846,862,868-913,921-946,956-959,986,1005-1006,1015,1170-1171,1174,1190-1192,1194-1195,1703-1705,1708-1717
+lib/mutineer/result.rb
+  s_9ad04fc3dbec64::t_fc4a110dad6000 32-36
+lib/mutineer/runner.rb
+  s_9ad04fc3dbec64::t_c9fa73970080d6 69-72,116-117,126,159-160,173-192,237,244-245,259,265-266,314,379,404,414-415,437-438,440,447-448,526,641-656
+lib/mutineer/subject.rb
+  s_9ad04fc3dbec64::t_5d76de98620ee4 30-39,42,65-67,74-75
+rake/docs_contract.rb
+  s_9ad04fc3dbec64::t_27fd512b02dc71 530
+test/browser/site.spec.js
+  s_9ad04fc3dbec64::t_4eb75799192a1b 120-131
+test/call_superclass_reload_test.rb
+  s_9ad04fc3dbec64::t_587c8ce82ff51a 22-29,45,102-119,130-406
+test/cli_test.rb
+  s_9ad04fc3dbec64::t_9c41da7919b46e 1698-1739,3384-3411,3414-3416,3429-3433,3435-3460
+test/config_test.rb
+  s_9ad04fc3dbec64::t_472430217eed33 123-165,784
+test/coverage_map_test.rb
+  s_9ad04fc3dbec64::t_7fe259f0d8f876 626-677,769-772
+test/daemon_backend_contract_test.rb
+  s_9ad04fc3dbec64::t_a3f04f81ca809d 128-132,139-159,432-467
+test/daemon_client_env_test.rb
+  s_9ad04fc3dbec64::t_0314f8ff62a7aa 256-259
+test/daemon_coverage_test.rb
+  s_9ad04fc3dbec64::t_09bc4daca907e7 8,190-219
+test/daemon_redaction_test.rb
+  s_9ad04fc3dbec64::t_888604791034c1 274-328
+test/external_backend_test.rb
+  s_9ad04fc3dbec64::t_c6da7cc71d6cd2 6,71-117,127-131,138,140-144,146-147,151-261,268,271-274,279-316,438,440,443-530,603-649
+test/fixtures/const_superclass.rb
+  s_9ad04fc3dbec64::t_47cedc2d42db71 1-22
+test/fixtures/const_superclass_holders.rb
+  s_9ad04fc3dbec64::t_ac354cab20ee67 1-9
+test/fixtures/const_superclass_subclass_test.rb
+  s_9ad04fc3dbec64::t_801f98baaf88f2 1-19
+test/fixtures/const_superclass_test.rb
+  s_9ad04fc3dbec64::t_d72789221a704a 1-25
+test/fixtures/local_read_superclass.rb
+  s_9ad04fc3dbec64::t_3c0b5442793eed 1-12
+test/fixtures/local_read_superclass_test.rb
+  s_9ad04fc3dbec64::t_3b4ed88cee7f62 1-15
+test/fixtures/local_superclass.rb
+  s_9ad04fc3dbec64::t_f40099ccc8bb52 1-13
+test/fixtures/local_superclass_test.rb
+  s_9ad04fc3dbec64::t_8215e247e6498a 1-19
+test/fixtures/rails_app/app/models/concerns/own_stamps.rb
+  s_9ad04fc3dbec64::t_e87455948885f6 1-10
+test/fixtures/rails_app/app/models/helper_chain_note.rb
+  s_9ad04fc3dbec64::t_496f98e535aaa5 1-20
+test/fixtures/rails_app/app/models/ledger_row.rb
+  s_9ad04fc3dbec64::t_cb78744da54e1b 1-16
+test/fixtures/rails_app/app/models/own_chain_note.rb
+  s_9ad04fc3dbec64::t_61d805cf585ff1 1-21
+test/fixtures/rails_app/extra_load_path/load_path_probe.rb
+  s_9ad04fc3dbec64::t_77764df99f2d08 1-8
+test/fixtures/rails_app/extra_tests/load_path_probe_test.rb
+  s_9ad04fc3dbec64::t_fc65f40b469577 1-16
+test/fixtures/rails_app/test/models/helper_chain_note_test.rb
+  s_9ad04fc3dbec64::t_1f002708dfe3cf 1-13
+test/fixtures/rails_app/test/models/ledger_row_test.rb
+  s_9ad04fc3dbec64::t_a971952b55d774 1-16
+test/fixtures/rails_app/test/models/own_chain_note_test.rb
+  s_9ad04fc3dbec64::t_9983fd3d34f46c 1-14
+test/json_reporter_test.rb
+  s_9ad04fc3dbec64::t_1c4b1cbb86adff 13-26,127,137,142,147-343,412-414,418-420,439-474,521,523-524,528,534-542,624-625
+test/load_path_test.rb
+  s_9ad04fc3dbec64::t_b3352bd53e032e 1-268
+test/mutators/collection_method_test.rb
+  s_9ad04fc3dbec64::t_af905426c05918 1063,1065-1593
+test/project_test.rb
+  s_9ad04fc3dbec64::t_9994a4270e696a 1590,1593-1681
+test/rails_callback_restore_test.rb
+  s_9ad04fc3dbec64::t_ae3ef9ade8781d 10-11,33-44
+test/rails_dogfood_daemon_test.rb
+  s_9ad04fc3dbec64::t_72d92d5917c752 6-7,224-281
+test/reload_guards_test.rb
+  s_9ad04fc3dbec64::t_8a4d3d0a6e5e76 1612-1664
+test/runner_daemon_test.rb
+  s_9ad04fc3dbec64::t_e7e1411064bcc8 5-7,117-178
+test/runner_external_test.rb
+  s_9ad04fc3dbec64::t_f23be7ebcbcb46 237-317,389-407
+test/runner_test.rb
+  s_9ad04fc3dbec64::t_4c1557a0b4d420 1875-1894,1964,1968-1983
+test/support/rails_callback_restore_probe.rb
+  s_9ad04fc3dbec64::t_59ae5df486056e 8-10,12,22-50,54-121,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ad669456e38c78a15c3bc76bc52a2494172d48f7",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
