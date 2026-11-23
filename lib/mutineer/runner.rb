@@ -66,9 +66,10 @@ module Mutineer
     # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
     # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
     # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
-    # whose callback count grew after a reload (#479), empty under redefine. A
-    # `--test-command` run and a run that returns before any mutant leave that key
-    # out, so read it with `fetch(:callback_growth, [])`.
+    # whose callback count grew after a reload (#479), empty under redefine, and
+    # nil when a reload or `--daemon` run could not create its log, so it checked
+    # nothing (#505). A `--test-command` run leaves that key out: it does not
+    # reload, so read it with `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -112,7 +113,8 @@ module Mutineer
       # payloads (Prism), so branch before any in-process boot.
       # #479: each reload child logs a class whose callback count grew, and
       # the run returns them once each in extras[:callback_growth].
-      growth_log = JobPlan.create_callback_growth_log if config.daemon || config.strategy == "reload"
+      checks_growth = config.daemon || config.strategy == "reload"
+      growth_log = JobPlan.create_callback_growth_log if checks_growth
       ReloadGuards.callback_growth_log = growth_log
 
       if config.daemon
@@ -121,7 +123,7 @@ module Mutineer
         # as it is in process.
         check_boot_files!(config)
         result = DaemonBackend.execute(config, operator_classes)
-        result[2][:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+        result[2][:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
         return result
       end
 
@@ -154,6 +156,8 @@ module Mutineer
         since_jobs, since_ignored, since_extras[:unscoped_mutants] =
           JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
         if since_jobs.empty?
+          # As the daemon path reports an empty run (#505).
+          since_extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
           return [AggregateResult.new(since_ignored), since_source_map, since_extras]
         end
         since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
@@ -307,7 +311,7 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
-      extras[:callback_growth] = JobPlan.callback_growth_rows(growth_log, config.project_root)
+      extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
       extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
@@ -372,7 +376,7 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed, check_summary, random_order = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary, random_order, clean_summaries = ExternalBackend.smoke_check!(config.test_command, abs_tests)
         # #495: each command boots the app itself, and nothing captures coverage.
         timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: smoke_elapsed, mutants_seconds: nil }
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
@@ -397,7 +401,7 @@ module Mutineer
                     "--order rand out of SPEC_OPTS"
                 end
           warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
-               "seed (#{seed}) and Mutineer found no fixed seed, so each mutant run may use a new test " \
+               "seed (#{seed}) and Mutineer found no fixed seed in effect, so each mutant run may use a new test " \
                "order and an order-dependent suite can give a false kill. To fix the order, #{fix}."
         end
 
@@ -407,7 +411,8 @@ module Mutineer
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose, check_summary: check_summary)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
+                             clean_summaries: clean_summaries)
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
@@ -429,16 +434,18 @@ module Mutineer
     # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
-    # @param check_summary [Boolean] passed to {ExternalBackend.run}.
+    # @param check_summary [Boolean, :line] passed to {ExternalBackend.run}.
+    # @param clean_summaries [Integer] passed to {ExternalBackend.run}.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:)
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, clean_summaries: 0)
       source  = Parser.read(subject.file)
       mutated = mutation.apply(source)
       return Result.skipped if Parser.invalid?(mutated)
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = FileSwap.with(subject.file, mutated) do
-        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary)
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary,
+                            clean_summaries: clean_summaries)
       end
       result.with(seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
     end
@@ -516,7 +523,7 @@ module Mutineer
       reach_key = sentinel && ReachProbe.reach_key
       # The reload text is built once, before the fork, so the parent checks
       # the text that the child loads. It is the same text the daemon loads: a
-      # hook-block def placed (#297), a call superclass kept (#492). Under
+      # hook-block def placed (#297), a live superclass kept (#492, #512, #503). Under
       # redefine the child builds the def text itself
       # ({Isolation.apply_surgical}), from the same values.
       unless strategy == "redefine"
@@ -630,6 +637,22 @@ module Mutineer
       nil
     end
     private_class_method :reconnect_active_record
+
+    # The callback growth rows of a run (#479), or nil when the run had to
+    # check them and could not create its log (#505). A run that does not
+    # reload checks nothing and grows nothing, so it gets an empty list.
+    #
+    # @api private
+    # @param growth_log [String, nil] the log file, or nil when there is none.
+    # @param checks_growth [Boolean] the run reloads (`reload` or `--daemon`).
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>, nil] each class name and its file.
+    def self.callback_growth(growth_log, checks_growth, project_root)
+      return nil if checks_growth && growth_log.nil?
+
+      JobPlan.callback_growth_rows(growth_log, project_root)
+    end
+    private_class_method :callback_growth
 
     # The absolute path of a project file `require` can load: as given, or
     # with `.rb` or the native-extension suffix.

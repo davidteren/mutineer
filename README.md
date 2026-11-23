@@ -121,7 +121,8 @@ This path uses one Mutineer worker and no coverage-based test selection by defau
 | SimpleCov gate exit with a failing test | `killed` |
 | Other exit code | `error` |
 | Crash before a test fails | Can score `error` |
-| Only a SimpleCov gate fails, with its gate message and a passing summary | `survived` |
+| Only a SimpleCov gate fails, with its gate message, a passing summary, and at least as many summary lines as the clean run (at the start of a line, when the clean run's summary started one) | `survived` |
+| A SimpleCov gate stops a chain of suites: gate message, all tests passing, and fewer summary lines than the clean run (at the start of a line, when the clean run's summary started one) | `error` |
 
 See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34)
 and release guarantees in [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).

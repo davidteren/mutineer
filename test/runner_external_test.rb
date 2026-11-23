@@ -234,6 +234,87 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #515, AE1: the clean run prints its summary at a line start, so each
+  # mutant run needs one there. A mutant run whose only failing summary is in
+  # a Minitest -v test name scores error, with the reason, not killed.
+  def test_failing_summary_away_from_a_line_start_scores_error
+    with_project("calculator_strong_test.rb") do |proj|
+      original = File.read(File.join(proj, "calculator.rb"))
+      wrapper = File.join(proj, "wrapper.rb")
+      File.write(wrapper, <<~RUBY)
+        unless File.read(#{File.join(proj, 'calculator.rb').dump}) == #{original.dump}
+          puts "FakeTest#test_x = 9 runs, 9 assertions, 1 failures, 0 errors, 0 skips = 0.00 s = ."
+          puts "2 runs, 2 assertions, 0 failures, 0 errors, 0 skips"
+          exit 1
+        end
+        load ARGV.fetch(0)
+      RUBY
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                           "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+      doc = JSON.parse(out)
+      assert_equal 0, doc.dig("summary", "killed"), err
+      assert_equal 6, doc.dig("summary", "errored"), err
+      doc.fetch("no_verdict").each { |row| assert_includes row["details"], "not at the start of a line" }
+    end
+  end
+
+  # #515, AE2: a wrapper that puts a prefix before each line leaves no
+  # summary at a line start, so matching stays at any position and each
+  # failing test still kills.
+  def test_wrapper_that_prefixes_each_line_still_kills
+    with_project("calculator_strong_test.rb") do |proj|
+      wrapper = File.join(proj, "prefix.rb")
+      File.write(wrapper, <<~RUBY)
+        require "open3"
+        out, status = Open3.capture2e(RbConfig.ruby, *ARGV)
+        out.each_line { |line| print "app | \#{line}" }
+        exit status.exitstatus
+      RUBY
+      out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                                  "--test-command", "#{RUBY} #{wrapper} %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_equal 6, JSON.parse(out).dig("summary", "killed"), err
+      refute_includes err, "no Minitest or RSpec summary line"
+    end
+  end
+
+  # #516, AE3: a real chain, `weak suite && strong suite`. A stand-in for
+  # SimpleCov's minimum_coverage gate runs after the first suite: on a
+  # mutated tree it prints SimpleCov's gate message and exits 2, as SimpleCov
+  # does in Minitest.after_run. The weak suite kills 4 of the 6 mutants. The
+  # other 2 pass it, the gate stops the chain, and the strong suite, which
+  # would kill them, never runs: error, not survived.
+  def test_simplecov_gate_that_stops_a_chain_of_suites_scores_error
+    with_project("calculator_strong_test.rb") do |proj|
+      FileUtils.cp(File.join(FIXTURES, "calculator_weak_test.rb"), proj)
+      calc = File.join(proj, "calculator.rb")
+      gate = File.join(proj, "coverage_gate.rb")
+      File.write(gate, <<~RUBY)
+        require "minitest"
+        Minitest.after_run do
+          next if File.read(#{calc.dump}) == #{File.read(calc).dump}
+
+          puts "SimpleCov failed with exit 2 due to a coverage related error"
+          exit 2
+        end
+      RUBY
+      chain = File.join(proj, "chain.rb")
+      File.write(chain, <<~RUBY)
+        system(RbConfig.ruby, "-r", #{gate.dump}, #{File.join(proj, 'calculator_weak_test.rb').dump}) || exit($?.exitstatus)
+        system(RbConfig.ruby, #{File.join(proj, 'calculator_strong_test.rb').dump}) || exit($?.exitstatus)
+      RUBY
+      out, err, = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--format", "json",
+                           "--test-command", "#{RUBY} #{chain} %{files}", chdir: proj)
+      doc = JSON.parse(out)
+      assert_equal 4, doc.dig("summary", "killed"), err
+      assert_equal 0, doc.dig("summary", "survived"), err
+      assert_equal 2, doc.dig("summary", "errored"), err
+      doc.fetch("no_verdict").each do |row|
+        assert_includes row["details"], "printed 1 summary line where the clean run printed 2, after a SimpleCov coverage gate"
+      end
+    end
+  end
+
   # #292: a clean run with no summary line keeps the exit-code rule and says so once.
   def test_no_summary_on_clean_run_warns_once
     with_project("calculator_strong_test.rb") do |proj|

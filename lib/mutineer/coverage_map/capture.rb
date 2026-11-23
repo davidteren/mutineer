@@ -95,7 +95,8 @@ module Mutineer
       end
 
       # Fork the booted parent, run one test under the inherited Coverage, and
-      # return its per-source counts hash, a String diagnostic on failure, or
+      # return the child's wrapped payload (`passed`, `coverage`, `failure_report`,
+      # `loaded_files`, read by `accept_fork_payload`), a String diagnostic on failure, or
       # :timeout after `@capture_timeout` (see {#await_child}). Reuses the same
       # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
       def fork_capture(abs_test, abs_sources, after_fork)

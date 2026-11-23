@@ -17,13 +17,194 @@ module Mutineer
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path, plain_path_calls(result.value))
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), superclass_constant_names(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
         exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
+        mark_callback_definers!(visitor.subjects, result.value)
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
+    end
+
+    # Each class statement's superclass that is a constant, inside any
+    # parentheses: the name for a bare constant (`:BaseRow` for
+    # `class Row < BaseRow` and for `class Row < ::BaseRow`), and the text as
+    # written for a path (`"Billing::BaseRow"`, `"::BaseRow"`). Reload keeps the value of a constant assignment
+    # that {kept_constant_write?} matches to one of these, and discovery marks
+    # a def inside that value (#503). Both read the names here, so discovery
+    # marks at least every value the reload text keeps
+    # ({JobPlan.keep_live_superclasses}).
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Symbol, String>]
+    def self.superclass_constant_names(program)
+      names = Set.new
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        next unless node.is_a?(Prism::ClassNode)
+
+        superclass = node.superclass
+        # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
+        superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
+        names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) ||
+                                    (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
+        names << superclass.slice if superclass.is_a?(Prism::ConstantPathNode)
+      end
+      names
+    end
+
+    # Whether `node` is one pair of parentheses around one statement. Discovery
+    # ({superclass_constant_names}) and the reload text ({JobPlan.kept_target})
+    # both look through such parentheses with this one test, so they agree.
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.sole_statement_parentheses?(node)
+      node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
+    end
+
+    # Whether reload keeps the value of this constant write (#503). It fails
+    # closed: a write it does not keep leaves the file as written, which errors
+    # visibly with "superclass mismatch" when it builds a new class (#527).
+    # All three must hold:
+    #
+    # - The write names a superclass of the file: a bare write (`BaseRow = ...`)
+    #   matches a bare superclass (`< BaseRow` or `< ::BaseRow`), and a path
+    #   write matches a path superclass spelled the same (`Billing::Base = ...`
+    #   with `< Billing::Base`). So `Base = ...` beside
+    #   `class User < ActiveRecord::Base` is not kept.
+    # - A path write's parent is a constant path or `self`, so the scope the
+    #   guard reads runs no code a second time.
+    # - The value is a {kept_builder?} call, which reads nothing the file can
+    #   build again. A builder method of the file (`BaseRow = build_base`) would
+    #   keep a class its mutant never reaches, a silent false survivor.
+    #
+    # {JobPlan.kept_constant_splice} and discovery both ask here, so discovery
+    # marks every def inside a kept value {Subject#in_kept_constant}.
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
+    # @return [Boolean]
+    def self.kept_constant_write?(node, names)
+      if node.is_a?(Prism::ConstantWriteNode)
+        return false unless names.include?(node.name)
+      elsif node.is_a?(Prism::ConstantPathWriteNode)
+        return false unless names.include?(node.target.slice) && constant_scope?(node.target.parent)
+      else
+        return false
+      end
+      kept_builder?(node.value)
+    end
+
+    # The class builders a kept value may call, by receiver name.
+    KEPT_BUILDERS = { Struct: :new, Data: :define, Class: :new }.freeze
+
+    # A `Struct.new`, `Data.define` or `Class.new` call (also `::Struct`) whose
+    # arguments are literals: symbols, strings, numbers, `true`, `false`,
+    # `nil`, and keyword pairs of those. It may have a literal block. A
+    # constant, a variable, a splat or a call in an argument can name a class
+    # or value the file builds again, so such a value is not kept (#533).
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.kept_builder?(node)
+      return false unless node.is_a?(Prism::CallNode)
+      return false unless node.block.nil? || node.block.is_a?(Prism::BlockNode)
+
+      receiver = node.receiver
+      root = receiver.is_a?(Prism::ConstantReadNode) || (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil?)
+      return false unless root && KEPT_BUILDERS[receiver.name] == node.name
+
+      (node.arguments&.arguments || []).all? { |argument| literal_argument?(argument) }
+    end
+
+    # The literal nodes {kept_builder?} accepts as an argument.
+    LITERALS = [Prism::SymbolNode, Prism::StringNode, Prism::IntegerNode, Prism::FloatNode,
+                Prism::TrueNode, Prism::FalseNode, Prism::NilNode].freeze
+
+    # @param node [Prism::Node] one argument of a builder call.
+    # @return [Boolean]
+    def self.literal_argument?(node)
+      return true if LITERALS.any? { |type| node.is_a?(type) }
+
+      node.is_a?(Prism::KeywordHashNode) && node.elements.all? do |pair|
+        pair.is_a?(Prism::AssocNode) && literal_argument?(pair.key) && literal_argument?(pair.value)
+      end
+    end
+
+    # Whether a constant write's parent runs no code: none (`::X`), `self`, or
+    # a chain of constants (`A::B`).
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.constant_scope?(node)
+      return true if node.nil? || node.is_a?(Prism::SelfNode) || node.is_a?(Prism::ConstantReadNode)
+
+      node.is_a?(Prism::ConstantPathNode) && constant_scope?(node.parent)
+    end
+
+    # The calls that build an ActiveSupport callback chain: `define_callbacks`
+    # and ActiveModel's `define_model_callbacks`, which calls it once per name.
+    # During a reload {ReloadGuards::CallbackRedefinition} skips a chain the
+    # class already has, with the options the call gives (#504).
+    CALLBACK_DEFINERS = %i[define_callbacks define_model_callbacks].freeze
+
+    # Marks each def that calls a {CALLBACK_DEFINERS} method
+    # {Subject#calls_define_callbacks}, so it is `unplaceable` under reload.
+    # When the class body calls such a def, the guard skips the chain it
+    # defines, with the names and options a mutant changed, so the mutant
+    # never reaches Rails. It would score `survived` unapplied (#504).
+    #
+    # It fails closed. A {CALLBACK_DEFINERS} call counts with any receiver.
+    # A def that calls a marked def of the same file by name (any receiver),
+    # or through `super` from a def of the same name, is marked too, so a
+    # helper that calls another helper is covered. The match is by name, so a
+    # same-named call in another class of the file is marked as well. The
+    # whole def is marked, because any line of it can change the names or
+    # options it passes. A def the class body never calls loses real verdicts
+    # under reload. Still unmarked (#530): a def that only computes the names
+    # or options (`define_callbacks :save, **opts`), a call through `send`,
+    # `public_send`, `__send__` or `method`, and a caller in another file.
+    #
+    # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @param program [Prism::ProgramNode] the complete parsed file.
+    # @return [void]
+    def self.mark_callback_definers!(subjects, program)
+      defs = []
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        defs << node if node.is_a?(Prism::DefNode)
+      end
+      marked = Set.new
+      helpers = Set.new
+      loop do
+        found = defs.select { |d| !marked.include?(d) && calls_callback_definer?(d, helpers) }
+        break if found.empty?
+
+        marked.merge(found)
+        helpers.merge(found.map(&:name))
+      end
+      subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
+    end
+
+    # Whether a def calls a {CALLBACK_DEFINERS} method or one of `helpers`
+    # (any receiver), or is one of `helpers` by name and calls `super`.
+    #
+    # @param def_node [Prism::DefNode]
+    # @param helpers [Set<Symbol>] the names of the file's marked defs.
+    # @return [Boolean]
+    def self.calls_callback_definer?(def_node, helpers)
+      nodes = def_node.compact_child_nodes
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        return true if node.is_a?(Prism::CallNode) && (CALLBACK_DEFINERS.include?(node.name) || helpers.include?(node.name))
+        return true if (node.is_a?(Prism::SuperNode) || node.is_a?(Prism::ForwardingSuperNode)) &&
+                       helpers.include?(def_node.name)
+      end
+      false
     end
 
     # Keeps hook defs unplaceable when the raw AST can define another method
@@ -203,9 +384,13 @@ module Mutineer
       # @param file [String] source file path being visited.
       # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
       #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
-      def initialize(file, plain_calls = Set.new)
+      # @param kept_names [Set<Symbol, String>] the file's superclass constants (see
+      #   {Project.superclass_constant_names}); a def in the value of a constant
+      #   write that {Project.kept_constant_write?} matches is {Subject#in_kept_constant}.
+      def initialize(file, plain_calls = Set.new, kept_names = Set.new)
         @file = file
         @plain_calls = plain_calls
+        @kept_names = kept_names
         @namespace_stack = []
         @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
@@ -230,6 +415,7 @@ module Mutineer
         @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
         @hook_uses = Set.new         # the names that block calls outside its def bodies
         @in_superclass_block = false # inside a class statement's superclass expression (#492)
+        @in_kept_constant = false    # inside the value of a superclass constant reload keeps (#503)
         super()
       end
 
@@ -362,13 +548,17 @@ module Mutineer
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
       # `=`, `||=` and `&&=` store the class, so each names it; `+=` stores what `+`
-      # returns, so its builder is left unnamed.
+      # returns, so its builder is left unnamed. A plain `=` of a name a class
+      # statement in the file inherits from marks each def in its value
+      # {Subject#in_kept_constant}, because reload keeps that value (#503).
       #
       # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode, Prism::ConstantOrWriteNode,
       #   Prism::ConstantAndWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode]
       #   constant assignment.
       # @return [void]
       def visit_constant_write_node(node)
+        saved_kept = @in_kept_constant
+        @in_kept_constant = true if Project.kept_constant_write?(node, @kept_names)
         call = assigned_value(node.value)
         return super unless builds_class?(call)
 
@@ -379,6 +569,8 @@ module Mutineer
         ensure
           @assigned = saved
         end
+      ensure
+        @in_kept_constant = saved_kept
       end
       alias visit_constant_path_write_node visit_constant_write_node
       alias visit_constant_or_write_node visit_constant_write_node
@@ -421,6 +613,8 @@ module Mutineer
           hook_block: @hook_block,
           reload_hook_call: reload_hook_call_for(node),
           in_superclass_block: @in_superclass_block,
+          in_kept_constant: @in_kept_constant,
+          calls_define_callbacks: false, # set by Project.mark_callback_definers!
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node,

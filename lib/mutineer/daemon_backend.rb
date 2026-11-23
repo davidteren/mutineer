@@ -481,7 +481,7 @@ module Mutineer
           reach_key = sentinel && ReachProbe.reach_key
           begin
             # The same text as in-process (Runner.run): a hook-block def placed
-            # (#297), a call superclass kept (#492).
+            # (#297), a live superclass kept (#492, #512, #503).
             code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source,
                                                  reach_path: sentinel&.path, reach_key: reach_key)
             payload = { "code" => code, "source_file" => File.expand_path(subject.file, config.project_root) }

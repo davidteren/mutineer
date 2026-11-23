@@ -23,6 +23,11 @@ It does not remove one or change what an existing one means.
 A fix to how Mutineer names a method can change the ids of mutants in that
 method, and of a method with the same name in the same file.
 The CHANGELOG names each such fix.
+When an operator starts or stops declining a swap, the ids of later swaps of the same name in that method can change.
+A saved `ignore:` entry or baseline for an old id can then match a different mutant.
+Check saved ignores and baselines after an upgrade whose CHANGELOG names such a change.
+The CHANGELOG names each such change.
+Issue #508 tracks the fix, which is planned for 2.0.
 The JSON rules are in [docs/json-schema.md](docs/json-schema.md).
 The JSON `schema_version` is not the gem version.
 Each number moves on its own.

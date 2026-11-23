@@ -426,6 +426,42 @@ class DaemonBackendContractTest < Minitest::Test
     Mutineer::ReloadGuards.callback_growth_log = nil
   end
 
+  # The reload text the daemon payload carries for the first mutant of `only`.
+  #
+  # @return [String]
+  def payload_code(fixture, only)
+    path = File.expand_path("fixtures/#{fixture}", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: only).first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+    sent.first["code"]
+  end
+
+  # #512: the payload wraps only the value a superclass local write sets, as
+  # in process, so the daemon child still sets the local.
+  def test_the_payload_keeps_a_superclass_that_sets_a_local
+    code = payload_code("local_superclass.rb", "Quad#four?")
+    assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
+  end
+
+  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  def test_the_payload_keeps_a_superclass_constant_the_file_assigns
+    code = payload_code("const_superclass.rb", "Row#three?")
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
+  end
+
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
   # one of them is ran_at_load, as in-process. --fail-fast stops on a survivor
   # only, so it runs on past these.

@@ -766,6 +766,10 @@ class CoverageMapTest < Minitest::Test
                                          /no source fingerprints/],
       "a malformed owner list" => [->(_root, cache) { edit_cache.(cache) { |c| c["owners"] = [1] } },
                                    /not the shape a coverage cache saves/],
+      "a non-numeric timing" => [->(_root, cache) { edit_cache.(cache) { |c| c["timings"] = { "alpha_test.rb" => "fast" } } },
+                                 /not the shape a coverage cache saves/],
+      "an infinite timing" => [->(_root, cache) { File.write(cache, File.read(cache).sub(/"timings":\{/, '"timings":{"zz_test.rb":1e400,')) },
+                               /not the shape a coverage cache saves/],
       "a malformed map" => [->(_root, cache) { edit_cache.(cache) { |c| c["map"] = { "alpha.rb:5" => "alpha_test.rb" } } },
                             /not the shape a coverage cache saves/],
       "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]

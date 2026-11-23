@@ -216,7 +216,7 @@ module Mutineer
           cached["sources"].is_a?(Hash) && cached["sources"].all? { |k, v| k.is_a?(String) && v.is_a?(String) } &&
           cached["map"].all? { |k, v| k.is_a?(String) && strings.(v) } &&
           %w[load_lines load_methods].all? { |key| cached[key].nil? || strings.(cached[key]) } &&
-          (cached["timings"].nil? || cached["timings"].is_a?(Hash))
+          (cached["timings"].nil? || (cached["timings"].is_a?(Hash) && cached["timings"].values.all? { |t| t.is_a?(Numeric) && t.finite? }))
       end
 
       # This run's sources whose load lines or load methods differ in the capture.
