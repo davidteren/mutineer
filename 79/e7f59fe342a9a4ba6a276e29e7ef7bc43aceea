@@ -1,0 +1,121 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9ad04fc3dbec64::t_a9ebfb07fa466e 14-18,20-21
+AGENTS.md
+  s_465de91997667e::t_9bdf63e8c11ec6 107-112
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_ab77c69e5b4bf3 17,78-81,130-158,163,165
+docs/agentic-coding.html
+  s_465de91997667e::t_a37238f7630abb 27
+docs/assets/mutineer.css
+  s_465de91997667e::t_b54a585396a12e 187
+docs/equivalent-skips.html
+  s_465de91997667e::t_5ef0f24f282daf 27
+docs/index.html
+  s_465de91997667e::t_4f6f971171a0a6 27
+docs/json-schema.md
+  s_465de91997667e::t_c268e78836d56d 71,146-185,192-193
+docs/learn.html
+  s_465de91997667e::t_cfdc30a673792d 27
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_465de91997667e::t_90b456c77f4034 1-630
+docs/rails.html
+  s_465de91997667e::t_f19e28c53acef6 27
+docs/sample-report.html
+  s_465de91997667e::t_c6a2a7427740f3 21
+lib/mutineer/coverage_map/capture.rb
+  s_465de91997667e::t_491ceb36c9284e 98-99
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_465de91997667e::t_4fb4dbf0e3c133 219
+lib/mutineer/coverage_map/child_scripts.rb
+  s_465de91997667e::t_d542d02d6d77c3 26-27
+lib/mutineer/coverage_map/failed_test_blame.rb
+  s_465de91997667e::t_ff8a2dc21e28d8 41-42
+lib/mutineer/daemon_backend.rb
+  s_465de91997667e::t_c7cf6b61823924 484
+lib/mutineer/job_plan.rb
+  s_465de91997667e::t_ddad1d19b69625 366-368,428-438,443-446,448-449,453-455,460,462-463,465,470-502,505-535,537-541,543,546-551,574-577,579-580
+lib/mutineer/project.rb
+  s_465de91997667e::t_5e18b4f059d7f1 20,24,30-209,387-390,393,418,551-553,560-561,572-573,616-617
+lib/mutineer/reload_guards.rb
+  s_465de91997667e::t_f556463a08649c 9,14-16,19-22,25,80-103,128-151,173,1079-1099,1136
+lib/mutineer/result.rb
+  s_465de91997667e::t_42dd778a8c6349 32-36
+lib/mutineer/runner.rb
+  s_465de91997667e::t_5633d4ee266aaf 501
+lib/mutineer/subject.rb
+  s_465de91997667e::t_0186fad8fcda3c 30-39,42,65-67,74-75
+rake/docs_contract.rb
+  s_465de91997667e::t_4a9bb02dafa384 530
+test/browser/site.spec.js
+  s_465de91997667e::t_77e868647c608c 120-131
+test/call_superclass_reload_test.rb
+  s_465de91997667e::t_17952c2795e0f8 22-29,45,102-119,130-406
+test/coverage_map_test.rb
+  s_465de91997667e::t_6b546d1047304a 717-720
+test/daemon_backend_contract_test.rb
+  s_465de91997667e::t_6d4dd455bd5561 403-438
+test/fixtures/const_superclass.rb
+  s_465de91997667e::t_e910e9b1d732a7 1-22
+test/fixtures/const_superclass_holders.rb
+  s_465de91997667e::t_24fad17e8fc590 1-9
+test/fixtures/const_superclass_subclass_test.rb
+  s_465de91997667e::t_23cc2115834baf 1-19
+test/fixtures/const_superclass_test.rb
+  s_465de91997667e::t_498e588322ec2f 1-25
+test/fixtures/local_read_superclass.rb
+  s_465de91997667e::t_90ee331b8b36f9 1-12
+test/fixtures/local_read_superclass_test.rb
+  s_465de91997667e::t_8cb4402c9f6f1c 1-15
+test/fixtures/local_superclass.rb
+  s_465de91997667e::t_06ba79fc16a3b5 1-13
+test/fixtures/local_superclass_test.rb
+  s_465de91997667e::t_6673299ab99cde 1-19
+test/fixtures/rails_app/app/models/concerns/own_stamps.rb
+  s_465de91997667e::t_d27845bd1f0e15 1-10
+test/fixtures/rails_app/app/models/helper_chain_note.rb
+  s_465de91997667e::t_a64840adfa10eb 1-20
+test/fixtures/rails_app/app/models/ledger_row.rb
+  s_465de91997667e::t_bef2c6bbffd975 1-16
+test/fixtures/rails_app/app/models/own_chain_note.rb
+  s_465de91997667e::t_28050a40c077c1 1-21
+test/fixtures/rails_app/test/models/helper_chain_note_test.rb
+  s_465de91997667e::t_636dc1f2a69ccd 1-13
+test/fixtures/rails_app/test/models/ledger_row_test.rb
+  s_465de91997667e::t_f21f58f9083c75 1-16
+test/fixtures/rails_app/test/models/own_chain_note_test.rb
+  s_465de91997667e::t_6dd7f3835d9f89 1-14
+test/project_test.rb
+  s_465de91997667e::t_678e6a910be688 1590,1593-1681
+test/rails_callback_restore_test.rb
+  s_465de91997667e::t_bc93248a74cf94 10-11,33-44
+test/rails_dogfood_daemon_test.rb
+  s_465de91997667e::t_e1b152e52dac71 6-7,224-281
+test/reload_guards_test.rb
+  s_465de91997667e::t_70d90438920f4c 1612-1664
+test/support/rails_callback_restore_probe.rb
+  s_465de91997667e::t_761a9850bface4 8-10,12,22-50,54-121,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79e7f59fe342a9a4ba6a276e29e7ef7bc43aceea",
+  "prompts": {},
+  "sessions": {
+    "s_465de91997667e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "108b3563-f02c-46e5-a04d-b865cf6742f9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
