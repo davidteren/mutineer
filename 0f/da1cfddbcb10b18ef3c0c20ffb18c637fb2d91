@@ -1,0 +1,31 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_9ad04fc3dbec64::t_544e0c0b885d3c 20
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_693cfc8bc754ab 115,119
+docs/json-schema.md
+  s_9ad04fc3dbec64::t_4e1e0be7b5603e 167-178
+lib/mutineer/project.rb
+  s_9ad04fc3dbec64::t_1f4c3be5d19bd4 161-165,168-169,193-194,203-205
+lib/mutineer/subject.rb
+  s_9ad04fc3dbec64::t_a384a33fadfd05 36-37
+test/project_test.rb
+  s_9ad04fc3dbec64::t_89e7fd09ca4773 1627-1628,1642-1651,1655-1660,1663-1672
+test/rails_dogfood_daemon_test.rb
+  s_9ad04fc3dbec64::t_851c986ea06a83 273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fda1cfddbcb10b18ef3c0c20ffb18c637fb2d91",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
