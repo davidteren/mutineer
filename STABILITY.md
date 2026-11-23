@@ -51,7 +51,7 @@ These keys are accepted in `.mutineer.yml` in 1.10.0:
 `operators`, `jobs`, `threshold`, `only`, `require`, `boot`, `rails`, `since`,
 `framework`, `verbose`, `ignore`, `baseline`, `fail_fast`, `matrix`,
 `test_command`, `daemon`, `timeout`, `capture_timeout`, `cache_dir`,
-`allow_empty`, `since_paired_tests`, `shared_databases`, `tests`.
+`allow_empty`, `since_paired_tests`, `shared_databases`, `tests`, `load_path`.
 
 `since_paired_tests` is new in 1.10.0. It is off by default. An older version warns that the key is unknown and ignores it.
 
