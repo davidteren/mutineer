@@ -386,6 +386,25 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
+  # #491: --test-command ignores load_path and says so. It does not check the
+  # directories, so a missing one does not exit 2 there (#535 tracks support).
+  def test_load_path_warns_that_it_has_no_effect_and_is_not_checked
+    with_project("calculator_strong_test.rb") do |proj|
+      File.write(File.join(proj, ".mutineer.yml"), "load_path: no/such/dir\n")
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] load_path in .mutineer.yml has no effect with --test-command " \
+                           "(it applies to in-process and --daemon runs); ignoring it."
+      refute_includes err, "not a directory"
+
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "-I", "test/support",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --load-path has no effect with --test-command"
+    end
+  end
+
   # The child sees PARALLEL_WORKERS=1, DISABLE_SPRING=1 and
   # DISABLE_BOOTSNAP_COMPILE_CACHE=1 on every spawn.
   # A user value is replaced once, not once per mutant.

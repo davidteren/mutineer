@@ -1084,6 +1084,19 @@ module Mutineer
       end
     end
 
+    # The `load_path` directories (#491), absolute, in the order the user wrote
+    # them. Relative entries resolve against the project root. The runner,
+    # the daemon boot config and the CLI check all read this one list. An
+    # existing directory resolves through its symlinks, as CoverageMap's
+    # capture subprocess resolves the same entry ({ProjectPath.absolute}), so
+    # `link/../support` names one directory in every place.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] absolute directories; [] when none is set.
+    def self.extra_load_dirs(config)
+      config.extra_load_paths.map { |dir| ProjectPath.absolute(dir, config.project_root) }
+    end
+
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
     # holding that helper, plus the file's own dir as a fallback.

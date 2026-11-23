@@ -140,7 +140,7 @@ RAILS_ENV=test bundle exec mutineer run \
 | Mutant run | Stops at the first failing test, as the in-process run does. |
 | Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. If coverage is unavailable, each mutant runs the full test set and the score is not comparable. |
 | Worker databases | Separate databases prevent fixture interference. Only single-database apps run in parallel; more than one database forces one worker, unless `shared_databases` lists the other ones ([More than one database](#more-than-one-database)). Initial copies include rows written during boot by initializers or `require:` files. |
-| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. To add a path, set `boot:` to a file at the project root that adds it and then boots the app: `$LOAD_PATH.unshift(File.expand_path("test/support", __dir__))`, then `require_relative "config/environment"`. When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. A setting for this is open in [#491](https://github.com/davidteren/mutineer/issues/491). |
+| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. Set `load_path:` or `-I DIR` instead; see [Extra load paths](#extra-load-paths). When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. Under `--verbose`, so does the first `coverage skipped for <file>` warning for a test file that could not load a file; without `--verbose` that warning has no error text and no note ([#537](https://github.com/davidteren/mutineer/issues/537)). |
 | Backend choice | Requires `--rails` or `--boot`. Cannot combine with `--test-command`. |
 
 For SQLite, Mutineer compares the copied database with the app's Ruby schema.
@@ -183,6 +183,25 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Older MySQL fallback | Use `--no-daemon` or `daemon: false`. The run is serial. |
 | MariaDB or MySQL 9 or later | Untested. Prints a warning and runs. |
 | Unreadable server version | Prints a warning and runs. |
+
+#### Extra load paths
+
+Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
+This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. `--test-command` ignores it ([#535](https://github.com/davidteren/mutineer/issues/535)).
+Use it for a test helper outside the test folder, such as `test/support`:
+
+```yaml
+# .mutineer.yml
+load_path: [test/support]
+```
+
+Or on the command line: `mutineer run ... --rails --daemon -I test/support`.
+A `RUBYOPT=-Itest/support` you used before becomes `load_path: test/support`.
+The [`load_path` row in the CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#configuration) gives the search order and the error rules.
+The note on a missing file can still appear after you set `load_path`, when a different file is missing.
+
+Mutineer 1.9 and earlier have no such setting.
+There, set `boot:` to a file at the project root that adds the path and then boots the app: `$LOAD_PATH.unshift(File.expand_path("test/support", __dir__))`, then `require_relative "config/environment"`.
 
 ### More than one database
 

@@ -122,9 +122,35 @@ class DaemonBackendContractTest < Minitest::Test
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
+      assert_equal false, boot[:verbose], "#517: no --verbose, so the capture warning stays generic"
+      config.verbose = true
+      assert_equal true, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:verbose],
+                   "#517: --verbose reaches the map-building daemon"
+      config.verbose = false
       config.capture_timeout = 300
       assert_equal 300, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:capture_timeout],
                    "PR #183 review: the map-building daemon gets --capture-timeout"
+    end
+  end
+
+  # #491: DaemonServer#boot! unshifts each load_paths entry in turn, so the
+  # list carries the load_path directories reversed, then the test roots.
+  # With no load_path the list is the test roots alone, as before.
+  def test_boot_config_puts_load_path_directories_behind_the_test_roots
+    Dir.mktmpdir("mutineer-contract") do |root|
+      test = File.join(root, "test/models/order_test.rb")
+      FileUtils.mkdir_p(File.dirname(test))
+      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+      roots = Mutineer::JobPlan.test_load_roots([test])
+
+      config = Mutineer::Config.new(sources: [], tests: [test], project_root: root, framework: "minitest")
+      assert_equal roots, Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+
+      config.extra_load_paths = ["a", "b", "/abs/c"]
+      boot = Mutineer::DaemonBackend.boot_config(config, [test])
+      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots], boot[:load_paths]
+      assert_equal [File.join(root, "a"), File.join(root, "b"), "/abs/c"], boot[:extra_load_paths],
+                   "the written order, for the coverage cache key"
     end
   end
 

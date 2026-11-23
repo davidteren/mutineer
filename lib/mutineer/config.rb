@@ -63,6 +63,9 @@ module Mutineer
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
+    # Directories put on $LOAD_PATH before the boot file, the sources and the
+    # tests, in-process and in the daemon (#491). `-I` is its short flag.
+    ConfigOption.new(field: :extra_load_paths, type: :string_list, yaml_key: "load_path", flag: "--load-path"),
     ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
     ConfigOption.new(field: :shared_databases, type: :string_list, yaml_key: "shared_databases"),
     # YAML-only: pairs source patterns with extra test patterns for pairing (#382).
@@ -100,6 +103,11 @@ module Mutineer
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
   # a daemon, and reconnects ActiveRecord per fork).
   #
+  # `extra_load_paths` (file key `load_path`, flag `--load-path` or `-I`) holds
+  # the directories the user puts on $LOAD_PATH (#491); see
+  # JobPlan.extra_load_dirs. Distinct from `load_paths`, which is code only:
+  # the `lib` a run without a boot file puts first, as `rake test` does.
+  #
   # `unpaired_sources` is code only. Pairing stores each source it skips
   # because no conventional test exists. An explicit test list leaves it empty.
   # There is no flag and no config-file key.
@@ -113,7 +121,7 @@ module Mutineer
     # :unpaired_sources stays programmatic (set by pairing; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
-    :shared_databases, :unpaired_sources, :test_map,
+    :shared_databases, :unpaired_sources, :test_map, :extra_load_paths,
     keyword_init: true
   ) do
     # Config file name.
@@ -153,6 +161,7 @@ module Mutineer
       self.shared_databases ||= []
       self.unpaired_sources ||= []
       self.test_map      ||= []
+      self.extra_load_paths ||= []
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -371,6 +380,7 @@ module Mutineer
       when :test_map
         parse_test_map(value, file)
       when :string_list
+        check_load_path_shape!(value, origin) if field == :extra_load_paths
         items = Array(value).map(&:to_s)
         # Only `operators` treats [] as "run these" rather than "use the
         # default". A blank key then makes no mutants and exits 0. An empty
@@ -404,6 +414,25 @@ module Mutineer
 
         value.to_s
       end
+    end
+
+    # A `load_path` value is a directory or a list of directories. Without this
+    # check `Array(value).map(&:to_s)` would turn `{a: b}` into the entries
+    # `a` and `b`, and `true` into the directory "true".
+    #
+    # @api private
+    # @param value [Object] raw value from the flag or the file.
+    # @param origin [String] the flag, or "<file>: load_path".
+    # @return [void]
+    # @raise [ConfigError] for a blank entry or a value of another shape.
+    def self.check_load_path_shape!(value, origin)
+      entries = value.is_a?(Array) ? value : [value]
+      if entries.any? { |entry| entry.nil? || (entry.is_a?(String) && entry.strip.empty?) }
+        raise ConfigError, "#{origin} must name a directory, not blank (got: #{value.inspect})"
+      end
+      return if entries.all?(String)
+
+      raise ConfigError, "#{origin} must be a directory or a list of directories (got: #{value.inspect})"
     end
 
     # Reads a finite Float from a number or a plain decimal string. Rejects booleans,

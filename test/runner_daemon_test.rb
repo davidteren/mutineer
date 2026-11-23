@@ -2,6 +2,9 @@
 
 require_relative "test_helper"
 require "minitest/mock"
+require "json"
+require "open3"
+require "tmpdir"
 require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/cli"
@@ -110,5 +113,67 @@ class RunnerDaemonTest < Minitest::Test
     aggregate, = Mutineer::Runner.execute(config)
     assert_equal 0, aggregate.errored_count
     assert_operator aggregate.killed_count, :>, 0
+  end
+
+  # #491 AE1: the probe test needs extra_load_path/ on $LOAD_PATH. A RUBYOPT
+  # -I does not reach the daemon (#100), so without load_path every mutant
+  # errors with the note. With it the daemon scores each mutant and still
+  # gets no user RUBYOPT.
+  def load_path_config(**settings)
+    Mutineer::Config.new(
+      sources: [File.join(APP, "app/models/order.rb")],
+      tests: [File.join(APP, "extra_tests/load_path_probe_test.rb")],
+      project_root: APP, boot: "config/environment", rails: true, daemon: true, strategy: "reload",
+      framework: "minitest", cache_dir: Dir.mktmpdir("mutineer-load-path"), **settings
+    )
+  end
+
+  def test_load_path_reaches_the_daemon_and_rubyopt_does_not
+    env_log = File.join(Dir.mktmpdir("mutineer-load-path-env"), "rubyopt")
+    user_env = { "BUNDLER_ORIG_RUBYOPT" => "-Iextra_load_path", "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYLIB" => nil,
+                 "LOAD_PATH_PROBE_ENV_LOG" => env_log }
+    without = with_load = nil
+    capture_subprocess_io do
+      with_env(user_env) do
+        without, = Mutineer::Runner.execute(load_path_config)
+        with_load, = Mutineer::Runner.execute(load_path_config(extra_load_paths: ["extra_load_path"]))
+      end
+    end
+
+    assert_equal [:error], without.results.map(&:status).uniq
+    assert_equal "LoadError: cannot load such file -- load_path_probe (the daemon does not pass RUBYOPT to the app; " \
+                 "if the missing file is in a directory set there, add that directory to load_path: in " \
+                 ".mutineer.yml, or pass -I DIR (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})",
+                 without.results.first.details
+
+    assert_equal({ killed: 1, no_coverage: 7 }, with_load.results.map(&:status).tally,
+                 "the probe test covers and kills only the subtotal_cents mutant")
+    refute_includes File.read(env_log), "extra_load_path", "the daemon still drops the user's RUBYOPT (#100)"
+  end
+
+  # AE2: the CLI with -I gives the same verdicts in-process and under
+  # --daemon. In-process Rails needs the fixture's own bundle, so this runs
+  # `mutineer` there, as bin/dogfood does.
+  def test_load_path_flag_gives_the_same_verdicts_in_process_and_in_the_daemon
+    env = ENV.to_h.reject { |key, _| key.start_with?("BUNDLE_", "BUNDLER_", "GEM_") || %w[RUBYOPT RUBYLIB].include?(key) }
+    env["BUNDLE_GEMFILE"] = File.join(APP, "Gemfile")
+    reports = %w[--no-daemon --daemon].to_h do |backend|
+      Dir.mktmpdir("mutineer-load-path-cli") do |dir|
+        report = File.join(dir, "report.json")
+        _out, err, status = Open3.capture3(
+          env, "bundle", "exec", "mutineer", "run", "app/models/order.rb", "--test",
+          "extra_tests/load_path_probe_test.rb", "--rails", backend, "--strategy", "reload",
+          "-I", "extra_load_path", "--cache-dir", File.join(dir, "cache"), "--format", "json", "--output", report,
+          chdir: APP
+        )
+        assert_equal 0, status.exitstatus, "#{backend}: #{err}"
+        doc = JSON.parse(File.read(report))
+        [backend, [doc["summary"].values_at("killed", "survived", "errored", "no_coverage"),
+                   doc["killed"].map { |k| k["id"] }.sort]]
+      end
+    end
+
+    assert_equal [[1, 0, 0, 7]], reports.values.map(&:first).uniq, reports.inspect
+    assert_equal reports["--daemon"], reports["--no-daemon"]
   end
 end

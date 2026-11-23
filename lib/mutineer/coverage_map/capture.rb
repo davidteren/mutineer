@@ -206,6 +206,8 @@ module Mutineer
         rel = relativize(test_path)
         @failed_test_files << rel
         # The reason can quote an app error, and so a credentialed DATABASE_URL.
+        # DaemonClient::COVERAGE_SKIPPED matches this prefix to add its load
+        # note under --daemon (#517): keep the two in step.
         warn "[mutineer] coverage skipped for #{rel}: #{Redaction.text(reason)}"
         nil
       end

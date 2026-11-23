@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`load_path:` in `.mutineer.yml` and `--load-path DIR` (short `-I DIR`) put directories on `$LOAD_PATH` (#491).**
+  A suite that needs an extra directory, such as `test/support`, set it with `RUBYOPT=-I` before. `--daemon` does not pass `RUBYOPT` or `RUBYLIB` to the app (#100), so every mutant of such a suite scored `error` there.
+  The value is a directory or a list of directories, relative to the project root or absolute. Repeat the flag for more. The command-line list replaces the file's list, unlike `ruby -I`, which adds.
+  Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require:` files and the tests, in-process and under `--daemon`.
+  Ruby searches them in the written order, after the test-helper directories Mutineer finds itself. With no boot file, `lib` comes first. That order holds from before the boot file and the sources load, also when Bundler or `RUBYOPT` already put `lib` or a test-helper directory on `$LOAD_PATH`.
+  A path that is not a directory exits 2 with `mutineer: not a directory: <path> (<origin>)`. A blank entry, or a value that is not a string or a list of strings, exits 2.
+  `--test-command` does not use the directories and does not check them; it warns (#535). A blank entry or a wrong shape still exits 2 there. The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
+  The coverage cache key holds the directories in the written order and every `.rb` file under them, except the run's sources and tests. So a reorder (#536), an edit to a file in a directory outside the project root (#539), and a new file that shadows one in a later directory (#544) each capture every test again. Mutineer reads those files on every run, also on a cache hit, so a large directory adds read time. Other files there, such as YAML data, are not part of the key (#548).
+  A run without the setting keeps its `$LOAD_PATH` and its coverage cache.
+  `--l` and `-l` now stop with "ambiguous option" (`--list-operators` or `--load-path`); before, they listed the operators. Use `--li` or the full name.
 - **Reload warns when a class runs a callback more than once (Refs #479).**
   Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
   A test that counts callback runs or errors can then kill every mutant of that file falsely.
@@ -85,6 +95,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`--daemon --verbose` shows why a test file's coverage capture failed, with the load note (#517).**
+  `--verbose` did not reach the daemon's coverage build, so its `[mutineer] coverage skipped for <file>` warning for a failed fork capture said `fork capture produced no result (re-run with --verbose for the error)`, even under `--verbose`.
+  The daemon now gets `--verbose`, and the warning shows the real error, as in-process.
+  When that error is `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, the first such warning of a run ends with the same `RUBYOPT`/`RUBYLIB` note as a mutant (#491). Later warnings carry no note.
+  The note names only the variable, never its value. `--verbose` does not change the coverage cache digest.
+  Without `--verbose`, the warning stays generic and has no note (#537).
 - **`--coverage-from` (in-process `--rails` or `--boot` runs only) refuses a capture whose `timings` hold a non-number or infinite number (#513).**
   Before, a hand-edited `coverage.json` with a string timing raised in test ordering with a backtrace.
   Now the run stops with the usual "not the shape a coverage cache saves" reason.
@@ -182,9 +198,8 @@ All notable changes to this project are documented here. The format is based on
   `--matrix` still runs every covering test in-process. `--matrix` with `--daemon` still exits 2.
 - **A `--daemon` mutant that cannot load a file now says why (#491).**
   The daemon does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing.
-  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and links the `boot:` workaround in `docs/rails-setup.md`.
+  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and the `load_path` setting above, and links "Extra load paths" in `docs/rails-setup.md`.
   The note names only the variable, never its value.
-  A setting that adds load paths for the daemon is still open in #491.
 - `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
 - **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
   It reads the minitest-reporters seed line, so a random order there now gets the warning.
@@ -241,7 +256,7 @@ All notable changes to this project are documented here. The format is based on
   `RUBYOPT`/`RUBYLIB` note as a mutant (#491). So does a daemon that fails
   to boot with that error. Before this, those paths printed the bare
   `LoadError`. The daemon's own warning for one test file it could not
-  capture still has no note (#517).
+  capture gets the note under `--verbose`, on its first such warning (#517).
 
 ## [1.9.0] - 2026-11-16
 

@@ -1695,6 +1695,48 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #491: every spelling of the flag reaches the config, and each entry must
+  # be a directory. A dry run still checks, so a typo exits 2 before any work.
+  def test_load_path_flag_forms_and_directory_check
+    with_project do |proj|
+      root = File.realpath(proj)
+      FileUtils.mkdir_p(File.join(proj, "support"))
+      ["-Inope", "-I nope", "--load-path nope", "--load-path=nope"].each do |form|
+        _, err, status = mutineer("run", "--dry-run", "calculator.rb", *form.split, chdir: proj)
+        assert_equal 2, status.exitstatus, form
+        assert_equal "mutineer: not a directory: #{root}/nope (--load-path)\n", err, form
+      end
+
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "a", "-I", "support", "-I", "calculator.rb",
+                                chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_equal "mutineer: not a directory: #{root}/a, #{root}/calculator.rb (--load-path)\n", err,
+                   "every bad entry on one line; a file is not a directory"
+
+      File.write(File.join(proj, ".mutineer.yml"), "load_path: gone\n")
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "mutineer: not a directory: #{root}/gone (load_path in .mutineer.yml)"
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "support", chdir: proj)
+      assert_equal 0, status.exitstatus, "-I replaces the file's list: #{err}"
+      File.delete(File.join(proj, ".mutineer.yml"))
+
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", "", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_equal "mutineer: --load-path must name a directory, not blank (got: \"\")\n", err
+      _, err, status = mutineer("run", "--dry-run", "calculator.rb", "-I", chdir: proj)
+      assert_equal 2, status.exitstatus
+      assert_includes err, "missing argument: -I"
+    end
+  end
+
+  def test_help_documents_load_path
+    out, _, status = mutineer("--help")
+    assert_equal 0, status.exitstatus
+    entry = out[/^  --load-path DIR, -I DIR.*?(?=^  --)/m].to_s
+    %w[$LOAD_PATH replaces --test-command].each { |word| assert_includes entry, word }
+  end
+
   # #8: --verbose is documented and both it and its --debug alias are accepted
   # flags (not "invalid option") — a clean run still exits 0.
   def test_help_documents_verbose

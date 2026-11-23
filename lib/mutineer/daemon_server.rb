@@ -32,7 +32,11 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true}
+  #               "load_paths":["test"],"framework":"minitest","rails":true,"verbose":false}
+  #              ("load_paths" holds the test-helper roots and the user's
+  #               load_path directories; boot! unshifts each in turn, #491;
+  #               "extra_load_paths" repeats those directories in order for
+  #               the coverage cache key)
   #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
   #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
@@ -312,9 +316,11 @@ module Mutineer
         cmap = CoverageMap.new(
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
+          extra_load_paths: Array(@cfg["extra_load_paths"]),
           boot_path: @cfg["boot"], require_paths: Array(@cfg["require_paths"]),
           framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
-          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
+          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT,
+          verbose: @cfg["verbose"] == true # the capture warning shows the real error (#517)
         ).build_via_fork(after_fork: coverage_after_fork)
         # Nothing reads Coverage after the map, so a mutant forked from this
         # daemon does not pay for it (#228).
