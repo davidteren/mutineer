@@ -213,7 +213,7 @@ module Mutineer
         # file's helper root here in the parent so loading them in the fork
         # children (both coverage capture and per-mutant) resolves.
         boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
-        JobPlan.test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+        JobPlan.test_load_roots(boot_tests, project_root: config.project_root).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
 
         # Boot mode now uses coverage selection too: capture each test's coverage
         # by forking the booted parent, then select covering tests per mutant.
@@ -232,7 +232,8 @@ module Mutineer
         Coverage.suspend if own_coverage && Coverage.running?
       else
         # As in boot mode, and with lib first as `rake test` does.
-        test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
+        test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) },
+                                             project_root: config.project_root)
         libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
         $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
         # Relative, so the cache digest does not depend on the checkout path.

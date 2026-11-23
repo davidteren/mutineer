@@ -157,7 +157,7 @@ rails: true
 
 Use a `tests:` map when convention cannot pair a source, such as a controller concern whose tests live with the controllers that include it.
 A source at `app/<dir>/concerns/<rest>.rb` with no pairable test at its `concerns/` path already pairs with an exact or split name at its namespace path.
-A source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` with no test by the other rules already pairs by the same rules inside its pack, such as `packs/catalog/test/models/item_test.rb` for `packs/catalog/app/models/item.rb`. Other pack roots, such as `engines/`, need the map (#554).
+A source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` with no test by the other rules already pairs by the same rules inside its pack, such as `packs/catalog/test/models/item_test.rb` for `packs/catalog/app/models/item.rb`. Other pack roots, such as `engines/`, need the map (#554). A map entry adds its tests to the convention tests, for a pack source too.
 The map is for tests that are not named that way:
 
 ```yaml

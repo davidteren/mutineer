@@ -22,7 +22,7 @@ Suggested model and effort for the build: Opus, high. The #496 commit changes wh
 - **Execution profile:** one pull request, two commits. Commit 1 is #496. Commit 2 is #494. #421 gets no commit. Each commit passes the local gate alone, so one issue can leave the pull request (KTD13).
 - **Labels and body:** `enhancement`, `v1.10.0`, `priority: medium`, `risk: medium`. Body: `Closes #496`, `Closes #494`, `Refs #421`.
 - **Size:** #496 is medium. #494 is small in code and medium with its doc copies. #421 is large and is not built here.
-- **Release and semver:** minor class. Commit 1 adds a setting that is off by default, so no existing run changes. Commit 2 changes results only for an app with a `packs/` folder, and the CHANGELOG says so (R13). No agent tags or publishes a release.
+- **Release and semver:** minor class. Commit 1 adds a setting that is off by default, so no existing run changes. Commit 2 changes results only for an app with a `packs/` folder, and the CHANGELOG says so (R13). Review note: this reaches `@v1` Action users with a `packs/` folder with no edit by them. It changes pairing, not an Action input default, and #379 shipped a similar pairing change in a minor release with the same CHANGELOG wording. David decides (pull request "Decisions for David"). No agent tags or publishes a release.
 
 ---
 

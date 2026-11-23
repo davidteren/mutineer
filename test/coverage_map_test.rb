@@ -3130,6 +3130,34 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # cubic on #557 (#554 item 5): a failed exact test blames a pack source only
+  # when pairing gives it that test. A same-named test in another pack, or at
+  # the project root that does not mirror the pack path, does not mark it.
+  def test_failing_exact_test_in_another_pack_does_not_mark_a_pack_source
+    Dir.mktmpdir do |dir|
+      mine = File.join(dir, "packs/catalog/app/models/item.rb")
+      own_test = File.join(dir, "packs/catalog/test/models/item_test.rb")
+      other = File.join(dir, "packs/billing/test/models/item_test.rb")
+      [mine, own_test, other].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(mine, "class Item; def n; 1; end; end\n")
+      File.write(other, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [mine], test_paths: [other],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(mine), "another pack's item_test.rb must not mark this pack's item.rb"
+
+      File.write(own_test, "require 'does/not/exist'\n")
+      FileUtils.rm_rf(File.join(dir, "cache"))
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [mine], test_paths: [own_test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(mine), "its own failed pack test still marks it"
+    end
+  end
+
   # A longer file in another root of the pack can own a split name of a pack
   # source, so its presence changes the digest. A source outside packs/ keeps
   # the digest it had.

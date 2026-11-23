@@ -545,7 +545,7 @@ module Mutineer
         # Required after the boot, as in-process (Runner.execute); also part of
         # the coverage digest.
         require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
-        load_paths: JobPlan.test_load_roots(abs_tests),
+        load_paths: JobPlan.test_load_roots(abs_tests, project_root: config.project_root),
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,

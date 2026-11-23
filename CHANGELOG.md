@@ -22,7 +22,7 @@ All notable changes to this project are documented here. The format is based on
   `packs/catalog/app/models/item.rb` can pair with `packs/catalog/test/models/item_test.rb` or `packs/catalog/spec/models/item_spec.rb`.
   The rule applies to a source at `packs/<pack path>/app/` or `packs/<pack path>/lib/`, only when the other rules find no test.
   Inside the pack, the same rules apply with the pack folder as the root: split tests, `test/lib/`, the concern namespace path, and a longer source keeping its file.
-  Existing pairs stay the same.
+  Existing convention pairs stay the same.
   An app with no `packs/` folder does not change.
   Before this, a pack source with no `tests:` map entry was skipped and added no score.
   The skip line was `no test found by convention`.
@@ -33,7 +33,7 @@ All notable changes to this project are documented here. The format is based on
   See `docs/ci.md`, "Refresh the baseline".
   With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
   Pin `version`, or refresh the baseline, before the next run.
-  An app that already maps each pack with `tests:` runs the same tests. The pack test now runs first for each mutant of its source. A standalone run can rebuild its coverage cache once. A suite that depends on test order can give a different verdict.
+  A `tests:` map entry still adds its tests to the pack tests. A pack source that the map paired with other tests, such as integration tests only, now also runs its pack tests. An app whose map entry for each pack already names that pack's test folder runs the same tests. The pack test now runs first for each mutant of its source. A standalone run can rebuild its coverage cache once. A suite that depends on test order can give a different verdict.
   Pass the source folders, such as `packs/*/app`. A source folder that holds test files, such as `packs`, lists each test file as an unpaired source.
   Pack roots other than `packs/`, a `{path}` placeholder for the `tests:` map, and the other limits are in #554.
 - **Reload warns when a class runs a callback more than once (Refs #479).**

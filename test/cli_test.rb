@@ -3553,6 +3553,45 @@ class CliTest < Minitest::Test
     end
   end
 
+  # Devin on #557: a pack test that requires the app's root test/test_helper.rb
+  # by name must load it. Without the root test/ on the load path, capture
+  # fails and the pack source's mutants score uncapturable.
+  def test_pack_test_loads_the_root_test_helper
+    with_packs_project do |proj|
+      FileUtils.mkdir_p(File.join(proj, "test"))
+      File.write(File.join(proj, "test/test_helper.rb"), "require \"minitest/autorun\"\nPACKS_HELPER = true\n")
+      test = File.join(proj, "packs/catalog/test/models/item_test.rb")
+      File.write(test, File.read(test).sub('require "minitest/autorun"', 'require "test_helper"'))
+      out, err, status = mutineer("run", "packs/catalog/app", "--format", "json", "--operators", "arithmetic",
+                                  chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_operator doc["summary"]["total"], :>, 0
+      assert_equal doc["summary"]["total"], doc["summary"]["killed"], err
+      refute_includes err, "cannot load such file -- test_helper"
+    end
+  end
+
+  # The load-root rule: a test under packs/ with no helper above it gets the
+  # nearest ancestor's test/ or spec/ helper folder. Other tests do not.
+  def test_test_load_roots_adds_the_root_helper_folder_for_a_pack_test
+    Dir.mktmpdir do |dir|
+      %w[test/test_helper.rb packs/a/test/models/x_test.rb packs/b/test/test_helper.rb packs/b/test/y_test.rb
+         lone/z_test.rb spec/spec_helper.rb packs/c/spec/w_spec.rb].each do |rel|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, rel)))
+        FileUtils.touch(File.join(dir, rel))
+      end
+      roots = ->(rel) { Mutineer::JobPlan.test_load_roots([File.join(dir, rel)], project_root: dir) }
+      assert_equal [File.join(dir, "test"), File.join(dir, "packs/a/test/models")], roots.call("packs/a/test/models/x_test.rb")
+      assert_equal [File.join(dir, "packs/b/test")], roots.call("packs/b/test/y_test.rb")
+      assert_equal [File.join(dir, "lone")], roots.call("lone/z_test.rb"), "a test outside packs/ keeps the 1.9.0 roots"
+      assert_includes roots.call("packs/c/spec/w_spec.rb"), File.join(dir, "spec")
+      assert_equal [File.join(dir, "packs/a/test/models")],
+                   Mutineer::JobPlan.test_load_roots([File.join(dir, "packs/a/test/models/x_test.rb")]),
+                   "without a project root there is no pack rule"
+    end
+  end
+
   # A directory source of the whole `packs` folder lists the pack test file
   # as a source too (1.9.0 Pairing.expand_sources behavior), so it is
   # reported unpaired. The docs say to pass `packs/*/app` (#554).

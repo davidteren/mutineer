@@ -18,6 +18,7 @@ module Mutineer
       end
 
       # True when a failed test file pairs with `source_rel` by convention.
+      # A pack source is blamed only by its paired tests ({#pack_failed_test?}).
       # Exact `_test` / `_spec` / `test_` names match by basename, as before.
       # A split `<name>_*_test.rb` matches only in the mirrored test directory,
       # and only when no longer source file owns that name (#87). The answer
@@ -29,14 +30,19 @@ module Mutineer
         @blame_for ||= {}
         return @blame_for[source_rel] if @blame_for.key?(source_rel)
 
-        @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel) ||
-                                 pack_failed_test?(source_rel)
+        @blame_for[source_rel] =
+          if Pairing.pack_split(source_rel)
+            pack_failed_test?(source_rel)
+          else
+            exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+          end
       end
 
       # True when a failed test file is one that {Pairing.infer_tests} pairs
-      # with a pack source (`packs/<pack path>/app/` or `lib/`, #494). The
-      # mirror checks above look under the project's own `test/`, so a split
-      # test inside the pack would blame nothing without this.
+      # with a pack source (`packs/<pack path>/app/` or `lib/`, #494). A pack
+      # source uses only this rule: the basename rule of {#exact_failed_test?}
+      # would let a same-named test in another pack blame it, and the mirror
+      # checks look only under the project's own `test/`.
       #
       # @param source_rel [String] project-relative source path.
       # @return [Boolean]

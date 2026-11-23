@@ -1076,23 +1076,53 @@ module Mutineer
 
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
-    # holding that helper, plus the file's own dir as a fallback.
-    def self.test_load_roots(test_files)
+    # holding that helper, plus the file's own dir as a fallback. A test under
+    # the project's `packs/` folder with no helper above it also gets the `test/` or
+    # `spec/` folder (`spec/` first for a `_spec.rb` file) of the nearest
+    # ancestor that holds one, because a pack test requires the app's helper
+    # by name (#494).
+    #
+    # @param test_files [Array<String>] absolute test paths.
+    # @param project_root [String, nil] project root; nil skips the pack rule.
+    # @return [Array<String>] unique absolute directories.
+    def self.test_load_roots(test_files, project_root: nil)
+      packs = project_root && "#{File.expand_path(project_root)}/packs/"
       test_files.flat_map do |f|
-        dir = File.dirname(f)
-        root = nil
-        loop do
-          if File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
-            root = dir
-            break
+        root = helper_ancestor(File.dirname(f)) { |dir| helper_dir?(dir) ? dir : nil }
+        if root.nil? && packs && f.start_with?(packs)
+          names = f.end_with?("_spec.rb") ? %w[spec test] : %w[test spec]
+          root = helper_ancestor(File.dirname(f)) do |dir|
+            names.map { |name| File.join(dir, name) }.find { |sub| helper_dir?(sub) }
           end
-          parent = File.dirname(dir)
-          break if parent == dir
-
-          dir = parent
         end
         [root, File.dirname(f)].compact
       end.uniq
+    end
+
+    # Walks from `dir` up to the filesystem root and returns the first
+    # non-nil value the block gives for a directory.
+    #
+    # @param dir [String] absolute directory to start from.
+    # @yieldparam dir [String] each directory on the way up.
+    # @return [String, nil]
+    def self.helper_ancestor(dir)
+      loop do
+        found = yield dir
+        return found if found
+
+        parent = File.dirname(dir)
+        return nil if parent == dir
+
+        dir = parent
+      end
+    end
+
+    # True when `dir` holds `test_helper.rb` or `spec_helper.rb`.
+    #
+    # @param dir [String]
+    # @return [Boolean]
+    def self.helper_dir?(dir)
+      File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
     end
 
     # The unique absolute directories holding the sources. Sweep target for both
