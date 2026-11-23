@@ -1,0 +1,21 @@
+lib/mutineer/pairing.rb
+  s_9747bd218c1c67::t_5ff7de3a561b0f 439-441,446-448
+test/pairing_test.rb
+  s_9747bd218c1c67::t_1ae51392bb6b70 999-1002
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ef1e44e6e302a016d30602f21206682f50309c2",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
