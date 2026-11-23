@@ -153,7 +153,7 @@ issue for something a pull request found, ask what caused it:
 
 1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
 2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
-3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed.
+3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code (see "Fix it in the pull request, or file an issue?").
 4. After fixes, push and check the new lines again.
 5. Require green GitHub checks on the head commit.
 6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing").
