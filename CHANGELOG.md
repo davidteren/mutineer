@@ -76,7 +76,7 @@ All notable changes to this project are documented here. The format is based on
   When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again and copies the worker database again. So the run stops with the lock message if another run took the lock, and on PostgreSQL and MySQL it exits 1 if that copy fails, for example while another session uses the PostgreSQL test database (#416).
 - **A `LoadError` while a `--rails` daemon sets up worker databases fails the boot (Refs #416).**
   This covers every daemon's schema file lookup, the lock of every worker daemon, and the copy of a PostgreSQL or MySQL worker database at boot. A SQLite file is copied later, when a mutant first uses its slot.
-  The daemon then stops with `daemon failed to boot under the app bundle: LoadError: <message>`, and the run exits 1.
+  The run exits 1 with `mutineer: daemon failed to boot under the app bundle: LoadError: <message>`. When the first daemon fails this way, the run first prints `daemon coverage map unavailable` and starts its one worker daemon, which then fails with the same line.
   Before, the daemon printed `worker-DB routing unavailable` and went on with routing off. A worker daemon then ran mutants against the app's own test database, and a first daemon skipped the copy when the run asked for it.
   Only a `LoadError` from loading Mutineer's own worker-database file still turns routing off, as before.
 - **`docs/rails-setup.md` lists the run lock limits that stay open (Refs #416).**
