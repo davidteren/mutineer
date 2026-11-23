@@ -233,11 +233,12 @@ source that another source loads keeps working. Stderr prints one line with the 
 
 The run keeps its full test list when you give `--test` or `--test-command`, or `--coverage-from` on an
 in-process `--rails` or `--boot` run, and stderr says the setting has no effect. A run that ignores
-`--coverage-from` (no boot file, or `--daemon`) still narrows. A dry run runs no tests and prints nothing. When every paired source has a
-mutant on a changed line, the list is already the full list, and no line prints. A library caller that builds
+`--coverage-from` (no boot file, or `--daemon`) still narrows. A dry run runs no tests and prints nothing. When the tests of the sources
+with a mutant on a changed line already make up the full list, no line prints: for example, every paired source
+has such a mutant, or a `tests:` map entry adds every test. A library caller that builds
 its own `Config` with no pairing rows also keeps the full list. When no changed line holds a mutant, the run
 returns before it runs any test, with or without the setting.
 Without `--since`, the setting does nothing, so the key can stay in a `.mutineer.yml` that full runs read.
 A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. To check one,
-run the same command without the setting. If the mutant is killed there, add that test to the `tests:` map
+run the same command with `--no-since-paired-tests`. If the mutant is killed there, add that test to the `tests:` map
 for the changed source. The limits are in #552.

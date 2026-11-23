@@ -83,9 +83,10 @@ module Mutineer
         --since-paired-tests With --since, run only the tests paired with the sources
                              that have a mutant on a changed line (in-process and
                              --daemon; not with --test, --test-command, or
-                             --coverage-from on a --rails/--boot run; default: off;
-                             --no-since-paired-tests
-                             beats a .mutineer.yml since_paired_tests:)
+                             --coverage-from on an in-process --rails/--boot run;
+                             default: off)
+        --no-since-paired-tests  Turn it off for one run (beats a .mutineer.yml
+                             since_paired_tests:)
         --jobs N             Parallel worker count (default: processor count);
                              --test-command, --fail-fast, or --rails
                              without --daemon forces 1
@@ -651,12 +652,10 @@ module Mutineer
     # @param config [Mutineer::Config] run configuration.
     # @return [void]
     def self.warn_unused_coverage_from(config)
-      return if JobPlan.coverage_from_reused?(config) && !config.dry_run
-
       mode = if config.test_command then "--test-command"
              elsif config.daemon then "--daemon"
              elsif config.dry_run then "--dry-run"
-             elsif !config.boot then "a run without --rails/--boot"
+             elsif !JobPlan.coverage_from_reused?(config) then "a run without --rails/--boot"
              end
       warn_unused_settings(config, mode, %i[coverage_from]) if mode
     end

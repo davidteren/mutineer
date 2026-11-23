@@ -40,7 +40,7 @@ A narrowed run does not run a test that pairs only with an unchanged source.
 A mutant that only such a test kills shows as `survived` or `no_coverage`.
 
 1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
-2. Run the same command without the setting.
+2. Run the same command with `--no-since-paired-tests`, which beats the `.mutineer.yml` key.
 3. If the mutant is killed there, a test paired with another source kills it. Add that test to the [`tests:` map](cli.md#extra-tests-for-a-source) for the changed source.
 
 A baseline refresh does not help here. A baseline comes from a full run, and a full run is not narrowed.
