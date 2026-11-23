@@ -22,7 +22,7 @@ module RunLockHelpers
 
   # A --require file that appends "<pid> <db_role>" to `log` in each daemon
   # that loads it. The daemon loads --require files before its database setup,
-  # so a logged daemon has not yet asked for its lock. With `release`, a daemon
+  # so a logged daemon has not asked for its lock at that point. With `release`, a daemon
   # whose role is already in the log (a respawn) waits for that file before it
   # goes on, so a test can probe the lock while the respawn holds nothing.
   # Use `release` with one-worker runs only: in a parallel run the second
