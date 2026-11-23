@@ -66,7 +66,7 @@ None of these is known to have hurt a real run (#416). Each can bring back the f
 **Stop the second SQLite run earlier (gap 2, only with U3)**
 
 - R4. On SQLite, when another run holds the lock, a second `--rails --daemon` run stops before any of its `--require` files can use the database through Active Record.
-- R5. Every stop for a held lock raises one error class and prints one line: `mutineer: RuntimeError: another Mutineer run is using <base>`. It exits 1 and prints no coverage fallback warning and no score.
+- R5. With U3, every stop for a held lock raises one error class and prints one line: `mutineer: RuntimeError: another Mutineer run is using <base>`. It exits 1 and prints no score. A stop in the U3 early lock prints no coverage fallback warning. A U2 fallback run still prints that warning first, because its first daemon failed before the lock (AE2).
 - R6. The early request never loads Active Record itself and never changes which database the app uses. If the database config is not ready at that moment, the daemon prints one line to stderr and the run takes its lock at `provision`, as today.
 - R10. When a `--require` file points Active Record at another SQLite file, the run ends with its lock on the file it routes to, as today.
 
@@ -177,7 +177,7 @@ sequenceDiagram
   - `test/daemon_worker_db_test.rb`
   - `CHANGELOG.md`
 - **Approach:**
-  1. In `DaemonBackend.run_serial`, remove the quit of `prepare_client` that follows the worker boot. The `ensure` block already quits both clients.
+  1. In `DaemonBackend.run_serial`, keep `prepare_client` up for `--rails` runs: keep the quit after the worker boot only for a run without `--rails` (`unless config.rails`), so that run still stops it early. The `ensure` block quits both clients.
   2. Leave `DaemonBackend.run_parallel` as it is (Scope Boundaries).
   3. Update every comment in `lib/mutineer/daemon_backend.rb` that states the old lifetime:
      - the block comment above `prepare_client = nil` in `execute` ("keeps its database lock until the worker daemons have taken theirs").
