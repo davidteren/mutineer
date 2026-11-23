@@ -369,7 +369,8 @@ class DaemonMysqlTest < Minitest::Test
       assert_equal 0, status.exitstatus, out
       assert_includes out, "daemon coverage map unavailable"
       assert_includes out, "provisioned 1 mysql worker database(s) from #{BASE}"
-      assert_match(/mutation score/i, out)
+      # A number, not "N/A": at least one mutant ran against the copied database.
+      assert_match(/Mutation score: \d/, out)
       # The coverage daemon failed in its boot file, before the --require files.
       assert_equal ["solo"], File.readlines(roles, chomp: true).map { |line| line.split(" ", 2).last }
     end
