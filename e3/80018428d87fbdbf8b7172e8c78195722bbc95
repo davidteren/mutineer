@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_90efeff014f182 36
+docs/getting-started.md
+  s_9747bd218c1c67::t_3bfb0abde37384 78
+test/coverage_map_test.rb
+  s_9747bd218c1c67::t_28dc900c273bf8 3111-3113,3117,3121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e380018428d87fbdbf8b7172e8c78195722bbc95",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
