@@ -232,8 +232,9 @@ module Mutineer
       # files on first use.
       #
       # Only a LoadError while the adapter loads turns routing off. A failed
-      # lock or copy raises, so the boot fails: a daemon with routing off would
-      # run mutants against the app's own test database (#416).
+      # lock, or a failed PostgreSQL or MySQL copy, raises, so the boot fails:
+      # a daemon with routing off would run mutants against the app's own test
+      # database (#416).
       def setup_worker_db(cfg)
         # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
         @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)

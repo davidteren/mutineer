@@ -25,6 +25,8 @@ module RunLockHelpers
   # so a logged daemon has not yet asked for its lock. With `release`, a daemon
   # whose role is already in the log (a respawn) waits for that file before it
   # goes on, so a test can probe the lock while the respawn holds nothing.
+  # Use `release` with one-worker runs only: in a parallel run the second
+  # fresh worker would also wait.
   def write_role_file(dir, log, release: nil)
     path = File.join(dir, "role.rb")
     gate = release ? "sleep 0.02 until File.exist?(#{release.inspect}) if respawn" : ""

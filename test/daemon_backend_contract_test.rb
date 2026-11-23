@@ -1213,9 +1213,10 @@ class DaemonBackendContractTest < Minitest::Test
 
   # #416 review: a solo daemon copies its database inside setup_worker_db. A
   # LoadError from that copy (a MySQL schema.rb that requires a missing file)
-  # must fail the boot. Rescued as "routing unavailable", it would let the
-  # daemon run mutants against the app's own test database.
-  def test_a_load_error_while_a_solo_daemon_copies_fails_the_boot
+  # must raise out of setup_worker_db, so boot! replies ready false. Rescued
+  # as "routing unavailable", it would let the daemon run mutants against the
+  # app's own test database.
+  def test_a_load_error_while_a_solo_daemon_copies_raises_out_of_setup
     require "mutineer/daemon_server"
     require "mutineer/rails_worker_db"
     errio = StringIO.new

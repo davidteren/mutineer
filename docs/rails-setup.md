@@ -223,7 +223,7 @@ One worker shares nothing, so it skips the check.
 | `shared_databases` lists the primary database | The run stops with exit 2. |
 | A name matches no test database | A warning. The name lifts nothing. |
 | Mutineer cannot list the app's databases | One worker. |
-| The first daemon does not boot, with `--rails` | One worker. For its database lock, see "Concurrent runs" above. With `--boot` alone, the run keeps its worker count. |
+| The first daemon fails to boot with an error, with `--rails` | One worker. For its database lock, see "Concurrent runs" above. With `--boot` alone, the run keeps its worker count. A boot timeout stops the run instead. |
 
 Transactional tests connect every database that has a connection pool in the test environment.
 So if the test environment registers a pool for a shared database, every mutant scores `error`.
