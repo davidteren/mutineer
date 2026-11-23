@@ -6,18 +6,23 @@ module Mutineer
   # Lets the reload strategy run a Rails class body a second time.
   #
   # Reload `load`s the mutant file over a class that is already defined, so the
-  # class body runs again. Two Rails macros refuse that:
+  # class body runs again. Three Rails macros break on that:
   #
   # - `enum` raises because the enum's methods already exist (#378).
   # - `skip_callback` (and `skip_before_action`, which calls it) raises because
   #   the first run already removed the callback (#384).
+  # - `define_callbacks` (and `define_model_callbacks`, which calls it) gives
+  #   the class and every subclass a new empty chain, so a callback that an
+  #   included concern or a subclass in another file added is lost (#504).
   #
   # While {.during_load} runs, an `enum` the class had before the load skips
-  # its conflict check, and `skip_callback` does not raise for a callback the
-  # first run already removed (see {CallbackReskipping}).
+  # its conflict check, `skip_callback` does not raise for a callback the
+  # first run already removed (see {CallbackReskipping}), and
+  # `define_callbacks` skips a chain the class defined before the load (see
+  # {CallbackRedefinition}).
   # The original file ran the same macros once with the full checks, so the
   # second run repeats work Rails already accepted. Outside the load, for
-  # example while the tests run, both macros check as usual.
+  # example while the tests run, the macros run as usual.
   #
   # {.during_load} also loads the original file first when the app autoloads it
   # and nothing has loaded it yet (#383). Ruby would do that anyway when the
@@ -72,6 +77,30 @@ module Mutineer
       end
     end
 
+    # Skips a repeated `define_callbacks`, during a mutant load only (#504).
+    # The class body outside methods is the original's, so a chain the class
+    # itself defined before the load is a repeat. Rails would replace it, and
+    # each subclass's chain, with a new empty one, and the callbacks that a
+    # concern's `included` block or a subclass in another file added would be
+    # lost. The class body's own callbacks are added again and pair with the
+    # old copies through {RepeatedCallbacks}. A name that is new to the class
+    # reaches Rails with the options. A skipped call drops the options too, so
+    # a mutant in a def that calls `define_callbacks` would never reach Rails:
+    # discovery marks such a def `unplaceable` under reload
+    # ({Subject#calls_define_callbacks}).
+    module CallbackRedefinition
+      # @param names [Array<Symbol, String, Hash>] the chain names, then
+      #   optional options.
+      # @return [void]
+      def define_callbacks(*names)
+        return super unless ReloadGuards.loading?
+
+        options = names.last.is_a?(Hash) ? names.pop : {}
+        fresh = names.reject { |name| ReloadGuards.chain_existed?(self, name) }
+        super(*fresh, options) unless fresh.empty?
+      end
+    end
+
     # The superclass a reloaded class statement reopens with (#492).
     #
     # `class X < Data.define(:a)` builds a new superclass each time Ruby runs
@@ -92,6 +121,30 @@ module Mutineer
       if scope.const_defined?(name, false)
         klass = scope.const_get(name, false)
         return klass.superclass if klass.is_a?(Class)
+      end
+      yield
+    end
+
+    # The value a reloaded constant assignment keeps (#503).
+    #
+    # `BaseRow = Struct.new(:v)` builds a new class each time Ruby runs it, so
+    # a class statement in the same file that inherits from `BaseRow` raised
+    # "superclass mismatch" on a second load. The reload text wraps such a
+    # value in a call to this method ({JobPlan.keep_live_superclasses}). When
+    # `scope` already has a class `name`, this returns it, so every class,
+    # subclass and instance keeps pointing at one class. Otherwise it runs the
+    # block, as the original text would.
+    #
+    # @param scope [Module, nil] the module the constant is assigned in; nil
+    #   at the top level.
+    # @param name [Symbol] the constant name.
+    # @yieldreturn [Object] the value the original text builds.
+    # @return [Object]
+    def self.kept_constant(scope, name)
+      scope ||= Object
+      if scope.const_defined?(name, false)
+        value = scope.const_get(name, false)
+        return value if value.is_a?(Class)
       end
       yield
     end
@@ -117,6 +170,7 @@ module Mutineer
       before = RepeatedCallbacks.snapshot
       sizes = callback_growth_log && growth_check { RepeatedCallbacks.sizes(before) }
       @enums_before_load = {}
+      @chains_before_load = {}
       @loading = true
       result = yield
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
@@ -1022,6 +1076,27 @@ module Mutineer
       @enums_before_load.fetch(key) { @enums_before_load[key] = klass.defined_enums.key?(key.last) }
     end
 
+    # Whether `klass` itself owns chain `name` before this load: Rails'
+    # `define_callbacks` writes `_run_<name>_callbacks` on the calling class.
+    # ActiveSupport 8.1 also writes it on a subclass when its inherited chain
+    # gets a first callback. Either way the class body is the original text,
+    # so a `define_callbacks` it runs during the load also ran in the first
+    # load and is a repeat. A subclass that only inherited the chain and added
+    # nothing to it does not own the method, so Rails runs. The answer is read
+    # once for each class and name in a load and kept, so a chain that is new
+    # in this load stays new for a second call. On a Rails that does not write
+    # that method, the answer is false and Rails runs as before.
+    #
+    # @param klass [Class] the class calling `define_callbacks`.
+    # @param name [Symbol, String] the chain name.
+    # @return [Boolean]
+    def self.chain_existed?(klass, name)
+      key = [klass, name.to_sym]
+      @chains_before_load.fetch(key) do
+        @chains_before_load[key] = klass.method_defined?(:"_run_#{key.last}_callbacks", false)
+      end
+    end
+
     # The callback kinds `skip_callback` takes before its filters.
     CALLBACK_KINDS = %i[before after around].freeze
 
@@ -1058,6 +1133,7 @@ module Mutineer
       return unless callbacks_loaded?
 
       prepend_once(::ActiveSupport::Callbacks::ClassMethods, CallbackReskipping)
+      prepend_once(::ActiveSupport::Callbacks::ClassMethods, CallbackRedefinition)
     end
 
     # `defined?` does not load an autoloaded constant, but using it does.
