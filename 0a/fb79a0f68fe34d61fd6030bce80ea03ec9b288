@@ -1,0 +1,39 @@
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9ad04fc3dbec64::t_a7aa6c4db0550a 18
+CHANGELOG.md
+  s_9ad04fc3dbec64::t_9ef93378e615e9 16-17
+README.md
+  s_9ad04fc3dbec64::t_482cfad742b4ef 234
+docs/ci.md
+  s_9ad04fc3dbec64::t_38b7b95b8db3ec 25,42-45
+docs/cli.md
+  s_9ad04fc3dbec64::t_f40a0bad25769a 14,104,197,234,237-245,253-255
+docs/plans/2026-11-22-496-494-feat-coverage-capture-scope-plan.md
+  s_9ad04fc3dbec64::t_d35ab387d2e7ac 138
+lib/mutineer/cli.rb
+  s_9ad04fc3dbec64::t_6605151cf087ec 85-87,665-670,681
+lib/mutineer/job_plan.rb
+  s_9ad04fc3dbec64::t_b4a37e55a6eb1d 913-915,924,979-980
+test/cli_test.rb
+  s_9ad04fc3dbec64::t_6faef8a23a510b 3520-3620
+test/daemon_backend_contract_test.rb
+  s_9ad04fc3dbec64::t_586918b9e04bc8 296-297,299-303,311,335-343
+test/since_test_scope_test.rb
+  s_9ad04fc3dbec64::t_73409ae6fae09f 41-42,60-71,84-85,95-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0afb79a0f68fe34d61fd6030bce80ea03ec9b288",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
