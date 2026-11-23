@@ -48,7 +48,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
   "uncapturable": [ /* mutants whose would-be test errored during coverage capture */ ],
   "unplaceable":  [ /* mutants the strategy cannot load where the tests call them; not run; with the diff (#498) */ ],
   "ran_at_load":  [ /* mutants on a line that ran while the app or class loaded, or in a block whose call did (#493); no verdict; with the diff (#498) */ ],
-  "no_verdict":   [ /* mutants that were attempted and produced no verdict */ ],
+  "no_verdict":   [ /* mutants that were attempted and produced no verdict; with the diff (#526) */ ],
   "ignored":      [ /* mutants the user suppressed (equivalent mutants) */ ],
   "per_source":   [ /* per-file roll-up */ ],
   "unpaired_sources": [ /* sources with no paired test, sorted by file */ ],
@@ -68,7 +68,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `survived` | int | Mutants no test caught. Review each for a missing test or equivalent behaviour. |
 | `no_coverage` | int | Mutants on a line no test exercises (excluded from score). Also a mutant on a later line of a multi-line statement (#254, #289) — the right side of `a &&` on its own line, or a call inside a one-line block — when the tests of that statement did not kill it and the probe did not see the mutated expression return during a test (#345). The probe is a sentinel the child writes the first time that expression returns during a test; a load-time call and a raise inside the expression do not write it. Mutineer ran the tests that ran the statement's other lines (for a one-line block, the first or last line, never the `def` line). A survivor the probe saw return is `survived` and counts in the score. The probe covers a trailing operator, a method chain, a multi-line argument, a hash entry, and a heredoc interpolation. |
 | `uncapturable` | int | Mutants whose covering test errored during capture — a broken harness, not a gap (excluded). |
-| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block, and a method inside the block of a class statement's superclass call (#492). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
+| `unplaceable` | int | Mutants the strategy cannot load where the tests call them, so they were not run (excluded): under `--strategy redefine`, a method whose class or module cannot be named statically, or any method in a concern's `included` or `prepended` block; under `--strategy reload`, some methods in such a block, a method inside the block of a class statement's superclass call (#492), a method inside the value of a superclass constant that the same file assigns (#503), and a method that calls `define_callbacks` or `define_model_callbacks` (#504). The causes are listed under `unplaceable[]` below. Not part of `no_verdict`, so they do not fail `--threshold`. Additive key (schema `1.7`). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `ran_at_load` | int | Mutants on a method-body line that ran while the app booted or the class loaded, before the mutant was applied (excluded). A test can check a value the original code computed then, so a survivor there is not trusted, and a line that only ran at load is not a coverage gap. A kill stays a kill. After 1.9.0, an in-process or `--daemon` run also counts a survivor in a block or lambda literal here when the call that holds the block ran at load and the mutated expression did not return during a test. The line of such a mutant need not have run at load (#493). Not part of `no_verdict`, so they do not fail `--threshold`. `--test-command` re-runs the load and verifies them. Additive key (schema `1.7`). |
 | `skipped_invalid` | int | Mutants that didn't re-parse and were never run (excluded). Counted in the unrun share: when `unplaceable + skipped_invalid + unpaired_mutants` is more than 1 and more than 10% of `attempted + unplaceable + skipped_invalid + unpaired_mutants`, stderr warns on every format. `--fail-fast` leaves `unpaired_mutants` out of that sum. The warning does not change the exit code (schema `1.9`, #291). |
 | `declined` | int | Candidates the operators found and did not mutate, so they are not in `total`: a heredoc the edit would split, a string with no quotes of its own (a heredoc line, a `%(...)` part, a `%w[]` element, a regex, backtick or interpolated-symbol part) that `literal_mutation` cannot empty (#469), or an equivalent skip listed on the [equivalent-skips page](equivalent-skips.md). Counted per operator, so a candidate two operators decline counts twice. Counted before `# mutineer:disable-line` and `ignore:` apply. `--only` narrows it; `--since` does not. Additive key (schema `1.9`, #291). |
@@ -88,6 +88,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `unmatched_ignores` | array of string | `ignore:` ids that matched no mutant in this run's sources and operators, in file order, each id once. A dropped repeat of an edit counts as matched. An old-format id that still matches is not listed (`legacy_id_matches` counts it). Empty when every loaded entry matched, when `ignore:` is empty, or under `--only`. `--only` narrows methods before matching, so an empty list there does not mean every entry matched. `--since` does not add ids: matching happens before the diff narrows the run. A run of some files lists entries those files and operators do not match. A source that was passed and then skipped for lack of a paired test still counts, so `run` and `run --dry-run` agree. stderr says the list covers only that run. The exit code stays 0. `mutineer migrate --dry-run` over every source lists the same kind of entry and exits 1. Additive key (schema `1.10`, #377). |
 | `unpaired_sources` | int | How many sources had no paired test. `--only` and `--since` can leave a source at 0. The source stays in this count. Additive key (schema `1.10`, #381). |
 | `unpaired_mutants` | int | Non-ignored scheduled mutants in those sources. A failed count is left out of the sum. These mutants are excluded from the mutation score and are not in `no_verdict`, so they cannot fail `--threshold`. The human share is this count over `total - ignored + unpaired_mutants`. `--fail-fast` omits that percentage. `0` can mean no mutant, or no changed line under `--since`. Additive key (schema `1.10`, #381). |
+| `callback_growth` | array of object \| null | The classes the stderr warning `[mutineer] after a reload, …` names (#479): one `{ class, file }` row for each class whose own callback count grew after a reload, and the file whose reload grew it, sorted by `(file, class)`. For a source inside the project root given by its real path, `file` has the form of `file` in `killed[]` and `survivors[]`, so match on equal `file`. The row resolves symlinks, so a source given through a symlinked folder, or one outside the root (an absolute real path), can have a different `file`. A test that counts callback runs or errors can kill mutants of that file falsely. To check those kills, run the file with `--no-daemon --strategy redefine` or with `--test-command`. `[]` means that the run logged no growth. It is not proof that no class grew: a check that fails inside a mutant's child prints a stderr line and logs nothing (#531). A run that never reloads (`--strategy redefine` without `--daemon`, or `--test-command`) has `[]`. `null` means that a `--strategy reload` or `--daemon` run could not create its log, so it checked nothing, and a stderr line says so. It is also `null` when a program calls the reporter without the rows; the CLI always passes them. It changes no verdict, score or exit code. Additive key (schema `1.11`, #505). |
 
 ### `survivors[]` (array of object)
 
@@ -101,8 +102,9 @@ Each surviving mutant — the records an agent or reviewer acts on:
 | `operator` | string | Operator name, e.g. `arithmetic`, `comparison`. |
 | `id` | string | **Offset-free id** (12 hex chars). Includes the file path relative to the project root (a source outside the root uses its absolute real path, so its ids differ between machines). Unrelated edits preserve it when the path, qualified method name, mutated token, and repeated-name/mutation order stay the same. File moves, renames, and root changes can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). Paste into `.mutineer.yml` `ignore:`, or diff between runs (this is what `--baseline` matches on). |
 | `token` | string | The exact code being mutated (whitespace-collapsed), e.g. `a + b`. |
-| `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. The diff is UTF-8. For a source in another encoding (such as `# encoding: EUC-JP`), read `diff_encoding` first. Ready to hand to an agent as "write a test that fails under this change." |
-| `diff_encoding` | string | Present only when the source file is valid in an encoding other than UTF-8 and ASCII, for example `EUC-JP`, `Shift_JIS` or `ISO-8859-1` (from its magic comment, such as `# encoding:`). It is the Ruby name of that encoding. JSON text is UTF-8, so `diff` is the UTF-8 form of the change, and `git apply` rejects it for a changed line with non-ASCII text. To apply it, transcode every line after the two `---` / `+++` header lines from UTF-8 to `diff_encoding` and write the result as bytes (in Ruby, `hunk.encode(diff_encoding)`). Leave the header lines as they are: they hold the path, which is UTF-8. `git apply --unidiff-zero` then accepts the patch for that file. The exception is a file with a `working-tree-encoding` Git attribute (`.gitattributes`): Git applies the UTF-8 form there, so use `diff` as it is. Absent for a UTF-8 or ASCII source, whose `diff` applies as it is, for a `binary` source, whose bytes are read as UTF-8, and for a source whose bytes are not valid in its encoding, whose bad bytes print as `\xNN` in `diff` and cannot be restored. Also absent when a changed block does not convert back to its own bytes (Windows-31J byte pair `0xFA4A` reads as U+2160, which encodes back as `0x8754`), because the lines could not be restored. In those last three cases (invalid, binary-tagged with non-UTF-8 bytes, lossy), `git apply` rejects the diff even though the key is absent when the changed lines hold the bytes that cannot be restored: edit the file at `file` and `line` by hand, using `token` and `diff` as the description. Bytes outside the changed lines are not in the diff, so a diff whose lines are all ASCII still applies. Those cases are tracked in #518. The same key is on a `killed[]`, `unplaceable[]` or `ran_at_load[]` entry, which carries `diff`, when its source qualifies. Additive key (schema `1.11`, #510). |
+| `diff` | string | A unified diff with no context lines: `-original` / `+mutant` lines under a hunk header that gives each side's start line and, when it is not 1, its line count (`@@ -3,2 +3 @@`). For a `file` given relative to the project root, `git apply --unidiff-zero` run from that root accepts it. An absolute or `../` path needs `git apply --directory`/`-p` or an edit. The diff is UTF-8. To apply the change of any entry, follow these steps: 1. If `git check-attr working-tree-encoding -- <file>` names an encoding, apply `diff` as it is: Git converts that file itself. When the changed line of such a file holds an invalid byte or a lossy character, no field gives a patch that applies (#532). 2. Else, if `diff_base64` is present, decode it and apply the bytes. 3. Else apply `diff` as it is. 4. `diff: null` means that the entry has no change to apply. `diff_encoding` is for a consumer that prefers to transcode the text. Ready to hand to an agent as "write a test that fails under this change." |
+| `diff_encoding` | string | Present only when the source file is valid in an encoding other than UTF-8 and ASCII, for example `EUC-JP`, `Shift_JIS` or `ISO-8859-1` (from its magic comment, such as `# encoding:`). It is the Ruby name of that encoding. JSON text is UTF-8, so `diff` is the UTF-8 form of the change, and `git apply` rejects it for a changed line with non-ASCII text. To apply it, transcode every line after the two `---` / `+++` header lines from UTF-8 to `diff_encoding` and write the result as bytes (in Ruby, `hunk.encode(diff_encoding)`). Leave the header lines as they are: they hold the path, which is UTF-8. `git apply --unidiff-zero` then accepts the patch for that file. The exception is a file with a `working-tree-encoding` Git attribute (`.gitattributes`): Git applies the UTF-8 form there, so use `diff` as it is (step 1 of the recipe in the `diff` row). Absent for a UTF-8 or ASCII source, whose `diff` applies as it is, for a `binary` source, whose bytes are read as UTF-8, and for a source whose bytes are not valid in its encoding, whose bad bytes print as `\xNN` in `diff` and cannot be restored. Also absent when the change may hold a credential (see `diff_base64`, #540). Also absent when a changed block does not convert back to its own bytes (Windows-31J byte pair `0xFA4A` reads as U+2160, which encodes back as `0x8754`), because the lines could not be restored. In those last three cases (invalid, binary-tagged with non-UTF-8 bytes, lossy), `git apply` rejects the diff when the changed lines hold the bytes that cannot be restored. Such an entry carries `diff_base64`, the exact patch. Bytes outside the changed lines are not in the diff, so a diff whose lines are all ASCII still applies. The same key is on a `killed[]`, `unplaceable[]`, `ran_at_load[]` or `no_verdict[]` entry, which carries `diff`, when its source qualifies. Additive key (schema `1.11`, #510). |
+| `diff_base64` | string | Present only when the bytes of `diff` are not the exact patch for the file's bytes: a non-ASCII changed line in a source whose magic encoding is not UTF-8 or binary (with or without `diff_encoding`), an invalid byte or a byte with no Unicode mapping (such as `0xA5` in ISO-8859-3) on a changed line, or a `binary` source whose changed line is not UTF-8. A UTF-8 source with an invalid byte stops the run before the report today (#538). Absent, together with `diff_encoding`, when the change may hold a credential: redaction would change `diff` or the patch bytes (a `DATABASE_URL` password or a URL password), or a credential is configured and the patch bytes are not valid UTF-8, so they cannot be checked. Both keys would carry the bytes past the stdout redaction. They are absent under `--output` too, where `diff` is not redacted. Such an entry has no exact patch (#540). It is standard base64, on one line, of that exact patch: the two header lines and the hunk header as in `diff`, and each `-` and `+` line in the file's own bytes. Decode it, write the bytes to a file, and run `git apply --unidiff-zero` (in Ruby, `row["diff_base64"].unpack1("m")`). Follow the recipe in the `diff` row: a file with a `working-tree-encoding` Git attribute takes `diff`, not these bytes. Limit: a source path that is not valid UTF-8 prints as `\xNN` in the header here too, so `git apply` cannot find the file, and the report has no workaround yet (#532). The same key is on a `killed[]`, `unplaceable[]`, `ran_at_load[]` or `no_verdict[]` entry, which carries `diff`. Additive key (schema `1.11`, #518). |
 | `copies` | array of string | Present only when at least one other copy of this edit was dropped. Each string is that copy's id. The copies are the same change: same line, same mutated source, from this operator again or from another. Order is the order they were dropped, which follows `mutineer --list-operators` and then position in the method. An `ignore:` entry still ignores only its own id, so paste every id to ignore the edit. `mutineer triage` prints one entry per id. Absent when there are none. The same key appears on `killed[]`, `no_coverage[]`, `uncapturable[]`, `unplaceable[]`, `ran_at_load[]`, `no_verdict[]`, `ignored[]` and `baseline.new_survivors[]` when that row's mutant has a dropped copy. Additive key (schema `1.10`, #374). |
 | `seconds` | float \| null | Wall-clock seconds of this mutant's run step, rounded to 3 decimals. `null` when no time was measured: a verdict made without a run, or a worker that crashed before it reported. The run step differs by backend: in process, the fork, the load of the mutant and its tests; with `--daemon`, the request round trip, including a daemon respawn (an app boot) after a crash; with `--test-command`, the whole command, including its app boot. So values do not compare across backends. Under `--jobs` above 1 mutants run at the same time, so the sum of `seconds` can exceed `timing.mutants_seconds`. A timeout shows the time until the kill. The same key is on `killed[]` and `no_verdict[]` entries. Not byte-stable. Additive key (schema `1.11`, #495). |
 
@@ -118,7 +120,8 @@ unscored category from a full id list.
 `diff` is the same text a `survivors[]` entry gives for that mutant, so a
 consumer can match a killed mutant by its change, for example against a
 declared equivalent mutant. It is `null` only on an entry with no subject, whose `subject`, `file`, `line`,
-`operator` and `token` are `null` too. Additive key (schema `1.11`, #498).
+`operator` and `token` are `null` too. Additive key (schema `1.11`, #498). `diff_encoding` and `diff_base64`
+are there under the rules of `survivors[]`; follow the recipe in its `diff` row to apply the change.
 A report whose mutants are mostly killed is about twice as large with it:
 on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
 
@@ -127,7 +130,7 @@ on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,46
 Each entry is `{ subject, file, line, operator, token, id }`, sorted by
 `(file, line, operator, id)`. `unplaceable[]` and `ran_at_load[]` entries also carry `diff`, as
 `killed[]` does, so a consumer can run those mutants itself (additive key, schema `1.11`, #498).
-`no_coverage[]` and `uncapturable[]` entries have no `diff`. `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
+`no_coverage[]` and `uncapturable[]` entries have no `diff`. An uncapturable mutant's `no_verdict[]` entry has it, with `diff_base64` when the source needs it (#526, #518). `no_coverage` is a coverage gap: no test runs the line, or (#254, #289, #345) the tests that run a later line's statement did not kill the mutant and the probe did not see the mutated expression return during a test, so only a return of that expression that survives, or a test that kills it, clears the entry; `uncapturable` means the test that
 should cover the line errored while capturing coverage (fix the harness, not the test). `unplaceable` (schema
 `1.7`) means a `--strategy redefine` run did not run the mutant because its method's class or module cannot be
 named statically (an anonymous `Class.new`, a relative path such as `User::Permission` inside a namespace,
@@ -140,14 +143,54 @@ class statement's superclass call, such as `class X < Struct.new(:a) do ... end`
 already loaded, reload reopens it with the superclass it already has, so the same class object keeps its
 instances and subclasses, and the superclass call and its block do not run again. A class that is not loaded yet
 runs its superclass call as written. A `Data.define`, `Struct.new`, `Class.new` or other call
-superclass with no method in its block reloads as usual.
+superclass with no method in its block reloads as usual. So does a plain local write of such a call,
+`class Q < (base = Struct.new(:a))`: the local is set to the live superclass (#512). A superclass that
+sets a local in another way (`||=`, multiple assignment, a write deeper in the expression), or that is a
+bare variable read such as `class Q < base`, keeps its text and still errors on reload when it builds a new
+class (#527). A superclass call that reads a class the file builds again, such as `Class.new(Fields)`, or
+that calls a builder method of the file, keeps the old class, so a mutant in that class can survive falsely
+(#533).
+
+Reload also cannot place a method inside the value of a constant assignment when a class statement in the
+same file inherits from that constant, such as the block of `BaseRow = Struct.new(:v) do ... end` with
+`class Row < BaseRow` (#503). Reload keeps the class that `BaseRow` already has, so `Row` reopens with the
+same parent, and the value and its block do not run again. `--strategy redefine` runs these methods.
+Reload keeps such a value only when all of these hold, and otherwise leaves the file as written, which
+errors on reload when it builds a new class (#527):
+
+- the value is `Struct.new`, `Data.define` or `Class.new` with literal arguments only (symbols, strings,
+  numbers, `true`, `false`, `nil` and keyword pairs of those), with or without a block. A constant, a
+  variable or a call in an argument (`Class.new(Fields)`), or a builder method of the file
+  (`BaseRow = build_base`), is left as written;
+- a bare assignment (`BaseRow = ...`) matches a bare superclass (`< BaseRow` or `< ::BaseRow`) in any
+  scope of the file, and a path assignment (`Billing::BaseRow = ...`) matches only a path superclass
+  spelled the same. So `Base = ...` beside `class User < ActiveRecord::Base` is not kept;
+- a path assignment has no parent (`::BaseRow = ...`), or its parent is a constant path or `self`.
+
+Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in
+its body (with any receiver), or that calls such a method of the same file by name (with any receiver) or
+through `super`, through any chain of such calls (#504). During the mutant load, reload skips a chain that the class already has, with the options the call
+gives, so that a concern's callbacks stay. A mutant that changes the names or options in such a method
+therefore never reaches Rails. The match is by name and fails closed: the whole method is marked, so its
+other lines lose their verdicts under reload too, and so do such a method that only a test calls, a
+same-named method in another class of the file, and such a method in a project without ActiveSupport, where
+no guard runs. A mutant on a later line of a multi-line statement there stays `no_coverage`, as for the other
+causes. Still not marked, so a mutant there can survive unapplied (#530): a method that only computes the
+names or options (`define_callbacks :save, **opts`), a call through `send`, `public_send`, `__send__` or
+`method`, and a caller in another file. `--strategy redefine` does not run the class body again, and its
+verdicts are unchanged. `--test-command` boots the app with the mutant file, so it applies these mutants.
+
+Two constant shapes can still give a false survivor. The value of a `||=` assignment does not run again on
+reload, and its methods are not marked (#529). A constant with no class statement for it in the same file
+is built again, so a subclass in another file keeps the old class (#528).
 
 Under `--strategy reload`, ActiveSupport runs a concern's `included` or `prepended` block only when a class first
 includes or prepends the concern, so loading the file again does not reach a class that already has it (#256).
 For a method directly in the block, Mutineer loads the mutated method into each host that already has it, and a
 host that includes the concern later gets it from the reloaded block (#297). Nothing else in the block runs
 again. Two methods in one block can therefore get different verdicts. `unplaceable` under reload means the
-mutant's method is inside the block of a class statement's superclass call (#492, see above), or is a
+mutant's method is inside the block of a class statement's superclass call (#492, see above), is inside
+the kept value of a superclass constant (#503, see above), calls `define_callbacks` (#504, see above), or is a
 hook-block method that is one of these:
 
 - a method in a class, module, `Module.new`, `Struct.new`, `Class.new` or `Data.define` block inside the block;
@@ -233,8 +276,11 @@ The `id` is the value that `.mutineer.yml` `ignore:` takes. Before schema `1.6` 
 ### `no_verdict[]` (array of object)
 
 Every mutant that was attempted and produced no verdict:
-`{ subject, file, line, operator, token, id, status, details, seconds }`.
+`{ subject, file, line, operator, token, id, status, details, diff, seconds }`.
 `seconds` is as in `survivors[]` (additive key, schema `1.11`, #495).
+`diff` is the same text a `survivors[]` entry gives for that mutant, and `diff_encoding` is present
+under the same rule, so a consumer can run an errored, timed-out or uncapturable mutant again itself.
+`diff_base64` is there under the same rule (see the recipe in the `survivors[]` `diff` row). `diff` is `null` on an entry with no mutation (see below), and `diff_encoding` and `diff_base64` are then absent. Additive key (schema `1.11`, #526).
 `status` is `"error"`, `"timeout"` or `"uncapturable"`, and its length equals `summary.no_verdict`.
 Filter on `status` `"error"` for the errored mutants: their count equals `summary.errored`.
 `operator` and `token` name the change, as in `no_coverage[]` (additive keys, schema `1.10`, #388).
@@ -278,8 +324,8 @@ other secrets too, so treat the report like a log. A message
 can also hold an object address or a temporary file name, so `details` of an errored mutant can differ
 between two runs with the same verdicts.
 
-A failure before the mutant could be forked has no subject or mutation, so `subject`, `file`, `line` and
-`id` are `null` on that entry. It still appears, because the counts must reconcile — but that means `id`
+A failure before the mutant could be forked has no subject or mutation, so `subject`, `file`, `line`,
+`operator`, `token`, `id` and `diff` are `null` on that entry. It has no change to apply or to run again. It still appears, because the counts must reconcile — but that means `id`
 is not a reliable join key here, unlike in `survivors[]` and `ignored[]`.
 
 Uncapturable mutants appear both here and in `uncapturable[]`, which stays for consumers that already
@@ -433,7 +479,7 @@ completeness is the one worth retrying rather than blaming on the tests.
 
 ## Dry-run JSON (`--dry-run --format json`)
 
-Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it.
+Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it. It has no `callback_growth`.
 `mutineer run … --dry-run --format json` prints a candidate list
 instead of the human breakdown. `--output` writes that document the same way a completed run's
 report does. `--format html` under `--dry-run` stays human and warns that the format is unused.

@@ -68,6 +68,7 @@ module Mutineer
       @fail_fast = fail_fast
       @copies = {}
       @timing = nil
+      @callback_growth = nil
     end
 
     # Single entry point. Branches on `format` ("human" | "json" | "html") and
@@ -95,12 +96,18 @@ module Mutineer
     # `timing` (#495) holds `total_seconds` and the four phase seconds, each a
     # Float or nil. The JSON report writes it as `timing` and the human report
     # prints a `Time:` line. Left out, JSON has `timing: null` and no line prints.
+    # `callback_growth` (#505) is each class name and file whose callback count
+    # grew after a reload, from {Runner.execute}. Only the JSON report records
+    # it (`summary.callback_growth`, sorted). Left out, or nil when the run made
+    # no log, JSON has `callback_growth: null`.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
                unmatched_ignores: [], declined: {},
-               subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil, verbose: false)
+               subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil,
+               callback_growth: nil, verbose: false)
       @copies = copies || {}
       @timing = timing
+      @callback_growth = callback_growth
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
       rendered =
         if format == "json"
@@ -332,7 +339,11 @@ module Mutineer
           # Additive (1.10, #386): methods discovered, and how many of them the
           # selected operators did not mutate. Not mutants, so not in `total`.
           subjects: subjects,
-          unmutated_subjects: unmutated_subjects&.size
+          unmutated_subjects: unmutated_subjects&.size,
+          # Additive (1.11, #505): the classes the stderr callback warning
+          # names, as { class, file } rows. null when the run made no log.
+          # Changes no verdict, score or exit code.
+          callback_growth: callback_growth_json
         },
         survivors: @agg.surviving_mutants.map { |r| survivor_json(r) }
                        .sort_by { |h| [h[:file], h[:line], h[:operator]] },
@@ -363,6 +374,8 @@ module Mutineer
         # alone and a key that reconciled with neither would be worse. `details`
         # carries the cause where there is one. Uncapturable mutants also appear in
         # uncapturable[], which stays for consumers that already read it.
+        # Additive (1.11, #526): the diff, as on killed, so a consumer can run
+        # an errored mutant again; uncapturable[] stays lean.
         # to_s/to_i because a pre-fork failure has no subject, so its file and line
         # are null and would not compare against a real entry. id and status extend
         # the key to a total order: these entries collide on (file, line) far more
@@ -797,6 +810,17 @@ module Mutineer
       }
     end
 
+    # The callback growth rows as `{ class, file }` objects, sorted by file
+    # and class: the runner returns them in worker finish order, and the
+    # report must stay byte-stable. {#json_safe} makes the strings UTF-8.
+    #
+    # @api private
+    # @return [Array<Hash>, nil] nil when the caller gave no rows.
+    def callback_growth_json
+      @callback_growth&.map { |name, file| { class: name, file: file } }
+                      &.sort_by { |h| [h[:file], h[:class]] }
+    end
+
     # Builds survivor JSON.
     #
     # @api private
@@ -819,10 +843,7 @@ module Mutineer
         # Additive (1.11, #495): the run step's wall-clock seconds.
         seconds: result.seconds&.round(3)
       }
-      # The diff is UTF-8, as JSON is. Name the source's encoding so a consumer
-      # can transcode the hunk lines back to the file's bytes (#510).
-      encoding = result_diff_encoding(result)
-      row[:diff_encoding] = encoding if encoding
+      attach_diff(row, result)
       attach_copies(row, result.id)
     end
 
@@ -838,11 +859,56 @@ module Mutineer
       row = mutant_json(result)
       copies = row.delete(:copies)
       row[:diff] = unified_diff(result)
-      encoding = result_diff_encoding(result)
-      row[:diff_encoding] = encoding if encoding
+      attach_diff(row, result)
       row[:seconds] = result.seconds&.round(3) if seconds
       row[:copies] = copies if copies
       row
+    end
+
+    # Adds the diff keys that depend on the source to a row that has `diff`.
+    # The diff is UTF-8, as JSON is, so `diff_encoding` names the source's
+    # encoding when a consumer can transcode the hunk lines back to the file's
+    # bytes (#510), and `diff_base64` holds the exact patch whenever the bytes
+    # of `diff` are not that patch (#518). Both are withheld when the change
+    # may hold a credential that redaction would hide ({#credential_free?}). Each caller sets `diff` itself, so
+    # each list keeps its own key order.
+    #
+    # @api private
+    # @param row [Hash] one mutant's JSON object, with `diff` set.
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [Hash] `row`.
+    def attach_diff(row, result)
+      return row unless row[:diff]
+
+      encoding = result_diff_encoding(result)
+      patch = exact_patch(result)
+      # #518: the exact bytes when the text is not the patch for the file.
+      # pack("m0"), not the base64 library, which is a bundled gem since Ruby 3.4.
+      base64 = [patch].pack("m0") if patch && patch.b != row[:diff].b
+      return row unless encoding || base64
+      # Both keys give a consumer the file's bytes, past the stdout redaction
+      # that hides a credential in `diff`. Withhold both when in doubt (#540).
+      return row unless credential_free?(row[:diff], patch)
+
+      row[:diff_encoding] = encoding if encoding
+      row[:diff_base64] = base64 if base64
+      row
+    end
+
+    # True when the change can be shown as bytes with no credential in it:
+    # redaction alters neither `diff` nor the patch bytes read as UTF-8, and,
+    # when a credential is configured, those bytes are valid UTF-8, so the
+    # check could read them. Fails closed (#540).
+    #
+    # @api private
+    # @param diff [String] the UTF-8 diff.
+    # @param patch [String] the exact byte patch.
+    # @return [Boolean]
+    def credential_free?(diff, patch)
+      bytes = patch.b.force_encoding(Encoding::UTF_8)
+      return false if !bytes.valid_encoding? && Redaction.source_urls(ENV, []).any?
+
+      [diff, bytes.scrub].all? { |text| Redaction.text(text) == text }
     end
 
     # The unified diff of one mutant, with no context lines.
@@ -852,6 +918,32 @@ module Mutineer
     # @return [String, nil] the diff, or nil when the result has no subject or
     #   mutation (a stub result).
     def unified_diff(result)
+      build_patch(result) { |piece| utf8_text(piece) }
+    end
+
+    # The same patch as {#unified_diff}, with each side line in the file's own
+    # bytes (#518), so `git apply` accepts it for any source encoding. The
+    # path keeps the UTF-8 text `diff` shows (#532).
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @return [String, nil] the patch, or nil when the result has no subject
+    #   or mutation.
+    def exact_patch(result)
+      build_patch(result, &:b)
+    end
+
+    # The one builder of both patches, so the header, the hunk ranges and the
+    # end-of-file rule cannot drift apart. `piece` turns the path and each
+    # side line into the text the patch holds.
+    #
+    # @api private
+    # @param result [Mutineer::Result] the mutant result.
+    # @yieldparam piece [String] the path or one side line.
+    # @yieldreturn [String] its form in the patch.
+    # @return [String, nil] the patch, or nil when the result has no subject
+    #   or mutation (a stub result).
+    def build_patch(result, &piece)
       m = result.mutation
       return nil if result.subject.nil? || m.nil?
 
@@ -861,9 +953,10 @@ module Mutineer
       # A block at the end of the file has no newline after it; elsewhere the
       # file's next byte is one. Each side's own text decides its marker.
       at_eof = source.byteindex("\n", m.end_offset).nil?
-      old_lines = side_lines(original_block, at_eof)
-      new_lines = side_lines(mutated_block, at_eof)
-      shown_file = utf8_text(file)
+      old_lines = side_lines(original_block, at_eof).map(&piece)
+      new_lines = side_lines(mutated_block, at_eof).map(&piece)
+      # The path stays the text `diff` shows, so only the side lines differ (#532).
+      shown_file = piece.call(utf8_text(file))
       "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
@@ -890,7 +983,7 @@ module Mutineer
     # for an invalid one, whose bad bytes print as `\xNN` and cannot be restored,
     # and when a block does not convert back to its own bytes (CP932 0xFA4A
     # reads as U+2160, which encodes back as 0x8754), so a consumer could not
-    # restore the line.
+    # restore the line. Those rows carry `diff_base64` instead (#518).
     #
     # @api private
     # @param source [String] source text, tagged with its encoding.
@@ -909,7 +1002,8 @@ module Mutineer
     # One side of the diff as the file holds it: the {#diff_for} block plus the
     # newline that follows it, unless the block ends the file. Each line keeps
     # its own ending, so a CRLF line keeps its "\r" and a last line with no
-    # newline is told apart from one with a newline.
+    # newline is told apart from one with a newline. The lines stay in the
+    # source's encoding; {#build_patch} converts them.
     #
     # @api private
     # @param block [String] the block's text.
@@ -918,7 +1012,7 @@ module Mutineer
     def side_lines(block, at_eof)
       newline = "\n".dup.force_encoding(block.encoding)
       text = at_eof ? block : block + newline
-      text.lines.map { |line| utf8_text(line) }
+      text.lines
     end
 
     # The `-` or `+` lines of one side. A line with no newline is the file's
@@ -1073,10 +1167,11 @@ module Mutineer
     # A pre-fork failure has no subject or mutation attached, so those degrade to
     # nulls rather than dropping the entry — the count must still reconcile with
     # `summary.no_verdict`. `details` is redacted here too, whatever its source
-    # (#388).
+    # (#388). `diff` is the text a survivor gets (#526), and null with no
+    # mutation.
     #
     # @api private
-    # @param result [Mutineer::Result] an errored or timed-out result.
+    # @param result [Mutineer::Result] an errored, timed-out or uncapturable result.
     # @return [Hash] no-verdict JSON object.
     def no_verdict_json(result)
       file = result.subject&.file
@@ -1092,8 +1187,12 @@ module Mutineer
         id: result.id,
         status: result.status.to_s,
         details: result.details && Redaction.text(result.details),
-        seconds: result.seconds&.round(3)
+        # Additive (1.11, #526): the diff, as on survivors, so a consumer can
+        # run the mutant again itself. Null with no mutation to show.
+        diff: (unified_diff(result) if m)
       }
+      attach_diff(row, result)
+      row[:seconds] = result.seconds&.round(3)
       attach_copies(row, result.id)
     end
 
@@ -1601,11 +1700,21 @@ module Mutineer
       # ASCII-8BIT is "valid" for every byte, and encode raises on a byte
       # UTF-8 cannot hold. Those bytes fall through and print as \xNN.
       if str.encoding != Encoding::ASCII_8BIT && str.valid_encoding?
-        return str.encode(Encoding::UTF_8)
+        # A valid byte with no Unicode mapping (0xA5 in ISO-8859-3) prints as
+        # \xNN too, so one such byte cannot stop the report.
+        return str.encode(Encoding::UTF_8, fallback: ->(c) { escaped_bytes(c) })
       end
 
-      str.dup.force_encoding(Encoding::UTF_8)
-         .scrub { |bytes| bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join }
+      str.dup.force_encoding(Encoding::UTF_8).scrub { |bytes| escaped_bytes(bytes) }
+    end
+
+    # Each byte of `bytes` as `\xNN`.
+    #
+    # @api private
+    # @param bytes [String]
+    # @return [String]
+    def escaped_bytes(bytes)
+      bytes.unpack("C*").map { |b| format("\\x%02X", b) }.join
     end
 
     # A JSON document with every string as UTF-8 (#346). A path whose bytes
