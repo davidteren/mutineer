@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_8025a23ee2ce22 62-63,66-67,70,75
+docs/rails-setup.md
+  s_9747bd218c1c67::t_ff68a96d188f5e 168,171,182
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_b61b16985bb25a 83-84,98-99,171-172,321-325,339,341-342,344-347,360-364
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_a20978af25e50e 1059-1061,1063,1079-1097,1101,1187-1189,1241,1249-1250
+test/daemon_worker_db_test.rb
+  s_9747bd218c1c67::t_5dba174ce01530 376-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b3e73e03dba6be3df6621d5136d3b3288e466498",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
