@@ -1114,6 +1114,29 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # A prepare daemon whose quit raises must not leave the worker daemon up:
+  # the worker's quit sits in an inner ensure.
+  def test_a_failing_prepare_quit_still_quits_the_worker
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit; raise IOError, "closed stream" }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| "killed" }
+
+      error = assert_raises(IOError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal "closed stream", error.message
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
   # The prepare daemon holds the database lock. In a parallel run it must stay
   # up until each worker daemon has booted, then quit. Quitting first lets
   # another run drop the worker databases.

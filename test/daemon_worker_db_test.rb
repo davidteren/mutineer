@@ -308,28 +308,34 @@ class DaemonWorkerDbTest < Minitest::Test
 
   # #416, gap 4: a serial run keeps its prepare daemon until the run ends. So
   # the lock stays held while the worker daemon respawns, and a second run
-  # cannot take it in that window.
+  # cannot take it in that window. The respawn waits in its --require file
+  # until the probe is done, so neither worker daemon can hold the lock then.
   def test_a_serial_run_holds_the_sqlite_lock_while_its_worker_respawns
     skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
 
     pid = nil
     Dir.mktmpdir do |dir|
       roles = File.join(dir, "roles.log")
+      release = File.join(dir, "release")
       log = File.join(dir, "run.log")
-      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir),
+                                                           write_role_file(dir, roles, release: release)])
       assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
       workers = daemon_pids(roles, "worker")
       assert_equal 1, workers.size, File.read(roles)
       Process.kill("KILL", workers.first)
-      # Probe before the respawn has booted: only the prepare daemon can hold the lock now.
+      # The client respawns only after it read EOF from the killed daemon, so
+      # that daemon is gone. The respawn is now waiting before its lock request.
+      assert wait_for_daemons(pid, roles, "worker", 2), "the worker daemon never respawned\n#{File.read(log)}"
+      refute process_alive?(workers.first), "the killed worker daemon is still running"
       held = sqlite_lock_exclusive_busy?
+      File.write(release, "")
       status = wait_child(pid, timeout: 240)
       out = File.read(log)
       assert held, "no process held the lock while the worker daemon respawned\n#{out}"
       assert_equal 0, status.exitstatus, out
       assert_includes out, "respawning (1/3)"
       refute_includes out, "another Mutineer run"
-      assert_equal 2, daemon_pids(roles, "worker").size, "the worker daemon booted again\n#{File.read(roles)}"
     end
   ensure
     stop_holder(pid, signal: "KILL")

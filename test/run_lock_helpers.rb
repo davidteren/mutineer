@@ -21,14 +21,34 @@ module RunLockHelpers
   end
 
   # A --require file that appends "<pid> <db_role>" to `log` in each daemon
-  # that loads it. The daemon loads --require files before its database setup.
-  def write_role_file(dir, log)
+  # that loads it. The daemon loads --require files before its database setup,
+  # so a logged daemon has not yet asked for its lock. With `release`, a daemon
+  # whose role is already in the log (a respawn) waits for that file before it
+  # goes on, so a test can probe the lock while the respawn holds nothing.
+  def write_role_file(dir, log, release: nil)
     path = File.join(dir, "role.rb")
+    gate = release ? "sleep 0.02 until File.exist?(#{release.inspect}) if respawn" : ""
     File.write(path, <<~RUBY)
       cfg = Mutineer::DaemonServer.instance_variable_get(:@cfg) || {}
-      File.open(#{log.inspect}, "a") { |f| f.puts("\#{Process.pid} \#{cfg["db_role"]}") }
+      role = cfg["db_role"].to_s
+      respawn = File.exist?(#{log.inspect}) && File.readlines(#{log.inspect}, chomp: true).any? { |l| l.split(" ", 2)[1] == role }
+      File.open(#{log.inspect}, "a") { |f| f.puts("\#{Process.pid} \#{role}") }
+      #{gate}
     RUBY
     path
+  end
+
+  # Wait until `log` lists `count` daemons with `role`. False when the run
+  # ended first or the deadline passed.
+  def wait_for_daemons(pid, log, role, count, timeout: 90)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      return true if daemon_pids(log, role).size >= count
+      return false unless process_alive?(pid)
+
+      sleep 0.05
+    end
+    false
   end
 
   # A boot file that fails only in the coverage daemon, so the run falls back
