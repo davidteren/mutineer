@@ -614,6 +614,7 @@ module Mutineer
           reload_hook_call: reload_hook_call_for(node),
           in_superclass_block: @in_superclass_block,
           in_kept_constant: @in_kept_constant,
+          calls_define_callbacks: false, # set by Project.mark_callback_definers!
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node,

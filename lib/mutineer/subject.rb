@@ -33,8 +33,9 @@ module Mutineer
   # `class Row < BaseRow`. A reload keeps that constant's class, so the value
   # does not run again (#503).
   # `calls_define_callbacks` is true for a def that calls `define_callbacks`
-  # or `define_model_callbacks`, or calls another such def of the same file
-  # by name or through `super` ({Project.mark_callback_definers!}). A reload skips a chain the class
+  # or `define_model_callbacks` anywhere in its body (a nested def or block
+  # too), or calls another such def of the same file by name or through
+  # `super`, through any chain of such calls ({Project.mark_callback_definers!}). A reload skips a chain the class
   # already has, so a mutant there never reaches Rails (#504).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
                        :hook_block, :reload_hook_call, :enclosing_subject, :in_superclass_block,

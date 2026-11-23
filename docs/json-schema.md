@@ -164,9 +164,9 @@ errors on reload when it builds a new class (#527):
   spelled the same. So `Base = ...` beside `class User < ActiveRecord::Base` is not kept;
 - a path assignment has no parent (`::BaseRow = ...`), or its parent is a constant path or `self`.
 
-Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` (with any
-receiver), or that calls such a method of the same file by name (with any receiver) or through `super`
-(#504). During the mutant load, reload skips a chain that the class already has, with the options the call
+Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in
+its body (with any receiver), or that calls such a method of the same file by name (with any receiver) or
+through `super`, through any chain of such calls (#504). During the mutant load, reload skips a chain that the class already has, with the options the call
 gives, so that a concern's callbacks stay. A mutant that changes the names or options in such a method
 therefore never reaches Rails. The match is by name and fails closed: the whole method is marked, so its
 other lines lose their verdicts under reload too, and so do such a method that only a test calls, a
@@ -175,7 +175,7 @@ no guard runs. A mutant on a later line of a multi-line statement there stays `n
 causes. Still not marked, so a mutant there can survive unapplied (#530): a method that only computes the
 names or options (`define_callbacks :save, **opts`), a call through `send`, `public_send`, `__send__` or
 `method`, and a caller in another file. `--strategy redefine` does not run the class body again, and its
-verdicts are unchanged.
+verdicts are unchanged. `--test-command` boots the app with the mutant file, so it applies these mutants.
 
 Two constant shapes can still give a false survivor. The value of a `||=` assignment does not run again on
 reload, and its methods are not marked (#529). A constant with no class statement for it in the same file
