@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_9747bd218c1c67::t_eedee658eb9e78 16
+docs/ci.md
+  s_9747bd218c1c67::t_368a7890a9476e 41-42,46-48
+docs/cli.md
+  s_9747bd218c1c67::t_b1a6922944856d 231,242-246
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_51718a0762bb6b 976
+test/since_test_scope_test.rb
+  s_9747bd218c1c67::t_54c083b0460c2e 68-69,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c2b505e002214f42173cf694e356902891e1cec",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
