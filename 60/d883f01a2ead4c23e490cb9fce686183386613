@@ -1,0 +1,21 @@
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9ad04fc3dbec64::t_29a4483bf6aae0 19-20
+docs/cli.md
+  s_9ad04fc3dbec64::t_20235419effc25 242,248-250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60d883f01a2ead4c23e490cb9fce686183386613",
+  "prompts": {},
+  "sessions": {
+    "s_9ad04fc3dbec64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3289f4ea-9c3a-4578-ba5a-60714e1e01fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
