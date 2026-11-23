@@ -91,13 +91,19 @@ module Mutineer
     # command and SPEC_OPTS, so an order option there counts unless a later
     # source gives another one (#522).
     RSPEC_OPTION_FILES = %w[.rspec .rspec-local].freeze
-    # The shell token that starts an RSpec order option: `--seed`, `--order`,
-    # `--seed=N` or `--order=X`. The last one RSpec reads decides the order.
-    RSPEC_ORDER_OPTION = /\A--(?:seed|order)(?:=|\z)/
-    # The shell token of an RSpec `--options FILE`, `--options=FILE` or
-    # `-O FILE` on the command. RSpec then reads that file instead of
-    # `.rspec` and `.rspec-local`. RSpec ignores it in SPEC_OPTS.
-    RSPEC_OPTIONS_FILE = /\A(?:--options(?:=|\z)|-O)/
+    # An RSpec order option: `--seed N`, `--order X` or `--order=X`. The last
+    # one RSpec reads decides the order. Matched inside shell tokens too, so
+    # `bash -c 'rspec --seed 7'` and `SPEC_OPTS="--seed 7"` count.
+    RSPEC_ORDER_OPTION = /--(?:seed|order)(?:=|\s+)\S+/
+    # An RSpec `--options FILE` or `-O FILE` on the command. RSpec then reads
+    # that file instead of `.rspec` and `.rspec-local`. RSpec ignores it in
+    # SPEC_OPTS.
+    RSPEC_OPTIONS_FILE = /(?:\A|\s)(?:--options\b|-O)/
+    # An RSpec example filter flag whose next shell token is a free-text
+    # value (a description or a tag), not an option.
+    RSPEC_FILTER_FLAG = /\A(?:-e|--example|-E|--example-matches|-t|--tag)\z/
+    # An RSpec example filter with its free-text value in the same token.
+    RSPEC_FILTER_VALUE = /\A--(?:example|example-matches|tag)=/
 
     # PATH entries that pin a concrete Ruby under a version manager (ahead of
     # shims). Optional trailing slash; normal bins are left alone.
@@ -498,13 +504,24 @@ module Mutineer
       rspec = text[RSPEC_SEED, 1]
       return unless rspec
 
-      # Shell tokens, as RSpec splits them, so a quoted argument such as
-      # `--example 'handles --order rand'` is one value, not an option.
-      files = option_tokens(command).any? { |t| t.match?(RSPEC_OPTIONS_FILE) } ? [] : rspec_option_files
-      tokens = [*files, command, ENV["SPEC_OPTS"]].flat_map { |o| option_tokens(o) }
-      at = tokens.rindex { |t| t.match?(RSPEC_ORDER_OPTION) }
-      last = at && (tokens[at].include?("=") ? tokens[at] : "#{tokens[at]} #{tokens[at + 1]}")
+      files = rspec_tokens([command]).any? { |t| t.match?(RSPEC_OPTIONS_FILE) } ? [] : rspec_option_files
+      last = rspec_tokens([*files.flat_map(&:lines), command, ENV["SPEC_OPTS"]]).join("\n").scan(RSPEC_ORDER_OPTION).last
       [:rspec, rspec] unless last&.match?(RSPEC_SEED_GIVEN)
+    end
+
+    # The shell tokens of the sources, in order, without the free-text value
+    # of an RSpec example filter, so `--example 'handles --order rand'` is
+    # not read as an option (#522). A token that holds a nested command, such
+    # as `bash -c 'rspec --seed 7'`, stays whole and is still scanned.
+    #
+    # @api private
+    # @param sources [Array<String, nil>] a command, SPEC_OPTS, or option file lines.
+    # @return [Array<String>] binary tokens.
+    def self.rspec_tokens(sources)
+      tokens = sources.flat_map { |s| option_tokens(s) }
+      tokens.reject.with_index do |t, i|
+        t.match?(RSPEC_FILTER_VALUE) || (i.positive? && tokens[i - 1].match?(RSPEC_FILTER_FLAG))
+      end
     end
 
     # The shell tokens of a command or option text, as binary strings, so

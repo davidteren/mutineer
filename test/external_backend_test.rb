@@ -617,6 +617,11 @@ class ExternalBackendTest < Minitest::Test
       [{}, "rspec --order rand -e \"--seed 9\" %{files}", nil, random],
       [{ ".rspec" => "--seed 7" }, "rspec -e 'reads --options x' %{files}", nil, nil],
       [{}, "rspec --order rand %{files}", "--example 'uses --seed 3'", random],
+      [{}, "rspec --seed 7 --example='handles --order rand' %{files}", nil, nil],
+      # A seed inside a token that holds a nested command or an assignment.
+      [{}, "bash -c 'bundle exec rspec --seed 7 %{files}'", nil, nil],
+      [{}, "env SPEC_OPTS=\"--seed 7\" bundle exec rspec %{files}", nil, nil],
+      [{}, "bash -c 'bundle exec rspec --order rand %{files}'", nil, random],
       # Non-ASCII text in both the option file and the command.
       [{ ".rspec" => "--require spec_helper # caf\u00e9\n--seed 7" }, "rspec caf\u00e9_spec.rb", nil, nil],
       # RSpec reads --options only from the command line, not from SPEC_OPTS.
