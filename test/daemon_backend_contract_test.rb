@@ -5,6 +5,9 @@ require "English"
 require "minitest/mock"
 require "timeout"
 require "tmpdir"
+require "open3"
+require "json"
+require "stringio"
 require "mutineer/config"
 require "mutineer/daemon_backend"
 
@@ -1115,10 +1118,29 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # The prepare daemon holds the database lock. It must stay up until each
-  # worker daemon has booted, then quit. Quitting first lets another run drop
-  # the worker databases.
-  def test_the_prepare_daemon_stays_up_until_workers_boot
+  # #416: a serial Rails run keeps the prepare daemon until its last mutant
+  # has run, so a lock still covers the databases while the worker respawns.
+  def test_a_serial_rails_run_keeps_the_prepare_daemon_until_the_last_mutant
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { order << :worker_start; self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| order << :request; "killed" }
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+        Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+      end
+      assert_equal %i[worker_start request request prepare_quit worker_quit], order
+    end
+  end
+
+  # A run without --rails takes no database lock, so it does not keep an idle
+  # booted app: the prepare daemon quits once the worker has booted.
+  def test_a_serial_run_without_rails_quits_the_prepare_daemon_after_the_worker_boots
     with_jobs do |jobs, config, source_map|
       order = []
       prepare = Object.new
@@ -1126,16 +1148,67 @@ class DaemonBackendContractTest < Minitest::Test
       worker = Object.new
       worker.define_singleton_method(:start) { order << :worker_start; self }
       worker.define_singleton_method(:quit) { order << :worker_quit }
-      worker.define_singleton_method(:request) { |**| "killed" }
+      worker.define_singleton_method(:request) { |**| order << :request; "killed" }
 
       Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
         Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
       end
-      assert_equal :worker_start, order.first
-      assert order.index(:worker_start) < order.index(:prepare_quit)
-      assert order.index(:prepare_quit) < order.index(:worker_quit)
+      assert_equal %i[worker_start prepare_quit request request worker_quit], order
+    end
+  end
 
-      order.clear
+  # #416: a mutant request that raises ends the run, and both daemons still quit.
+  def test_a_serial_request_that_raises_still_quits_both_daemons
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| raise Mutineer::DaemonBootError, "daemon crashed 4 times" }
+
+      assert_raises(Mutineer::DaemonBootError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
+  # A prepare daemon whose quit raises must not leave the worker daemon up:
+  # the worker's quit sits in an inner ensure.
+  def test_a_failing_prepare_quit_still_quits_the_worker
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit; raise IOError, "closed stream" }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| "killed" }
+
+      error = assert_raises(IOError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal "closed stream", error.message
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
+  # The prepare daemon holds the database lock. In a parallel run it must stay
+  # up until each worker daemon has booted, then quit. Quitting first lets
+  # another run drop the worker databases.
+  def test_a_parallel_run_keeps_the_prepare_daemon_until_workers_boot
+    with_jobs do |jobs, config, source_map|
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
       workers = Array.new(2) do
         client = Object.new
         client.define_singleton_method(:start) { order << :worker_start; self }
@@ -1150,6 +1223,114 @@ class DaemonBackendContractTest < Minitest::Test
       assert_equal %i[worker_start worker_start], order[0, 2]
       assert order.index(:prepare_quit) > order.rindex(:worker_start)
       assert order.index(:prepare_quit) < order.index(:worker_quit)
+    end
+  end
+
+  # #416, gap 3: with no prepare daemon, a Rails run's one worker boots as
+  # "solo", so it takes the exclusive lock and copies its own database. A
+  # --boot run without --rails, or a run with a prepare daemon, keeps "worker".
+  def test_a_serial_run_without_a_prepare_daemon_boots_a_solo_worker_on_rails
+    with_jobs do |jobs, config, source_map|
+      roles = []
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { nil }
+      worker.define_singleton_method(:request) { |**| "killed" }
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { nil }
+      new_client = lambda do |boot:, **|
+        roles << boot[:db_role]
+        worker
+      end
+
+      Mutineer::DaemonClient.stub(:new, new_client) do
+        [[true, nil], [false, nil], [true, prepare]].each do |rails, prepare_client|
+          config.rails = rails
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare_client)
+        end
+      end
+      assert_equal %w[solo worker worker], roles
+    end
+  end
+
+  # #416, gap 3: a "solo" daemon provisions exactly one slot at boot. An
+  # unknown role provisions the default two, so this fails without the branch.
+  def test_a_solo_daemon_provisions_one_slot_at_boot
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    slots = []
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, ->(count) { slots << count }) do
+          Mutineer::RailsWorkerDb.stub(:prepare_worker!, -> { flunk "a solo daemon must not take only the shared lock" }) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+        end
+      end
+    end
+    assert_equal [1], slots
+  ensure
+    %i[@worker_db @schema_path @shared_databases @slot_ready].each do |ivar|
+      Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review: a solo daemon copies its database inside setup_worker_db. A
+  # LoadError from that copy (a MySQL schema.rb that requires a missing file)
+  # must raise out of setup_worker_db, so boot! replies ready false. Rescued
+  # as "routing unavailable", it would let the daemon run mutants against the
+  # app's own test database.
+  def test_a_load_error_while_a_solo_daemon_copies_raises_out_of_setup
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    errio = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
+    failing_copy = ->(_count) { raise LoadError, "cannot load such file -- missing_schema_helper" }
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, failing_copy) do
+          error = assert_raises(LoadError) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+          assert_includes error.message, "missing_schema_helper"
+        end
+      end
+    end
+    refute_includes errio.string, "worker-DB routing unavailable"
+  ensure
+    %i[@worker_db @schema_path @shared_databases @slot_ready @errio].each do |ivar|
+      Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review (cubic): a LoadError while the daemon finds the schema file
+  # (ruby_schema_path reaches ActiveRecord::Tasks) must fail the boot, not turn
+  # routing off. Drives the real DaemonServer.run in a child process: the boot
+  # reply is ready false, the daemon exits 1, and the mutant request after it
+  # gets no verdict, so no mutant runs against the app's own test database.
+  def test_a_load_error_while_finding_the_schema_fails_the_boot_before_any_mutant
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      require "mutineer/daemon_server"
+      require "mutineer/rails_worker_db"
+      db = Mutineer::RailsWorkerDb
+      db.define_singleton_method(:available?) { true }
+      db.define_singleton_method(:ruby_schema_path) { raise LoadError, "cannot load such file -- active_record/tasks/missing" }
+      db.define_singleton_method(:provision) { |_slots| nil }
+      db.define_singleton_method(:prepare_worker!) { nil }
+      Mutineer::DaemonServer.run
+    RUBY
+    Dir.mktmpdir("mutineer-boot") do |root|
+      boot = { cmd: "boot", project_root: root, rails: true, db_role: "worker", framework: "minitest" }
+      mutant = { id: 1, worker: 0, timeout: 5, tests: [], payload: { code: "", source_file: File.join(root, "a.rb") } }
+      input = "#{JSON.generate(boot)}\n#{JSON.generate(mutant)}\n"
+      out, err, status = Open3.capture3({ "LANG" => "C.UTF-8" }, RbConfig.ruby, "-I#{lib}", "-e", script,
+                                        stdin_data: input, unsetenv_others: true)
+      replies = out.lines.map { |line| JSON.parse(line) }
+      assert_equal 1, status.exitstatus, "#{out}\n#{err}"
+      assert_equal [false], replies.map { |r| r["ready"] }, "the boot must fail and no verdict may follow\n#{out}"
+      assert_includes replies.first["error"], "LoadError: cannot load such file -- active_record/tasks/missing"
+      refute_includes err, "worker-DB routing unavailable"
     end
   end
 
@@ -1202,6 +1383,7 @@ class DaemonBackendContractTest < Minitest::Test
     prepare.define_singleton_method(:quit) { order << :prepare_quit }
     worker = Object.new
     worker.define_singleton_method(:start) { order << :worker_start; raise "boot failed" }
+    worker.define_singleton_method(:quit) { order << :worker_quit }
 
     config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest")
     assert_raises(RuntimeError) do
@@ -1209,7 +1391,8 @@ class DaemonBackendContractTest < Minitest::Test
         Mutineer::DaemonBackend.send(:run_serial, [], config, [], nil, {}, prepare)
       end
     end
-    assert_equal %i[worker_start prepare_quit], order
+    # The worker is quit too: a daemon whose boot was interrupted must not stay up.
+    assert_equal %i[worker_start prepare_quit worker_quit], order
   end
 
   # #392: a mutant that Ruby cannot load is skipped tool-side and never sent to

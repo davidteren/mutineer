@@ -95,6 +95,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A one-worker `--rails --daemon` run keeps its run lock while its worker daemon respawns (Refs #416).**
+  A `--rails --daemon` run with one worker (`--jobs 1`, `--fail-fast`, a run with one mutant, an app with a second database that `shared_databases` does not list, or an app whose databases Mutineer cannot list) quit its first daemon once the worker daemon had booted.
+  When that worker crashed, no process held the run lock until the new worker daemon had booted, so a second run on the same test database could start in that window.
+  The first daemon now stays up until the run ends, on SQLite, PostgreSQL and MySQL.
+  The cost is one more booted copy of the app, with its coverage data, in memory during the mutant phase of every one-worker `--rails --daemon` run. It adds no boot and uses no CPU.
+  A `--boot` run without `--rails` takes no database lock, so it still quits its first daemon once the worker daemon has booted.
+  A parallel run still quits its first daemon once its worker daemons hold their locks. While all of its worker daemons are down at once, it holds no lock (#416).
+- **A `--rails --daemon` run whose first daemon did not boot now takes the run lock and copies its worker database (Refs #416).**
+  When the first daemon failed to boot with an error, the run went on with one worker daemon. A boot timeout still stops the run, with no fallback. That daemon took only the shared lock, so two such runs on the same test database did not stop each other. On PostgreSQL and MySQL it also copied no worker database.
+  The one worker daemon of such a run now asks for the exclusive lock, copies its worker database, and then shares the lock, as a first daemon does.
+  When another run holds the lock, the run exits 1 with `mutineer: daemon failed to boot under the app bundle: RuntimeError: another Mutineer run is using <base>`.
+  On PostgreSQL and MySQL this run now copies its worker database. Before, it used the copy an earlier run left, or none. It needs the same database rights as a normal run, and it exits 1 when the copy fails.
+  On SQLite the worker file was already copied on first use, so only the lock changes.
+  Like a normal run, such a run now exits 1 at boot when Mutineer cannot copy its database: an adapter other than SQLite, PostgreSQL or MySQL, or MySQL older than 8.0. Before, it booted without a copy, and on an adapter Mutineer cannot route each mutant scored `error`.
+  When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again and copies the worker database again. So the run stops with the lock message if another run took the lock, and on PostgreSQL and MySQL it exits 1 if that copy fails, for example while another session uses the PostgreSQL test database (#416).
+- **A `LoadError` while a `--rails` daemon sets up worker databases fails the boot (Refs #416).**
+  This covers every daemon's schema file lookup, the lock of every worker daemon, and the copy of a PostgreSQL or MySQL worker database at boot. A SQLite file is copied later, when a mutant first uses its slot.
+  The run exits 1 with `mutineer: daemon failed to boot under the app bundle: LoadError: <message>`. When the first daemon fails this way, the run first prints `daemon coverage map unavailable` and starts its one worker daemon, which then fails with the same line.
+  Before, the daemon printed `worker-DB routing unavailable` and went on with routing off. A worker daemon then ran mutants against the app's own test database, and a first daemon skipped the copy when the run asked for it.
+  Only a `LoadError` from loading Mutineer's own worker-database file still turns routing off, as before.
+- **`docs/rails-setup.md` lists the run lock limits that stay open (Refs #416).**
+  A run without `--daemon` takes no database lock. A run takes its lock after its boot file and `--require` files have loaded. A parallel run whose worker daemons are all down at once holds no lock. A fallback run holds no lock while its one worker daemon respawns. A one-worker run whose first daemon dies after it booted holds no lock while its worker daemon respawns.
+  Each limit is tracked in #416. The fifth gap in #416, `file:` URI SQLite names, was already fixed in 1.9.0 by pull request #461 (#412).
 - **`--daemon --verbose` shows why a test file's coverage capture failed, with the load note (#517).**
   `--verbose` did not reach the daemon's coverage build, so its `[mutineer] coverage skipped for <file>` warning for a failed fork capture said `fork capture produced no result (re-run with --verbose for the error)`, even under `--verbose`.
   The daemon now gets `--verbose`, and the warning shows the real error, as in-process.

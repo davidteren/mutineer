@@ -80,7 +80,8 @@ module Mutineer
       # One booted process copies worker databases, then builds the coverage map.
       # A cached map still provisions: the copy has to happen while no worker is
       # connected to the template database. That process keeps its database lock
-      # until the worker daemons have taken theirs.
+      # until the run ends in a serial Rails run, and until the worker daemons
+      # have taken theirs in a parallel run (#416).
       prepare_client = nil
       # #495: phase seconds for the report. The worker daemons' boots add to boot_seconds.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
@@ -94,8 +95,10 @@ module Mutineer
             run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           end
       ensure
-        # run_serial and run_parallel quit this client once workers hold locks.
-        # Quit again here when they never reached that point. A second quit is a no-op.
+        # run_serial quits this client when a Rails run ends, or once its worker
+        # has booted in a run without rails. run_parallel quits it once workers
+        # hold locks. Quit again here when they never reached that point.
+        # A second quit is a no-op.
         prepare_client&.quit
       end
 
@@ -166,8 +169,10 @@ module Mutineer
     # @param abs_tests [Array<String>]
     # @param worker_count [Integer] slots requested before the database count is known.
     # @return [Array] the coverage map (or nil), the worker count to start, and
-    #   the prepare daemon. The caller quits that daemon after worker daemons
-    #   hold their locks. It is nil when this process could not boot one.
+    #   the prepare daemon. The caller quits that daemon when a serial Rails
+    #   run ends, once the worker has booted in a serial run without rails, or
+    #   after the worker daemons of a parallel run hold their locks. It is nil
+    #   when this process could not boot one.
     # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
     def self.prepare_run(config, abs_tests, worker_count, timing = {})
       client = nil
@@ -314,23 +319,34 @@ module Mutineer
     end
     private_class_method :warn_coverage_fallback
 
-    # Serial path: one daemon (worker 0), one mutant at a time. Honors --fail-fast
-    # (stop at the first survivor).
+    # Serial path: one worker daemon (worker 0), one mutant at a time. Honors
+    # --fail-fast (stop at the first survivor). In a Rails run the prepare
+    # daemon stays up until the run ends, so its lock still covers the
+    # databases while the worker daemon respawns after a crash (#416). A run
+    # without `rails` takes no database lock, so it quits that daemon once
+    # the worker has booted.
     #
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
-    #   the databases. Quit once this worker has booted and taken its lock.
+    #   the databases. Quit when this run ends, after the last mutant. nil when
+    #   the first daemon did not boot: a Rails worker then boots as "solo", so
+    #   it takes the run lock and copies its own database itself (#416).
     # @param timing [Hash] phase seconds; this adds the worker boot and sets the mutant runs.
     # @return [Array<Mutineer::Result>] results in input order.
     def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil, timing = {})
       client = nil
       begin
         boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        client = DaemonClient.new(boot: boot_config(config, abs_tests),
-                                  app_root: config.project_root).start
+        db_role = prepare_client.nil? && config.rails ? "solo" : nil
+        # Assigned before start, so the ensure quits a daemon interrupted mid-boot.
+        client = DaemonClient.new(boot: boot_config(config, abs_tests, db_role: db_role),
+                                  app_root: config.project_root)
+        client.start
         timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
-        prepare_client&.quit
-        prepare_client = nil
+        unless config.rails
+          prepare_client&.quit
+          prepare_client = nil
+        end
         results = []
         progress = Progress.new(jobs.size)
         mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -343,8 +359,11 @@ module Mutineer
         timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         results
       ensure
-        prepare_client&.quit
-        client&.quit
+        begin
+          prepare_client&.quit
+        ensure
+          client&.quit
+        end
       end
     end
 
@@ -531,7 +550,9 @@ module Mutineer
     # @param abs_tests [Array<String>] absolute --test paths.
     # @param coverage [Boolean] whether this daemon builds the coverage map.
     # @param db_role [String, nil] "prepare" (copy databases on command),
-    #   "worker" (lock only), or nil to pick from `coverage`.
+    #   "worker" (lock only), "solo" (the one worker of a run whose first
+    #   daemon did not boot: lock and copy one slot at boot), or nil to pick
+    #   from `coverage`.
     # @param parallel [Boolean] whether this daemon is one of several workers.
     #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
@@ -556,13 +577,14 @@ module Mutineer
         # Databases the workers share. A parallel worker fails a mutant whose
         # tests used one. One worker shares nothing, so it gets no names.
         shared_databases: parallel ? config.shared_databases : [],
-        # Coverage narrowing. Only the short-lived map-building daemon starts
-        # Coverage (before boot); worker daemons boot with it OFF (no wasted
+        # Coverage narrowing. Only the map-building daemon starts Coverage
+        # (before boot); worker daemons boot with it OFF (no wasted
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
         # map-build inputs.
         coverage: coverage,
         # "prepare" copies worker databases when asked. "worker" only locks.
-        # A direct client that omits this provisions at boot instead.
+        # "solo" locks and copies one slot at boot (#416). A direct client
+        # that omits this provisions at boot instead.
         db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,
