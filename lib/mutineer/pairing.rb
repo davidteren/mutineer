@@ -436,11 +436,16 @@ module Mutineer
     PACK_SOURCE = %r{\A(packs/.+?)/((?:app|lib)/.+\.rb)\z}
 
     # Splits a pack source into its pack folder and its path inside the pack.
-    # Path text only: no `packwerk.yml` or `packs.yml` is read.
+    # Path text only: no `packwerk.yml` or `packs.yml` is read. A path with a
+    # `..` or `.` segment is not a pack source, so the pack root stays inside
+    # the project.
     #
     # @param source_rel [String] relative source path.
     # @return [Array(String, String), nil] e.g. `["packs/catalog", "app/models/item.rb"]`, or nil.
     def pack_split(source_rel)
+      # A `..` or `.` segment could move the pack root outside the project.
+      return if source_rel.split("/").any? { |segment| segment == ".." || segment == "." }
+
       match = PACK_SOURCE.match(source_rel)
       match && [match[1], match[2]]
     end

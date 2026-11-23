@@ -996,7 +996,10 @@ class PairingTest < Minitest::Test
       "packsx/a/app/x.rb" => nil,
       "app/packs/a/app/x.rb" => nil,
       "lib/x.rb" => nil,
-      "packs/a/app/x.txt" => nil
+      "packs/a/app/x.txt" => nil,
+      "packs/../../outside/app/x.rb" => nil,
+      "packs/a/../b/app/x.rb" => nil,
+      "packs/./a/app/x.rb" => nil
     }.each do |path, expected|
       if expected
         assert_equal expected, Mutineer::Pairing.pack_split(path), path
