@@ -297,7 +297,7 @@ module Mutineer
         # As in process: no coverage and a failed capture stops the run.
         JobPlan.abort_if_unclean!(empty, framework: config.framework)
         warn "[mutineer] --since: the test files since_paired_tests kept cover no source line, so every mutant " \
-             "scores no_coverage. Run without --since-paired-tests to check."
+             "that did not run at load scores no_coverage. Run without --since-paired-tests to check."
         return empty
       end
 

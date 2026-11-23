@@ -253,7 +253,7 @@ class DaemonBackendContractTest < Minitest::Test
       end
       refute_nil map, "a narrowed empty map must not fall back to every test"
       refute_includes err, "coverage map unavailable"
-      assert_includes err, "kept cover no source line, so every mutant scores no_coverage"
+      assert_includes err, "kept cover no source line, so every mutant that did not run at load scores no_coverage"
       refute_predicate map, :fallback?
       never_runs = Object.new
       def never_runs.request(**) = raise("a mutant with no covering test must not run")
