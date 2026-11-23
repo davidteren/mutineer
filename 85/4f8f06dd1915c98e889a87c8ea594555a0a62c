@@ -1,0 +1,49 @@
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_9747bd218c1c67::t_7e23dd8e49f2ca 18
+CHANGELOG.md
+  s_9747bd218c1c67::t_3617a4d7b527f4 11-20
+README.md
+  s_9747bd218c1c67::t_f93419ba63815c 233
+STABILITY.md
+  s_9747bd218c1c67::t_3a7ce5a7da9390 44,49-51
+docs/ci.md
+  s_9747bd218c1c67::t_86712bfafd0d53 22-48
+docs/cli.md
+  s_9747bd218c1c67::t_a00aa2eb362740 14,104,168,190-193,208-209,219-240
+docs/plans/2026-11-22-496-494-feat-coverage-capture-scope-plan.md
+  s_9747bd218c1c67::t_24f53483e56af5 1-396
+lib/mutineer/cli.rb
+  s_9747bd218c1c67::t_bd50ad969ba247 81-85,187,546,659-678,937-940,960
+lib/mutineer/config.rb
+  s_9747bd218c1c67::t_7904b644ab8853 67-68,108-115,126,165,167
+lib/mutineer/daemon_backend.rb
+  s_9747bd218c1c67::t_79eb05d93f702e 66-70
+lib/mutineer/job_plan.rb
+  s_9747bd218c1c67::t_17593bf6c157bd 908-967
+lib/mutineer/runner.rb
+  s_9747bd218c1c67::t_c7fafdff63fe74 145-147,161
+test/cli_test.rb
+  s_9747bd218c1c67::t_e1eed385dda6cd 3384-3512
+test/config_test.rb
+  s_9747bd218c1c67::t_c4bba7ac455d43 735
+test/daemon_backend_contract_test.rb
+  s_9747bd218c1c67::t_dd8e30c449427a 241-272
+test/since_test_scope_test.rb
+  s_9747bd218c1c67::t_925f2310ef3fe1 1-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "854f8f06dd1915c98e889a87c8ea594555a0a62c",
+  "prompts": {},
+  "sessions": {
+    "s_9747bd218c1c67": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc77a5da-0656-4b2b-8389-2a01e24a347c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
