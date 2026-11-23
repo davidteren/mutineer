@@ -101,7 +101,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `boot` | File to require once before the sources. An app entry point, or a gem's entry file (`lib/<name>.rb`) |
 | `rails` | Boolean; enables Rails boot defaults |
 | `since` | Nonblank git ref; `false` disables diff scoping |
-| `since_paired_tests` | Boolean; under `--since`, run only the tests paired with the changed sources (in-process and `--daemon`). See [Tests of the changed sources](#tests-of-the-changed-sources) |
+| `since_paired_tests` | Boolean, default `false`. Under `--since`, an in-process or `--daemon` run uses only the tests paired with the sources that have a mutant on a changed line. It narrows the tests, not the sources. `--test`, `--test-command`, `--coverage-from` on an in-process `--rails` or `--boot` run, and `--dry-run` keep the full test list. See [Tests of the changed sources](#tests-of-the-changed-sources) |
 | `framework` | `minitest` or `rspec`; preserved during test pairing |
 | `tests` | File only. List of mappings with `sources` and `tests` patterns; adds those tests to the run when a matching source is in the run. See [Extra tests for a source](#extra-tests-for-a-source) |
 | `verbose` | Boolean; shows capture diagnostics, and lists each errored mutant and its cause in the human report |
@@ -189,9 +189,12 @@ cover that source, plus any test file that was added or edited. The map matches 
 edit, an added or removed source line, a load-time method, a change to which test pairs with a source, a
 `--require` file, or another project file the tests load still recaptures every test (#421).
 
-The test list is part of the cache key. A run with `since_paired_tests` under `--since` that narrows its
-test list misses a full-run cache and saves its own map over it. The next full run captures again. Pass
-`--cache-dir .mutineer/since` to the narrowed runs to keep both maps (#552).
+The test list is part of the cache key, so a run with `since_paired_tests` under `--since` that narrows its
+test list never gets a full cache hit on a full-run map. Partial recapture can still reuse the entries of the
+tests it kept, when the tests it dropped pair with no source by convention. The dropped tests leave every entry,
+so the map equals a capture of the narrowed list. Either way, the narrowed run saves its map over the full-run
+one, and the next full run captures the dropped tests again. Pass `--cache-dir .mutineer/since` to the narrowed
+runs to keep both maps (#552).
 
 Before the mutants run, Mutineer checks that the unchanged tests pass:
 
@@ -228,7 +231,7 @@ paired with the sources that have a mutant on a changed line: their convention t
 source that another source loads keeps working. Stderr prints one line with the counts:
 
 ```text
-[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed.
+[mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the score and the --baseline check: gate on a full run.
 ```
 
 The run keeps its full test list when you give `--test` or `--test-command`, or `--coverage-from` on an
@@ -242,5 +245,6 @@ Without `--since`, the setting does nothing, so the key can stay in a `.mutineer
 A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. A mutant that
 only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`. `no_coverage` is
 outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
+Use a full run (without the setting) for a `--threshold` or `--baseline` gate you rely on.
 To check one, run the same command with `--no-since-paired-tests`. If the mutant is killed there, add that test
 to the `tests:` map for the changed source. If it survives there, it is a real survivor. The limits are in #552.

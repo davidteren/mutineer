@@ -40,6 +40,7 @@ A narrowed run does not run a test that pairs only with an unchanged source.
 A mutant that only such a test kills shows as `survived` or `no_coverage`.
 A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`.
 `no_coverage` is outside the score and the `--baseline` new-survivor check, so a narrowed gate can pass where a full run fails.
+Use a full run (without the setting) for a `--threshold` or `--baseline` gate you rely on.
 
 1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
 2. Run the same command with `--no-since-paired-tests`, which beats the `.mutineer.yml` key.

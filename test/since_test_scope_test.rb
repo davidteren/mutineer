@@ -66,7 +66,8 @@ class SinceTestScopeTest < Minitest::Test
     assert_equal ROWS.keys, narrowed.sources
     assert_equal "[mutineer] --since: running 1 of 4 test files, the ones paired with the 1 of 3 paired " \
                  "sources that has a mutant on a changed line. A mutant that only another test reaches " \
-                 "shows as survived or no_coverage, so a kill or a survivor can be missed.\n", err
+                 "shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the " \
+                 "score and the --baseline check: gate on a full run.\n", err
   end
 
   def test_narrowing_line_for_one_and_for_many
@@ -76,7 +77,8 @@ class SinceTestScopeTest < Minitest::Test
     }.each do |counts, fragment|
       line = Mutineer::JobPlan.since_narrowing_line(*counts)
       assert line.start_with?("[mutineer] --since: #{fragment} mutant on a changed line."), line
-      assert line.end_with?("A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed."), line
+      assert line.end_with?("so a kill or a survivor can be missed. no_coverage is outside the score and the " \
+                            "--baseline check: gate on a full run."), line
     end
   end
 
@@ -124,6 +126,35 @@ class SinceTestScopeTest < Minitest::Test
       assert_equal [true], maps.last.instance_variable_get(:@hits)
       assert_includes err, "running 1 of 2 test files"
       refute_path_exists marker(dir, "b")
+    end
+  end
+
+  # Devin on #557: a narrowed run can reuse part of a full-run cache through
+  # partial recapture (#421), when the dropped tests pair with no source by
+  # convention. The reused map must equal a capture of the narrowed list: the
+  # dropped test leaves every entry and never runs.
+  def test_a_narrowed_run_can_partly_reuse_a_full_run_cache
+    with_repo do |dir, a_src, b_src, a_test, b_test|
+      run_and_capture_map(run_config(dir, [a_src, b_src], [a_test, b_test], paired: false))
+      clear_markers(dir)
+      plans = []
+      real_new = Mutineer::CoverageMap.method(:new)
+      map = nil
+      _out, err = capture_subprocess_io do
+        Mutineer::CoverageMap.stub(:new, lambda { |**kwargs|
+          map = real_new.call(**kwargs)
+          map.define_singleton_method(:partial_plan) { |cached| super(cached).tap { |plan| plans << plan } }
+          map
+        }) do
+          Mutineer::Runner.execute(run_config(dir, [a_src, b_src], [a_test, b_test]))
+        end
+      end
+      assert_includes err, "running 1 of 2 test files"
+      assert_equal [["b_test.rb"]], plans.map { |plan| plan && plan["removed"] }, "partial reuse drops the omitted test"
+      refute_path_exists marker(dir, "b")
+      map.instance_variable_get(:@map).each_value { |tests| refute_includes tests, "b_test.rb" }
+      line = File.read(a_src).lines.index { |l| l.include?("# touched") } + 1
+      assert_equal ["a_test.rb"], map.tests_for(a_src, line)
     end
   end
 
