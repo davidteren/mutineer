@@ -160,7 +160,7 @@ class ExternalBackendTest < Minitest::Test
   # #515, the rule on every table row: under :line, moving a summary off the
   # line start gives the verdict of the output without it, or no verdict
   # (error), never another kill or survivor; under true it changes nothing.
-  def test_line_mode_reads_a_moved_summary_line_as_no_summary
+  def test_line_mode_never_turns_a_moved_summary_into_another_verdict
     summary = ->(line) { Backend.summary_line?(Backend.summary_text(line)) }
     rows = EXIT_ONE_KILLED.map { |o| [o, 1] } + EXIT_ONE_ERROR.map { |o| [o, 1] } + GATE_OUTPUTS.keys.map { |o| [o, 2] }
     rows.each do |output, code|
@@ -255,6 +255,8 @@ class ExternalBackendTest < Minitest::Test
       assert_predicate run_exit_one(output, check_summary: true), :error?, output
     end
     assert_predicate run_exit_one("# Running:\n\n.", check_summary: :line), :killed?, "a stop with no summary text"
+    # The exception: failing text away from a line start after "# Running:" is a stop, a kill.
+    assert_predicate run_exit_one("# Running:\n\n.app | 1 runs, 1 assertions, 1 failures, 0 errors\n", check_summary: :line), :killed?
   end
 
   # SimpleCov's minimum_coverage gate replaces the exit code (exit 2). Under

@@ -139,13 +139,13 @@ All notable changes to this project are documented here. The format is based on
   When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
   So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill, when the run printed its real summary at a line start.
   Such a crash now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
-  A Minitest run that stops after `# Running:` with no real summary still scores `killed`, as before (#342 limits 3 and 8).
+  A Minitest run that stops after `# Running:` with no summary text after it still scores `killed`, as before (#342 limits 3 and 8).
   Estimate: far below 1 project in 1,000, unmeasured.
   A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start, on exit 1 or after a SimpleCov gate.
   After a SimpleCov gate, a run whose passing summary is only off the line start also scores `error`, not `survived`.
   The reason then says "not at the start of a line". Estimate: below 1 in 100 `--test-command` setups, unmeasured.
   When no summary of the clean run starts a line, such as with a wrapper that prefixes each line, matching stays as in 1.9.0.
-  On exit 1, a line-start `# Running:` followed only by passing summary text away from a line start (a `-v` test name before a stop, or a real summary a wrapper moved) also scores `error` with that reason, as in 1.9.0, never `killed`.
+  On exit 1, a line-start `# Running:` followed only by passing summary text away from a line start (a `-v` test name before a stop, or a real summary a wrapper moved) also scores `error` with that reason, never `killed`. 1.9.0 also scored it `error`.
   Limits 3, 7 and 8 of #342 are accepted and keep their verdicts. #549 tracks them.
 - **A SimpleCov gate that stops a chain of `--test-command` suites scores `error`, not `survived` (#516).**
   With SimpleCov's gate message and a passing summary, a mutant now scores `survived` only when its run printed at least as many summary lines as the clean run.

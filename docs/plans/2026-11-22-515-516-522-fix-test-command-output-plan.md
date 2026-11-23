@@ -158,7 +158,7 @@ This table gives the direction. It is not code. "Summary" and "`# Running:`" mea
 ### Assumptions
 
 - The Ruby methods of `Mutineer::ExternalBackend` are not in `STABILITY.md`. New keywords with defaults keep each present caller working.
-- A verdict fix in a minor release is allowed when the CHANGELOG names it. Earlier entries in `[Unreleased]` do the same.
+- The maintainer batches fixes into the next release (AGENTS.md, "Release policy for agents", item 4). The 1.10.0 target is the issues' `v1.10.0` label. The CHANGELOG names each verdict change.
 - Each frequency number in this plan is an estimate. No data measures it. The builder writes it as an estimate.
 
 ### Sources
@@ -235,7 +235,7 @@ Checked on 2026-11-22 with Ruby 3.4.9, Minitest 5.27.0 and the RSpec in `Gemfile
   - R6: for those four inputs the details under `:line` have "not at the start of a line". For an output with no failing summary at any position, the details have "shows no failing test".
   - `\r` is a line start: `progress\r3 runs, 3 assertions, 1 failures, 0 errors` scores `killed` under `:line`. Lines that end with `\r\n` also score `killed`.
   - The `# Running:` line: `2 runs, 2 assertions, 0 failures, 0 errors` then `note: # Running:` and exit 1. Under `:line`: `error`. Under `true`: `killed`.
-  - A run that stopped during a test: `# Running:`, then a `-v` name line with `0 failures, 0 errors` in it, no real summary, exit 1. Under `:line` it scores `killed`. Under `true` it scores `error`, because the name line reads as a passing summary.
+  - A run that stopped during a test: `# Running:`, then a `-v` name line with `0 failures, 0 errors` in it, no real summary, exit 1. Under `:line` it scores `killed`. Under `true` it scores `error`, because the name line reads as a passing summary. (Build note: review showed that a real passing summary a wrapper moved looks the same, so under `:line` it scores `error` too, with the "not at the start of a line" reason.)
   - `smoke_check!` mode: a line-start summary gives `:line`. A prefixed summary only gives `true`. One of each gives `:line`. No summary gives `false`. Update `test_smoke_check_reports_summary_line` and `test_smoke_check_green_returns_elapsed_and_no_summary`.
   - Real runners (R4, "Assert the mechanism"). For Minitest default, Minitest `-v`, RSpec progress and RSpec documentation: start a child that keeps the test bundle, as `run_minitest` and `run_rspec` in `test/seed_contract_test.rb` do, and capture its output and exit status. Each suite has a test whose name holds summary-like text and that prints such a line. Replay the captured bytes and status through the `with_script` helper. A passing suite through `smoke_check!` gives `:line`. A failing suite through `run(check_summary: :line)` gives `killed`. This form follows the Gemfile, so the Minitest 6 run tests Minitest 6.
 - **Test scenarios, `test/runner_external_test.rb`:**
