@@ -59,6 +59,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A one-worker `--daemon` run keeps its run lock while its worker daemon respawns (Refs #416).**
+  A `--rails --daemon` run with one worker (`--jobs 1`, `--fail-fast`, a run with one mutant, or an app with a second database that `shared_databases` does not list) quit its first daemon once the worker daemon had booted.
+  When that worker crashed, no process held the run lock until the new worker daemon had booted, so a second run on the same test database could start in that window.
+  The first daemon now stays up until the run ends, on SQLite, PostgreSQL and MySQL.
+  The cost is one more booted copy of the app in memory during the mutant phase of every one-worker `--daemon` run, `--boot` runs included. It adds no boot and uses no CPU.
+  A parallel run still quits its first daemon once its worker daemons hold their locks. While all of its worker daemons are down at once, it holds no lock (#416).
 - **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
   A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
   A class that calls the macro while it loads keeps the original blocks.

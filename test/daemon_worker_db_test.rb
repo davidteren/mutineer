@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require_relative "run_lock_helpers"
 require "mutineer/daemon_client"
 require "mutineer/cli"
 require "mutineer/runner"
@@ -16,6 +17,8 @@ require "tmpdir"
 # transactional fixtures repopulate it — the serial-correctness half of #26 (the
 # concurrent `--jobs N == --jobs 1` gate is U6).
 class DaemonWorkerDbTest < Minitest::Test
+  include RunLockHelpers
+
   APP   = File.expand_path("fixtures/rails_app", __dir__)
   ROOT  = File.expand_path("..", __dir__)
   ORDER = File.join(APP, "app/models/order.rb")
@@ -303,6 +306,35 @@ class DaemonWorkerDbTest < Minitest::Test
     stop_holder(solo, signal: "KILL")
   end
 
+  # #416, gap 4: a serial run keeps its prepare daemon until the run ends. So
+  # the lock stays held while the worker daemon respawns, and a second run
+  # cannot take it in that window.
+  def test_a_serial_run_holds_the_sqlite_lock_while_its_worker_respawns
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
+      workers = daemon_pids(roles, "worker")
+      assert_equal 1, workers.size, File.read(roles)
+      Process.kill("KILL", workers.first)
+      # Probe before the respawn has booted: only the prepare daemon can hold the lock now.
+      held = sqlite_lock_exclusive_busy?
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert held, "no process held the lock while the worker daemon respawned\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "respawning (1/3)"
+      refute_includes out, "another Mutineer run"
+      assert_equal 2, daemon_pids(roles, "worker").size, "the worker daemon booted again\n#{File.read(roles)}"
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
   # Start a process under the fixture bundle that runs `script` and wait for its READY line.
   def spawn_holder(script)
     read, write = IO.pipe
@@ -328,23 +360,23 @@ class DaemonWorkerDbTest < Minitest::Test
   end
 
   # Run the CLI on the fixture and return its combined output and status.
-  def run_cli(jobs)
+  def run_cli(jobs, boot: "config/environment")
     script = <<~RUBY
       require "mutineer"
       config = Mutineer::Config.new(
         sources: [#{ORDER.inspect}],
         tests: [#{TEST.inspect}],
         project_root: #{APP.inspect},
-        boot: "config/environment",
+        boot: #{boot.inspect},
         rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: #{jobs}
       )
       Mutineer::CLI.run(config)
     RUBY
-    Open3.capture2e(ENV.to_h, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
+    Open3.capture2e(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
   end
 
   # Start a daemon run on the fixture in its own process group, logging to `log`.
-  def spawn_logged_run(log, jobs:, require_paths: [], output: nil, format: "human")
+  def spawn_logged_run(log, jobs:, require_paths: [], output: nil, format: "human", boot: "config/environment")
     finish = if output
                "Mutineer::CLI.run(config)"
              else
@@ -356,7 +388,7 @@ class DaemonWorkerDbTest < Minitest::Test
         sources: [#{ORDER.inspect}],
         tests: [#{TEST.inspect}],
         project_root: #{APP.inspect},
-        boot: "config/environment",
+        boot: #{boot.inspect},
         rails: true, daemon: true, strategy: "reload", framework: "minitest",
         jobs: #{jobs},
         require_paths: #{require_paths.inspect},
@@ -365,7 +397,7 @@ class DaemonWorkerDbTest < Minitest::Test
       )
       #{finish}
     RUBY
-    Process.spawn(ENV.to_h, "bundle", "exec", "ruby", "-Ilib", "-e", script,
+    Process.spawn(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script,
                   chdir: ROOT, out: log, err: log, pgroup: true)
   end
 
@@ -374,35 +406,11 @@ class DaemonWorkerDbTest < Minitest::Test
     Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
   end
 
-  # A --require file that slows each test, so a run stays in its mutant phase
-  # long enough to probe its lock.
-  def write_hold_file(dir)
-    path = File.join(dir, "hold.rb")
-    File.write(path, <<~RUBY)
-      require "minitest"
-      module MutineerHoldOpen
-        def before_setup
-          sleep 0.5
-          super
-        end
-      end
-      Minitest::Test.prepend(MutineerHoldOpen)
-    RUBY
-    path
-  end
-
   # Wait for the run's first mutant progress line, then probe. By then the run
   # took its lock. An earlier probe holds the exclusive lock for a moment and
   # could make the run's own exclusive request fail.
   def run_holds_sqlite_lock?(pid, log)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 90
-    until Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-      return false unless process_alive?(pid)
-      return sqlite_lock_exclusive_busy? if File.exist?(log) && File.read(log).match?(%r{\d+/\d+ mutants})
-
-      sleep 0.05
-    end
-    false
+    wait_for_mutant_phase(pid, log) && sqlite_lock_exclusive_busy?
   end
 
   # True only when another process holds a conflicting lock.

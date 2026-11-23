@@ -1056,7 +1056,9 @@ class DaemonBackendContractTest < Minitest::Test
   # The prepare daemon holds the database lock. It must stay up until each
   # worker daemon has booted, then quit. Quitting first lets another run drop
   # the worker databases.
-  def test_the_prepare_daemon_stays_up_until_workers_boot
+  # #416: a serial run keeps the prepare daemon until its last mutant has run,
+  # so a lock still covers the databases while the worker daemon respawns.
+  def test_a_serial_run_keeps_the_prepare_daemon_until_the_last_mutant
     with_jobs do |jobs, config, source_map|
       order = []
       prepare = Object.new
@@ -1064,16 +1066,42 @@ class DaemonBackendContractTest < Minitest::Test
       worker = Object.new
       worker.define_singleton_method(:start) { order << :worker_start; self }
       worker.define_singleton_method(:quit) { order << :worker_quit }
-      worker.define_singleton_method(:request) { |**| "killed" }
+      worker.define_singleton_method(:request) { |**| order << :request; "killed" }
 
       Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
         Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
       end
-      assert_equal :worker_start, order.first
-      assert order.index(:worker_start) < order.index(:prepare_quit)
-      assert order.index(:prepare_quit) < order.index(:worker_quit)
+      assert_equal %i[worker_start request request prepare_quit worker_quit], order
+    end
+  end
 
-      order.clear
+  # #416: a mutant request that raises ends the run, and both daemons still quit.
+  def test_a_serial_request_that_raises_still_quits_both_daemons
+    with_jobs do |jobs, config, source_map|
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| raise Mutineer::DaemonBootError, "daemon crashed 4 times" }
+
+      assert_raises(Mutineer::DaemonBootError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
+  # A parallel run quits the prepare daemon once every worker has booted and
+  # holds its lock, before the first worker quits.
+  def test_a_parallel_run_keeps_the_prepare_daemon_until_workers_boot
+    with_jobs do |jobs, config, source_map|
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
       workers = Array.new(2) do
         client = Object.new
         client.define_singleton_method(:start) { order << :worker_start; self }
