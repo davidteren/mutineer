@@ -184,7 +184,7 @@ footer { border-top: 1px solid var(--border); padding: 36px 0; font-size: 13px; 
 .prose p { margin: 0 0 20px; }
 .prose li { margin-bottom: 10px; }
 .prose ul, .prose ol { padding-left: 24px; }
-.prose p > code, .prose li > code, .prose td > code { background: var(--bg-3); padding: 2px 4px; overflow-wrap: anywhere; }
+.prose p > code, .prose li > code, .prose td > code { background: var(--bg-3); padding: 2px 8px; overflow-wrap: anywhere; }
 .prose pre, pre.diff { border: 1px solid var(--border); background: var(--bg-2); padding: 20px; overflow-x: auto; border-radius: var(--radius); font-size: 13px; line-height: 1.8; }
 .prose pre code { font-size: inherit; }
 .prose .table-wrap { margin-bottom: 24px; }
