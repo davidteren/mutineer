@@ -1621,6 +1621,41 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #504: during a reload the guard skips a chain the class already has, with
+  # the options the call gives. So a def that calls `define_callbacks` (or
+  # `define_model_callbacks`, any receiver), or a def of the file that calls
+  # such a def without a receiver or on `self`, is unplaceable under reload.
+  def test_a_def_that_defines_a_callback_chain_is_unplaceable_under_reload_only
+    src = <<~RUBY
+      class Job
+        def self.job_callbacks(*names)
+          define_callbacks(*names, skip_after_callbacks_if_terminated: true)
+        end
+
+        def self.all_callbacks = self.job_callbacks(:perform, :enqueue)
+
+        def self.model_callbacks = define_model_callbacks(:create)
+
+        def self.included_hook(base) = base.define_callbacks(:save)
+
+        def self.other_receiver = Other.job_callbacks(:x)
+
+        def perform = 1
+      end
+    RUBY
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      %i[job_callbacks all_callbacks model_callbacks included_hook].each do |name|
+        assert by_name[name].calls_define_callbacks, name
+        assert by_name[name].unplaceable?("reload"), name
+        refute by_name[name].unplaceable?("redefine"), name
+      end
+      refute by_name[:other_receiver].calls_define_callbacks, "another receiver's job_callbacks is not this file's"
+      refute by_name[:perform].calls_define_callbacks
+      refute by_name[:perform].unplaceable?("reload")
+    end
+  end
+
   def test_superclass_constant_names_reads_each_constant_superclass
     program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
                                             "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \

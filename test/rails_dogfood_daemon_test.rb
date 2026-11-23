@@ -3,6 +3,8 @@
 require_relative "test_helper"
 require "mutineer/config"
 require "mutineer/runner"
+require "mutineer/reporter"
+require "json"
 
 # #26/U9 — end-to-end dogfood of the daemon backend on the bundled Rails fixture app
 # (SQLite). The holistic proof that ties the phase together: a parallel run's verdicts
@@ -252,6 +254,28 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_operator aggregate.total, :>, 0
     assert_equal aggregate.total, aggregate.survived_count, "every urgent? mutant must run and survive"
     assert_empty extras[:callback_growth]
+  end
+
+  # #504: HelperChainNote's body defines its chain through `note_callbacks`.
+  # The reload guard skips a chain the class already has, so a mutant in the
+  # helper (such as `true` to `false` for `skip_after_callbacks_if_terminated`)
+  # never reached Rails and scored `survived` unapplied. Discovery now marks
+  # the helper, so each of its mutants is `unplaceable` and counted apart.
+  def test_the_daemon_marks_a_helper_that_defines_a_chain_unplaceable
+    config = config_for(1, model: "helper_chain_note")
+    config.only = "HelperChainNote.note_callbacks"
+    aggregate = source_map = nil
+    _out, err = capture_subprocess_io { aggregate, source_map, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.total, :>, 0
+    assert_equal [:unplaceable], aggregate.results.map(&:status).uniq
+    out = StringIO.new
+    Mutineer::Reporter.new(aggregate, source_map).report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    assert_equal aggregate.total, doc["summary"]["unplaceable"]
+    assert_equal aggregate.total, doc["unplaceable"].size
+    assert_equal 0, doc["summary"]["survived"]
   end
 
   # #479: StampedNote's concern and class body add the same `&:stamp`

@@ -84,7 +84,10 @@ module Mutineer
     # concern's `included` block or a subclass in another file added would be
     # lost. The class body's own callbacks are added again and pair with the
     # old copies through {RepeatedCallbacks}. A name that is new to the class
-    # reaches Rails with the options.
+    # reaches Rails with the options. A skipped call drops the options too, so
+    # a mutant in a def that calls `define_callbacks` would never reach Rails:
+    # discovery marks such a def `unplaceable` under reload
+    # ({Subject#calls_define_callbacks}).
     module CallbackRedefinition
       # @param names [Array<Symbol, String, Hash>] the chain names, then
       #   optional options.

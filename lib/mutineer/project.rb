@@ -21,6 +21,7 @@ module Mutineer
         visitor.visit(result.value)
         visitor.promote_module_functions!
         exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
+        mark_callback_definers!(visitor.subjects, result.value)
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
@@ -142,6 +143,65 @@ module Mutineer
       return true if node.nil? || node.is_a?(Prism::SelfNode) || node.is_a?(Prism::ConstantReadNode)
 
       node.is_a?(Prism::ConstantPathNode) && constant_scope?(node.parent)
+    end
+
+    # The calls that build an ActiveSupport callback chain: `define_callbacks`
+    # and ActiveModel's `define_model_callbacks`, which calls it once per name.
+    # During a reload {ReloadGuards::CallbackRedefinition} skips a chain the
+    # class already has, with the options the call gives (#504).
+    CALLBACK_DEFINERS = %i[define_callbacks define_model_callbacks].freeze
+
+    # Marks each def that calls a {CALLBACK_DEFINERS} method
+    # {Subject#calls_define_callbacks}, so it is `unplaceable` under reload.
+    # When the class body calls such a def, the guard skips the chain it
+    # defines, with the names and options a mutant changed, so the mutant
+    # never reaches Rails. It would score `survived` unapplied (#504).
+    #
+    # It fails closed. A {CALLBACK_DEFINERS} call counts with any receiver.
+    # A def that calls a marked def of the same file without a receiver or on
+    # `self` is marked too, so a helper that calls another helper is covered.
+    # The whole def is marked, because any line of it can change the names or
+    # options it passes. A def the class body never calls loses real verdicts
+    # under reload. Still unmarked (#530): a def that only computes the names
+    # or options (`define_callbacks :save, **opts`), and a call through `send`.
+    #
+    # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @param program [Prism::ProgramNode] the complete parsed file.
+    # @return [void]
+    def self.mark_callback_definers!(subjects, program)
+      defs = []
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        defs << node if node.is_a?(Prism::DefNode)
+      end
+      marked = Set.new
+      helpers = Set.new
+      loop do
+        found = defs.select { |d| !marked.include?(d) && calls_callback_definer?(d, helpers) }
+        break if found.empty?
+
+        marked.merge(found)
+        helpers.merge(found.map(&:name))
+      end
+      subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
+    end
+
+    # Whether a def calls a {CALLBACK_DEFINERS} method (any receiver), or one
+    # of `helpers` without a receiver or on `self`.
+    #
+    # @param def_node [Prism::DefNode]
+    # @param helpers [Set<Symbol>] the names of the file's marked defs.
+    # @return [Boolean]
+    def self.calls_callback_definer?(def_node, helpers)
+      nodes = def_node.compact_child_nodes
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        next unless node.is_a?(Prism::CallNode)
+        return true if CALLBACK_DEFINERS.include?(node.name)
+        return true if helpers.include?(node.name) && (node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode))
+      end
+      false
     end
 
     # Keeps hook defs unplaceable when the raw AST can define another method
