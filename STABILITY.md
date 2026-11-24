@@ -35,8 +35,9 @@ Each number moves on its own.
 The unreleased report uses JSON schema `2.0` because `baseline.fixed_survivors`
 now excludes undecided survivors. Consumers must support the new schema major;
 saved full-run `1.x` reports remain valid baseline inputs. Reports written with
-`--since` remain invalid as baselines and exit 2. This does not enable the
-planned gem `2.0` changes below. Published gem `1.7.0` reports schema `1.8`.
+`--since` remain invalid as baselines and exit 2. The `integration/v2.0`
+branch already holds some of the planned gem `2.0` changes below; no 1.x
+release has them. Published gem `1.7.0` reports schema `1.8`.
 
 ### Exit codes
 
@@ -139,6 +140,12 @@ Where it prints no warning, the item says documented only.
 - **`--baseline` fails an incomplete run.** Documented only.
   In 1.x a `--baseline` run with no `--threshold` exits 0 when most mutants errored.
   In 2.0 it exits 1.
+- **The `--baseline` score-drop check uses the exact counts.** Documented only.
+  In 1.x it compares the scores rounded to one decimal.
+  In 2.0 it compares `killed / (killed + survived)` from both reports, so an exit code can change either way.
+- **The Action checks that a baseline run reports its completeness.** Documented only.
+  In 2.0 a JSON report with a baseline and no boolean `baseline.incomplete` exits 2.
+  A baseline with a format other than `json` exits 2 for a gem older than 2.0.0.
 - **Parallel `--rails` by default, with the `reload` strategy.** 1.8.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.

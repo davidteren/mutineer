@@ -146,7 +146,7 @@ Two facts about limit 1 that correct the issue text:
 - KTD7. **U3 adds a status value, not a new list.** `baseline.unverified_survivors[].status` already carries the reason. `foreign_path` is one more reason. The schema is unreleased `2.0`, so the value costs no version bump now. After 2.0 ships it would cost a minor bump.
 - KTD8. **U4 reuses the human lines inside `<pre>`.** `Reporter#baseline_section` already builds every line, with `printable` applied. The HTML section escapes the same text. One source of facts, so the two formats cannot drift. A table layout would need its own tests for each line kind.
 - KTD9. **U5 uses the version floor the Action already has.** `action.yml` already checks `mutineer --version` with `Gem::Version` for its `since` handling. U5 adds a second floor of the same form. No new copy of a CLI rule is added: the baseline path comes from the block that pull request #395 wrote (`cli_setting baseline`, with its fallback for an old CLI).
-- KTD10. **The floor is `2.0.0.a`, not `2.0.0`.** `Gem::Version.new("2.0.0.rc1") >= Gem::Version.new("2.0.0")` is false. #284 plans a release candidate. `2.0.0.a` sorts below every 2.0.0 prerelease and above every 1.x.
+- KTD10. **The floor is `2.0.0.a`, not `2.0.0`.** `Gem::Version.new("2.0.0.rc1") >= Gem::Version.new("2.0.0")` is false. #284 plans a release candidate. `2.0.0.a` sorts below every 2.0.0 prerelease and above every 1.x. As built: `2.0.0.A`, because an upper-case tag such as `2.0.0.RC1` sorts below `2.0.0.a`.
 
 ### Assumptions
 

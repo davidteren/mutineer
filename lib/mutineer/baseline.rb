@@ -29,7 +29,9 @@ module Mutineer
     #                     Omitted ids in a partial or empty unscoped run use
     #                     `not_run`, a baseline-only label, not a Result status.
     #                     An absent id with a stored path from another machine
-    #                     uses `foreign_path`, also baseline-only (#343).
+    #                     uses `foreign_path`, also baseline-only (#343), in a
+    #                     full run with results, given sources and a selected
+    #                     operator. With `sources: nil` it counts as fixed.
     #                     Filled on a diff-scoped side too (#283, #286).
     #   score_drop      - the exact score fell by more than epsilon (see
     #                     #diff). nil on either side skips the check, and a

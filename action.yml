@@ -489,11 +489,12 @@ runs:
 
         # #343: the --baseline completeness gate is in mutineer 2.0.0 and later.
         # The json format proves it from the report (baseline.incomplete, below).
-        # The other formats cannot, so they need the gem floor. "2.0.0.a" is below
-        # every 2.0.0 prerelease and above every 1.x release.
+        # The other formats cannot, so they need the gem floor. "2.0.0.A" is below
+        # (the upper-case A sorts first) every 2.0.0 prerelease and above every 1.x release.
+        # A gem without `mutineer config` gets the path from the copy above (#568).
         if [ "$FORMAT" != "json" ] && [ -n "$baseline_path" ]; then
           gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
-          if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.a") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
+          if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.A") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
             echo "::error::mutineer: resolved mutineer $gem_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
             exit 2
           fi
