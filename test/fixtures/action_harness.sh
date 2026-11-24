@@ -505,3 +505,9 @@ echo "  case23 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case23/summary.
 
 echo; echo "== 24: old gem report without a baseline (expects exit 0) =="
 run_step case24 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-no-baseline.json"
+
+echo; echo "== 25: a score drop hidden by rounding (#343) =="
+jq '.baseline.score_before = 99.9 | .baseline.score_after = 99.9 | .baseline.new_survivors = []' "$SCRATCH/report.json" > "$SCRATCH/report-hidden-drop.json"
+run_step case25 STUB_REPORT="$SCRATCH/report-hidden-drop.json"
+echo "  case25 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case25/summary.md")"
+echo "  case1 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case1/summary.md")"

@@ -559,6 +559,9 @@ runs:
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
                       + (if (.baseline.score_comparable != false) then
                            "; score \(.baseline.score_before // "N/A" | oneline) -> \(.baseline.score_after // "N/A" | oneline)"
+                           + (if .baseline.score_dropped == true and .baseline.score_before == .baseline.score_after then
+                                " (less than the rounding shows; the check uses the exact counts)"
+                              else "" end)
                          else
                            "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
                          end)

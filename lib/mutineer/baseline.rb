@@ -29,9 +29,11 @@ module Mutineer
     #                     Omitted ids in a partial or empty unscoped run use
     #                     `not_run`, a baseline-only label, not a Result status.
     #                     Filled on a diff-scoped side too (#283, #286).
-    #   score_drop      - current score < baseline score - epsilon. nil on
-    #                     either side skips the check, and a diff-scoped run
-    #                     (`scoped: true`) never sets it (see #diff).
+    #   score_drop      - the exact score fell by more than epsilon (see
+    #                     #diff). nil on either side skips the check, and a
+    #                     diff-scoped run (`scoped: true`) never sets it.
+    #                     score_before and score_after are rounded, so a drop
+    #                     can show with equal values.
     #   score_comparable - the two scores share a denominator (neither side was
     #                     diff-scoped and both are non-nil), so a consumer may
     #                     render them side by side. False means the score-drop
@@ -100,6 +102,9 @@ module Mutineer
     def initialize(doc)
       @survivors = doc["survivors"] || []
       @score = doc.dig("summary", "score")
+      # The exact counts behind the rounded score (#343).
+      @killed = doc.dig("summary", "killed")
+      @survived = doc.dig("summary", "survived")
       # Strict literal true only: a malformed value (say the STRING "false" in a
       # hand-edited baseline) must not silently disable the score-drop gate.
       @scoped = doc.dig("summary", "scoped") == true
@@ -108,8 +113,10 @@ module Mutineer
     end
 
     # Diff a current AggregateResult against this baseline by survivor id.
-    # `epsilon` tolerates float jitter on the score (default 0.0 = any drop
-    # gates).
+    # `epsilon` tolerates a score drop of that many percentage points (default
+    # 0.0 = any drop gates). The drop is measured on the exact score,
+    # `killed / (killed + survived)` from the counts of both reports, not on the
+    # rounded `summary.score` (#343).
     #
     # A stored survivor is fixed only when this run killed it, ignored it, or no
     # longer has it. When its current result is undecided (an error, a timeout,
@@ -208,7 +215,7 @@ module Mutineer
       # via `scoped:`, or the stored baseline via its `summary.scoped` marker):
       # the denominators differ, so the scores are not comparable.
       comparable = unscoped && !@score.nil? && !current_score.nil?
-      score_drop = comparable && current_score < @score - epsilon
+      score_drop = comparable && score_dropped?(aggregate, epsilon)
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
                 score_before: @score, score_after: current_score,
@@ -218,6 +225,25 @@ module Mutineer
     end
 
     private
+
+    # Whether the score fell by more than `epsilon` percentage points. Uses the
+    # exact counts of both reports, like AggregateResult#meets_threshold?, so a
+    # drop hidden by rounding gates and a drop inside epsilon does not (#343).
+    # A stored report with no integer counts (hand-made) compares the rounded
+    # scores, as before (#567).
+    #
+    # @param aggregate [Mutineer::AggregateResult] current results; its score is non-nil.
+    # @param epsilon [Numeric] score-drop tolerance in percentage points.
+    # @return [Boolean]
+    def score_dropped?(aggregate, epsilon)
+      counts = [@killed, @survived]
+      exact = counts.all? { |n| n.is_a?(Integer) && !n.negative? } && counts.sum.positive?
+      return aggregate.mutation_score < @score - epsilon unless exact
+
+      before = Rational(@killed * 100, @killed + @survived)
+      after = Rational(aggregate.killed_count * 100, aggregate.covered_count)
+      after < before - epsilon.to_s.to_r
+    end
 
     # Whether an absent stored mutant was excluded by source or operator
     # selection. A missing project file is a removal, but a foreign path cannot

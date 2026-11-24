@@ -1532,7 +1532,11 @@ module Mutineer
         detail = @agg.broken_nil_score? ? "nothing could be scored (#{broken_counts_detail})" : no_verdict_ratio
         out.puts "incomplete run: #{detail}"
       end
-      out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%" if delta.score_drop
+      if delta.score_drop
+        # The check uses the exact counts (#343); the rounded values can be equal.
+        hidden = delta.score_before == delta.score_after ? " (less than the rounding shows; the check uses the exact counts)" : ""
+        out.puts "score dropped #{delta.score_before}% -> #{delta.score_after}%#{hidden}"
+      end
       # An OK verdict must not imply a check that never ran: say when the score
       # comparison was skipped (a diff-scoped side or a nil score).
       out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable

@@ -32,7 +32,7 @@ class ActionHarnessTest < Minitest::Test
       "case16" => 2, "case17" => 2, "case17b" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
       "case18d" => 0, "case18i" => 0, "case18e" => 0, "case18f" => 0, "case18g" => 0, "case18h" => 0,
       "case13b" => 2, "case14c" => 2,
-      "case20" => 1, "case21" => 1, "case22" => 1, "case23" => 2, "case24" => 0 }.each do |c, code|
+      "case20" => 1, "case21" => 1, "case22" => 1, "case23" => 2, "case24" => 0, "case25" => 1 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -107,6 +107,10 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out[/case23 baseline line: .*/].to_s, "completeness unavailable (upgrade the gem)",
                     "an old report must not imply that completeness passed"
     refute_includes out[/case3 baseline line: .*/].to_s, "unverified", "no empty unverified count should appear"
+    hidden = "(less than the rounding shows; the check uses the exact counts)"
+    assert_includes out[/case25 baseline line: .*/].to_s, "; score 99.9 -> 99.9 #{hidden}", "hidden drop not explained"
+    refute_includes out[/case1 baseline line: .*/].to_s, hidden, "a visible drop needs no note"
+    assert_includes out[/case1 baseline line: .*/].to_s, "; score 80.0 -> 75.0", "case1 baseline line missing"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
     assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"

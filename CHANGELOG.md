@@ -60,6 +60,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Breaking: the `--baseline` score-drop check uses the exact counts
+  (#343).** It compared the scores rounded to one decimal. Now it compares
+  `killed / (killed + survived)` from the counts of both reports, as
+  `--threshold` does. An exit code can change in both directions: 9990 of
+  10000 killed then 9980 of 9990 is a drop (both round to 99.9%, and it
+  exited 0 before), and 90.07% to 90.05% with `--baseline-epsilon 0.05` is
+  not (the rounded 90.1% to 90.0% exited 1 before). The human report and the
+  Action summary say when the rounded scores hide the drop. A stored report
+  with no integer counts is still compared on its rounded score (#567).
 - **A baseline survivor that is now `ran_at_load` is not listed as fixed
   (#286).** 1.7.0 listed it as fixed. It is now in
   `baseline.unverified_survivors[]`.

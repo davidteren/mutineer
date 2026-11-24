@@ -633,4 +633,85 @@ class BaselineTest < Minitest::Test
     doc = JSON.parse(render([survivor("ccc")], nil, format: "json"))
     refute doc.key?("baseline")
   end
+
+  # --- #343 limit 3: the score-drop check uses the exact counts ---
+
+  # A stored report with the given counts; its survivors are s0..s(survived - 1).
+  def counted_doc(killed, survived)
+    score = (killed.to_f / (killed + survived) * 100).round(1)
+    { "schema_version" => "1.11",
+      "summary" => { "score" => score, "killed" => killed, "survived" => survived },
+      "survivors" => Array.new(survived) { |i| { "id" => "s#{i}", "file" => FILE, "operator" => "comparison" } } }
+  end
+
+  # A run with `killed` kills and the stored survivors s0..s(survived - 1).
+  # `located` gives each survivor a subject, which a rendered report needs.
+  def counted_run(killed, survived, located: false)
+    agg(*Array.new(killed) { Mutineer::Result.killed },
+        *Array.new(survived) { |i| located ? survivor("s#{i}") : Mutineer::Result.survived.with(id: "s#{i}") })
+  end
+
+  def test_a_drop_smaller_than_the_rounding_is_a_score_drop
+    delta = Mutineer::Baseline.new(counted_doc(9990, 10)).diff(counted_run(9980, 10))
+
+    assert_equal [99.9, 99.9], [delta.score_before, delta.score_after]
+    assert delta.score_drop, "99.9000 -> 99.8999 is a drop"
+    assert delta.regressed
+    assert_empty delta.new_survivors, "the drop is the only cause"
+  end
+
+  def test_a_drop_inside_epsilon_is_not_a_score_drop_when_the_rounded_scores_differ_more
+    delta = Mutineer::Baseline.new(counted_doc(9066, 1000)).diff(counted_run(9050, 1000), epsilon: 0.05)
+
+    assert_equal [90.1, 90.0], [delta.score_before, delta.score_after]
+    refute delta.score_drop, "90.0656 -> 90.0498 drops 0.016, inside 0.05"
+    refute delta.regressed
+  end
+
+  def test_score_drop_matches_the_exact_rule_for_many_counts
+    [1, 7, 10, 333, 1000].each do |s|
+      [1, 9, 99, 999].each do |big_k|
+        base = Mutineer::Baseline.new(counted_doc(big_k, s))
+        ((big_k - 4).clamp(0, nil)..(big_k + 1)).each do |k|
+          run = counted_run(k, s)
+          [0.0, 0.05, 0.1, 1.0].each do |eps|
+            want = Rational(k * 100, k + s) < Rational(big_k * 100, big_k + s) - eps.to_s.to_r
+            assert_equal want, base.diff(run, epsilon: eps).score_drop, "K=#{big_k} k=#{k} s=#{s} eps=#{eps}"
+          end
+        end
+      end
+    end
+  end
+
+  def test_equal_ratios_with_different_counts_are_not_a_drop
+    doc = counted_doc(2, 4)
+    doc["survivors"] = Array.new(2) { |i| { "id" => "s#{i}", "file" => FILE, "operator" => "comparison" } }
+
+    refute Mutineer::Baseline.new(doc).diff(counted_run(1, 2)).score_drop, "1 of 3 equals 2 of 6"
+  end
+
+  def test_a_baseline_with_no_counts_compares_the_rounded_scores
+    run = counted_run(9980, 10)
+    hand_made = Mutineer::Baseline.new(counted_doc(9990, 10).tap { |d| d["summary"] = { "score" => 99.9 } })
+    refute hand_made.diff(run).score_drop, "rounded 99.9 -> 99.9, as before #343"
+
+    dropped = Mutineer::Baseline.new(counted_doc(9990, 10).tap { |d| d["summary"] = { "score" => 100.0 } })
+    assert dropped.diff(run).score_drop
+  end
+
+  def test_human_report_explains_a_drop_that_the_rounded_scores_do_not_show
+    hidden = "less than the rounding shows; the check uses the exact counts"
+    run = counted_run(9980, 10, located: true)
+    out = StringIO.new
+    Mutineer::Reporter.new(run, { FILE => SRC }).report(out: out, err: StringIO.new, format: "human",
+                                           baseline: Mutineer::Baseline.new(counted_doc(9990, 10)).diff(run))
+    assert_includes out.string, "score dropped 99.9% -> 99.9% (#{hidden})"
+
+    run = counted_run(889, 111, located: true)
+    out = StringIO.new
+    Mutineer::Reporter.new(run, { FILE => SRC }).report(out: out, err: StringIO.new, format: "human",
+                                           baseline: Mutineer::Baseline.new(counted_doc(900, 100)).diff(run))
+    assert_includes out.string, "score dropped 90.0% -> 88.9%\n"
+    refute_includes out.string, hidden
+  end
 end
