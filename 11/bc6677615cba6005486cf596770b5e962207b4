@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_ca5b42f589bb5d::t_7c21805f6bfeb0 24-25,27
+test/merge_gate_ruleset_test.rb
+  s_ca5b42f589bb5d::t_7c21805f6bfeb0 111-112,114
+AGENTS.md
+  s_ca5b42f589bb5d::t_7c21805f6bfeb0 153-156,160-164,166-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11bc6677615cba6005486cf596770b5e962207b4",
+  "prompts": {},
+  "sessions": {
+    "s_ca5b42f589bb5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7627e31-4a2e-4657-9410-0cfec75217c7",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
