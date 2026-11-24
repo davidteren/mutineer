@@ -472,7 +472,7 @@ Considered and not built:
 | Test | Suite | Covers | On `main` | With the fix |
 |---|---|---|---|---|
 | `test_postgres_provision_never_frees_the_run_lock` | `rake test` | AE2 | Fails: "the run lock was free between the exclusive and the shared lock" | Passes |
-| `test_postgres_provision_frees_the_lock_when_the_share_fails` | `rake test` | AE3 | Fails in the `raise` case: "raise: the session stays open". The `refuse` case passes. | Passes |
+| `test_postgres_provision_frees_the_lock_when_the_share_fails` | `rake test` | AE3 | Fails in the `raise` case: the error is not wrapped (`"the query was cancelled"` instead of `"could not provision app_test from app_test: the query was cancelled"`), and the session stays open. The `refuse` case passes. (The `lose` case was added in review.) | Passes |
 | `test_provision_never_frees_the_run_lock` | `rake test:daemon` with `DB=postgres` | AE1 | Fails: `FREE_AFTER=["SELECT pg_advisory_unlock($1, $2)"]` | Passes: `LOCK_STATEMENTS=3`, `FREE_AFTER=[]`, `WORKER_JOINS=true SECOND_RUN_STARTS=false` |
 | The other 12 tests in `test/daemon_postgres_test.rb` | `rake test:daemon` with `DB=postgres` | AE4 | Pass | Pass (seen run on PostgreSQL 16.16) |
 

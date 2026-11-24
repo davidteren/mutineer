@@ -1019,7 +1019,11 @@ module Mutineer
 
         unlock(conn, base)
       rescue StandardError => e
-        unlock(conn, base)
+        begin
+          unlock(conn, base)
+        rescue StandardError
+          nil # A lost session holds no lock. Close it and report the first error.
+        end
         conn.close
         raise provision_wrapped?(e) ? e : provision_failure(base, base, e.message)
       end

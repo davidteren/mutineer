@@ -834,7 +834,8 @@ class RailsWorkerDbTest < Minitest::Test
   def test_postgres_provision_frees_the_lock_when_the_share_fails
     db = Mutineer::RailsWorkerDb
     { refuse: "another Mutineer run is using app_test",
-      raise: "could not provision app_test from app_test: the query was cancelled" }.each do |on_shared, message|
+      raise: "could not provision app_test from app_test: the query was cancelled",
+      lose: "could not provision app_test from app_test: the connection was lost" }.each do |on_shared, message|
       box = PgLockBox.new
       conn = LockPg.new(box, :first, on_shared: on_shared)
       db.instance_variable_set(:@lock_connection, nil)
@@ -1615,7 +1616,8 @@ class RailsWorkerDbTest < Minitest::Test
 
   # One session against a {PgLockBox}. Answers the advisory lock calls of
   # RailsWorkerDb and records the locks it holds at each copy statement.
-  # `on_shared` makes the shared request fail: `:refuse` or `:raise`.
+  # `on_shared` makes the shared request fail: `:refuse`, `:raise`, or `:lose`
+  # (the session is gone, so every later statement raises too).
   class LockPg
     attr_reader :held_at_copy
 
@@ -1634,6 +1636,8 @@ class RailsWorkerDbTest < Minitest::Test
     end
 
     def exec_params(sql, _params)
+      raise "the connection was lost" if @lost
+
       got =
         case sql
         when /pg_try_advisory_lock_shared\(/ then try_shared
@@ -1666,8 +1670,16 @@ class RailsWorkerDbTest < Minitest::Test
 
     def try_shared
       raise "the query was cancelled" if @on_shared == :raise
+      lose_session if @on_shared == :lose
 
       @on_shared != :refuse && @box.try(@id, :shared)
+    end
+
+    # A lost session holds no lock, as when the server ends it.
+    def lose_session
+      @lost = true
+      @box.close(@id)
+      raise "the connection was lost"
     end
   end
 

@@ -220,7 +220,8 @@ class DaemonPostgresTest < Minitest::Test
       db.provision(1)
       puts "LOCK_STATEMENTS=\#{seen.count { |sql| sql.include?("advisory") }}"
       puts "FREE_AFTER=\#{free_after.inspect}"
-      puts "WORKER_JOINS=\#{ask.call("pg_try_advisory_lock_shared")} SECOND_RUN_STARTS=\#{ask.call("pg_try_advisory_lock")}"
+      second_run = ask.call("pg_try_advisory_lock")
+      puts "WORKER_JOINS=\#{ask.call("pg_try_advisory_lock_shared")} SECOND_RUN_STARTS=\#{second_run}"
     RUBY
     assert status.success?, out
     assert_includes out, "LOCK_STATEMENTS=3"
