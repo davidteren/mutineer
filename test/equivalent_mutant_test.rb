@@ -55,6 +55,14 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
+  # A marker after other text, or after an invalid byte before it, still counts.
+  def test_suppress_map_reads_a_marker_after_other_comment_text
+    src = "a # note -- # mutineer:disable-line arithmetic\nb # caf\xE9 # mutineer:disable-line comparison\n".b.force_encoding("UTF-8")
+    map = Mutineer::JobPlan.suppress_map(src, "x.rb")
+    assert_equal Set[:arithmetic], map[1][:ops]
+    assert_equal Set[:comparison], map[2][:ops]
+  end
+
   # The same guard holds in a source with a magic encoding other than UTF-8.
   def test_suppress_map_handles_an_invalid_byte_in_an_euc_jp_source
     bare = "# encoding: euc-jp\na + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding("EUC-JP")

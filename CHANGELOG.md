@@ -10,7 +10,8 @@ All notable changes to this project are documented here. The format is based on
 
 - **A UTF-8 source with an invalid byte in a comment no longer stops the run (#538).**
   `JobPlan.suppress_map` matched the `mutineer:disable-line` marker against the raw comment text and raised `invalid byte sequence in UTF-8`, so `mutineer run` exited 2 for a file that Ruby loads.
-  It now matches a scrubbed copy of each comment, and the line counts of the run and the report read bytes. A marker with an invalid byte in its operator list is ignored, with a warning.
+  It now matches the marker on the comment's bytes, and the line counts of the run and the report read bytes.
+  A marker with an invalid byte between it and a `--` reason is ignored, with a warning, so it cannot silence an operator the user did not name.
 - **A hand-edited run cache with a bad timing is a cache miss, not a backtrace (#546).**
   A `coverage.json` in the cache directory with a string, infinite or negative timing raised in test ordering.
   The run now captures again instead. `--coverage-from` also rejects a negative timing.

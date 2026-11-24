@@ -813,9 +813,11 @@ module Mutineer
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
         raw = comment.slice # an invalid byte in a comment is legal Ruby (#538)
-        next unless raw.b.match?(/#\s*mutineer:disable-line/n)
+        start = raw.b.index(/#\s*mutineer:disable-line/n)
+        next unless start
 
-        head = raw.b.split(/\s--/n, 2).first.force_encoding(raw.encoding)
+        # The marker through the end of its operator list; an invalid byte after `--` is only the reason.
+        head = raw.b.byteslice(start..).split(/\s--/n, 2).first.force_encoding(raw.encoding)
         unless head.valid_encoding?
           # An invalid byte before the reason could hide an operator name or cut the list: silence nothing.
           warn "mutineer: invalid byte in the disable-line marker at #{file}:#{line}; the marker is ignored"
