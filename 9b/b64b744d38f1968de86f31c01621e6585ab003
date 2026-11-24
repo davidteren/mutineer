@@ -1,0 +1,32 @@
+test/yard_strict_test.rb
+  s_ca5b42f589bb5d::t_762c0bbf2703ec 1-39
+test/merge_gate_ruleset_test.rb
+  s_ca5b42f589bb5d::t_e187bb026f8b1d 16-23,38,88-105
+AGENTS.md
+  s_ca5b42f589bb5d::t_472a505596503f 111,113-114
+  s_ca5b42f589bb5d::t_c6368c938eccdd 19-36,63-64,116,126,133-154,204,227-228
+  s_ca5b42f589bb5d::t_4743b79a72d95b 229
+CONTRIBUTING.md
+  s_ca5b42f589bb5d::t_c6368c938eccdd 13,71-72
+.github/workflows/ci.yml
+  s_ca5b42f589bb5d::t_4481084e1b7065 34,59,80,103,116,139,179,229,266
+  s_ca5b42f589bb5d::t_d22d38b461b2a3 11-13,20-30
+Rakefile
+  s_ca5b42f589bb5d::t_762c0bbf2703ec 56-59,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9bb64b744d38f1968de86f31c01621e6585ab003",
+  "prompts": {},
+  "sessions": {
+    "s_ca5b42f589bb5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7627e31-4a2e-4657-9410-0cfec75217c7",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
