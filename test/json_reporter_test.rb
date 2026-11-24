@@ -317,7 +317,7 @@ class JsonReporterTest < Minitest::Test
     assert_includes row["diff"], "caf\\xE9.rb"
     patch = row["diff_base64"].unpack1("m")
     assert_includes patch, "--- a/caf\xE9.rb\n".b
-    return if RUBY_PLATFORM.include?("darwin") # APFS refuses a file name that is not UTF-8
+    skip "APFS refuses a file name that is not UTF-8" if RUBY_PLATFORM.include?("darwin")
 
     Dir.mktmpdir do |dir|
       File.binwrite(File.join(dir, path), src)

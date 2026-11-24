@@ -127,7 +127,7 @@ module Mutineer
         end
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
-        lines = mutations.map { |m| source.byteslice(0, m.start_offset).b.count("\n") + 1 }
+        lines = mutations.map { |m| Parser.line_at(source, m.start_offset) }
         keys = result_keys(mutations, source, lines)
         # A repeat of an earlier edit on the same line, from any operator, is
         # dropped (#159, #275), separately among the run and the ignored
@@ -618,7 +618,7 @@ module Mutineer
     # @return [Array(Symbol, Object)] `[:run, Array<String>]`, `[:maybe, Array<String>]`
     #   or `[:verdict, Result]`.
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
-      line   = source.byteslice(0, mutation.start_offset).b.count("\n") + 1
+      line   = Parser.line_at(source, mutation.start_offset)
       chosen = coverage_map.tests_for(source_file, line)
       kind   = :run
       if chosen.empty? && subject
@@ -1164,7 +1164,7 @@ module Mutineer
                                    project_root: config.project_root)
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
-        line = source.byteslice(0, mutation.start_offset).b.count("\n") + 1
+        line = Parser.line_at(source, mutation.start_offset)
         abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end

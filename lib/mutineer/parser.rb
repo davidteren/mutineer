@@ -94,5 +94,15 @@ module Mutineer
     def self.comments(source)
       Prism.parse_comments(source)
     end
+
+    # The 1-based line of a byte offset. It counts on bytes, so an invalid byte
+    # in a UTF-8 source cannot raise (#538).
+    #
+    # @param source [String] source text.
+    # @param offset [Integer] byte offset into `source`.
+    # @return [Integer] the line number.
+    def self.line_at(source, offset)
+      source.byteslice(0, offset).b.count("\n") + 1
+    end
   end
 end
