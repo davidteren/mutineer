@@ -23,9 +23,11 @@ It checks committed changes only, so commit first. Deal with each item it
 lists before you go on:
 
 - An added line that names a limitation ("not yet", "deferred", "TODO") with
-  no issue number. Add the issue, or create one. The script exits 1 until
-  every such line has one. It matches keywords only, so also look for
-  limits worded as "only", "stays", "ignores" or "same rule as".
+  no issue number. Add the issue, or create one with its labels (AGENTS.md,
+  "Labels"). The script exits 1 until every such line has one. It matches
+  keywords only, so also look for limits worded as "only", "stays",
+  "ignores" or "same rule as". Before you file one, read AGENTS.md, "Fix
+  it in the pull request, or file an issue?".
 - A test file that loses assertions, or gains a skip or a timeout. Give the
   reason for each in the pull request body.
 - Doc sync: a sentence you removed or changed that another doc still has, and
