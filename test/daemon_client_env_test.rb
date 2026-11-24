@@ -288,6 +288,27 @@ class DaemonClientEnvTest < Minitest::Test
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
       assert_includes hint.(cause), "does not pass RUBYLIB to the app"
     end
+
+    # Under `bundle exec`, the user's RUBYLIB is the saved one.
+    with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "/bundler/lib",
+             "BUNDLER_ORIG_RUBYLIB" => "test/support") do
+      assert_includes hint.(cause), "does not pass RUBYLIB to the app"
+    end
+  end
+
+  # #535: the note is one text for the daemon and for --test-command. Its
+  # default is the inside of the 1.10.0 note, byte for byte.
+  def test_load_env_note_is_the_shared_note_text
+    with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_equal "the daemon does not pass RUBYLIB to the app; if the missing file is in a directory set there, " \
+                   "add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
+                   "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}", Mutineer::DaemonClient.load_env_note
+      assert Mutineer::DaemonClient.load_env_note(who: "--test-command", to: "the command")
+                                   .start_with?("--test-command does not pass RUBYLIB to the command; ")
+    end
+    with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYLIB" => nil) do
+      assert_nil Mutineer::DaemonClient.load_env_note
+    end
   end
 
   # The hint reaches #last_cause through #request, not only the helper.

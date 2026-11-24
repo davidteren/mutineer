@@ -200,7 +200,7 @@ When a run stops with `another Mutineer run is using <base>`, wait for the other
 #### Extra load paths
 
 Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
-This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. `--test-command` ignores it ([#535](https://github.com/davidteren/mutineer/issues/535)).
+This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. In Mutineer 1.11.0 and later, `--test-command` gets the directories in `RUBYLIB` ([#535](https://github.com/davidteren/mutineer/issues/535)).
 Use it for a test helper outside the test folder, such as `test/support`:
 
 ```yaml
@@ -272,7 +272,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | --- | --- |
 | `%{files}` | Required. Expands `--test` paths into separate arguments. Paths containing spaces remain single arguments. No shell runs. |
 | Environment | Inherits variables such as `RAILS_ENV` and `DATABASE_URL`. |
-| Removed variables | Unsets `BUNDLE_*`, `GEM_*`, `RUBY*`, `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` so Mutineer's Ruby cannot pin the suite. |
+| Removed variables | Unsets `BUNDLE_*`, `GEM_*`, `RUBY*`, `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` so Mutineer's Ruby cannot pin the suite. Then sets `RUBYLIB` to the `load_path` directories, when there are any. |
 | `PATH` | Removes version-manager version bins, such as `~/.rbenv/versions/3.4.x/bin`. Prepends rbenv/asdf shims when a pin was removed. |
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
@@ -293,12 +293,14 @@ Example rbenv wrapper, saved as `bin/mutineer-test`:
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-unset GEM_HOME GEM_PATH RUBYLIB RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
+unset GEM_HOME GEM_PATH RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
 export RBENV_VERSION="$(cat .ruby-version 2>/dev/null || true)"
 export RAILS_ENV="${RAILS_ENV:-test}"
 export PATH="${HOME}/.rbenv/shims:${PATH}"
 exec bundle exec rails test "$@"
 ```
+
+Mutineer clears the tool's `RUBYLIB` itself. A wrapper that unsets `RUBYLIB` also drops the `load_path` directories.
 
 Make it executable:
 
@@ -322,6 +324,7 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Parallelism | Runs serially by default and forces `--jobs` to 1; a wrapper can reset `PARALLEL_WORKERS` to re-enable Rails test workers. |
 | Strategy | Supports only `reload`. Rejects `--strategy redefine`. |
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
+| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file and the likely cause: a wrapper that unset `RUBYLIB`, or a load variable that Mutineer did not pass. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
 | Subprocess result | Verdict |

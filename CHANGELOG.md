@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`--test-command` gets the `load_path` directories in `RUBYLIB` (#535).**
+  `load_path:` in `.mutineer.yml` and `--load-path DIR` (`-I DIR`) now apply to a `--test-command` run.
+  Mutineer sets `RUBYLIB` for the command to those directories, for the clean run and every mutant run.
+  It still clears the tool's and your own `RUBYOPT` and `RUBYLIB`, as before (#100).
+  1.10.0 ignored the setting there and printed `... has no effect with --test-command`; that warning is gone.
+  If you use `load_path` for `--daemon` runs and also run `--test-command`, the command now gets those directories too.
+  An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
+  When the clean run cannot load a file, the smoke error now names the file and the likely cause first: a wrapper that unset `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

@@ -421,6 +421,83 @@ class ExternalBackendTest < Minitest::Test
     end
   end
 
+  # #535: with no load_path, child_env is the hash it was before: RUBYLIB is
+  # cleared (a nil value), as are the other RUBY* keys.
+  def test_child_env_without_load_dirs_clears_rubylib
+    with_env("RUBYLIB" => "/tool/lib") do
+      env = Backend.child_env
+      assert_equal env, Backend.child_env(extra_load_dirs: [])
+      assert env.key?("RUBYLIB")
+      assert_nil env["RUBYLIB"]
+    end
+  end
+
+  # #535: the load_path directories replace the cleared RUBYLIB, in order.
+  def test_child_env_sets_rubylib_to_the_load_dirs_only
+    with_env("RUBYLIB" => "/tool/lib") do
+      env = Backend.child_env(extra_load_dirs: ["/a b", "/c"])
+      assert_equal "/a b#{File::PATH_SEPARATOR}/c", env["RUBYLIB"]
+    end
+  end
+
+  # #535: the rule matches Ruby's real messages for a missing file, not one
+  # hand-written example.
+  def test_missing_file_matches_real_ruby_output
+    Dir.mktmpdir("mutineer-missing") do |dir|
+      File.write(File.join(dir, "outer.rb"), "require_relative \"inner\"\n")
+      File.write(File.join(dir, "inner.rb"), "require \"nope_inner\"\n")
+      File.write(File.join(dir, "mt_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        class MissingTest < Minitest::Test
+          def test_it = require("nope_minitest")
+        end
+      RUBY
+      {
+        ["-e", 'require "nope_x"'] => "nope_x",
+        [File.join(dir, "outer.rb")] => "nope_inner",
+        [File.join(dir, "mt_test.rb")] => "nope_minitest"
+      }.each do |args, name|
+        out, _status = Open3.capture2e(RUBY, *args)
+        assert_equal "cannot load such file -- #{name}", out[Backend::MISSING_FILE], out
+      end
+    end
+    refute_match Backend::MISSING_FILE, "NameError: uninitialized constant X"
+    refute_match Backend::MISSING_FILE, ""
+  end
+
+  # #535: each part of the hint, in order, and nil with no missing file.
+  def test_missing_file_hint_names_the_likely_cause
+    output = "x.rb:1:in 'require': cannot load such file -- helper (LoadError)\n"
+    start = "the suite could not load a file (cannot load such file -- helper)"
+    dirs_part = "if it is in a load_path directory: Mutineer passes those directories to the command in RUBYLIB"
+
+    assert_equal start, Backend.missing_file_hint(output, [], nil)
+    with_dirs = Backend.missing_file_hint(output, ["/p/support"], nil)
+    assert with_dirs.start_with?("#{start}; #{dirs_part}")
+    refute_includes with_dirs, "/p/support"
+    assert_equal "#{start}; NOTE", Backend.missing_file_hint(output, [], "NOTE")
+    both = Backend.missing_file_hint(output, ["/p/support"], "NOTE")
+    assert both.start_with?("#{start}; #{dirs_part}")
+    assert both.end_with?("; NOTE")
+    assert_nil Backend.missing_file_hint("1 runs, 1 assertions, 1 failures, 0 errors\n", ["/p"], "NOTE")
+    assert_equal start, Backend.missing_file_hint("\e[31mcannot load such file -- helper\e[0m\n", [], nil)
+    long = Backend.missing_file_hint("cannot load such file -- #{'x' * 600}", [], nil)
+    assert_includes long, "#{'x' * 100}...)"
+    assert_operator long.length, :<, 600
+  end
+
+  # #535: a usable entry is a directory with no path separator in its path.
+  def test_usable_load_dirs_keeps_directories_without_the_separator
+    Dir.mktmpdir("mutineer-dirs") do |dir|
+      ok = File.join(dir, "ok")
+      odd = File.join(dir, "a#{File::PATH_SEPARATOR}b")
+      file = File.join(dir, "file.rb")
+      [ok, odd].each { |d| FileUtils.mkdir_p(d) }
+      File.write(file, "")
+      assert_equal [ok], Backend.usable_load_dirs([file, ok, File.join(dir, "missing"), odd])
+    end
+  end
+
   # --verbose surfaces the child's captured output; default run stays quiet on a kill.
   def test_verbose_prints_output_on_kill_default_quiet
     with_script(%(STDOUT.puts "boom-detail"\nexit 1\n)) do |path|

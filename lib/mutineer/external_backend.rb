@@ -33,7 +33,9 @@ module Mutineer
   # version-manager concrete version bins (e.g. `~/.rbenv/versions/3.4.9/bin`) are
   # removed from PATH so shims / `.ruby-version` can select the app's Ruby (#32).
   # PARALLEL_WORKERS and DISABLE_SPRING are set to 1 ({RailsRunEnv}), and so is
-  # DISABLE_BOOTSNAP_COMPILE_CACHE ({child_env}).
+  # DISABLE_BOOTSNAP_COMPILE_CACHE ({child_env}). The tool's and the user's
+  # RUBYOPT and RUBYLIB are cleared; RUBYLIB then holds only the `load_path`
+  # directories (#535).
   module ExternalBackend
     # Generous ceiling for the one-off smoke/calibration run (a cold app boot plus
     # the full suite). The per-mutant timeout is derived from how long this took.
@@ -73,6 +75,10 @@ module Mutineer
     RSPEC_OUTSIDE_ERROR = /errors? occurred outside of examples/
     # ANSI colour codes, removed before matching so a coloured summary still counts.
     ANSI_CODE = /\e\[[\d;]*m/
+    # Ruby's message for a `require` that found no file, with the file's name.
+    # It matches the uncaught form (`cannot load such file -- x (LoadError)`)
+    # and the Minitest and RSpec forms (`LoadError: cannot load such file -- x`).
+    MISSING_FILE = /cannot load such file -- \S+/
     # The seed line Minitest prints before every run ("Run options:"), or that
     # minitest-reporters prints ("Started with run options", or "# Running tests with run options"
     # for its DefaultReporter). Captures the seed.
@@ -149,9 +155,16 @@ module Mutineer
     # mutant's cached code (#285). The daemon loads each mutant from a new file
     # and keeps the cache.
     #
+    # +RUBYLIB+ is cleared with the other `RUBY*` keys. When the run has
+    # `load_path` directories, +RUBYLIB+ is then set to those directories
+    # alone, so the command's Ruby finds the files in them (#535). With no
+    # directories the hash is the same as before #535.
+    #
     # @api private
+    # @param extra_load_dirs [Array<String>] absolute `load_path` directories
+    #   that {usable_load_dirs} kept, in the written order.
     # @return [Hash{String => String, nil}] env for Process.spawn.
-    def self.child_env
+    def self.child_env(extra_load_dirs: [])
       env = {}
       cleared_pin = false
       ENV.each_key do |k|
@@ -172,7 +185,19 @@ module Mutineer
       env["PATH"] = path.join(File::PATH_SEPARATOR)
       RailsRunEnv.pin_child!(env, spring: true)
       env["DISABLE_BOOTSNAP_COMPILE_CACHE"] = "1"
+      env["RUBYLIB"] = extra_load_dirs.join(File::PATH_SEPARATOR) unless extra_load_dirs.empty?
       env
+    end
+
+    # The `load_path` entries that {child_env} can put in +RUBYLIB+: a
+    # directory whose path has no +File::PATH_SEPARATOR+ (+RUBYLIB+ has no
+    # quoting for it). CLI.validate_paths! warns for the rest (#535).
+    #
+    # @api private
+    # @param dirs [Array<String>] absolute `load_path` directories.
+    # @return [Array<String>] the usable ones, in the same order.
+    def self.usable_load_dirs(dirs)
+      dirs.select { |dir| File.directory?(dir) && !dir.include?(File::PATH_SEPARATOR) }
     end
 
     # True when the key must be unset in the child (bundler/gem/version-manager).
@@ -216,9 +241,12 @@ module Mutineer
     # @param clean_summaries [Integer] how many summary lines the clean smoke
     #   run printed ({summary_count}). After a SimpleCov gate, a passing run
     #   with fewer scores error, not survived (#516). 0 keeps the 1.9.0 rule.
+    # @param extra_load_dirs [Array<String>] the `load_path` directories for
+    #   the command's +RUBYLIB+ (see {child_env}).
     # @return [Mutineer::Result]
-    def self.run(command, files, timeout:, verbose: false, check_summary: false, clean_summaries: 0)
-      kind, code, output, = spawn_capture(command, files, timeout)
+    def self.run(command, files, timeout:, verbose: false, check_summary: false, clean_summaries: 0,
+                 extra_load_dirs: [])
+      kind, code, output, = spawn_capture(command, files, timeout, extra_load_dirs: extra_load_dirs)
       case kind
       when :timeout
         # A timeout is the one non-pass we flag by default — a normal kill is also
@@ -566,11 +594,15 @@ module Mutineer
     # @param command [String] the --test-command template.
     # @param files [Array<String>] test file paths.
     # @param timeout [Numeric] ceiling for the calibration run.
+    # @param extra_load_dirs [Array<String>] the `load_path` directories for
+    #   the command's +RUBYLIB+ (see {child_env}).
+    # @param load_note [String, nil] why a load variable the user set does not
+    #   reach the command, or nil (see {missing_file_hint}).
     # @return [Array(Float, (:line, Boolean), (Array(Symbol, String), nil), Integer)]
     #   `[elapsed_seconds, summary_mode, random_order, summary_count]`.
     # @raise [Mutineer::SmokeCheckError] when the clean suite is not green.
-    def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT)
-      kind, code, output, elapsed = spawn_capture(command, files, timeout)
+    def self.smoke_check!(command, files, timeout: SMOKE_TIMEOUT, extra_load_dirs: [], load_note: nil)
+      kind, code, output, elapsed = spawn_capture(command, files, timeout, extra_load_dirs: extra_load_dirs)
       if kind == :exited && code&.zero?
         text = summary_text(output)
         mode = summary_mode(text)
@@ -583,7 +615,7 @@ module Mutineer
         else                      "exited #{code}"
         end
       detail = output.empty? ? "" : "\n--- last output ---\n#{tail(output)}"
-      hint = ruby_version_mismatch_hint(output)
+      hint = ruby_version_mismatch_hint(output) || missing_file_hint(output, extra_load_dirs, load_note)
       raise SmokeCheckError,
             "the test command #{reason} against the UNMUTATED source — " \
             "#{hint || generic_env_hint}.#{detail}"
@@ -596,6 +628,32 @@ module Mutineer
     def self.generic_env_hint
       "the unmutated suite is not green (failing tests, or a broken environment: " \
         "DB, RAILS_ENV, migrations) — fix that before scoring"
+    end
+
+    # Targeted hint when the clean run could not load a file (#535). It reads
+    # the full output, not only the {tail} the error shows, so the file's
+    # name is found when its line is above the last 40 lines. It names the
+    # likely cause: a `load_path` directory that did not reach the command's
+    # Ruby, or a load variable the user set, which the command does not get.
+    # It never prints a variable's value or a directory.
+    #
+    # @api private
+    # @param output [String] captured child stdout+stderr.
+    # @param extra_load_dirs [Array<String>] the directories set in +RUBYLIB+.
+    # @param load_note [String, nil] DaemonClient.load_env_note for this run.
+    # @return [String, nil] hint text, or nil when no file was missing.
+    def self.missing_file_hint(output, extra_load_dirs, load_note)
+      found = output.gsub(ANSI_CODE, "")[MISSING_FILE]
+      return nil unless found
+
+      parts = ["the suite could not load a file (#{ChildCause.clip(found)})"]
+      unless extra_load_dirs.empty?
+        parts << "if it is in a load_path directory: Mutineer passes those directories to the command in " \
+                 "RUBYLIB, and a wrapper that unsets RUBYLIB, or a Ruby that the command starts in a container, " \
+                 "does not get them (pass -I inside the test command there)"
+      end
+      parts << load_note if load_note
+      parts.join("; ")
     end
 
     # Targeted hint when Bundler reports a RubyVersionMismatch (common under
@@ -624,7 +682,8 @@ module Mutineer
     # RUBYOPT for a `--test-command` child: the copier file alone. The tool's
     # own RUBYOPT (`-rbundler/setup` under `bundle exec`) stays out, as
     # {child_env} clears every `RUBY*` key so the suite picks its own Ruby and
-    # gems. Empty when the copier file cannot be named without whitespace.
+    # gems. RUBYLIB holds only the `load_path` directories (#535). Empty when
+    # the copier file cannot be named without whitespace.
     #
     # @api private
     # @param dir [String] the directory that holds command_redact.rb.
@@ -669,7 +728,8 @@ module Mutineer
     # reaped/recycled pid.
     #
     # @api private
-    def self.spawn_capture(command, files, timeout)
+    # @param extra_load_dirs [Array<String>] passed to {child_env}.
+    def self.spawn_capture(command, files, timeout, extra_load_dirs: [])
       argv = build_argv(command, files)
       # Unreachable in practice (validate_test_command! guarantees a non-empty
       # command with %{files}); a neutral ArgumentError, not the smoke-specific
@@ -688,7 +748,8 @@ module Mutineer
       # RUBYOPT loads the copier in each Ruby process this command starts, so a
       # password that process assigns is hidden before the bytes are captured
       # (#457). A program that is not Ruby ignores RUBYOPT.
-      pid = Process.spawn(child_env.merge("RUBYOPT" => command_rubyopt), [argv.first, argv.first], *argv[1..],
+      pid = Process.spawn(child_env(extra_load_dirs: extra_load_dirs).merge("RUBYOPT" => command_rubyopt),
+                          [argv.first, argv.first], *argv[1..],
                           out: out, err: %i[child out], pgroup: true)
       kind, code = wait_with_timeout(pid, timeout)
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start

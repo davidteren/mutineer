@@ -277,15 +277,30 @@ module Mutineer
     def self.with_load_env_hint(cause)
       return cause unless cause&.match?(MISSING_FILE_CAUSE)
 
+      note = load_env_note
+      note ? "#{cause} (#{note})" : cause
+    end
+
+    # Says which load variables the user set that +who+ does not pass to
+    # +to+, and how to replace them with `load_path`. The daemon puts it in
+    # parentheses after a missing-file cause ({.with_load_env_hint}); the
+    # `--test-command` smoke check puts it in its missing-file hint (#535).
+    # Names only the variables, never their values: RUBYOPT can hold a secret.
+    #
+    # @api private
+    # @param who [String] what drops the variables.
+    # @param to [String] what does not get them.
+    # @return [String, nil] nil when the user set no load variable.
+    def self.load_env_note(who: "the daemon", to: "the app")
       names = LOAD_ENV.select do |key|
         value = user_value(key).to_s
         key == "RUBYOPT" ? value.match?(RUBYOPT_LOAD_PATH) : !value.strip.empty?
       end
-      return cause if names.empty?
+      return nil if names.empty?
 
-      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if the missing file is in a " \
+      "#{who} does not pass #{names.join(' or ')} to #{to}; if the missing file is in a " \
         "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
-        "see #{LOAD_PATH_GUIDE})"
+        "see #{LOAD_PATH_GUIDE}"
     end
 
     # The value the user set for +key+, before Bundler changed it.

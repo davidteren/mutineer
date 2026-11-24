@@ -57,7 +57,7 @@ These keys are accepted in `.mutineer.yml` in 1.10.0:
 
 `load_path` is new in 1.10.0.
 Its flag is `--load-path DIR`, with the short form `-I DIR`.
-`--test-command` ignores it (#535).
+From 1.11.0, a `--test-command` run gets the directories in `RUBYLIB`. 1.10.0 ignored the key in that run, with a warning.
 An older version warns that the key is unknown and ignores it.
 An abbreviated flag is not part of this contract: a new flag can make a prefix ambiguous.
 `--load-path` made `--l` and `-l` ambiguous in 1.10.0; before, they meant `--list-operators`.
@@ -142,6 +142,9 @@ Where it prints no warning, the item says documented only.
   A worker database that cannot be provisioned scores those mutants as `error`.
   With `--threshold`, that run can also exit 1.
   In 2.0 a provisioning failure exits 3.
+- **A `load_path` entry that `--test-command` cannot use fails the run.** 1.11.0 warns.
+  Today the run skips an entry that is not a directory, or that has the path separator in its path, and continues.
+  In 2.0 it exits 2 (#581).
 
 ## Release rhythm
 
