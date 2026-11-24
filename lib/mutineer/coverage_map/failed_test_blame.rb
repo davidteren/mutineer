@@ -18,6 +18,7 @@ module Mutineer
       end
 
       # True when a failed test file pairs with `source_rel` by convention.
+      # A pack source is blamed only by its paired tests ({#pack_failed_test?}).
       # Exact `_test` / `_spec` / `test_` names match by basename, as before.
       # A split `<name>_*_test.rb` matches only in the mirrored test directory,
       # and only when no longer source file owns that name (#87). The answer
@@ -29,7 +30,27 @@ module Mutineer
         @blame_for ||= {}
         return @blame_for[source_rel] if @blame_for.key?(source_rel)
 
-        @blame_for[source_rel] = exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+        @blame_for[source_rel] =
+          if Pairing.pack_split(source_rel)
+            pack_failed_test?(source_rel)
+          else
+            exact_failed_test?(source_rel) || split_failed_test?(source_rel)
+          end
+      end
+
+      # True when a failed test file is one that {Pairing.infer_tests} pairs
+      # with a pack source (`packs/<pack path>/app/` or `lib/`, #494). A pack
+      # source uses only this rule: the basename rule of {#exact_failed_test?}
+      # would let a same-named test in another pack blame it, and the mirror
+      # checks look only under the project's own `test/`.
+      #
+      # @param source_rel [String] project-relative source path.
+      # @return [Boolean]
+      def pack_failed_test?(source_rel)
+        return false unless Pairing.pack_split(source_rel)
+
+        paired = Pairing.infer_tests(source_rel, project_root: @project_root, prefer: @framework || "minitest")
+        @failed_test_files.any? { |test_path| paired.include?(relativize(test_path)) }
       end
 
       # True when a failed exact `_test` / `_spec` / `test_` file pairs with
@@ -38,8 +59,8 @@ module Mutineer
       # `test/foo/bar_upsert_test.rb` does not taint `app/other/bar_upsert.rb`.
       # A concern also accepts the same names at its namespace path, but only
       # when it has no test at its `concerns/` path, as in {Pairing.infer_tests}.
-      # Any other source still matches by basename. A fixture under
-      # `test/fixtures/` and an explicit test both name their source that way.
+      # A source outside `app/` and `lib/` matches by basename. So does a failed
+      # test outside `test/` and `spec/` (an explicit test) for any source.
       #
       # @param source_rel [String] project-relative source path.
       # @return [Boolean]

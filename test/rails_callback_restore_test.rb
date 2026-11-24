@@ -7,7 +7,8 @@ require "json"
 # Real ActiveSupport callbacks, from the Rails fixture bundle. The zero-dep
 # suite stands in for these objects. This checks that stand-in against Rails'
 # own chain: a Proc skip picks up the reloaded Proc, and an independent
-# callback that names the parent's symbol does not.
+# callback that names the parent's symbol does not. A class body that calls
+# `define_callbacks` keeps its concern's callbacks across a reload (#504).
 class RailsCallbackRestoreTest < Minitest::Test
   APP = File.expand_path("fixtures/rails_app", __dir__)
   PROBE = File.expand_path("support/rails_callback_restore_probe.rb", __dir__)
@@ -29,5 +30,17 @@ class RailsCallbackRestoreTest < Minitest::Test
     assert result.fetch("independent_symbol").fetch("exact_active")
     refute result.fetch("independent_symbol").fetch("exact_ready")
     assert_equal %w[active? mine?], result.fetch("independent_symbol").fetch("longer")
+
+    # #504: probe P4 of the plan. A class body that calls `define_callbacks`
+    # keeps the callbacks of its concern and of a subclass in another file. Only
+    # OwnDoubled grows, because the concern and the body add the same `&:stamp`,
+    # and the #479 log names it.
+    own = result.fetch("own_chains")
+    assert_equal({ "OwnChain" => 2, "OwnChild" => 3, "OwnDoubled" => 2, "OwnModel" => 2 }, own.fetch("before"))
+    assert_equal({ "OwnChain" => 2, "OwnChild" => 3, "OwnDoubled" => 3, "OwnModel" => 2 }, own.fetch("after"))
+    assert_equal %w[stamp own], own.fetch("log_before")
+    assert_equal %w[stamp own], own.fetch("log_after")
+    assert_equal %w[stamp own child], own.fetch("child_log_after")
+    assert_equal %w[OwnDoubled], own.fetch("grown")
   end
 end

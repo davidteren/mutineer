@@ -246,6 +246,7 @@ module Mutineer
           d.update("\0")
         end
         @load_paths.sort.each { |lp| d.update("loadpath\0#{lp}\0") }
+        digest_extra_load_dirs(d)
         d.update("framework\0#{@framework}\0")
         digest_test_seed(d)
         d.hexdigest
@@ -283,7 +284,8 @@ module Mutineer
       # listed once, even when many sources share it. A concern also digests
       # longer files in its namespace directory, because those files can own a
       # namespace split name (#408). A model does not digest a concern file:
-      # the model keeps a split file it already pairs with.
+      # the model keeps a split file it already pairs with. A pack source also
+      # digests the longer files of the same names inside its pack (#494).
       #
       # @return [Array<String>] project-relative paths, sorted.
       def ownership_paths
@@ -297,9 +299,27 @@ module Mutineer
           bases = [base]
           ns = Pairing.namespace_base(rel)
           bases << ns if ns
-          bases.uniq.flat_map { |logical| owner_files(root, logical, listings) }
+          bases.uniq.flat_map { |logical| owner_files(root, logical, listings) } + pack_owner_files(rel, root, listings)
         end
         paths.uniq.sort
+      end
+
+      # {#owner_files} inside the pack of a pack source, with the pack path in
+      # front, because the pack rule of {Pairing.infer_tests} reads the pack
+      # folder as the root (#494). `[]` for a source outside `packs/`.
+      #
+      # @param rel [String] project-relative source path.
+      # @param root [String] expanded project root.
+      # @param listings [Hash{String => Array<String>}] directory children, filled once.
+      # @return [Array<String>] project-relative paths.
+      def pack_owner_files(rel, root, listings)
+        pack, inner = Pairing.pack_split(rel)
+        return [] unless pack
+
+        base, = Pairing.logical_path(inner)
+        bases = [base, Pairing.namespace_base(inner)].compact.uniq
+        bases.flat_map { |logical| owner_files(File.join(root, pack), logical, listings) }
+             .map { |path| File.join(pack, path) }
       end
 
       # Longer `.rb` files that can own a split name of `base`.

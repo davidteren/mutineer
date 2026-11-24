@@ -19,6 +19,41 @@ Untracked files are scored in full unless Git ignores them. Override `.mutineer.
 bundle exec mutineer run lib --no-since
 ```
 
+A `--since` run still captures coverage for the tests of every source you pass.
+To run only the tests of the changed sources, turn on `since_paired_tests` (off by default).
+It applies to in-process and `--daemon` runs whose tests Mutineer paired.
+`--test`, `--test-command`, `--baseline`, `--coverage-from` on an in-process `--rails` or `--boot` run, and a dry run keep the full test list.
+Every source still loads.
+See [Tests of the changed sources](cli.md#tests-of-the-changed-sources).
+
+```sh
+RAILS_ENV=test bundle exec mutineer run app --rails --since origin/main --since-paired-tests --cache-dir .mutineer/since
+```
+
+In the GitHub Action, set `since_paired_tests: true` in `.mutineer.yml`, or pass `extra-args: "--since-paired-tests"`.
+A `baseline` input turns it off for that run, as `--baseline` does.
+The test list is part of the coverage cache key, so a narrowed run replaces a full-run cache in the same folder.
+`--cache-dir .mutineer/since` keeps the two apart.
+
+### A survivor that appears only with `since_paired_tests`
+
+A narrowed run does not run a test that pairs only with an unchanged source.
+A mutant that only such a test kills shows as `survived` or `no_coverage`.
+A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`.
+`no_coverage` is outside the score, so a narrowed `--threshold` gate can pass where a full run fails.
+Use a full run (without the setting) for a `--threshold` gate you rely on.
+A `--baseline` run does not narrow: it keeps every test, so its new-survivor check sees that mutant as `survived`.
+Stderr says the setting has no effect, except on a dry run, which runs no tests.
+
+1. Find the `[mutineer] --since: running` line in the log. It gives the test file counts.
+2. Run the same command with `--no-since-paired-tests`, which beats the `.mutineer.yml` key.
+3. If the mutant is killed there, a test paired with another source kills it. Add that test to the [`tests:` map](cli.md#extra-tests-for-a-source) for the changed source. If it survives there, it is a real survivor.
+
+A full run (`--no-since`) sees both cases.
+
+A `--baseline` run never shows this case, because it does not narrow.
+The limits are in #552.
+
 ## Baseline
 
 Leave `only:` and `baseline:` unset in `.mutineer.yml` when you create or refresh the baseline; pass the baseline only to the PR gate. Create and refresh the saved JSON report with the [full-run baseline recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate).
@@ -40,6 +75,9 @@ Directories or multiple sources run in one boot, with results per source. Tests 
 | `user_session.rb` exists beside `user_session_test.rb` | The test stays with `user_session.rb` |
 | `bar_upsert.rb` exists | `bar_upsert_guards_test.rb` stays with `bar_upsert.rb` |
 | A spec already pairs | It stays as that one file |
+| `packs/catalog/app/models/item.rb`, and no test by the rules above | `packs/catalog/test/models/item_test.rb` or `packs/catalog/spec/models/item_spec.rb`. The same split, `test/lib/`, concern and longer-source rules apply inside the pack, with `packs/catalog` as the root. A source at `packs/<pack path>/lib/` works the same way |
+
+Pass pack source folders, such as `packs/*/app`, not `packs`. A source folder that holds test files lists each test file as an unpaired source. Pack roots other than `packs/` need a `tests:` map (#554).
 
 A source with no paired test is skipped. The report counts its mutants. If that count fails, `unpaired_sources[].mutants` is `null` in JSON. These mutants are excluded from the score. They join the unrun-share warning unless `--fail-fast` is set.
 A `tests:` map in `.mutineer.yml` adds its test files when the run holds a matching source; see [Extra tests for a source](cli.md#extra-tests-for-a-source).

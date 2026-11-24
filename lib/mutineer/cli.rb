@@ -68,7 +68,9 @@ module Mutineer
                              and any tests: map in .mutineer.yml (not under
                              --dry-run). A source at app/<dir>/concerns/ with no
                              test there also pairs with a split test at its
-                             namespace path.
+                             namespace path. A source at packs/<pack>/app/ or
+                             packs/<pack>/lib/ with no test by those rules pairs
+                             by the same rules inside its pack.
                              --test replaces pairing and the map
         --operators LIST     Comma-separated operator names (default: Tier 1 set)
         --threshold FLOAT    Fail (exit 1) when score < FLOAT (default: 0 = off)
@@ -78,6 +80,13 @@ module Mutineer
         --only NAME          Restrict to one fully-qualified subject
         --since REF          Only mutate lines changed since git REF (e.g. origin/main)
         --no-since           Disable diff scoping (a typed no beats a .mutineer.yml since:)
+        --since-paired-tests With --since, run only the tests paired with the sources
+                             that have a mutant on a changed line (in-process and
+                             --daemon; not with --test, --test-command,
+                             --baseline, or --coverage-from on an in-process
+                             --rails/--boot run; default: off)
+        --no-since-paired-tests  Turn it off for one run (beats a .mutineer.yml
+                             since_paired_tests:)
         --jobs N             Parallel worker count (default: processor count);
                              --test-command, --fail-fast, or --rails
                              without --daemon forces 1
@@ -91,6 +100,10 @@ module Mutineer
                              1.5x its files' summed capture time, rounded up
         --cache-dir DIR      Directory for the coverage cache (default: .mutineer;
                              not with --test-command)
+        --load-path DIR, -I DIR  Put DIR on $LOAD_PATH before the boot file, the sources
+                             and the tests (repeat for more; relative to the project
+                             root; replaces load_path: in .mutineer.yml; not with
+                             --test-command)
         --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over
                              these sources or more; runs alone only the tests that
                              cover these sources
@@ -179,6 +192,7 @@ module Mutineer
         o.on("--[no-]fail-fast") { |on| opts[:fail_fast] = on }
         o.on("--[no-]matrix") { |on| opts[:matrix] = on }
         o.on("--[no-]allow-empty") { |on| opts[:allow_empty] = on }
+        o.on("--[no-]since-paired-tests") { |on| opts[:since_paired_tests] = on }
         o.on("--only NAME") { |v| opts[:only] = v }
         o.on("--since REF") { |v| opts[:since] = Config.parse(:since, v) }
         # A typed "no" must beat a .mutineer.yml `since:` key: the key is present
@@ -193,6 +207,10 @@ module Mutineer
         o.on("--timeout SECONDS") { |v| opts[:timeout] = Config.parse(:timeout, v) }
         o.on("--capture-timeout SECONDS") { |v| opts[:capture_timeout] = Config.parse(:capture_timeout, v) }
         o.on("--cache-dir DIR") { |v| opts[:cache_dir] = Config.parse(:cache_dir, v) }
+        # Repeats add to the flag's list. The whole list replaces the file's (#491).
+        o.on("-I DIR", "--load-path DIR") do |v|
+          (opts[:extra_load_paths] ||= []).concat(Config.parse(:extra_load_paths, v))
+        end
         o.on("--coverage-from FILE") { |v| opts[:coverage_from] = Config.parse(:coverage_from, v) }
         o.on("--strategy STRAT") { |v| opts[:strategy] = Config.parse(:strategy, v) }
         o.on("--framework NAME") { |v| opts[:framework] = Config.parse(:framework, v) }
@@ -537,6 +555,7 @@ module Mutineer
       # validated before discovery).
       validate_daemon!(config) if config.daemon
       warn_unused_coverage_from(config)
+      warn_unused_since_paired_tests(config)
       warn_unused_dry_run_settings(config)
 
       # A real boot run needs at least one --test file (nothing to select from
@@ -571,7 +590,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
-      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir])
+      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir extra_load_paths])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -632,7 +651,8 @@ module Mutineer
       timeout: "in-process runs only",
       capture_timeout: "in-process and --daemon coverage capture",
       cache_dir: "the in-process and --daemon coverage cache",
-      coverage_from: "in-process --rails/--boot runs"
+      coverage_from: "in-process --rails/--boot runs",
+      extra_load_paths: "in-process and --daemon runs"
     }.freeze
 
     # Warns when `--coverage-from` is set on a run that captures no coverage.
@@ -644,9 +664,32 @@ module Mutineer
       mode = if config.test_command then "--test-command"
              elsif config.daemon then "--daemon"
              elsif config.dry_run then "--dry-run"
-             elsif !config.boot then "a run without --rails/--boot"
+             elsif !JobPlan.coverage_from_reused?(config) then "a run without --rails/--boot"
              end
       warn_unused_settings(config, mode, %i[coverage_from]) if mode
+    end
+
+    # Says when `since_paired_tests` is on under `--since` but the run keeps
+    # its full test list anyway (#496): an explicit `--test` list, a
+    # `--test-command` run, a `--coverage-from` capture that the run reuses
+    # (its test list must match; {JobPlan.coverage_from_reused?}), or a
+    # `--baseline` gate (flag or file key), which a narrowed run could pass
+    # with a new survivor hidden as `no_coverage`. Names the first that
+    # applies. A run without `--since`, or with the setting off, prints
+    # nothing. A dry run runs no tests and prints nothing.
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [void]
+    def self.warn_unused_since_paired_tests(config)
+      return unless config.since_paired_tests && config.since && !config.dry_run
+
+      reason = if config.explicit?(:tests) then "--test is given"
+               elsif config.test_command then "--test-command is given"
+               elsif JobPlan.coverage_from_reused?(config) then "--coverage-from is given"
+               elsif config.baseline then "#{config.origin(:baseline)} is given"
+               end
+      warn "[mutineer] #{config.origin(:since_paired_tests)} has no effect when #{reason}" if reason
     end
 
     # `--dry-run` prints a candidate list; `--format html` never renders one,
@@ -747,7 +790,10 @@ module Mutineer
 
     # Validate path existence up front so a typo is a clean usage error (exit 2),
     # not an Errno::ENOENT backtrace from deep in the run. Flag checks run first
-    # so a bad flag still reports the flag, not the missing file.
+    # so a bad flag still reports the flag, not the missing file. A `load_path`
+    # entry must be a directory (#491). --test-command skips that check: it
+    # does not use the directories and only warns. Config.parse has already
+    # checked the value's shape in every mode.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -755,9 +801,16 @@ module Mutineer
     def self.validate_paths!(config)
       missing = (config.sources + config.tests)
                 .reject { |p| File.exist?(File.expand_path(p, config.project_root)) }
-      return if missing.empty?
+      unless missing.empty?
+        warn "mutineer: no such file: #{missing.join(', ')}"
+        exit 2
+      end
+      return if config.test_command
 
-      warn "mutineer: no such file: #{missing.join(', ')}"
+      not_dirs = JobPlan.extra_load_dirs(config).reject { |dir| File.directory?(dir) }
+      return if not_dirs.empty?
+
+      warn "mutineer: not a directory: #{not_dirs.join(', ')} (#{config.origin(:extra_load_paths)})"
       exit 2
     end
 
@@ -907,8 +960,10 @@ module Mutineer
     # mode the dedicated --boot/--rails-requires-test check reports it;
     # otherwise exit 2 with a usage message. The framework is re-detected from
     # the inferred set unless it was set explicitly (a spec-only project
-    # loads/reports as rspec). An explicit test list leaves `unpaired_sources`
-    # empty and does not drop sources.
+    # loads/reports as rspec). The paired rows are kept on
+    # `config.tests_by_source`, for `since_paired_tests` (#496). An explicit
+    # test list leaves `unpaired_sources` and `tests_by_source` empty and does
+    # not drop sources.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -928,6 +983,7 @@ module Mutineer
       end
       config.unpaired_sources = unpaired
       config.sources = paired.map(&:first)
+      config.tests_by_source = paired.to_h
       config.tests   = paired.flat_map(&:last).uniq
       config.framework = Config.detect_framework(config.tests) unless config.explicit?(:framework)
 
@@ -1054,6 +1110,7 @@ module Mutineer
       legacy_id_matches = { ignore: legacy_matches.size,
                             baseline: delta ? delta.legacy_matches : 0 }
       phases = extras.fetch(:timing, {})
+      growth_rows = extras.fetch(:callback_growth, [])
       timing = { total_seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started,
                  boot_seconds: phases[:boot_seconds], coverage_seconds: phases[:coverage_seconds],
                  clean_check_seconds: phases[:clean_check_seconds], mutants_seconds: phases[:mutants_seconds] }
@@ -1063,9 +1120,11 @@ module Mutineer
                       unmatched_ignores: unmatched_ignores,
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
-                      copies: extras.fetch(:copies, {}), timing: timing, verbose: config.verbose)
+                      copies: extras.fetch(:copies, {}), timing: timing,
+                      callback_growth: growth_rows, verbose: config.verbose)
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
-      warn_callback_growth(extras.fetch(:callback_growth, []))
+      # nil: the run could not create its log, and a stderr line said so.
+      warn_callback_growth(growth_rows || [])
 
       # Warn (stderr, so it never pollutes json/html) that an external run's score
       # is not comparable to an in-process run: no coverage narrowing (uncovered
@@ -1242,11 +1301,13 @@ module Mutineer
     end
 
     # Warns when a reload left a class with more callbacks than it had (#479):
-    # one header, then one line for each class. Reload keeps both copies of a
+    # one header that counts each class once, then one line for each class and
+    # file, so a class logged from two files has two lines. Reload keeps both copies of a
     # callback when it cannot tell which old one a new one repeats, so the
     # class runs it twice and a test that counts runs can kill falsely. Report
-    # only: no verdict, score, JSON field or exit code changes. Names and paths
-    # are escaped, so a control character cannot reach the terminal.
+    # only: no verdict, score or exit code changes, and `--format json` lists
+    # the same rows in `summary.callback_growth` (#505). Names and paths are
+    # escaped, so a control character cannot reach the terminal.
     #
     # @param rows [Array<Array(String, String)>] each class name and its file,
     #   from {JobPlan.callback_growth_rows}.

@@ -363,8 +363,9 @@ module Mutineer
     # {Runner.run} and {DaemonBackend.job_result} so both load the same text. A
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
-    # Then each class statement with a call superclass keeps its live
-    # superclass ({keep_live_superclasses}, #492).
+    # Then each class statement whose superclass {kept_target} wraps keeps its
+    # live superclass, and each superclass constant the file assigns keeps
+    # its class ({keep_live_superclasses}, #492, #512, #503).
     #
     # @param mutated [String] the mutated source text.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -424,51 +425,129 @@ module Mutineer
     # constant (`Data.define(...)`, `Struct.new(...)`, `Class.new(...)`,
     # `DelegateClass(...)`) in {ReloadGuards.kept_superclass}, so loading the
     # file over its classes reopens each one instead of raising "superclass
-    # mismatch" (#492). The superclass text stays as it is, inside the block,
-    # and on its own lines, so line numbers do not move. A wrap puts one
-    # expression in a block, and a class inside a wrapped superclass is not
-    # wrapped again. A bad wrap is not checked here: the child's `load` raises
-    # `SyntaxError`, and the mutant scores `error`. Text with no such class
-    # comes back unchanged.
+    # mismatch" (#492). For a superclass that sets a local
+    # (`class Q < (base = Struct.new(:a))`), only the written value is wrapped,
+    # so the local is still set, to the live superclass (#512). See
+    # {kept_target} for the superclasses it leaves as written. It also wraps
+    # the value of a constant that a class statement in the file inherits from
+    # in {ReloadGuards.kept_constant} ({kept_constant_splice}, #503). The
+    # wrapped text stays as it is, inside the block, and on its own lines, so
+    # line numbers do not move. A wrap puts one expression in a block, and a
+    # class inside a wrapped superclass or a kept value is not wrapped again. A bad wrap is not
+    # checked here: the child's `load` raises `SyntaxError`, and the mutant
+    # scores `error`. Text with no such class comes back unchanged.
     #
     # @param code [String] the reload text.
     # @return [String]
     def self.keep_live_superclasses(code)
-      nodes = []
-      queue = [Parser.parse_string(code).value]
+      program = Parser.parse_string(code).value
+      names = Project.superclass_constant_names(program)
+      splices = []
+      queue = [program]
       while (node = queue.shift)
-        if node.is_a?(Prism::ClassNode) && call_superclass?(node.superclass)
-          nodes << node
+        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
+          splices << [target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name]
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
+        elsif (splice = kept_constant_splice(node, names))
+          # A kept value does not run again, so nothing inside it is wrapped.
+          splices << splice
         else
           queue.concat(node.compact_child_nodes)
         end
       end
-      return code if nodes.empty?
+      return code if splices.empty?
 
-      nodes.sort_by { |node| -node.superclass.location.start_offset }.reduce(code) do |text, node|
-        loc = node.superclass.location
+      splices.sort_by { |target, *| -target.location.start_offset }.reduce(code) do |text, (target, guard, scope, name)|
+        loc = target.location
         inner = text.byteslice(loc.start_offset, loc.length)
-        wrapped = "::Mutineer::ReloadGuards.kept_superclass(#{superclass_scope(node.constant_path)}, " \
-                  "#{node.constant_path.name.inspect}) { #{inner} }"
+        wrapped = "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { #{inner} }"
         text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
       end
     end
 
-    # A superclass the reload text wraps: one that is not a constant, and
-    # that sets no local variable of the file. The wrap is a block, so such a
-    # local would not be set for a later line (`class Q < (base = ...)`).
-    # Those keep the text as written, as before #492 (#512).
+    # The splice that keeps a constant's value on reload (#503): a constant
+    # write that {Project.kept_constant_write?} keeps, a class builder call
+    # with literal arguments. `BaseRow = Struct.new(:v)` with
+    # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
+    # same parent. A `||=` write keeps its text (#529).
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol, String>] {Project.superclass_constant_names} of the file.
+    # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
+    #   wrap, the guard, the scope text and the name; nil for any other node.
+    def self.kept_constant_splice(node, names)
+      return nil unless Project.kept_constant_write?(node, names)
+
+      if node.is_a?(Prism::ConstantPathWriteNode)
+        [node.value, "kept_constant", superclass_scope(node.target), node.target.name]
+      else
+        [node.value, "kept_constant", "::Module.nesting.first", node.name]
+      end
+    end
+
+    # The part of a class statement's superclass that the reload text wraps,
+    # or nil to keep the superclass as written. A constant is left alone: it
+    # names the same class on each load. A bare variable read is left alone
+    # too: an earlier line set it, that line runs again, and a kept parent
+    # would differ from what the variable then holds, a silent false verdict
+    # (#512). Both hold inside any number of parentheses (`(base)`). A read
+    # deeper in the expression (`Class.new(base)`) is still wrapped (#533).
+    # A plain local write (`base = v`, or `(base = v)` alone in
+    # parentheses, or a chain `a = b = v`) gives the target of its value, so
+    # the write stays outside the block and still sets the local (#512).
+    # Any other superclass that sets a local is left alone, because the block
+    # would scope that local away from a later line. Every other superclass is
+    # wrapped whole.
     #
     # @param node [Prism::Node, nil] a class statement's superclass.
-    # @return [Boolean]
-    def self.call_superclass?(node)
-      return false if node.nil? || node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
+    # @return [Prism::Node, nil]
+    def self.kept_target(node)
+      return nil if node.nil?
 
-      !writes_local?(node)
+      inner = node
+      inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
+      return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
+      return nil if outer_block_parameter?(node)
+
+      write = plain_local_write(node)
+      return kept_target(write.value) if write
+
+      writes_local?(node) ? nil : node
     end
+
+    # The local write `node` is, alone or as the one statement of one pair of
+    # parentheses, or nil.
+    #
+    # @param node [Prism::Node]
+    # @return [Prism::LocalVariableWriteNode, nil]
+    def self.plain_local_write(node)
+      node = node.body.body.first if Project.sole_statement_parentheses?(node)
+      node.is_a?(Prism::LocalVariableWriteNode) ? node : nil
+    end
+
+    # Whether `node` reads a numbered parameter (`_1`) or `it` that belongs to
+    # a block around it. The wrap adds a block, so such a read would belong to
+    # the wrap's block and change meaning, or not parse. A block inside `node`
+    # that has its own numbered or `it` parameter is not searched.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.outer_block_parameter?(node)
+      return true if node.type == :it_local_variable_read_node
+      return true if node.is_a?(Prism::LocalVariableReadNode) && node.name.match?(/\A_[1-9]\z/)
+      return false if (node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)) &&
+                      %i[numbered_parameters_node it_parameters_node].include?(node.parameters&.type)
+
+      node.compact_child_nodes.any? { |child| outer_block_parameter?(child) }
+    end
+
+    # The superclass nodes {kept_target} leaves as written: a constant, and a
+    # read of a variable an earlier statement set (#512).
+    LEFT_AS_WRITTEN = [Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
+                       Prism::InstanceVariableReadNode, Prism::ClassVariableReadNode,
+                       Prism::GlobalVariableReadNode].freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only
@@ -492,11 +571,13 @@ module Mutineer
                     Prism::LocalVariableOperatorWriteNode, Prism::LocalVariableOrWriteNode,
                     Prism::LocalVariableAndWriteNode].freeze
 
-    # The module a class statement defines its constant in, as Ruby text that
-    # runs where the superclass runs: `::Module.nesting.first` for `class X`,
-    # the written parent for `class A::X`, and `Object` for `class ::X`.
+    # The module a class statement or a constant write defines its constant
+    # in, as Ruby text that runs where the superclass or the value runs:
+    # `::Module.nesting.first` for `class X`, the written parent for
+    # `class A::X` and `A::X = ...`, and `::Object` for `class ::X` and `::X = ...`.
     #
-    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode] the class name.
+    # @param path [Prism::ConstantReadNode, Prism::ConstantPathNode]
+    #   the class or constant name.
     # @return [String]
     def self.superclass_scope(path)
       return "::Module.nesting.first" if path.is_a?(Prism::ConstantReadNode)
@@ -905,6 +986,81 @@ module Mutineer
       files.find { |file| File.expand_path(file, project_root) == absolute }
     end
 
+    # The test list a `--since` run with `since_paired_tests` uses (#496): the
+    # tests paired with each source that still has a job, in the order of
+    # `config.tests`. Returns `config.tests` itself when the run must keep its
+    # full list: the setting is off, there is no `--since`, a `--coverage-from`
+    # capture is reused (its test list must match, {coverage_from_reused?}),
+    # `--baseline` is set (a narrowed run can turn a new survivor into
+    # `no_coverage`, which the new-survivor check leaves out), pairing stored
+    # no rows (an explicit `--test` list, or a caller that built its own
+    # Config), there are no jobs, or a source with a job has no pairing row.
+    # Reads only.
+    #
+    # @param config [Mutineer::Config] run configuration after pairing.
+    # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
+    # @return [Array<String>] the narrowed test list, or `config.tests`.
+    def self.since_tests(config, jobs)
+      return config.tests unless config.since && config.since_paired_tests && !coverage_from_reused?(config)
+      return config.tests if config.baseline || config.tests_by_source.empty? || jobs.empty?
+
+      rows = config.tests_by_source.keys
+      wanted = Set.new
+      jobs.map { |subject,| subject.file }.uniq.each do |file|
+        key = unpaired_path(file, rows, config.project_root)
+        return config.tests unless key
+
+        config.tests_by_source.fetch(key).each { |test| wanted << File.expand_path(test, config.project_root) }
+      end
+      config.tests.select { |test| wanted.include?(File.expand_path(test, config.project_root)) }
+    end
+
+    # True when the run reuses a `--coverage-from` capture: an in-process
+    # `--rails` or `--boot` run. Other runs ignore the flag (the CLI warns),
+    # so it does not stop `since_paired_tests` there.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Boolean]
+    def self.coverage_from_reused?(config)
+      !config.coverage_from.nil? && !config.boot.nil? && !config.daemon && config.test_command.nil?
+    end
+
+    # Applies {since_tests} for {Runner.execute} and {DaemonBackend.execute}.
+    # Returns `config` itself when nothing narrows. Otherwise prints one stderr
+    # line with the counts and returns a copy of `config` with the narrowed
+    # test list. The source list is not narrowed, and the caller's config is
+    # not changed, so the CLI still reports the whole run.
+    #
+    # @param config [Mutineer::Config] run configuration after pairing.
+    # @param jobs [Array] (subject, mutation, id) entries after {scope_since}.
+    # @return [Mutineer::Config] `config`, or a narrowed copy.
+    def self.narrow_tests_for_since(config, jobs)
+      tests = since_tests(config, jobs)
+      return config if tests.size == config.tests.size
+
+      live = jobs.map { |subject,| File.expand_path(subject.file, config.project_root) }.uniq.size
+      warn since_narrowing_line(tests.size, config.tests.size, live, config.sources.size)
+      narrowed = config.dup
+      narrowed.tests = tests
+      narrowed
+    end
+
+    # The stderr line of a narrowed `--since` run (#496).
+    #
+    # @param kept_tests [Integer] test files the run uses.
+    # @param all_tests [Integer] test files pairing found.
+    # @param live_sources [Integer] paired sources with a mutant on a changed line.
+    # @param all_sources [Integer] paired sources.
+    # @return [String]
+    def self.since_narrowing_line(kept_tests, all_tests, live_sources, all_sources)
+      verb = live_sources == 1 ? "has" : "have"
+      "[mutineer] --since: running #{kept_tests} of #{all_tests} test files, the ones paired with the " \
+        "#{live_sources} of #{all_sources} paired sources that #{verb} a mutant on a changed line. " \
+        "A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. " \
+        "no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run, " \
+        "or add --baseline, which keeps every test."
+    end
+
     # Narrows the jobs and the suppressed (ignored) results to --since when it
     # is set, as the dry run does, so a scoped report lists only mutants on
     # changed lines. Also returns how many mutants there were before narrowing
@@ -1003,25 +1159,68 @@ module Mutineer
       end
     end
 
+    # The `load_path` directories (#491), absolute, in the order the user wrote
+    # them. Relative entries resolve against the project root. The runner,
+    # the daemon boot config and the CLI check all read this one list. An
+    # existing directory resolves through its symlinks, as CoverageMap's
+    # capture subprocess resolves the same entry ({ProjectPath.absolute}), so
+    # `link/../support` names one directory in every place.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] absolute directories; [] when none is set.
+    def self.extra_load_dirs(config)
+      config.extra_load_paths.map { |dir| ProjectPath.absolute(dir, config.project_root) }
+    end
+
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
-    # holding that helper, plus the file's own dir as a fallback.
-    def self.test_load_roots(test_files)
+    # holding that helper, plus the file's own dir as a fallback. A test under
+    # the project's `packs/` folder with no helper above it also gets the `test/` or
+    # `spec/` folder (`spec/` first for a `_spec.rb` file) of the nearest
+    # ancestor that holds one, because a pack test requires the app's helper
+    # by name (#494).
+    #
+    # @param test_files [Array<String>] absolute test paths.
+    # @param project_root [String, nil] project root; nil skips the pack rule.
+    # @return [Array<String>] unique absolute directories.
+    def self.test_load_roots(test_files, project_root: nil)
+      packs = project_root && "#{File.expand_path(project_root)}/packs/"
       test_files.flat_map do |f|
-        dir = File.dirname(f)
-        root = nil
-        loop do
-          if File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
-            root = dir
-            break
+        root = helper_ancestor(File.dirname(f)) { |dir| helper_dir?(dir) ? dir : nil }
+        if root.nil? && packs && f.start_with?(packs)
+          names = f.end_with?("_spec.rb") ? %w[spec test] : %w[test spec]
+          root = helper_ancestor(File.dirname(f)) do |dir|
+            names.map { |name| File.join(dir, name) }.find { |sub| helper_dir?(sub) }
           end
-          parent = File.dirname(dir)
-          break if parent == dir
-
-          dir = parent
         end
         [root, File.dirname(f)].compact
       end.uniq
+    end
+
+    # Walks from `dir` up to the filesystem root and returns the first
+    # non-nil value the block gives for a directory.
+    #
+    # @param dir [String] absolute directory to start from.
+    # @yieldparam dir [String] each directory on the way up.
+    # @return [String, nil]
+    def self.helper_ancestor(dir)
+      loop do
+        found = yield dir
+        return found if found
+
+        parent = File.dirname(dir)
+        return nil if parent == dir
+
+        dir = parent
+      end
+    end
+
+    # True when `dir` holds `test_helper.rb` or `spec_helper.rb`.
+    #
+    # @param dir [String]
+    # @return [Boolean]
+    def self.helper_dir?(dir)
+      File.exist?(File.join(dir, "test_helper.rb")) || File.exist?(File.join(dir, "spec_helper.rb"))
     end
 
     # The unique absolute directories holding the sources. Sweep target for both

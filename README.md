@@ -45,6 +45,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 Without `--test`, `app/models/order.rb` pairs with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
 A concern at `app/models/concerns/storage/totaled.rb` pairs with `test/models/concerns/storage/totaled_test.rb` or an unclaimed split test such as `test/models/concerns/storage/totaled_bytes_test.rb`.
 With no test there, it pairs with `test/models/storage/totaled_test.rb`, an unclaimed split test such as `test/models/storage/totaled_bytes_test.rb`, `test/models/storage/test_totaled.rb`, or `spec/models/storage/totaled_spec.rb`.
+A pack source such as `packs/catalog/app/models/item.rb`, with no test by those rules, pairs by the same rules inside its pack, such as `packs/catalog/test/models/item_test.rb`.
 See [Quick start](https://github.com/davidteren/mutineer/blob/main/docs/quick-start.md).
 
 ## Documentation
@@ -121,7 +122,8 @@ This path uses one Mutineer worker and no coverage-based test selection by defau
 | SimpleCov gate exit with a failing test | `killed` |
 | Other exit code | `error` |
 | Crash before a test fails | Can score `error` |
-| Only a SimpleCov gate fails, with its gate message and a passing summary | `survived` |
+| Only a SimpleCov gate fails, with its gate message, a passing summary, and at least as many summary lines as the clean run (at the start of a line, when the clean run's summary started one) | `survived` |
+| A SimpleCov gate stops a chain of suites: gate message, all tests passing, and fewer summary lines than the clean run (at the start of a line, when the clean run's summary started one) | `error` |
 
 See [Apps on Ruby < 3.4](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#apps-on-ruby--34)
 and release guarantees in [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md).
@@ -230,6 +232,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--test PATH` | Test file, directory, or quoted glob. Repeat the flag. Omit it to pair tests by convention and apply any `tests:` map. Unmatched sources are skipped and counted in the report. |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
+| `--[no-]since-paired-tests` | With `--since`, run only the tests paired with the sources that have a mutant on a changed line (in-process and `--daemon`; off by default). Not with `--test`, `--test-command`, `--baseline`, or `--coverage-from` on an in-process `--rails` or `--boot` run |
 | `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
 | `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb`. `require:` files load after this file |

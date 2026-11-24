@@ -150,11 +150,14 @@ module Mutineer
     # @param timings [Hash{String => Float}] capture seconds per test file ({#timings}).
     # @param clean_timeouts [Hash{String => Numeric}] clean checks that timed out ({#clean_timeouts}).
     # @param clean_check_seconds [Float, nil] seconds the clean checks ran ({#clean_check_seconds}).
+    # @param fallback [Boolean] the daemon could not build a map ({#fallback?}).
     # @return [Mutineer::CoverageMap] a query-only map.
     def self.from_data(map:, failed_test_files:, project_root:, failed_clean_tests: [],
                        failed_clean_details: {}, load_lines: [],
-                       load_methods: [], timings: {}, clean_timeouts: {}, clean_check_seconds: nil)
+                       load_methods: [], timings: {}, clean_timeouts: {}, clean_check_seconds: nil,
+                       fallback: false)
       instance = allocate
+      instance.instance_variable_set(:@fallback, fallback)
       instance.instance_variable_set(:@map, map || {})
       instance.instance_variable_set(:@timings, timings || {})
       instance.instance_variable_set(:@load_lines, Set.new(load_lines || []))
@@ -171,13 +174,16 @@ module Mutineer
     def initialize(source_paths:, test_paths:, cache_dir: ".mutineer",
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
-                   framework: "minitest", verbose: false, require_paths: [], coverage_from: nil)
+                   framework: "minitest", verbose: false, require_paths: [], coverage_from: nil,
+                   extra_load_paths: [])
       @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
       @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
       @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }
       @cache_dir    = FsPath.read(cache_dir)
       @coverage_from = coverage_from && FsPath.read(coverage_from)
       @load_paths   = Array(load_paths).map { |path| FsPath.read(path) }
+      # The user's load_path directories (#491), in order; part of the cache key.
+      @extra_load_paths = Array(extra_load_paths).map { |path| FsPath.read(path) }
       @project_root = FsPath.read(project_root)
       @capture_timeout = capture_timeout
       @boot_path    = boot_path
@@ -220,6 +226,14 @@ module Mutineer
       record_load(booted.transform_values { |v| v.is_a?(Hash) ? load_entry(v[:lines], v[:methods]) : v })
       cached_or(after_fork: after_fork) { run_phase_a_via_fork(after_fork: after_fork) }
     end
+
+    # True for the map the daemon returns when it could not build one: it
+    # holds only boot lines, and every mutant runs every test the run kept
+    # ({DaemonBackend.job_result}). Any other map, an empty one included,
+    # selects tests by coverage (#496).
+    #
+    # @return [Boolean]
+    def fallback? = @fallback == true
 
     # Lookup: the test files that cover `file:line`, or [] when none do.
     # Per-file granularity; upgrade to per-method when throughput warrants

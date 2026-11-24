@@ -73,7 +73,7 @@ Check whether the Mutineer gem (https://github.com/davidteren/mutineer) suits th
    - MySQL older than 8.0: --daemon refuses to run.
    - MariaDB or MySQL 9+: not tested; runs with a warning.
    - Any other adapter: --daemon is not supported.
-6. Suite shape: does the full suite pass now? Mutineer stops if the unchanged code fails a test. Note slow tests; default limits are 10 s per mutant and 120 s for coverage capture (--timeout, --capture-timeout). Do test files mirror source paths (app/models/x.rb -> test/models/x_test.rb or spec/models/x_spec.rb)? Then --test can be left out. Note tests that commit rows outside a transaction; under --daemon those rows stay in that worker's database.
+6. Suite shape: does the full suite pass now? Mutineer stops if the unchanged code fails a test. Note slow tests; default limits are 10 s per mutant and 120 s for coverage capture (--timeout, --capture-timeout). Do test files mirror source paths (app/models/x.rb -> test/models/x_test.rb or spec/models/x_spec.rb, or packs/p/app/models/x.rb -> packs/p/test/models/x_test.rb)? Then --test can be left out. Note tests that commit rows outside a transaction; under --daemon those rows stay in that worker's database.
 7. CI: GitHub Actions (.github/workflows)? Then davidteren/mutineer@v1 fits; a Rails app needs rails: true and use-bundler: true and the gem in the Gemfile. Other CI systems can run the CLI with --since origin/main and --baseline.
 
 Then output:

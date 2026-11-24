@@ -1587,6 +1587,96 @@ class ProjectTest < Minitest::Test
       refute by_name[:outer].unplaceable?("reload")
       refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
       refute by_name[:built].unplaceable?("reload")
+      refute by_name[:built].in_kept_constant, "no class statement names Y"
     end
+  end
+
+  # #503: reload keeps the value of a constant that a class statement in the
+  # same file names as its superclass, so a def inside that value cannot be
+  # placed under reload. Redefine still places it.
+  def test_a_def_in_a_kept_superclass_constant_is_unplaceable_under_reload_only
+    src = "BaseRow = Struct.new(:v) do\n  def in_block?; end\nend\n" \
+          "class Row < BaseRow\n  def three?; end\nend\n" \
+          "module Ledger\n  Ledger::Entry = Data.define(:c) do\n    def path_block; end\n  end\n" \
+          "  Other = Struct.new(:o) do\n    def other; end\n  end\nend\n" \
+          "class Ledger::Credit < Ledger::Entry\nend\n"
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      assert by_name[:in_block?].in_kept_constant
+      assert by_name[:in_block?].unplaceable?("reload")
+      refute by_name[:in_block?].unplaceable?("redefine")
+      assert by_name[:path_block].in_kept_constant, "a path write matches a path superclass spelled the same"
+      refute by_name[:three?].in_kept_constant
+      refute by_name[:three?].unplaceable?("reload")
+      refute by_name[:other].in_kept_constant, "no class statement names Other"
+    end
+    # Discovery keeps the same writes as the reload text: a path write does not
+    # match a bare superclass, and a builder method's value is not kept.
+    src = "Other::Base = Struct.new(:v) do\n  def path_write; end\nend\nclass User < Base\nend\n" \
+          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n"
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
+      refute by_name[:path_write].in_kept_constant
+      refute by_name[:built].in_kept_constant
+    end
+  end
+
+  # #504: during a reload the guard skips a chain the class already has, with
+  # the options the call gives. So a def that calls `define_callbacks` (or
+  # `define_model_callbacks`, any receiver), or a def of the file that calls
+  # such a def by name (any receiver) or through `super`, is unplaceable under
+  # reload. The match is by name, so it fails closed for a same-named call.
+  def test_a_def_that_defines_a_callback_chain_is_unplaceable_under_reload_only
+    src = <<~RUBY
+      class Job
+        def self.job_callbacks(*names)
+          define_callbacks(*names, skip_after_callbacks_if_terminated: true)
+        end
+
+        def self.all_callbacks = self.job_callbacks(:perform, :enqueue)
+
+        def self.model_callbacks = define_model_callbacks(:create)
+
+        def self.included_hook(base) = base.define_callbacks(:save)
+
+        def self.constant_receiver = Job.job_callbacks(:x)
+
+        def self.outer
+          def self.nested = define_callbacks(:nested)
+        end
+
+        class << self
+          def eigen_helper = define_callbacks(:eigen)
+          def eigen_caller = eigen_helper
+        end
+
+        def perform = 1
+      end
+
+      class SubJob < Job
+        def self.job_callbacks(*names) = super
+
+        def self.unrelated = job_callbacks
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      by_name = subjects.to_h { |s| [s.qualified_name, s] }
+      %w[Job.job_callbacks Job.all_callbacks Job.model_callbacks Job.included_hook Job.constant_receiver
+         Job.outer Job.nested Job.eigen_helper Job.eigen_caller SubJob.job_callbacks SubJob.unrelated].each do |name|
+        assert by_name.fetch(name).calls_define_callbacks, name
+        assert by_name.fetch(name).unplaceable?("reload"), name
+        refute by_name.fetch(name).unplaceable?("redefine"), name
+      end
+      refute by_name.fetch("Job#perform").calls_define_callbacks
+      refute by_name.fetch("Job#perform").unplaceable?("reload")
+    end
+  end
+
+  def test_superclass_constant_names_reads_each_constant_superclass
+    program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
+                                            "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \
+                                            "class J < ::K\nend\n").value
+    assert_equal Set[:B, "D::E", :I, :K, "::K"], Mutineer::Project.superclass_constant_names(program)
   end
 end

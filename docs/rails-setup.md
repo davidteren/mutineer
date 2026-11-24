@@ -39,6 +39,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails --test 'test
 
 A file at `app/<dir>/concerns/<rest>.rb` pairs with a namespace test when the `concerns/` path has no pairable test.
 For example, `app/models/concerns/storage/totaled.rb` pairs with `test/models/storage/totaled_test.rb` or an unclaimed split such as `test/models/storage/totaled_bytes_test.rb`; a longer source or an already-paired model can retain that split.
+A source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` with no test by those rules pairs by the same rules inside its pack. For example, `packs/catalog/app/models/item.rb` pairs with `packs/catalog/test/models/item_test.rb`.
 See the [pairing table](ci.md).
 
 A controller concern often has no test at the conventional path.
@@ -66,7 +67,7 @@ Examples include constant-building calls, `to_prepare` initializers, and source 
 | A mutant survives on a line executed during loading | Classified as `ran_at_load`, not `survived` or `no_coverage`. Excluded from the score and `--threshold` failures. A mutant in a `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call stores (#435). A survivor in another block or lambda, such as a block that a class macro stores, counts too when the call that holds the block ran at load and a probe that can speak saw no return of the mutated expression during a test (#493, after 1.9.0). A probed expression that holds `return`, `next`, `break`, `raise` or a similar exit, or one in a `defined?` operand, keeps its verdict. When it returned during a test, the mutant stays `survived`. An empty `each` that shares the line with `define_method` can still mark that call `ran_at_load` when the call did not run ([#286](https://github.com/davidteren/mutineer/issues/286)). |
 | A mutant is killed | The kill counts. |
 | Strategy is `reload` | Repeats the mutated file's class body, but not initializers or other files. Survivors on these lines remain untrusted. |
-| A class runs a callback twice after a reload | Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body. The run then prints one warning that starts with `[mutineer] after a reload,` and gives the number of classes, then one line for each class and file. A test that counts callback runs or errors can kill mutants of that file falsely. The warning changes no score and no exit code. To check those kills, run the file with `--no-daemon --strategy redefine` or with `--test-command`. |
+| A class runs a callback twice after a reload | Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body. The run then prints one warning that starts with `[mutineer] after a reload,` and gives the number of classes, then one line for each class and file. A test that counts callback runs or errors can kill mutants of that file falsely. The warning changes no score and no exit code. `--format json` lists the same classes in `summary.callback_growth`. To check those kills, run the file with `--no-daemon --strategy redefine` or with `--test-command`. |
 | A verdict is needed | Use `--test-command` to boot a fresh process per mutant. |
 | The caller loaded before the mutant | `reload` updates the macro method and does not run the class that already called it. Those mutants stay `ran_at_load`. Re-running that class body is [#389](https://github.com/davidteren/mutineer/issues/389). |
 | The macro and the class that calls it are both sources | An in-process `--rails` run with the default `redefine` strategy loads the class of each method in the sources before the mutants, also with eager load off. A class that defines no method still loads after the mutant. The class then keeps the blocks that the macro stored. A survivor that only such a stored block runs is `ran_at_load`. `--daemon` with eager load off loads the class after the mutant and can kill these mutants ([#507](https://github.com/davidteren/mutineer/issues/507)). |
@@ -140,7 +141,7 @@ RAILS_ENV=test bundle exec mutineer run \
 | Mutant run | Stops at the first failing test, as the in-process run does. |
 | Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. If coverage is unavailable, each mutant runs the full test set and the score is not comparable. |
 | Worker databases | Separate databases prevent fixture interference. Only single-database apps run in parallel; more than one database forces one worker, unless `shared_databases` lists the other ones ([More than one database](#more-than-one-database)). Initial copies include rows written during boot by initializers or `require:` files. |
-| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. To add a path, set `boot:` to a file at the project root that adds it and then boots the app: `$LOAD_PATH.unshift(File.expand_path("test/support", __dir__))`, then `require_relative "config/environment"`. When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. A setting for this is open in [#491](https://github.com/davidteren/mutineer/issues/491). |
+| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. Set `load_path:` or `-I DIR` instead; see [Extra load paths](#extra-load-paths). When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. Under `--verbose`, so does the first `coverage skipped for <file>` warning for a test file that could not load a file; without `--verbose` that warning has no error text and no note ([#537](https://github.com/davidteren/mutineer/issues/537)). |
 | Backend choice | Requires `--rails` or `--boot`. Cannot combine with `--test-command`. |
 
 For SQLite, Mutineer compares the copied database with the app's Ruby schema.
@@ -165,10 +166,22 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | PostgreSQL | Copies the test database before workers start. Names use `<base>-mutineer-<N>`, shortened to fit 63 bytes. Databases remain after the run. |
 | PostgreSQL cleanup | Run `DROP DATABASE "myapp_test-mutineer-0";`, using your test database name and worker slot. |
 | MySQL 8 | Creates `<base>-mutineer-<N>`, shortened to fit 64 bytes. Loads `schema.rb` or `structure.sql`, then copies rows before workers start. |
-| MySQL recovery | Does not recopy after an error or timeout. Databases remain after the run; the next run drops and rebuilds them. |
+| MySQL recovery | Does not recopy after an error or timeout. The exception is a run whose first daemon did not boot: when its one worker daemon respawns, it copies again. Databases remain after the run; the next run drops and rebuilds them. |
 | MySQL cleanup | Run ``DROP DATABASE `myapp_test-mutineer-0`;``. MySQL requires backticks around the name. |
 | `:memory:` | Not supported by `--daemon`. |
-| Concurrent runs | A second run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. |
+| Concurrent runs | A second `--rails --daemon` run on the same test database stops with `another Mutineer run is using <base>`. This covers PostgreSQL, MySQL, and file-backed SQLite databases, including a `file:` URI that names a disk file. A memory URI takes no lock. A one-worker run keeps its first daemon, and that daemon's lock, until the run ends, unless that daemon dies (see "First daemon dies mid-run" below). When the first daemon fails to boot with an error, the run's one worker daemon takes the lock itself, and the run copies its worker database as a normal run does. Such a run prints `daemon coverage map unavailable` first. When another run holds the lock, it stops with `mutineer: daemon failed to boot under the app bundle: RuntimeError: another Mutineer run is using <base>` and exit 1. A boot timeout of the first daemon stops the run instead, with no fallback. A `--boot` run without `--rails` routes no database and takes no lock. |
+
+The run lock does not cover every case. Each limit below is tracked in #416.
+In each case, run one Mutineer run per test database at a time.
+When a run stops with `another Mutineer run is using <base>`, wait for the other run to finish, or stop it.
+
+| Run lock limit | Detail |
+| --- | --- |
+| Runs without `--daemon` | A `--rails` run without `--daemon`, and a `--test-command` run, take no database lock. Beside a `--daemon` run, such a run can change the test database while a worker copies from it. A SQLite worker can copy it more than once during a run. |
+| Boot file and `--require` files | A run takes its lock after its boot file and its `--require` files have loaded. A second run can write the test database in those files before it stops. |
+| First daemon dies mid-run | If the first daemon of a one-worker run dies after it has booted, the run does not replace it. The worker daemon still holds its shared lock, but while that worker respawns no process holds the lock. |
+| Parallel worker respawn | A parallel run holds no lock while all of its worker daemons are down at the same moment, until one of them has booted again. |
+| Fallback run respawn | A run whose first daemon did not boot holds no lock while its one worker daemon respawns. The new daemon asks for the lock again and copies the worker database again. So the run stops with the lock message when another run took the lock in that window. On PostgreSQL and MySQL it also stops when that copy fails, for example while another session uses the PostgreSQL test database. |
 
 | MySQL requirement or limit | Detail |
 | --- | --- |
@@ -183,6 +196,25 @@ Supported databases are **SQLite**, **PostgreSQL**, and **MySQL 8**, with Minite
 | Older MySQL fallback | Use `--no-daemon` or `daemon: false`. The run is serial. |
 | MariaDB or MySQL 9 or later | Untested. Prints a warning and runs. |
 | Unreadable server version | Prints a warning and runs. |
+
+#### Extra load paths
+
+Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
+This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. `--test-command` ignores it ([#535](https://github.com/davidteren/mutineer/issues/535)).
+Use it for a test helper outside the test folder, such as `test/support`:
+
+```yaml
+# .mutineer.yml
+load_path: [test/support]
+```
+
+Or on the command line: `mutineer run ... --rails --daemon -I test/support`.
+A `RUBYOPT=-Itest/support` you used before becomes `load_path: test/support`.
+The [`load_path` row in the CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#configuration) gives the search order and the error rules.
+The note on a missing file can still appear after you set `load_path`, when a different file is missing.
+
+Mutineer 1.9 and earlier have no such setting.
+There, set `boot:` to a file at the project root that adds the path and then boots the app: `$LOAD_PATH.unshift(File.expand_path("test/support", __dir__))`, then `require_relative "config/environment"`.
 
 ### More than one database
 
@@ -211,7 +243,7 @@ One worker shares nothing, so it skips the check.
 | `shared_databases` lists the primary database | The run stops with exit 2. |
 | A name matches no test database | A warning. The name lifts nothing. |
 | Mutineer cannot list the app's databases | One worker. |
-| The first daemon does not boot, with `--rails` | One worker. With `--boot` alone, the run keeps its worker count. |
+| The first daemon fails to boot with an error, with `--rails` | One worker. For its database lock, see "Concurrent runs" above. With `--boot` alone, the run keeps its worker count. A boot timeout stops the run instead. |
 
 Transactional tests connect every database that has a connection pool in the test environment.
 So if the test environment registers a pool for a shared database, every mutant scores `error`.
@@ -245,7 +277,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
 | Forced child settings | Replaces existing values with `PARALLEL_WORKERS=1`, `DISABLE_SPRING=1`, and `DISABLE_BOOTSNAP_COMPILE_CACHE=1`. |
-| Test order | Only for `--test-command`. Other runs share one seed; see the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order). This command must use a fixed order. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. Mutineer only warns: it cannot know the seed flag of an arbitrary command, so it never sets a seed. It reads the seed line of Minitest, minitest-reporters and RSpec, and a seed in `.rspec` or `.rspec-local` in the working directory. It cannot see a seed set in a wrapper script, in `~/.rspec`, with `config.seed = N` in a spec helper or `--require` file, inside an inactive ERB branch of `.rspec` (RSpec renders the file as ERB, Mutineer scans its text), or an `--options FILE` that replaces `.rspec`, or a Minitest `test_order` such as `:alpha` (Minitest still prints a seed line then). In those cases the warning can print when the order is already fixed. A seed-like argument meant for a wrapper (`bin/run --seed 7 %{files}`, where the wrapper does not pass it on) hides the warning while the tests still shuffle. A later `--order rand` in the command or `SPEC_OPTS`, or an `--options FILE` that skips `.rspec`, can leave a seed in `.rspec` unused, and the warning stays silent too ([#522](https://github.com/davidteren/mutineer/issues/522)). |
+| Test order | Only for `--test-command`. Other runs share one seed; see the [CLI reference](https://github.com/davidteren/mutineer/blob/main/docs/cli.md#test-order). This command must use a fixed order. Mutineer sets no seed, so each run picks its own order. An order-dependent suite can then fail a mutant run for a reason the mutant did not cause, a false kill. For Minitest, put `SEED=1` before the `mutineer` command (`SEED=1 mutineer run ...`), not inside `--test-command`. For RSpec, add `--order defined` to the command, and keep `--order rand` out of `SPEC_OPTS`, which RSpec reads after the command. When the clean run prints a random seed and Mutineer finds no fixed one, it prints one warning. Mutineer only warns: it cannot know the seed flag of an arbitrary command, so it never sets a seed. It reads the seed line of Minitest, minitest-reporters and RSpec, and a seed in `.rspec` or `.rspec-local` in the working directory. It cannot see a seed set in a wrapper script, in `~/.rspec`, with `config.seed = N` in a spec helper or `--require` file, inside an inactive ERB branch of `.rspec` (RSpec renders the file as ERB, Mutineer scans its text), in the file that `--options FILE` names, or a Minitest `test_order` such as `:alpha` (Minitest still prints a seed line then). In those cases the warning can print when the order is already fixed. A seed-like argument meant for a wrapper (`bin/run --seed 7 %{files}`, where the wrapper does not pass it on) hides the warning while the tests still shuffle. For RSpec, Mutineer reads the order options in RSpec's order: `.rspec`, `.rspec-local`, the command, then `SPEC_OPTS`. The last `--seed` or `--order` option decides, so a later `--order rand` gets the warning although `.rspec` has a seed. With `--options FILE` or `-O FILE` in the command, RSpec skips both files, and so does Mutineer. RSpec ignores `--options` in `SPEC_OPTS` ([#522](https://github.com/davidteren/mutineer/issues/522)). Mutineer reads `.rspec` in its own working directory, so a `cd` inside a wrapper can make RSpec read another file than Mutineer does. Mutineer reads shell tokens and skips the text of an RSpec example filter (`-e`, `--example`, `-E`, `--example-matches`, `-t`, `--tag`), so `--example 'handles --order rand'` and `--example='...'` are not read as options. The attached short form `-e'...'` is read as text, so its value can give a false warning or hide one. It reads tokens, not programs, so some commands, such as `docker run -e SPEC_OPTS=...`, can give a false warning or hide a real one. [#549](https://github.com/davidteren/mutineer/issues/549) lists these blind spots. |
 
 See [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis) for wrapper behaviour.
 
@@ -297,29 +329,31 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Exit code other than 1, or a signal | `error`, except for the SimpleCov case below. |
 | RSpec `--failure-exit-code` other than 1 | Test failures become `error`. |
 | Clean run prints a recognised summary | Exit 1 requires a reported test failure or a Minitest run stopped during a test. Otherwise, `error`. |
-| Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. |
+| Recognised summaries | Examples: `3 runs, 3 assertions, 0 failures, 0 errors` and `3 examples, 0 failures`. When a summary of the clean run starts a line, a mutant run's summary and its `# Running:` line count only at the start of a line ([#515](https://github.com/davidteren/mutineer/issues/515)). When no summary of the clean run starts a line (a wrapper that prefixes each line), they count at any position. |
+| Exit 1, or a SimpleCov gate exit, with a failing summary that does not start a line, when the clean run's summary did. After a SimpleCov gate, also a passing summary when no summary starts a line. | `error`, with a reason that contains "summary is in its output, but not at the start of a line" and says whether the summary was failing or passing. A wrapper prefix or a parallel runner moved the summary, or a test printed failing summary-like text (in its name or its output) and no real failing summary starts a line. `--verbose` shows which. For a moved summary, remove that prefix or the parallel runner from `--test-command`. For a test's text, rename the test or stop printing that text. An exit 1 still scores `killed` when Minitest printed `# Running:` at a line start and no summary starts a line after it, as for a run that stopped during a test. The exception: when only passing summary text away from a line start follows it, the run scores `error` with the same reason, because a moved real summary and a test name look the same. |
 | Crash during loading | `error` when summary validation applies. |
-| SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill; all tests passing means `survived`. |
+| SimpleCov `minimum_coverage` failure with its gate message and a recognised summary | Summary decides: a failing test is a kill. All tests passing means `survived` when the run printed at least as many summary lines as the clean run. When the clean run's summary started a line, only summaries at the start of a line count. |
+| SimpleCov gate message, all tests passing, and fewer summary lines than the clean run (at the start of a line, when the clean run's summary started one) | `error`, with the reason "printed 1 summary line where the clean run printed 2" ([#516](https://github.com/davidteren/mutineer/issues/516)). The gate stopped a chain of suites, and a suite that did not run could kill the mutant. Turn the coverage gate off for mutation runs. |
 | SimpleCov without a recognised summary, or with `print_error_status = false` | The coverage gate's exit scores `error`. |
 | Clean run prints no summary | Warns once, then counts every exit 1 as a kill. |
 
-#### Known limits of reading test output ([#342](https://github.com/davidteren/mutineer/issues/342))
+#### Known limits of reading test output ([#549](https://github.com/davidteren/mutineer/issues/549))
 
-Mutineer reads the output of `--test-command` to tell a crash from a kill. It accepts these 12 limits and does not tighten the check. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
+Mutineer reads the output of `--test-command` to tell a crash from a kill. [#342](https://github.com/davidteren/mutineer/issues/342) listed these 12 limits. [#515](https://github.com/davidteren/mutineer/issues/515) closed most of limit 4, [#516](https://github.com/davidteren/mutineer/issues/516) closed most of limit 9, and the other limits stay. [#549](https://github.com/davidteren/mutineer/issues/549) tracks each open limit, with the reason it is accepted. The `--daemon` path is separate ([#296](https://github.com/davidteren/mutineer/issues/296)).
 
-A verdict that can be wrong is marked. Those limits are tracked as bugs: [#515](https://github.com/davidteren/mutineer/issues/515) for a false `killed`, and [#516](https://github.com/davidteren/mutineer/issues/516) for a false `survived`.
+A verdict that can be wrong is marked.
 
 | # | Limit | Result |
 | --- | --- | --- |
 | 1 | Code under test calls `exit 1` or `abort` during a test. | `killed` under the default Minitest reporter, as in process. Under RSpec or minitest-reporters it is `error`, because only the default reporter prints `# Running:`. |
 | 2 | `SimpleCov.print_error_status = false`. | The gate prints no message, so its exit scores `error`. |
-| 3 | An exception escapes `Minitest.run` (a reporter plugin bug). | **False `killed`**, where in process it is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
-| 4 | A test prints a fake summary line, or a test name holds summary-like text. The patterns have no line-start anchor. | **False `killed`** for a crash ([#515](https://github.com/davidteren/mutineer/issues/515)). |
+| 3 | An exception escapes `Minitest.run` (a reporter plugin bug). | **False `killed`**, where in process it is `error`. Accepted: the output and exit status are the same as code under test that runs `warn e.full_message; exit 1` in a test, a real kill. |
+| 4 | A test prints summary-like text that starts a line, even with no newline, such as the first output after `# Running:` or at the start of RSpec output. Or an RSpec top-level group name holds summary-like text in documentation format. Summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer counts, because the clean run's summary starts a line. | **False `killed`** for a crash. When a wrapper prefixes each line, a summary counts at any position, so the whole limit stays. |
 | 5 | A custom failure exit code, such as RSpec `--failure-exit-code 3`. | Every kill scores `error`. This matches the in-process rule: only exit 1 kills. |
 | 6 | Code under test calls `exit!(1)`. | The output flush is skipped and `# Running:` can be lost, so it scores `error`, where in process it is `killed`. |
-| 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill** ([#515](https://github.com/davidteren/mutineer/issues/515)). |
-| 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error` ([#515](https://github.com/davidteren/mutineer/issues/515)). |
-| 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | A passing first summary scores **`survived`**, although the skipped suite might kill ([#516](https://github.com/davidteren/mutineer/issues/516)). |
+| 7 | A reporter with no Minitest or RSpec summary line (JUnit-only, Cucumber). | The crash check is off, with one warning. **Every exit 1 counts as a kill**. Accepted: the output has no sign that a test ran. |
+| 8 | Code under test calls `exit` with any status during a Minitest test. | Minitest's `autorun` ends the process with 1, and the output has no summary. Under the default reporter it scores **`killed`** (under minitest-reporters, `error`), where in process `exit 0` is `survived` and `exit 2` is `error`. Accepted: the output is the same for each status. |
+| 9 | A wrapper chains two suites (`sh -c 'bin/rails test "$@" && bundle exec rspec' sh %{files}`) and the SimpleCov gate stops the first. | The run printed fewer summary lines than the clean run, so it scores `error`, not `survived`. Mutineer does not run the skipped suite. When the clean run printed no summary line, or when a plain first suite is followed by a prefixed second suite, a passing first summary still scores **`survived`**, although the skipped suite might kill. |
 | 10 | SimpleCov older than 0.19 prints a different gate message. | The gate exit scores `error`, not `survived`. |
 | 11 | RSpec exits 1 in the middle of an example. | The `error` reason text can name the wrong cause. The verdict is right. |
 | 12 | test-unit. | Its summary line matches `MINITEST_SUMMARY`, so the summary check is on, not the exit-code fallback. Scoring is right. |

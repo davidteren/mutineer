@@ -104,7 +104,12 @@ On the exact pull request head commit:
    kinds review bots found most often here, such as doc sentences that hold
    only in the common case and doc copies left stale.
 
-After another commit, repeat these checks on the new head.
+After another commit, run the test checks again in full, and review only the
+new commits. Review all of the pull request again when the new commits touch a
+code file the first review did not see, change more than about 50 lines of
+code, change a public contract (a CLI flag, a config key, the JSON schema, an
+exit code or an Action input), or rewrite the branch history. A full review
+again after a small fix only reviews lines that did not change.
 
 ### Labels
 

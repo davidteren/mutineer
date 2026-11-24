@@ -95,7 +95,8 @@ module Mutineer
       end
 
       # Fork the booted parent, run one test under the inherited Coverage, and
-      # return its per-source counts hash, a String diagnostic on failure, or
+      # return the child's wrapped payload (`passed`, `coverage`, `failure_report`,
+      # `loaded_files`, read by `accept_fork_payload`), a String diagnostic on failure, or
       # :timeout after `@capture_timeout` (see {#await_child}). Reuses the same
       # fork + Marshal-over-pipe + hard-exit! discipline as WorkerPool/Isolation.
       def fork_capture(abs_test, abs_sources, after_fork)
@@ -205,6 +206,8 @@ module Mutineer
         rel = relativize(test_path)
         @failed_test_files << rel
         # The reason can quote an app error, and so a credentialed DATABASE_URL.
+        # DaemonClient::COVERAGE_SKIPPED matches this prefix to add its load
+        # note under --daemon (#517): keep the two in step.
         warn "[mutineer] coverage skipped for #{rel}: #{Redaction.text(reason)}"
         nil
       end
