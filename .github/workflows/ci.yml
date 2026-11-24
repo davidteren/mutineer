@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  # integration/v2.0 is the long-lived 2.0 branch (AGENTS.md, "The 2.0
+  # integration branch"). Remove it from
+  # both lists when 2.0 is released and the branch is deleted.
   push:
-    branches: [main]
+    branches: [main, integration/v2.0]
   pull_request:
-    branches: [main]
+    branches: [main, integration/v2.0]
   # release-pr.yml dispatches this on the release branch: its GITHUB_TOKEN push
   # starts no CI. The dispatched run is an early signal only; the release PR's
   # required checks come from its pull_request run once a maintainer approves it
