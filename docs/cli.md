@@ -26,7 +26,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |
 | `--load-path DIR`, `-I DIR` | Put `DIR` on `$LOAD_PATH` before the boot file, the sources and the tests; repeat for more. Replaces `load_path:` in `.mutineer.yml` (unlike `ruby -I`, which adds). See the `load_path` key | None |
 | `--coverage-from FILE` | Reuse previous `coverage.json` (CLI only) | None |
-| `--format human\|json\|html` | Report format (CLI only) | `human` |
+| `--format human\|json\|html` | Report format (CLI only). With `--baseline`, the HTML report shows the baseline comparison | `human` |
 | `--output FILE` | Report file | stdout |
 | `--dry-run` | List mutants without testing. With `--format json`, print them with their ids | Off |
 | `--[no-]fail-fast` | Stop at first survivor | Off |

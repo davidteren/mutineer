@@ -245,4 +245,62 @@ class HtmlReporterTest < Minitest::Test
     refute_includes html, "same value <raw>"
   end
 
+
+  # --- #343 limit 4: the HTML report shows the baseline comparison ---
+
+  def baseline_delta(results, stored_ids, **opts)
+    doc = { "schema_version" => "2.0", "summary" => { "score" => 100.0 },
+            "survivors" => stored_ids.map { |id| { "id" => id, "subject" => "Pricing#total", "file" => FILE,
+                                                    "line" => 3, "operator" => "comparison" } } }
+    Mutineer::Baseline.new(doc).diff(Mutineer::AggregateResult.new(results), **opts)
+  end
+
+  def render_with(results, delta, format: "html", source_map: { FILE => SRC })
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map)
+                      .report(out: out, err: StringIO.new, format: format, baseline: delta)
+    out.string
+  end
+
+  def test_baseline_section_shows_a_regression_and_names_the_new_survivor
+    results = [Mutineer::Result.killed, survivor]
+    html = render_with(results, baseline_delta(results, []))
+    assert_includes html, "<h2>Baseline comparison</h2>"
+    assert_includes html, "REGRESSION vs baseline"
+    assert_includes html, "  + Pricing#total (pricing.rb:3) comparison"
+  end
+
+  def test_baseline_section_shows_an_incomplete_run_and_the_unverified_survivors
+    stored = Mutineer::Result.error.with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "stored1")
+    results = [stored, Mutineer::Result.error, Mutineer::Result.killed]
+    html = render_with(results, baseline_delta(results, %w[stored1]))
+    assert_includes html, "INCOMPLETE vs baseline"
+    assert_includes html, "incomplete run: "
+    assert_match(/  \? Pricing#total \(pricing\.rb:3\) comparison \[error\]/, html)
+  end
+
+  def test_baseline_section_holds_the_same_lines_as_the_human_report
+    results = [Mutineer::Result.killed, survivor]
+    delta = baseline_delta(results, %w[gone])
+    html = render_with(results, delta)
+    body = CGI.unescapeHTML(html[%r{<pre class="baseline">(.*?)</pre>}m, 1])
+    human = render_with(results, delta, format: "human")
+    section = human[/Baseline comparison\n-+\n(.*)\z/m, 1]
+    assert_equal section, body
+  end
+
+  def test_baseline_section_is_html_escaped
+    weird = Mutineer::Result.survived.with(subject: subject(FILE, ["A<b>&C"]),
+                                           mutation: mutation_at(">=", ">", :comparison), id: "weird1")
+    html = render_with([weird], baseline_delta([weird], []))
+    section = html[%r{<pre class="baseline">(.*?)</pre>}m, 1]
+    assert_includes section, "A&lt;b&gt;&amp;C"
+    refute_includes section, "A<b>"
+  end
+
+  def test_no_baseline_section_without_a_baseline
+    results = [Mutineer::Result.killed, survivor]
+    assert_equal render(results), render_with(results, nil)
+    refute_includes render(results), "Baseline comparison"
+  end
 end

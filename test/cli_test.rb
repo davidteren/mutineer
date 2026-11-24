@@ -3118,6 +3118,22 @@ class CliTest < Minitest::Test
     end
   end
 
+  # #343: --format html exits 1 on a regression and the report says why.
+  def test_html_report_shows_the_baseline_verdict
+    with_project do |proj|
+      common = ["calculator.rb", "--operators", "arithmetic"]
+      _, err, first = mutineer("run", *common, "--test", "calculator_strong_test.rb", "--format", "json",
+                               "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      _, err, status = mutineer("run", *common, "--test", "calculator_weak_test.rb", "--baseline", "base.json",
+                                "--format", "html", "--output", "report.html", chdir: proj)
+      assert_equal 1, status.exitstatus, err
+      html = File.read(File.join(proj, "report.html"))
+      assert_includes html, "<h2>Baseline comparison</h2>"
+      assert_includes html, "REGRESSION vs baseline"
+    end
+  end
+
   def test_narrower_operators_keep_absent_baseline_survivors_unverified
     with_project do |proj|
       args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--test-command", "true %{files}",

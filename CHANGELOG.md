@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The HTML report shows the baseline comparison (#343).** With
+  `--baseline`, `--format html` adds a "Baseline comparison" section with
+  the same lines as the human report, including the verdict. A run could exit
+  1 on a regression before with no word about it in the HTML file. Without
+  `--baseline` the HTML report does not change.
 - **`baseline.incomplete` and `baseline.unverified_survivors[]` in the JSON
   report (#283).** `incomplete` says the run fails the completeness rule;
   each `unverified_survivors[]` entry is a baseline survivor this run did not

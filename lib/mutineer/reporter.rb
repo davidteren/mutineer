@@ -111,8 +111,8 @@ module Mutineer
                                 unmatched_ignores: unmatched_ignores, declined: declined,
                                 subjects: subjects, unmutated_subjects: unmutated_subjects)
         elsif format == "html"
-          html_report(declined: declined, subjects: subjects, unmutated: unmutated_subjects&.size,
-                      scoped: scoped)
+          html_report(baseline: baseline, declined: declined, subjects: subjects,
+                      unmutated: unmutated_subjects&.size, scoped: scoped)
         else
           sio = StringIO.new
           human_report(sio, err, threshold, declined: declined, scoped: scoped,
@@ -416,12 +416,14 @@ module Mutineer
     # (CGI.escapeHTML) so a `<`/`>` in source can never break the markup. Reuses
     # survivor_json/per_source_json so one run yields one set of facts regardless
     # of --format.
+    # @param baseline [Mutineer::Baseline::Delta, nil] the `--baseline` delta;
+    #   nil leaves the report exactly as it is without the flag.
     # @param declined [Hash{String => Integer}] candidates declined by operators.
     # @param subjects [Integer, nil] methods discovered (in scope).
     # @param unmutated [Integer, nil] methods with no mutants (#419).
     # @param scoped [Boolean] the run was diff-scoped (`--since`); declined keeps
     #   its full-run count and the HTML label says so.
-    def html_report(declined: {}, subjects: nil, unmutated: nil, scoped: false)
+    def html_report(baseline: nil, declined: {}, subjects: nil, unmutated: nil, scoped: false)
       score = @agg.mutation_score
       survivors = @agg.surviving_mutants.map { |r| survivor_json(r) }
                       .sort_by { |h| [h[:file], h[:line], h[:operator]] }
@@ -451,7 +453,7 @@ module Mutineer
           .survivor h3 { margin: 0 0 .25rem; font-size: 1rem; }
           .meta { color: #555; font-size: .85rem; margin-bottom: .5rem; }
           .id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-          pre.diff { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          pre.diff, pre.baseline { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
                      background: #f6f8fa; padding: .5rem .75rem; overflow-x: auto;
                      margin: 0; border-radius: 4px; }
           .diff .add { color: #116329; }
@@ -461,7 +463,7 @@ module Mutineer
         <body>
         <h1>Mutineer — Mutation Report</h1>
         <div class="score">Score: #{score.nil? ? 'N/A' : "#{score}%"}</div>
-        #{summary_html(declined: declined, subjects: subjects, unmutated: unmutated, scoped: scoped)}
+        #{summary_html(declined: declined, subjects: subjects, unmutated: unmutated, scoped: scoped)}#{baseline_html(baseline)}
         #{unpaired_html}
         #{per_source_html(per_source)}
         #{survivors_html(survivors)}
@@ -1517,6 +1519,17 @@ module Mutineer
       out.puts
       out.puts "Baseline comparison"
       out.puts "-------------------"
+      baseline_lines(out, delta)
+    end
+
+    # The body of the baseline section, after its heading. The human report and
+    # the HTML report both print these lines, so the two cannot disagree (#343).
+    #
+    # @api private
+    # @param out [IO] output stream.
+    # @param delta [Mutineer::Baseline::Delta] baseline delta.
+    # @return [void]
+    def baseline_lines(out, delta)
       out.puts "killed #{@agg.killed_count}, #{delta.new_survivors.size} new survivors vs baseline"
       delta.new_survivors
            .sort_by { |r| [r.subject.file, *tie_key(r)] }
@@ -1541,6 +1554,21 @@ module Mutineer
       # comparison was skipped (a diff-scoped side or a nil score).
       out.puts "score-drop check skipped (scores not comparable)" unless delta.score_comparable
       out.puts baseline_verdict(delta)
+    end
+
+    # The HTML baseline section: the human report's lines, escaped, in one
+    # `<pre>`. Starts with a newline so a report without a baseline keeps its
+    # bytes (#343).
+    #
+    # @api private
+    # @param delta [Mutineer::Baseline::Delta, nil] baseline delta.
+    # @return [String] the section, or "" with no baseline.
+    def baseline_html(delta)
+      return "" unless delta
+
+      text = StringIO.new
+      baseline_lines(text, delta)
+      "\n<h2>Baseline comparison</h2>\n<pre class=\"baseline\">#{esc(text.string)}</pre>"
     end
 
     # The last line of the baseline section: which gate failed, if any.
