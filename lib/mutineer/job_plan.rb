@@ -834,7 +834,7 @@ module Mutineer
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        reason = raw.scrub[/\s--\s*(.*)\z/, 1]&.strip
+        reason = raw.byteslice(start..).scrub[/\s--\s*(.*)\z/, 1]&.strip
         reason = nil if reason.nil? || reason.empty?
         map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end

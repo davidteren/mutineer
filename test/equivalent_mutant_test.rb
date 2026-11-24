@@ -60,6 +60,7 @@ class EquivalentMutantTest < Minitest::Test
     src = "a # note -- # mutineer:disable-line arithmetic\nb # caf\xE9 # mutineer:disable-line comparison\n".b.force_encoding("UTF-8")
     map = Mutineer::JobPlan.suppress_map(src, "x.rb")
     assert_equal Set[:arithmetic], map[1][:ops]
+    assert_nil map[1][:reason]
     assert_equal Set[:comparison], map[2][:ops]
   end
 
