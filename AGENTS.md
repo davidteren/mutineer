@@ -24,7 +24,7 @@ next step.
 | Level | When | What runs |
 |---|---|---|
 | Commit | Each commit | The test files for the code you changed, and the load smoke |
-| Push | Before each push | The full gate below, once, on the commit you push |
+| Push | Before each push | The full gate below, on the commit you push |
 | Ready | Before you mark the pull request ready for review | The diff review in "PR review gate", once, on the head commit |
 
 Never push with a red suite. To run one test file at the commit level:
@@ -142,6 +142,7 @@ draft first, and let CI and cubic run when the pull request is ready.
    review pass on the head commit. CI starts then, for a pull request into
    `main` or `integration/v2.0`. `ci.yml` does not run for another base, such
    as the lower pull request of a stack. Use the command in step 6 there.
+   A breaking change that targets `main` stays a draft ("Releasing", item 5).
 4. After that, each push starts CI again and cancels the run for the old
    commit. Fix the findings of one review round in one push.
 5. A draft has no CI result. GitHub shows a skipped job as passed, but that
@@ -204,7 +205,7 @@ issue for something a pull request found, ask what caused it:
 
 ### After the pull request is open
 
-1. Mark the pull request ready if it is a draft. Then wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
+1. Mark the pull request ready if it is a draft, unless it is a breaking change that targets `main` ("Releasing", item 5). Then wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
 2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
 3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code unless a maintainer accepts it in writing on the pull request (see "Fix it in the pull request, or file an issue?").
 4. After fixes, push and check the new lines again.

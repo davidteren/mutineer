@@ -70,7 +70,8 @@ against `main`.
 ## After you open the pull request
 
 - CI starts when the pull request is ready for review. A draft pull request
-  starts no CI job. Mark it ready when you want CI and a review.
+  starts no CI job. Mark it ready when you want CI and a review: use the
+  "Ready for review" button on the pull request, or `gh pr ready`.
 - GitHub can hold CI on a pull request from a fork until a maintainer
   approves the run. You do not need to do anything.
 - Review bots (cubic and Qodo) comment on the code. Fix a finding that is
