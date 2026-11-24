@@ -923,7 +923,7 @@ module Mutineer
 
     # The same patch as {#unified_diff}, with each side line in the file's own
     # bytes (#518), so `git apply` accepts it for any source encoding. The
-    # path keeps the UTF-8 text `diff` shows (#532).
+    # path is in its own bytes too (#532).
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.
@@ -955,8 +955,9 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof).map(&piece)
       new_lines = side_lines(mutated_block, at_eof).map(&piece)
-      # The path stays the text `diff` shows, so only the side lines differ (#532).
-      shown_file = piece.call(utf8_text(file))
+      # The exact patch names the file by its own bytes, so `git apply` finds a
+      # path that is not UTF-8 (#532).
+      shown_file = piece.call(file.to_s)
       "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"

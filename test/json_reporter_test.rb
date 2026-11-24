@@ -301,9 +301,9 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
-  # A path that is not UTF-8 prints as \xNN in both patches (#532), so a
-  # UTF-8 source with an ASCII change gets no diff_base64.
-  def test_a_non_utf8_path_alone_gives_no_diff_base64
+  # #532: a path that is not UTF-8 prints as \xNN in `diff`, so the row carries
+  # diff_base64, whose header holds the path's own bytes, and git applies it.
+  def test_a_non_utf8_path_gives_a_diff_base64_that_git_applies
     src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
     path = "caf\xE9.rb".b
     tok = src.byteindex(">=")
@@ -315,7 +315,17 @@ class JsonReporterTest < Minitest::Test
                            { path => src }).report(out: out, err: StringIO.new, format: "json")
     row = JSON.parse(out.string)["survivors"].first
     assert_includes row["diff"], "caf\\xE9.rb"
-    refute row.key?("diff_base64")
+    patch = row["diff_base64"].unpack1("m")
+    assert_includes patch, "--- a/caf\xE9.rb\n".b
+    return if RUBY_PLATFORM.include?("darwin") # APFS refuses a file name that is not UTF-8
+
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, path), src)
+      File.binwrite(File.join(dir, "m.patch"), patch)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, err
+      assert_equal mutation.apply(src).b, File.binread(File.join(dir, path))
+    end
   end
 
   # Every list with a diff carries diff_base64; a stub row has neither.
