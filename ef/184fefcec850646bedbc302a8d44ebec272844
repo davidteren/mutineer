@@ -1,0 +1,39 @@
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_75ad747774cc9b::t_d729ac59770011 13
+CHANGELOG.md
+  s_75ad747774cc9b::t_791cb775d223a1 66-67
+STABILITY.md
+  s_75ad747774cc9b::t_7f7d90d26aba65 146,149
+action.yml
+  s_75ad747774cc9b::t_85c08438a8d5c6 51-52,482-483,487,499-500,502
+docs/ci.md
+  s_75ad747774cc9b::t_97e2f5732a0ca8 195
+docs/json-schema.md
+  s_75ad747774cc9b::t_d144d08901eade 463
+docs/plans/2026-11-24-283-343-fix-baseline-completeness-plan.md
+  s_75ad747774cc9b::t_16d4cfb5c23076 384,388-389,396
+skills/mutineer/SKILL.md
+  s_75ad747774cc9b::t_e14f926fa3bf67 73
+test/baseline_test.rb
+  s_75ad747774cc9b::t_a139cd84c6d6e0 688
+test/cli_test.rb
+  s_75ad747774cc9b::t_e3b72e74407bba 3186
+test/result_test.rb
+  s_75ad747774cc9b::t_abab2c446dad5f 142-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef184fefcec850646bedbc302a8d44ebec272844",
+  "prompts": {},
+  "sessions": {
+    "s_75ad747774cc9b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d30d246a-85e6-4544-bac9-aca472700292",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
