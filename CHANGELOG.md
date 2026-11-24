@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-24
+
 ### Added
 
 - **`since_paired_tests` runs only the tests of the changed sources under `--since` (#496).**
@@ -2896,6 +2898,7 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.10.0]: https://github.com/davidteren/mutineer/releases/tag/v1.10.0
 [1.9.0]: https://github.com/davidteren/mutineer/releases/tag/v1.9.0
 [1.8.2]: https://github.com/davidteren/mutineer/releases/tag/v1.8.2
 [1.8.1]: https://github.com/davidteren/mutineer/releases/tag/v1.8.1
