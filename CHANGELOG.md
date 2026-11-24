@@ -64,6 +64,12 @@ All notable changes to this project are documented here. The format is based on
   root that does not exist here cannot be checked by this run, and `not_run`
   said the run skipped it. The human report adds one line: write a new
   baseline from this checkout. The status never gates and adds to no count.
+- **Breaking (Action): a baseline with a format other than `json` needs gem
+  2.0.0 or later (#343).** The Action checks `baseline.incomplete` only in a
+  JSON report. With `format: html` or `human`, an older gem passed an
+  incomplete baseline run with no warning. The Action now exits 2 before the
+  run for a gem older than 2.0.0 (a 2.0.0 prerelease passes). Upgrade the
+  Gemfile pin or the `version` input, or set `format: json`.
 - The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
   now also live on `AggregateResult`. The `Reporter` names remain
   compatibility aliases, and the CLI and report use the same limits.

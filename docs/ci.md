@@ -192,7 +192,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | `test` | `""` | Test files or directories. Empty pairs by convention and applies any `tests:` map in `.mutineer.yml` with Mutineer 1.9.0 or later. A directory also needs mutineer 1.9.0 or later |
 | `since` | `""` | Git ref; PR base on `pull_request`; `none` scans all |
 | `threshold` | `""` | Fail below this score |
-| `baseline` | `""` | Saved `--format json` report |
+| `baseline` | `""` | Saved `--format json` report. With a `format` other than `json`, the gem must be 2.0.0 or later; the action exits 2 for an older gem |
 | `baseline-epsilon` | `""` | Allowed score drop; CLI default 0 |
 | `operators` | `""` | Comma-separated operators; empty uses Tier-1 (default set) |
 | `framework` | `""` | `minitest` or `rspec`; empty auto-detects |
