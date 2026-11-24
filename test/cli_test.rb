@@ -3086,6 +3086,38 @@ class CliTest < Minitest::Test
     end
   end
 
+  # A source that pairing drops (no paired test, #381) is not run, so its stored
+  # survivor is undecided: not_run, never fixed (#283).
+  def test_baseline_survivor_in_an_unpaired_source_is_not_run_not_fixed
+    with_autopair_project do |proj|
+      File.write(File.join(proj, "lib/other.rb"), "class Other\n  def add(a, b)\n    a + b\n  end\nend\n")
+      File.write(File.join(proj, "test/other_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/other"
+        class OtherTest < Minitest::Test
+          def test_add = assert_equal(0, Other.new.add(0, 0))
+        end
+      RUBY
+      _, err, first = mutineer("run", "lib", "--operators", "arithmetic", "--format", "json",
+                               "--output", "base.json", chdir: proj)
+      assert_equal 0, first.exitstatus, err
+      stored = JSON.parse(File.read(File.join(proj, "base.json")))["survivors"]
+      assert_equal ["lib/calc.rb", "lib/other.rb"], stored.map { |h| h["file"] }.uniq.sort
+
+      File.delete(File.join(proj, "test/other_test.rb"))
+      out, err, status = mutineer("run", "lib", "--operators", "arithmetic", "--baseline", "base.json",
+                                  "--format", "json", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      assert_equal 1, doc["summary"]["unpaired_sources"]
+      delta = doc.fetch("baseline")
+      assert_empty delta["fixed_survivors"]
+      unverified = delta["unverified_survivors"]
+      refute_empty unverified
+      assert_equal [["lib/other.rb", "not_run"]], unverified.map { |h| [h["file"], h["status"]] }.uniq
+    end
+  end
+
   def test_narrower_operators_keep_absent_baseline_survivors_unverified
     with_project do |proj|
       args = ["run", "calculator.rb", "--test", "calculator_weak_test.rb", "--test-command", "true %{files}",

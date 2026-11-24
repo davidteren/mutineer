@@ -11,6 +11,8 @@ execution: code
 
 # Baseline unverified survivors and completeness gate - Plan
 
+Updated by `docs/plans/2026-11-24-283-343-fix-baseline-completeness-plan.md`.
+
 ## Goal Capsule
 
 - **Issues:** #283 (`--baseline` has no completeness gate: errored survivors read as fixed) and #286 (`ran_at_load` hides survivors on lines that tests also cover).
