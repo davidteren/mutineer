@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A UTF-8 source with an invalid byte in a comment no longer stops the run (#538).**
+  `JobPlan.suppress_map` matched the `mutineer:disable-line` marker against the raw comment text and raised `invalid byte sequence in UTF-8`, so `mutineer run` exited 2 for a file that Ruby loads.
+  It now matches a scrubbed copy of each comment.
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

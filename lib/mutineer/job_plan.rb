@@ -812,7 +812,8 @@ module Mutineer
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
-        next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+        text = comment.slice.scrub # an invalid byte in a comment is legal Ruby (#538)
+        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
@@ -823,7 +824,7 @@ module Mutineer
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        reason = comment.slice[/\s--\s*(.*)\z/, 1]&.strip
+        reason = text[/\s--\s*(.*)\z/, 1]&.strip
         reason = nil if reason.nil? || reason.empty?
         map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end

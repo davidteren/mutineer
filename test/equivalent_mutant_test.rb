@@ -34,6 +34,15 @@ class EquivalentMutantTest < Minitest::Test
     assert_nil map[3]
   end
 
+  # #538: an invalid byte in a comment is legal Ruby, so the marker still counts.
+  def test_suppress_map_reads_a_marker_beside_an_invalid_byte
+    src = "a + b # mutineer:disable-line arithmetic -- caf\xE9\n".b.force_encoding(Encoding::UTF_8)
+    refute_predicate src, :valid_encoding?
+    entry = Mutineer::JobPlan.suppress_map(src, "x.rb")[1]
+    assert_equal Set[:arithmetic], entry[:ops]
+    assert_predicate entry[:reason], :valid_encoding?
+  end
+
   def test_suppress_map_warns_on_an_unknown_operator
     _, err = capture_io { Mutineer::JobPlan.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
     assert_match(/unknown operator "comparison because" in x.rb:1 \(did you mean "comparison"\?\) \(known: .*\bcomparison\b/, err)
