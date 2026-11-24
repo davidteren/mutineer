@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reload no longer scores a method `survived` when a second load skips its definition (#529).**
+  A constant set with `||=` (`Cell ||= Struct.new(:x) do ... end`), or defined under `unless defined?(Cell)` or `if !defined?(Cell)`, does not run again when `--strategy reload` or `--daemon` loads the mutant file.
+  A mutant in a method there was never loaded and scored `survived`.
+  Such a method is now `unplaceable` under reload, counted in `summary.unplaceable`. `--strategy redefine` and `--test-command` run it.
+  The guard rule applies only when the guarded code writes the tested constant or opens that class or module. Names match by their last part.
+  After the upgrade, `survived` can fall and `unplaceable` can rise for such a file, so a score and a `--threshold` result can change.
+  The shapes are in 0 of 47,030 Ruby files of 744 gems and in 0 of 482 files of the Fizzy sample app and Mutineer's `lib/`.
+  Still open: other guards, such as `return if defined?(Cell)` at the top of a file (#573).
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

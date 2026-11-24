@@ -494,4 +494,47 @@ class CallSuperclassReloadTest < Minitest::Test
     refute reload.values.flatten.include?("error")
     assert_equal redefine, reload
   end
+
+  # #529: AE1, AE2. A second load skips the value of a constant `||=` and the
+  # statements of a `defined?` guard that define the tested name, so reload
+  # cannot place a mutant there: each one is `unplaceable` and counted. A guard
+  # that does not define the tested name runs again, so its method is killed.
+  def test_reload_marks_a_definition_a_second_load_skips_unplaceable
+    skipped = %w[OrCell#one? GuardedCell#two? BlockedCell#three? StatedCell#four? NegatedCell#five?]
+    reload = run_strategy("reload", sources: %w[or_constant.rb], test: "or_constant_test.rb")
+    skipped.each { |name| assert_equal ["unplaceable"], reload.fetch(name).uniq, name }
+    assert_equal ["killed"], reload.fetch("ShimmedCell#six?").uniq
+    redefine = run_strategy("redefine", sources: %w[or_constant.rb], test: "or_constant_test.rb")
+    assert_equal ["killed"], redefine.values.flatten.uniq
+    assert_equal reload.keys.sort, redefine.keys.sort
+  end
+
+  # #529: the JSON report counts each such mutant in `summary.unplaceable` and
+  # lists it in `unplaceable[]`, so it has its place in the unrun share.
+  def test_the_report_counts_a_definition_a_second_load_skips
+    Dir.mktmpdir("mutineer-or-constant") do |cache|
+      script = <<~RUBY
+        require "mutineer"
+        require "stringio"
+        config = Mutineer::Config.new(sources: ["or_constant.rb"], tests: ["or_constant_test.rb"],
+                                      strategy: "reload", project_root: #{ROOT.inspect},
+                                      cache_dir: #{cache.inspect}, jobs: 1)
+        agg, source_map = Mutineer::Runner.execute(config)
+        out = StringIO.new
+        Mutineer::Reporter.new(agg, source_map).report(out: out, err: StringIO.new, format: "json")
+        $stdout.puts out.string.lines.join.tr("\n", " ")
+        $stdout.puts agg.results.count(&:unplaceable?)
+      RUBY
+      out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script, chdir: ROOT)
+      assert status.success?, err
+      doc = JSON.parse(out.lines[-2])
+      count = Integer(out.lines.last)
+      assert_operator count, :>=, 5
+      assert_equal count, doc["summary"]["unplaceable"]
+      assert_equal count, doc["unplaceable"].size
+      assert_equal %w[BlockedCell#three? GuardedCell#two? NegatedCell#five? OrCell#one? StatedCell#four?],
+                   doc["unplaceable"].map { |entry| entry["subject"] }.uniq.sort
+    end
+  end
+
 end

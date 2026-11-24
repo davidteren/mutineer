@@ -1587,7 +1587,7 @@ class ProjectTest < Minitest::Test
       refute by_name[:outer].unplaceable?("reload")
       refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
       refute by_name[:built].unplaceable?("reload")
-      refute by_name[:built].in_kept_constant, "no class statement names Y"
+      refute by_name[:built].not_reloaded, "no class statement names Y"
     end
   end
 
@@ -1602,13 +1602,13 @@ class ProjectTest < Minitest::Test
           "class Ledger::Credit < Ledger::Entry\nend\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      assert by_name[:in_block?].in_kept_constant
+      assert by_name[:in_block?].not_reloaded
       assert by_name[:in_block?].unplaceable?("reload")
       refute by_name[:in_block?].unplaceable?("redefine")
-      assert by_name[:path_block].in_kept_constant, "a path write matches a path superclass spelled the same"
-      refute by_name[:three?].in_kept_constant
+      assert by_name[:path_block].not_reloaded, "a path write matches a path superclass spelled the same"
+      refute by_name[:three?].not_reloaded
       refute by_name[:three?].unplaceable?("reload")
-      refute by_name[:other].in_kept_constant, "no class statement names Other"
+      refute by_name[:other].not_reloaded, "no class statement names Other"
     end
     # Discovery keeps the same writes as the reload text: a path write does not
     # match a bare superclass, and a builder method's value is not kept.
@@ -1616,8 +1616,58 @@ class ProjectTest < Minitest::Test
           "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      refute by_name[:path_write].in_kept_constant
-      refute by_name[:built].in_kept_constant
+      refute by_name[:path_write].not_reloaded
+      refute by_name[:built].not_reloaded
+    end
+  end
+
+  # #529, test the rule: a second load does not run the value of a constant
+  # `||=`, nor the statements of `unless defined?(X)` or `if !defined?(X)`
+  # that define `X`, so each def there is unplaceable under reload only.
+  # Names match by their last segment (R2 of the plan), which fails closed.
+  NOT_RELOADED_TEXTS = {
+    m1: "X ||= Struct.new(:a) do def m1; end end\n",
+    m2: "A::X ||= Class.new do def m2; end end\n",
+    m3: "X ||= lambda { def m3; end }\n",
+    m4: "X = Struct.new(:a) do def m4; end end unless defined?(X)\n",
+    m5: "unless defined?(X)\n  class X\n    def m5; end\n  end\nend\n",
+    m6: "if !defined?(X)\n  module X\n    def m6; end\n  end\nend\n",
+    m7: "if not defined?(::X)\n  ::X = Class.new do def m7; end end\nend\n",
+    m8: "unless (defined?(X))\n  X = 1\n  def m8; end\nend\n",
+    m9: "unless defined?(X)\n  X ||= 1\n  class Worker\n    def m9; end\n  end\nend\n",
+    m10: "unless defined?(B)\n  A, B = 1, 2\n  def m10; end\nend\n",
+    m11: "unless defined?(A::X)\n  B::X = 1\n  def m11; end\nend\n"
+  }.freeze
+
+  # The guard does not define the tested name, the def is in the `else`
+  # branch, the guard is not negated, the write is `&&=`, or the predicate is
+  # not `defined?` of a constant: each runs again on a second load.
+  RELOADED_TEXTS = {
+    n1: "unless defined?(Rails)\n  class Shim\n    def n1; end\n  end\nend\n",
+    n2: "unless defined?(X)\n  1\nelse\n  X2 = 1\n  def n2; end\nend\n",
+    n3: "if defined?(X)\n  def n3; end\nend\n",
+    n4: "X &&= Struct.new(:a) do def n4; end end\n",
+    n5: "unless ready?\n  X = 1\n  def n5; end\nend\n",
+    n6: "unless defined?(@x)\n  def n6; end\nend\n"
+  }.freeze
+
+  def test_a_def_that_a_second_load_skips_is_unplaceable_under_reload_only
+    NOT_RELOADED_TEXTS.each do |name, src|
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).find { |s| s.name == name }
+        refute_nil subject, src
+        assert subject.not_reloaded, src
+        assert subject.unplaceable?("reload"), src
+        refute subject.unplaceable?("redefine"), src
+      end
+    end
+    RELOADED_TEXTS.each do |name, src|
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).find { |s| s.name == name }
+        refute_nil subject, src
+        refute subject.not_reloaded, src
+        refute subject.unplaceable?("reload"), src
+      end
     end
   end
 

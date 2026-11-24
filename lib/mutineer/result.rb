@@ -33,7 +33,10 @@ module Mutineer
   #                  is a method inside the value of a superclass constant
   #                  the same file assigns (`BaseRow = Struct.new(:v) do
   #                  ... end` with `class Row < BaseRow`, #503), and so is
-  #                  a method that calls `define_callbacks` (#504).
+  #                  a method a second load does not define again (the value
+  #                  of a constant `||=`, or code under `unless defined?(X)`
+  #                  that defines `X`, #529), and so is a method that calls
+  #                  `define_callbacks` (#504).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.

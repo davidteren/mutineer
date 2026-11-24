@@ -471,7 +471,8 @@ module Mutineer
     # write that {Project.kept_constant_write?} keeps, a class builder call
     # with literal arguments. `BaseRow = Struct.new(:v)` with
     # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
-    # same parent. A `||=` write keeps its text (#529).
+    # same parent. A `||=` write keeps its text: a second load skips its
+    # value, so discovery marks each def there `unplaceable` (#529).
     #
     # @param node [Prism::Node]
     # @param names [Set<Symbol, String>] {Project.superclass_constant_names} of the file.
