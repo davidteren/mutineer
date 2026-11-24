@@ -1,0 +1,21 @@
+AGENTS.md
+  s_ca5b42f589bb5d::t_4209f9228baf4a 27,145,208
+CONTRIBUTING.md
+  s_ca5b42f589bb5d::t_4209f9228baf4a 73-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4250339d272e6c9e4b2b6e3d7da6f81c62fb223",
+  "prompts": {},
+  "sessions": {
+    "s_ca5b42f589bb5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7627e31-4a2e-4657-9410-0cfec75217c7",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
