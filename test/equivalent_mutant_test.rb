@@ -43,6 +43,12 @@ class EquivalentMutantTest < Minitest::Test
     assert_predicate entry[:reason], :valid_encoding?
   end
 
+  # An invalid byte right after the marker is not a bare marker that silences every operator.
+  def test_suppress_map_ignores_a_marker_cut_by_an_invalid_byte
+    src = "a + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding(Encoding::UTF_8)
+    assert_empty Mutineer::JobPlan.suppress_map(src, "x.rb")
+  end
+
   def test_suppress_map_warns_on_an_unknown_operator
     _, err = capture_io { Mutineer::JobPlan.suppress_map("a # mutineer:disable-line comparison because\n", "x.rb") }
     assert_match(/unknown operator "comparison because" in x.rb:1 \(did you mean "comparison"\?\) \(known: .*\bcomparison\b/, err)

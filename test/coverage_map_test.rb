@@ -2100,6 +2100,13 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A failed file timed far below the fastest passing one gives no negative log2 argument.
+  def test_order_tests_survives_a_failed_file_timed_below_the_floor
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["a_test.rb"], project_root: ROOT,
+                                          timings: { "a_test.rb" => 0.0, "b_test.rb" => 5.0 })
+    assert_equal %w[a_test.rb b_test.rb], map.order_tests(CALC, %w[b_test.rb a_test.rb])
+  end
+
   # --- Acceptance: runner Phase B selection --------------------------------
 
   def plus_mutation

@@ -812,8 +812,8 @@ module Mutineer
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
-        text = comment.slice.scrub # an invalid byte in a comment is legal Ruby (#538)
-        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+        text = comment.slice.scrub # an invalid byte in a comment is legal Ruby (#538); one right after the marker is no marker
+        next unless (m = text.match(/#\s*mutineer:disable-line(?!\uFFFD)(?:\s+([\w,\s]+))?/))
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)

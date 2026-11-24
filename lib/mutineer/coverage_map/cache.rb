@@ -58,8 +58,7 @@ module Mutineer
       end
 
       # True when `timings` is nil or a Hash of finite, non-negative numbers, so a
-      # hand-edited cache cannot raise in test ordering (#546; a negative cost
-      # gives `Math.log2` a non-positive argument).
+      # hand-edited cache cannot raise in test ordering (#546).
       #
       # @api private
       # @param timings [Object] the `"timings"` entry of a parsed coverage.json.
