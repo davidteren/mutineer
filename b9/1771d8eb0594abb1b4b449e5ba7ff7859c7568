@@ -1,0 +1,23 @@
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_13efe4cc102d28::t_ec3fc7aa73ff2b 18
+CHANGELOG.md
+  s_13efe4cc102d28::t_ef0a05280c28c3 14
+docs/json-schema.md
+  s_13efe4cc102d28::t_d194a36896ee85 106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b91771d8eb0594abb1b4b449e5ba7ff7859c7568",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
