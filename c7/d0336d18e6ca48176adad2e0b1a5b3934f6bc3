@@ -1,0 +1,29 @@
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_75ad747774cc9b::t_e2f1a73c486799 13
+STABILITY.md
+  s_75ad747774cc9b::t_c305ab79899895 38-40,143-148
+action.yml
+  s_75ad747774cc9b::t_eefc34b0b4ab64 492-494,497
+docs/json-schema.md
+  s_75ad747774cc9b::t_4d75b2bd61f261 463
+docs/plans/2026-11-24-283-343-fix-baseline-completeness-plan.md
+  s_75ad747774cc9b::t_01580abf20be24 149
+lib/mutineer/baseline.rb
+  s_75ad747774cc9b::t_2eb8f2eb9e233d 32-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7d0336d18e6ca48176adad2e0b1a5b3934f6bc3",
+  "prompts": {},
+  "sessions": {
+    "s_75ad747774cc9b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d30d246a-85e6-4544-bac9-aca472700292",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
