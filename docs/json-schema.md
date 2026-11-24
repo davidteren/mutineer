@@ -492,14 +492,14 @@ completeness is the one worth retrying rather than blaming on the tests.
 
 ## Dry-run JSON (`--dry-run --format json`)
 
-Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it. It has no `callback_growth`.
+Additive (schema `1.10`, #362). The dry-run document reports schema `2.0`; it gained no key in `1.11` or `2.0`. It has no `callback_growth`.
 `mutineer run … --dry-run --format json` prints a candidate list
 instead of the human breakdown. `--output` writes that document the same way a completed run's
 report does. `--format html` under `--dry-run` stays human and warns that the format is unused.
 
 ```jsonc
 {
-  "schema_version": "1.11",
+  "schema_version": "2.0",
   "summary": {
     "id_format": 2,
     "total": 0,
