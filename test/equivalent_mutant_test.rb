@@ -94,6 +94,12 @@ class EquivalentMutantTest < Minitest::Test
       agg = nil
       capture_io { agg, = Mutineer::Runner.execute(config) }
       assert_operator agg.results.count(&:killed?), :>=, 1
+      out = StringIO.new
+      Mutineer::Reporter.new(agg, { config.sources.first => File.binread(config.sources.first).force_encoding("UTF-8") })
+                        .report(out: out, err: StringIO.new, format: "json")
+      row = JSON.parse(out.string)["killed"].first
+      assert_equal 3, row["line"]
+      assert_includes row["diff"], "caf\\xE9"
     end
   end
 

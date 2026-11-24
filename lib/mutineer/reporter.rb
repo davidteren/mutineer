@@ -959,9 +959,28 @@ module Mutineer
       # The exact patch names the file by its own bytes, so `git apply` finds a
       # path that is not UTF-8 (#532).
       shown_file = piece.call(file.to_s)
-      "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
+      old_path, new_path = %w[a b].map { |side| patch_path(side, shown_file, file.to_s) }
+      "--- #{old_path}\n+++ #{new_path}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
+    end
+
+    # One header path of a patch. A name with a tab, newline, quote, backslash or
+    # other control byte is written in Git's quoted form, because Git reads an
+    # unquoted header only up to a tab and cannot parse one with a newline (#532).
+    #
+    # @api private
+    # @param side [String] "a" or "b".
+    # @param shown [String] the file name as the patch holds it.
+    # @param raw [String] the file name as the report has it, to decide on quoting.
+    # @return [String] the header path.
+    def patch_path(side, shown, raw)
+      return "#{side}/#{shown}" unless raw.b.match?(/[\x00-\x1f"\\\x7f]/n)
+
+      escaped = shown.gsub(/[\x00-\x1f"\\\x7f]/n) do |c|
+        {"\t" => "\\t", "\n" => "\\n", '"' => '\\"', "\\" => "\\\\"}.fetch(c) { format("\\%03o", c.ord) }
+      end
+      "\"#{side}/#{escaped}\""
     end
 
     # The encoding {#diff_encoding} names for a result's diff, or nil when the

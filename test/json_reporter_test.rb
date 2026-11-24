@@ -328,6 +328,33 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # #532: a name with a tab is written in Git's quoted form, so git applies the patch to that file.
+  def test_a_path_with_a_tab_is_quoted_in_the_patch_header
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
+    ["a\tb.rb", "caf\xE9\tb.rb".b].each do |path|
+      tok = src.byteindex(">=")
+      mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+      subj = Mutineer::Subject.new(file: path, namespace: ["Foo"], name: :bar, singleton: false,
+                                   def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                             { path => src }).report(out: out, err: StringIO.new, format: "json")
+      row = JSON.parse(out.string)["survivors"].first
+      patch = row["diff_base64"]&.unpack1("m") || row["diff"].b
+      assert_includes patch, "--- \"a/".b
+      assert_includes patch, "\\t".b
+      next if path.b != path.b.dup.force_encoding("UTF-8").b || !path.dup.force_encoding("UTF-8").valid_encoding?
+
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, path), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, err
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, path))
+      end
+    end
+  end
+
   # Every list with a diff carries diff_base64; a stub row has neither.
   def test_every_list_with_a_diff_has_diff_base64
     src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
