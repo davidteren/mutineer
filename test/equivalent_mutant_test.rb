@@ -55,6 +55,15 @@ class EquivalentMutantTest < Minitest::Test
     end
   end
 
+  # The same guard holds in a source with a magic encoding other than UTF-8.
+  def test_suppress_map_handles_an_invalid_byte_in_an_euc_jp_source
+    bare = "# encoding: euc-jp\na + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding("EUC-JP")
+    _, err = capture_io { assert_empty Mutineer::JobPlan.suppress_map(bare, "x.rb") }
+    assert_match(/invalid byte in the disable-line marker/, err)
+    valid = "# encoding: euc-jp\na + b # mutineer:disable-line arithmetic -- \xA4\xA2\n".b.force_encoding("EUC-JP")
+    assert_equal Set[:arithmetic], Mutineer::JobPlan.suppress_map(valid, "x.rb")[2][:ops]
+  end
+
   # #538 end to end: a UTF-8 source with an invalid byte in a comment above and
   # beside the mutated line runs to a report.
   def test_a_run_reports_a_source_with_an_invalid_byte_in_a_comment

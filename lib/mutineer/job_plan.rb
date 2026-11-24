@@ -812,14 +812,16 @@ module Mutineer
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
-        text = comment.slice.scrub # an invalid byte in a comment is legal Ruby (#538)
-        next unless (m = text.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+        raw = comment.slice # an invalid byte in a comment is legal Ruby (#538)
+        next unless raw.b.match?(/#\s*mutineer:disable-line/n)
 
-        if text.split(/\s--/, 2).first.include?("\uFFFD")
-          # An invalid byte in the marker part could hide an operator name or cut the list: silence nothing.
+        head = raw.b.split(/\s--/n, 2).first.force_encoding(raw.encoding)
+        unless head.valid_encoding?
+          # An invalid byte before the reason could hide an operator name or cut the list: silence nothing.
           warn "mutineer: invalid byte in the disable-line marker at #{file}:#{line}; the marker is ignored"
           next
         end
+        m = head.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/)
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
@@ -830,7 +832,7 @@ module Mutineer
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        reason = text[/\s--\s*(.*)\z/, 1]&.strip
+        reason = raw.scrub[/\s--\s*(.*)\z/, 1]&.strip
         reason = nil if reason.nil? || reason.empty?
         map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end
