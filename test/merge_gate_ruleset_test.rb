@@ -87,13 +87,23 @@ class MergeGateRulesetTest < Minitest::Test
   end
 
   # A draft pull request starts no job, and "ready for review" starts the run.
+  # A change back to a draft starts a run too, so the group cancels the old one.
   # The condition is on each job, not on the workflow trigger: a ready pull
   # request then always starts the workflow, so its required checks report.
   def test_every_ci_job_skips_a_draft_and_ready_for_review_starts_the_run
     ci["jobs"].each { |id, job| assert_equal DRAFT_SKIP, job["if"], "job #{id} must skip a draft pull request" }
     # YAML reads the key `on` as true.
     types = (ci[true] || ci["on"]).dig("pull_request", "types")
-    assert_equal %w[opened ready_for_review reopened synchronize], types.sort, "the three defaults, and ready_for_review"
+    assert_equal %w[converted_to_draft opened ready_for_review reopened synchronize], types.sort, "the three defaults, and both draft changes"
+  end
+
+  # CI runs for a pull request into main or the 2.0 integration branch, and for
+  # a push to either. Drop integration/v2.0 here when that branch is deleted
+  # (AGENTS.md, "The 2.0 integration branch").
+  def test_ci_runs_for_main_and_the_2_0_integration_branch
+    on = ci[true] || ci["on"]
+    assert_equal %w[main integration/v2.0], on.dig("push", "branches")
+    assert_equal %w[main integration/v2.0], on.dig("pull_request", "branches")
   end
 
   # A push to a pull request cancels the run for its old commit. Every other run

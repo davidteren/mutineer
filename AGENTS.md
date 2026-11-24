@@ -132,8 +132,10 @@ again after a small fix only reviews lines that did not change.
 
 ### Open as a draft, then mark it ready
 
-Each push to a ready pull request starts CI and a cubic review. So open a
-draft first, and let CI and cubic run when the pull request is ready.
+Each push to a ready pull request starts CI. It also starts a cubic review,
+unless `cubic.yaml` ignores the pull request (its `ignore` list has labels such
+as `docs-only`). So open a draft first, and let CI and cubic run when the pull
+request is ready.
 
 1. Open the pull request as a draft. `ci.yml` starts no job on a draft, and
    cubic does not review one (`check_drafts: false` in `cubic.yaml`).
@@ -150,8 +152,14 @@ draft first, and let CI and cubic run when the pull request is ready.
    values, so its real check names stay "expected". Merge only a pull request
    that is ready and has green checks from a run on its head commit.
 6. For CI on a pull request that stays a draft, or that has another base, run
-   `gh workflow run ci.yml --ref <branch>`. A contributor in a fork marks the
-   pull request ready instead.
+   `gh workflow run ci.yml --ref <branch>`. The command works only for a
+   branch in this repository. A pull request from a fork gets CI only when it
+   is ready and its base is `main` or `integration/v2.0`. When a pull request
+   from a fork must stay a draft, or has another base, the contributor asks a
+   maintainer for a CI run. The maintainer pushes that branch to this
+   repository and runs the command on it.
+7. When a ready pull request from a branch in this repository goes back to a
+   draft, its CI run in progress is cancelled.
 
 A pull request that is opened ready is not a draft, so nothing changes for
 it. That includes the release pull request and a Dependabot pull request.
@@ -283,7 +291,8 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
 5. A breaking change stays a **draft** pull request while it targets
    `main`. Label it `breaking change` and the possible major version, such as
    `v2.0`. Better: target `integration/v2.0`, where it can merge (see "The
-   2.0 integration branch").
+   2.0 integration branch"). The one exception is the pull request that
+   brings 2.0 to `main`: a maintainer marks it ready and merges it.
 
 A schedule is not a substitute: GitHub records a cron run's actor as the
 last person who edited the workflow, and that person may be a maintainer, so

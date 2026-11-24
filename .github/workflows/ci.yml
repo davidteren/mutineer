@@ -10,7 +10,9 @@ on:
     branches: [main, integration/v2.0]
     # The first three are the defaults. ready_for_review starts the run when a
     # draft becomes ready: every job below skips a draft pull request.
-    types: [opened, synchronize, reopened, ready_for_review]
+    # converted_to_draft starts a run that skips every job. Its only effect is
+    # that the concurrency group cancels the run in progress.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # release-pr.yml dispatches this on the release branch: its GITHUB_TOKEN push
   # starts no CI. The dispatched run is an early signal only; the release PR's
   # required checks come from its pull_request run once a maintainer approves it
