@@ -52,9 +52,20 @@ module Mutineer
       # @return [Boolean]
       def cache_hit?(cached)
         cached && cached["digest"] == @digest && dependencies_match?(cached) &&
-          cached.key?("load_methods") && cached.key?("timings") &&
+          cached.key?("load_methods") && cached.key?("timings") && well_formed_timings?(cached["timings"]) &&
           parallel_workers_match?(cached) && standalone_load_lines_current?(cached) &&
           partial_cache?(cached)
+      end
+
+      # True when `timings` is nil or a Hash of finite, non-negative numbers, so a
+      # hand-edited cache cannot raise in test ordering (#546; a negative cost
+      # gives `Math.log2` a non-positive argument).
+      #
+      # @api private
+      # @param timings [Object] the `"timings"` entry of a parsed coverage.json.
+      # @return [Boolean]
+      def well_formed_timings?(timings)
+        timings.nil? || (timings.is_a?(Hash) && timings.values.all? { |t| t.is_a?(Numeric) && t.finite? && !t.negative? })
       end
 
       # True when `cached` has the keys {PARTIAL_CACHE_KEYS} names.
@@ -97,7 +108,7 @@ module Mutineer
       # @return [Hash, nil] `"removed"`, `"recapture"`, and `"changed_sources"`.
       def partial_plan(cached)
         return nil unless cached.is_a?(Hash) && partial_cache?(cached)
-        return nil unless cached.key?("load_methods") && cached.key?("timings")
+        return nil unless cached.key?("load_methods") && cached.key?("timings") && well_formed_timings?(cached["timings"])
         return nil unless parallel_workers_match?(cached) && standalone_load_lines_current?(cached)
         return nil unless cached["run_inputs"] == run_inputs_digest
         return nil unless dependencies_match?(cached, except: source_rels.to_a)

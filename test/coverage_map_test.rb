@@ -2085,6 +2085,21 @@ class CoverageMapTest < Minitest::Test
     refute_empty map.tests_for(CALC, line_of("a + b"))
   end
 
+  # #546: a hand-edited run cache with a bad timing is a cache miss, not a backtrace.
+  def test_run_cache_with_a_bad_timing_is_rebuilt
+    dir = Dir.mktmpdir("mutineer-cache")
+    assert build([STRONG_TEST], cache_dir: dir).phase_a_ran
+    path = File.join(dir, "coverage.json")
+    data = JSON.parse(File.read(path))
+    ["fast", -1.0].each do |bad|
+      data["timings"] = { STRONG_TEST => bad }
+      File.write(path, JSON.generate(data))
+      map = build([STRONG_TEST], cache_dir: dir)
+      assert map.phase_a_ran, "a timing of #{bad.inspect} must miss the cache"
+      assert_equal [STRONG_TEST], map.order_tests(CALC, [STRONG_TEST])
+    end
+  end
+
   # --- Acceptance: runner Phase B selection --------------------------------
 
   def plus_mutation
