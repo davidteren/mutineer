@@ -87,8 +87,8 @@ class MergeGateRulesetTest < Minitest::Test
   end
 
   # A draft pull request starts no job, and "ready for review" starts the run.
-  # The condition is on each job: a job-level skip reports its check, and a
-  # workflow that never starts would leave a required check pending.
+  # The condition is on each job, not on the workflow trigger: a ready pull
+  # request then always starts the workflow, so its required checks report.
   def test_every_ci_job_skips_a_draft_and_ready_for_review_starts_the_run
     ci["jobs"].each { |id, job| assert_equal DRAFT_SKIP, job["if"], "job #{id} must skip a draft pull request" }
     # YAML reads the key `on` as true.

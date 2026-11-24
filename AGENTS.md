@@ -139,13 +139,16 @@ draft first, and let CI and cubic run when the pull request is ready.
    cubic does not review one (`check_drafts: false` in `cubic.yaml`).
 2. Do the review rounds on your machine. `cubic review` is free there.
 3. Mark the pull request ready (`gh pr ready`) when the full gate and the diff
-   review pass on the head commit. CI starts then.
+   review pass on the head commit. CI starts then, for a pull request into
+   `main` or `integration/v2.0`. `ci.yml` does not run for another base, such
+   as the lower pull request of a stack. Use the command in step 6 there.
 4. After that, each push starts CI again and cancels the run for the old
    commit. Fix the findings of one review round in one push.
 5. A draft has no CI result. GitHub shows a skipped job as passed, but that
-   job ran nothing. Merge only a pull request that is ready and has green
-   checks from a run on its head commit.
-6. For CI on a pull request that stays a draft, run
+   job ran nothing. A skipped matrix job shows one check without its matrix
+   values, so its real check names stay "expected". Merge only a pull request
+   that is ready and has green checks from a run on its head commit.
+6. For CI on a pull request that stays a draft, or that has another base, run
    `gh workflow run ci.yml --ref <branch>`. A contributor in a fork marks the
    pull request ready instead.
 
@@ -217,7 +220,9 @@ Post findings on the relevant code line, never in a separate summary comment.
 
 2.0 work goes to the long-lived branch `integration/v2.0`, not to `main`
 (decided by a maintainer on 2026-11-24). It holds changes that
-`main` cannot take before 2.0, such as a changed default.
+`main` cannot take before 2.0, such as a changed default. The branch is
+created from `main` when the 2.0 work starts. Until it is on origin, its
+entries in `ci.yml` match nothing.
 
 - A pull request for 2.0 targets `integration/v2.0`. Label it `v2.0`, and
   `breaking change` when it is one. The whole PR review gate above applies.

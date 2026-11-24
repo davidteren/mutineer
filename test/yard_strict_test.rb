@@ -10,6 +10,9 @@ require "tmpdir"
 class YardStrictTest < Minitest::Test
   # The repository Rakefile. With -f, rake stays in the directory it starts in.
   RAKEFILE = File.expand_path("../Rakefile", __dir__)
+  # The bundle for the child: this run's Gemfile, or the repository one when
+  # the test runs without `bundle exec`. The temporary project has no Gemfile.
+  GEMFILE = ENV.fetch("BUNDLE_GEMFILE") { File.expand_path("../Gemfile", __dir__) }
 
   # Runs the task on a project that holds only lib/thing.rb.
   # @param source [String] the Ruby source of lib/thing.rb
@@ -19,7 +22,7 @@ class YardStrictTest < Minitest::Test
     Dir.mktmpdir do |dir|
       FileUtils.mkdir(File.join(dir, "lib"))
       File.write(File.join(dir, "lib/thing.rb"), source)
-      out, status = Open3.capture2e("bundle", "exec", "rake", "-f", RAKEFILE, "yard:strict", chdir: dir)
+      out, status = Open3.capture2e({ "BUNDLE_GEMFILE" => GEMFILE }, "bundle", "exec", "rake", "-f", RAKEFILE, "yard:strict", chdir: dir)
       [out, status, Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).reject { |path| path.end_with?(".") }.sort]
     end
   end

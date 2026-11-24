@@ -63,7 +63,8 @@ against `main`.
   access or higher set labels. Without that access, a maintainer adds them.
 - **The release rules** at the end of this file and in [AGENTS.md](AGENTS.md).
 - **The extra local checks** in AGENTS.md (Minitest 6, Prism 2, the Rails
-  daemon tests, the website checks). CI runs all of them on your pull request.
+  daemon tests, the website checks). CI runs all of them when your pull
+  request is ready for review.
   Run one locally only when you change that area.
 
 ## After you open the pull request
