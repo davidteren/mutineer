@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The PostgreSQL run lock is never free while a run moves it from exclusive to shared (#556).**
+  A `--rails --daemon` run on PostgreSQL takes the exclusive run lock, copies its worker databases, and then shares the lock.
+  Before this fix it released the exclusive lock first and asked for the shared lock second.
+  For that moment no session held the lock.
+  A second run on the same test database could take it there and copy its own worker databases over the first run's. Both runs could then score mutants against the same databases, with no message.
+  The run now takes the shared lock on the same session before it releases the exclusive one.
+  A second run that asks in that moment now stops with `another Mutineer run is using <base>`.
+  A run on its own does not change.
+  MySQL keeps a guard lock across that step, so it did not have this window.
+  On SQLite a probe found no free moment on macOS and Linux, but the kernel does not promise one. Other systems are not checked (#416).
+  The other run lock limits are unchanged (#416).
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

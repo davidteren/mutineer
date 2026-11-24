@@ -991,8 +991,10 @@ module Mutineer
     end
 
     # Drop and recreate slots `0...count` from the booted test database.
-    # Holds the exclusive advisory lock only for the copy, then a shared lock
-    # for the rest of this process so a second run cannot drop those databases.
+    # Holds the exclusive advisory lock for the copy. Then takes the shared
+    # lock on the same session and only after that releases the exclusive one.
+    # The lock is never free in between, so a second run cannot drop those
+    # databases (#556). The shared lock stays for the rest of this process.
     #
     # @param count [Integer]
     # @return [void]
@@ -1011,17 +1013,17 @@ module Mutineer
           name = postgres_worker_database(base, slot)
           recreate_from_template(conn, name, base)
         end
+        # Share first, then release. The locks one session holds do not
+        # conflict, and the unlock frees only the exclusive lock (#556).
+        raise "another Mutineer run is using #{base}" unless try_lock(conn, base, shared: true)
+
+        unlock(conn, base)
       rescue StandardError => e
         unlock(conn, base)
         conn.close
         raise provision_wrapped?(e) ? e : provision_failure(base, base, e.message)
       end
 
-      unlock(conn, base)
-      unless try_lock(conn, base, shared: true)
-        conn.close
-        raise "another Mutineer run is using #{base}"
-      end
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} postgres worker database(s) from #{base}"
     end
@@ -1172,7 +1174,8 @@ module Mutineer
       conn.exec_params(sql, [k1, k2]).getvalue(0, 0) == "t"
     end
 
-    # Release one advisory lock this session holds for `base`.
+    # Release the exclusive advisory lock this session holds for `base`.
+    # A shared lock that the same session holds stays.
     #
     # @param conn [PG::Connection]
     # @param base [String]

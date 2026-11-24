@@ -187,6 +187,47 @@ class DaemonPostgresTest < Minitest::Test
     stop_holder(holder)
   end
 
+  # #556: the run lock is never free while provision moves from exclusive to
+  # shared. A second session asks for the exclusive lock after every statement
+  # of the lock session. It must never get it.
+  def test_provision_never_frees_the_run_lock
+    out, status = fixture_ruby(<<~RUBY)
+      require "./config/environment"
+      require "pg"
+      require #{WORKER_DB.inspect}
+      db = Mutineer::RailsWorkerDb
+      keys = db.lock_keys(#{BASE.inspect})
+      probe = PG.connect(#{pg_connect_literal('dbname: Mutineer::RailsWorkerDb::MAINTENANCE_DATABASE')})
+      ask = ->(function) { probe.exec_params("SELECT \#{function}($1, $2)", keys).getvalue(0, 0) == "t" }
+      seen = []
+      free_after = []
+      open_session = db.method(:open_maintenance_connection)
+      db.define_singleton_method(:open_maintenance_connection) do |hash, base|
+        conn = open_session.call(hash, base)
+        %i[exec exec_params].each do |name|
+          conn.define_singleton_method(name) do |*args|
+            result = super(*args)
+            seen << args.first
+            if ask.call("pg_try_advisory_lock")
+              free_after << args.first
+              ask.call("pg_advisory_unlock")
+            end
+            result
+          end
+        end
+        conn
+      end
+      db.provision(1)
+      puts "LOCK_STATEMENTS=\#{seen.count { |sql| sql.include?("advisory") }}"
+      puts "FREE_AFTER=\#{free_after.inspect}"
+      puts "WORKER_JOINS=\#{ask.call("pg_try_advisory_lock_shared")} SECOND_RUN_STARTS=\#{ask.call("pg_try_advisory_lock")}"
+    RUBY
+    assert status.success?, out
+    assert_includes out, "LOCK_STATEMENTS=3"
+    assert_includes out, "FREE_AFTER=[]"
+    assert_includes out, "WORKER_JOINS=true SECOND_RUN_STARTS=false"
+  end
+
   # A mutant fork frees its copy of the lock client at its next GC. That must
   # not end the parent's session, or a second run could drop live databases.
   def test_the_lock_survives_a_fork_child_that_frees_its_copy
