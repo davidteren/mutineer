@@ -1,0 +1,43 @@
+.expectation-fit/decisions/cli-contract-and-exit-codes.md
+  s_13efe4cc102d28::t_cc5b8aea0a2f22 12
+CHANGELOG.md
+  s_13efe4cc102d28::t_5ab0ada05fc53d 9-19
+STABILITY.md
+  s_13efe4cc102d28::t_f17be793dca9e6 60,145-147
+docs/cli.md
+  s_13efe4cc102d28::t_d125decfd778d6 117,138
+docs/rails-setup.md
+  s_13efe4cc102d28::t_238f6653c5794b 203,275,296,303-304,327
+lib/mutineer/cli.rb
+  s_13efe4cc102d28::t_b2f2e61a412cce 105-106,593,654,793-796,808-817
+lib/mutineer/daemon_client.rb
+  s_13efe4cc102d28::t_b2149bac9fc58c 280-294,299,301,303
+lib/mutineer/external_backend.rb
+  s_13efe4cc102d28::t_2fc58764dca6bb 36-38,78-81,158-162,164-165,167,188,192-202,244-245,247-249,597-600,604-605,618,633-658,685-686,731-732,751-752
+lib/mutineer/runner.rb
+  s_13efe4cc102d28::t_711a208acf0493 383-389,425,449,451-452,460
+test/cli_test.rb
+  s_13efe4cc102d28::t_ed83680ec90df7 1737
+test/daemon_client_env_test.rb
+  s_13efe4cc102d28::t_c9acbaad7e3076 291-311
+test/external_backend_test.rb
+  s_13efe4cc102d28::t_3a1030c6229579 424-500
+test/runner_external_test.rb
+  s_13efe4cc102d28::t_683d253601f47d 389-396,398-487,489,491-493,495-532,534-621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7de1c4c1f7e18680c47fd27f1574999e7b1c1c0d",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
