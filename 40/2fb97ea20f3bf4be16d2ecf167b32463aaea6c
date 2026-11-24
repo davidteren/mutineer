@@ -1,0 +1,25 @@
+.github/workflows/ci.yml
+  s_d5f746aa3164a1::t_5efdac7bc03663 4-5
+  s_d5f746aa3164a1::t_74dcc4c4517719 6,8,10
+AGENTS.md
+  s_d5f746aa3164a1::t_075b5c842efd87 235-238
+  s_d5f746aa3164a1::t_5efdac7bc03663 178
+  s_d5f746aa3164a1::t_74dcc4c4517719 98-99,168,175-177,179-193
+  s_d5f746aa3164a1::t_ec3c8656996fe9 194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "402fb97ea20f3bf4be16d2ecf167b32463aaea6c",
+  "prompts": {},
+  "sessions": {
+    "s_d5f746aa3164a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd5db3a7-37c9-4d75-ab61-0239d1e6c8e0",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
