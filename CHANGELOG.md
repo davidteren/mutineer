@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format is based on
   After the upgrade, `survived` can fall and `unplaceable` can rise for such a file, so a score and a `--threshold` result can change.
   The shapes are in 0 of 47,030 Ruby files of 744 gems and in 0 of 482 files of the Fizzy sample app and Mutineer's `lib/`.
   Still open: other guards, such as `return if defined?(Cell)` at the top of a file (#573).
+- **Reload no longer adds the condition of a conditional `skip_callback` a second time (#543).**
+  A class body that skips a callback from a concern or a parent with `if:` or `unless:`, such as `skip_callback :save, :before, :stamp, if: :quiet?` or `skip_before_action :check, only: :index`, ran that skip again on each mutant load.
+  The callback then carried the condition twice, so the condition ran twice, and a test that counts its calls failed for every mutant of the file.
+  The reload now drops a conditional skip when the class and its subclasses still have the callback they had before the load. Checked with ActiveSupport 7.2, 8.0 and 8.1.
+  When a file runs such a skip through its own method while it loads, each method of that file that makes a skip, or that gives the skip its filter or condition, is now `unplaceable` under reload, because the dropped call would not carry its mutant. `--strategy redefine` runs it.
+  After the upgrade, `killed` can fall and `survived` can rise for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
+  The gem corpus has 26 skip calls in 47,030 files, 2 with a literal condition. Fizzy has 8, 1 with `only:`. No method of Fizzy or Mutineer gets the new mark.
+  Still open: a subclass in the same file that adds the callback again before the skip, and a skip made through `send` (#578).
 
 ## [1.10.0] - 2026-11-24
 

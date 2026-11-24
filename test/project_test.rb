@@ -1723,6 +1723,58 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #543, R21 of the plan (AE16): the reload drops a conditional skip the first
+  # load applied, so a def that makes a skip the file runs at load, or that
+  # gives a load-time skip its filter or condition, is unplaceable under
+  # reload only. A file with no load-time skip call marks none.
+  def test_a_def_that_makes_a_load_time_skip_is_unplaceable_under_reload_only
+    src = <<~RUBY
+      class Note < Base
+        def self.quieten = skip_callback(:save, :before, :stamp, if: :quiet?)
+        def self.louder = quieten
+        def self.allow(**options) = skip_before_action(:check, **options)
+        def self.helper_only = 1
+        def self.inner = (def self.deep = quieten)
+        def stamp_filter = :stamp
+        def quiet_condition = :quiet?
+        def quiet? = true
+
+        quieten
+        skip_callback :save, :before, stamp_filter, if: quiet_condition
+        skip_callback :save, :after, :stamp, if: -> { quiet? }
+      end
+    RUBY
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.qualified_name, s] }
+      %w[Note.quieten Note.louder Note.allow Note.inner Note.deep Note#stamp_filter Note#quiet_condition].each do |name|
+        assert by_name.fetch(name).makes_load_time_skip, name
+        assert by_name.fetch(name).unplaceable?("reload"), name
+        refute by_name.fetch(name).unplaceable?("redefine"), name
+      end
+      %w[Note.helper_only Note#quiet?].each do |name|
+        refute by_name.fetch(name).makes_load_time_skip, name
+        refute by_name.fetch(name).unplaceable?("reload"), name
+      end
+    end
+    # No load of this file calls a skip def, as for a concern's
+    # `allow_unauthenticated_access`; a call inside another def is not a load-time call.
+    src = <<~RUBY
+      module Authentication
+        def self.allow(**options) = skip_before_action(:check, **options)
+        def self.setup = allow(only: :index)
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      refute(subjects.any?(&:makes_load_time_skip), subjects.map(&:qualified_name).inspect)
+      refute(subjects.any? { |subject| subject.unplaceable?("reload") })
+    end
+    src = "class Controller < Base\n  def self.open_up = skip_before_action(:check)\n  open_up\nend\n"
+    with_source(src) do |path|
+      assert Mutineer::Project.discover([path]).first.makes_load_time_skip, "an unconditional skip def is marked too"
+    end
+  end
+
   def test_superclass_constant_names_reads_each_constant_superclass
     program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
                                             "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \

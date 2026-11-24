@@ -260,6 +260,79 @@ class ReloadGuardsTest < Minitest::Test
     def append(*callbacks) = @callbacks.concat(callbacks)
   end
 
+  # #543: a conditional skip adds its condition to the callback, so a repeat on
+  # a mutant load adds it again. The guard drops a filter whose callback is
+  # still the entry from before the load, in the class and in each descendant
+  # that has one, and keeps every other filter for Rails.
+  def test_fresh_conditional_skips_drops_only_a_filter_the_first_load_applied
+    e = Callback.new(:before, :check)
+    other = Callback.new(:before, :other)
+    after = Callback.new(:after, :check)
+    klass = callback_class
+    klass.__callbacks = { save: Chain.new(e, other, after) }
+    with_callbacks_before_load(klass => { save: Chain.new(e, after) }) do
+      guards = Mutineer::ReloadGuards
+      assert_nil guards.fresh_conditional_skips(klass, :save, %i[before check])
+      assert_nil guards.fresh_conditional_skips(klass, "save", %i[check]), "no kind is :before"
+      assert_equal %i[before other], guards.fresh_conditional_skips(klass, :save, %i[before check other]),
+                   "other is a new entry, so Rails gets it"
+      assert_nil guards.fresh_conditional_skips(klass, :save, %i[after check])
+      args = %i[before]
+      assert_same args, guards.fresh_conditional_skips(klass, :save, args), "no filter"
+      args = []
+      assert_same args, guards.fresh_conditional_skips(klass, :save, args), "no kind and no filter"
+      args = %i[before typo]
+      assert_same args, guards.fresh_conditional_skips(klass, :save, args), "no such callback: Rails raises"
+      args = %i[around check]
+      assert_same args, guards.fresh_conditional_skips(klass, :save, args), "another kind does not count"
+      args = %i[before check]
+      assert_same args, guards.fresh_conditional_skips(callback_class, :save, args), "not in the snapshot"
+    end
+  end
+
+  # #543, R5: Rails applies a skip to each descendant too. When one of them got
+  # a new entry in this load, Rails must run the skip, so nothing is dropped.
+  # A descendant that has no such callback, or still has its old one, does not
+  # stop the drop.
+  def test_fresh_conditional_skips_keeps_a_filter_a_descendant_added_again
+    e = Callback.new(:before, :check)
+    klass = callback_class
+    kept = callback_class(klass)
+    bare = callback_class(klass)
+    klass.__callbacks = { save: Chain.new(e) }
+    kept.__callbacks = { save: Chain.new(e) }
+    bare.__callbacks = { save: Chain.new }
+    klass.define_singleton_method(:descendants) { [kept, bare] }
+    before = { klass => { save: Chain.new(e) }, kept => { save: Chain.new(e) }, bare => { save: Chain.new } }
+    with_callbacks_before_load(before) do
+      assert_nil Mutineer::ReloadGuards.fresh_conditional_skips(klass, :save, %i[before check])
+    end
+    renewed = callback_class(klass)
+    renewed.__callbacks = { save: Chain.new(Callback.new(:before, :check)) }
+    klass.define_singleton_method(:descendants) { [kept, renewed] }
+    with_callbacks_before_load(before.merge(renewed => { save: Chain.new(e) })) do
+      args = %i[before check]
+      assert_same args, Mutineer::ReloadGuards.fresh_conditional_skips(klass, :save, args)
+    end
+  end
+
+  # #543: during a load with no ActiveSupport snapshot, a conditional skip
+  # reaches the stand-in as before, with `raise: false` for a repeat.
+  def test_a_conditional_skip_without_a_snapshot_reaches_rails
+    Mutineer::ReloadGuards.during_load("unused.rb") { CallbackHost.skip_callback(:save, :before, :check, unless: :x) }
+    assert_equal({ raise: false, unless: :x }, CallbackHost.options)
+    assert_nil Mutineer::ReloadGuards.instance_variable_get(:@callbacks_before_load), "reset after the load"
+  end
+
+  # Sets the snapshot {Mutineer::ReloadGuards.fresh_conditional_skips} reads,
+  # for the block only.
+  def with_callbacks_before_load(snapshot)
+    Mutineer::ReloadGuards.instance_variable_set(:@callbacks_before_load, snapshot)
+    yield
+  ensure
+    Mutineer::ReloadGuards.instance_variable_set(:@callbacks_before_load, nil)
+  end
+
   # Stands in for an ActiveModel validator: one class, its attributes and
   # options, kept in instance variables as Rails keeps them.
   class Validator

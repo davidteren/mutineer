@@ -40,9 +40,15 @@ module Mutineer
   # too), or calls another such def of the same file by name or through
   # `super`, through any chain of such calls ({Project.mark_callback_definers!}). A reload skips a chain the class
   # already has, so a mutant there never reaches Rails (#504).
+  # `makes_load_time_skip` is true for a def that calls `skip_callback` or a
+  # `skip_*_action` (or such a def of the same file), when the file runs one of
+  # those defs while it loads, and for a def whose name a load-time skip call
+  # has in its arguments ({Project.mark_callback_definers!}). A reload drops a
+  # conditional skip the first load already applied, so a mutant there would
+  # never reach Rails (#543).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
                        :hook_block, :reload_hook_call, :enclosing_subject, :in_superclass_block,
-                       :not_reloaded, :calls_define_callbacks, keyword_init: true) do
+                       :not_reloaded, :calls_define_callbacks, :makes_load_time_skip, keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
     # @return [String] namespaced method name like `Billing::Invoice#total`.
@@ -67,8 +73,9 @@ module Mutineer
     # cannot place a def inside a superclass expression ({#in_superclass_block},
     # #492), a def that a second load does not define again ({#not_reloaded}:
     # a superclass constant's kept value, #503, or a `||=` value or a
-    # `defined?` guard, #529), or a def that calls `define_callbacks`
-    # ({#calls_define_callbacks}, #504).
+    # `defined?` guard, #529), a def that calls `define_callbacks`
+    # ({#calls_define_callbacks}, #504), or a def that feeds a skip the file runs
+    # while it loads ({#makes_load_time_skip}, #543).
     #
     # @param strategy [String] `"reload"` or `"redefine"`.
     # @return [Boolean]
@@ -76,7 +83,7 @@ module Mutineer
       return owner_unknown == true if strategy == "redefine"
 
       (hook_block == true && reload_hook_call.nil?) || in_superclass_block == true || not_reloaded == true ||
-        calls_define_callbacks == true
+        calls_define_callbacks == true || makes_load_time_skip == true
     end
 
     # Returns the body location for the subject, if any.

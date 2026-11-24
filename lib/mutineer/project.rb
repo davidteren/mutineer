@@ -225,6 +225,19 @@ module Mutineer
     # or options (`define_callbacks :save, **opts`), a call through `send`,
     # `public_send`, `__send__` or `method`, and a caller in another file.
     #
+    # It also marks the defs that feed a conditional skip the reload can drop
+    # {Subject#makes_load_time_skip} (#543): every def that calls a
+    # {CALLBACK_SKIPPERS} method (any receiver), or such a def of the file by
+    # name or through `super`, when the file calls one of those defs outside
+    # every def ({load_time_call?}); and every def of the file whose name a
+    # load-time skip call has in its arguments ({load_time_skip_arguments}).
+    # During a reload {ReloadGuards::CallbackReskipping} drops a conditional
+    # skip that the first load already applied, so a mutant in such a def would
+    # never reach Rails. A file that runs no such skip at load marks none, so a
+    # concern's `allow_unauthenticated_access` keeps its verdicts. Still
+    # unmarked (#578): a call through `send`, `public_send`, `__send__` or
+    # `method`, and a caller in another file.
+    #
     # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
     # @param program [Prism::ProgramNode] the complete parsed file.
     # @return [void]
@@ -235,33 +248,97 @@ module Mutineer
         nodes.concat(node.compact_child_nodes)
         defs << node if node.is_a?(Prism::DefNode)
       end
+      marked = defs_that_call(defs, CALLBACK_DEFINERS)
+      subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
+
+      skippers = defs_that_call(defs, CALLBACK_SKIPPERS)
+      helpers = skippers.map(&:name)
+      suppliers = load_time_skip_arguments(program, CALLBACK_SKIPPERS + helpers)
+      loaded = load_time_call?(program, helpers)
+      subjects.each do |subject|
+        subject.makes_load_time_skip = true if (loaded && skippers.include?(subject.def_node)) ||
+                                               suppliers.include?(subject.name)
+      end
+    end
+
+    # The calls that skip an ActiveSupport callback. A conditional one is a
+    # repeat on a mutant load (#543): {ReloadGuards::CallbackReskipping}.
+    CALLBACK_SKIPPERS = %i[skip_callback skip_before_action skip_after_action skip_around_action].freeze
+
+    # The defs that call one of `names`, or a def found so far by name or
+    # through `super`, through any chain of such calls.
+    #
+    # @param defs [Array<Prism::DefNode>] every def of the file.
+    # @param names [Array<Symbol>] {CALLBACK_DEFINERS} or {CALLBACK_SKIPPERS}.
+    # @return [Set<Prism::DefNode>]
+    def self.defs_that_call(defs, names)
       marked = Set.new
       helpers = Set.new
       loop do
-        found = defs.select { |d| !marked.include?(d) && calls_callback_definer?(d, helpers) }
+        found = defs.select { |d| !marked.include?(d) && calls_callback_definer?(d, helpers, names) }
         break if found.empty?
 
         marked.merge(found)
         helpers.merge(found.map(&:name))
       end
-      subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
+      marked
     end
+    private_class_method :defs_that_call
 
-    # Whether a def calls a {CALLBACK_DEFINERS} method or one of `helpers`
-    # (any receiver), or is one of `helpers` by name and calls `super`.
+    # Whether a def calls one of `names` or one of `helpers` (any receiver),
+    # or is one of `helpers` by name and calls `super`.
     #
     # @param def_node [Prism::DefNode]
     # @param helpers [Set<Symbol>] the names of the file's marked defs.
+    # @param names [Array<Symbol>] the calls to look for.
     # @return [Boolean]
-    def self.calls_callback_definer?(def_node, helpers)
+    def self.calls_callback_definer?(def_node, helpers, names = CALLBACK_DEFINERS)
       nodes = def_node.compact_child_nodes
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
-        return true if node.is_a?(Prism::CallNode) && (CALLBACK_DEFINERS.include?(node.name) || helpers.include?(node.name))
+        return true if node.is_a?(Prism::CallNode) && (names.include?(node.name) || helpers.include?(node.name))
         return true if (node.is_a?(Prism::SuperNode) || node.is_a?(Prism::ForwardingSuperNode)) &&
                        helpers.include?(def_node.name)
       end
       false
+    end
+
+    # Whether the file calls one of `names` outside every def, so the call runs
+    # when the file loads.
+    #
+    # @param node [Prism::Node]
+    # @param names [Array<Symbol>]
+    # @return [Boolean]
+    def self.load_time_call?(node, names)
+      return false if node.is_a?(Prism::DefNode)
+      return true if node.is_a?(Prism::CallNode) && names.include?(node.name)
+
+      node.compact_child_nodes.any? { |child| load_time_call?(child, names) }
+    end
+
+    # The names of the calls inside the arguments of a call of one of `names`
+    # that runs when the file loads (outside every def), such as
+    # `quiet_condition` in `skip_callback :save, :before, :stamp, if: quiet_condition`.
+    # A block or a lambda in the arguments runs later, so it is not entered.
+    #
+    # @param node [Prism::Node]
+    # @param names [Array<Symbol>] the skip calls and the file's skip defs.
+    # @param found [Set<Symbol>] the names so far.
+    # @return [Set<Symbol>]
+    def self.load_time_skip_arguments(node, names, found = Set.new)
+      return found if node.is_a?(Prism::DefNode)
+
+      if node.is_a?(Prism::CallNode) && names.include?(node.name) && node.arguments
+        stack = [node.arguments]
+        while (inner = stack.pop)
+          next if inner.is_a?(Prism::BlockNode) || inner.is_a?(Prism::LambdaNode)
+
+          found << inner.name if inner.is_a?(Prism::CallNode)
+          stack.concat(inner.compact_child_nodes)
+        end
+      end
+      node.compact_child_nodes.each { |child| load_time_skip_arguments(child, names, found) }
+      found
     end
 
     # Keeps hook defs unplaceable when the raw AST can define another method
@@ -699,6 +776,7 @@ module Mutineer
           in_superclass_block: @in_superclass_block,
           not_reloaded: @not_reloaded,
           calls_define_callbacks: false, # set by Project.mark_callback_definers!
+          makes_load_time_skip: false,   # set by Project.mark_callback_definers!
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
           def_node: node,

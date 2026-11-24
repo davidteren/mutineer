@@ -10,14 +10,17 @@ module Mutineer
   #
   # - `enum` raises because the enum's methods already exist (#378).
   # - `skip_callback` (and `skip_before_action`, which calls it) raises because
-  #   the first run already removed the callback (#384).
+  #   the first run already removed the callback (#384). A conditional skip
+  #   (`if:` or `unless:`, also `only:` and `except:`) does not raise: it adds
+  #   its condition to the callback a second time (#543).
   # - `define_callbacks` (and `define_model_callbacks`, which calls it) gives
   #   the class and every subclass a new empty chain, so a callback that an
   #   included concern or a subclass in another file added is lost (#504).
   #
   # While {.during_load} runs, an `enum` the class had before the load skips
   # its conflict check, `skip_callback` does not raise for a callback the
-  # first run already removed (see {CallbackReskipping}), and
+  # first run already removed, and drops a conditional skip the first run
+  # already applied (see {CallbackReskipping}), and
   # `define_callbacks` skips a chain the class defined before the load (see
   # {CallbackRedefinition}).
   # The original file ran the same macros once with the full checks, so the
@@ -64,6 +67,15 @@ module Mutineer
     # parent or an included concern installed) or a callback the parent still
     # has. A skip that names neither keeps Rails' check and still raises
     # (scored `error`), so a typo is not hidden.
+    #
+    # A conditional skip (`if:` or `unless:`, with no block) does not remove
+    # the callback: Rails adds the condition to it. A repeat would add the
+    # condition a second time, so the condition would run twice (#543). Such a
+    # filter is dropped when the class, and each descendant that has the
+    # callback, still has the callback object from before the load: the first
+    # load's skip already made that entry what it is
+    # ({ReloadGuards.fresh_conditional_skips}). When one of them has a new
+    # entry, the load added the callback again, so Rails runs the skip.
     module CallbackReskipping
       # @param name [Symbol] the callback chain, such as `:save`.
       # @param filter_list [Array] the kind, the filters, and options.
@@ -72,6 +84,10 @@ module Mutineer
         return super unless ReloadGuards.loading?
 
         options = filter_list.last.is_a?(Hash) ? filter_list.pop : {}
+        if block.nil? && (options.key?(:if) || options.key?(:unless))
+          filter_list = ReloadGuards.fresh_conditional_skips(self, name, filter_list)
+          return if filter_list.nil?
+        end
         options = { raise: false }.merge(options) if ReloadGuards.repeated_skip?(self, name, *filter_list)
         super(name, *filter_list, options, &block)
       end
@@ -171,6 +187,7 @@ module Mutineer
       sizes = callback_growth_log && growth_check { RepeatedCallbacks.sizes(before) }
       @enums_before_load = {}
       @chains_before_load = {}
+      @callbacks_before_load = before
       @loading = true
       result = yield
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
@@ -178,6 +195,7 @@ module Mutineer
       result
     ensure
       @loading = false
+      @callbacks_before_load = nil
     end
 
     # Runs one step of the callback-growth check (#479). The check only
@@ -1119,6 +1137,54 @@ module Mutineer
         (filter.is_a?(Symbol) && (klass.method_defined?(filter) || klass.private_method_defined?(filter))) ||
           chain&.any? { |callback| callback.kind == kind && callback.filter == filter }
       end
+    end
+
+    # The kind and filters of a conditional skip, less each filter that the
+    # first load already applied (#543), or nil when no filter is left. A
+    # filter is dropped when {skipped_before_load?} is true for the class and
+    # is not false for any of its descendants. A filter with no such callback
+    # in the class stays, so Rails still raises for a wrong name. A class that
+    # did not exist before the load, a call with no filter, and a load with no
+    # ActiveSupport snapshot give `args` back as it is.
+    #
+    # @param klass [Class] the class calling `skip_callback`.
+    # @param name [Symbol, String] the callback chain, such as `:save`.
+    # @param args [Array] the optional kind, then the filters.
+    # @return [Array, nil] the kind and the filters left, or nil.
+    def self.fresh_conditional_skips(klass, name, args)
+      return args unless @callbacks_before_load && @callbacks_before_load[klass]
+
+      kinded = CALLBACK_KINDS.include?(args.first)
+      kind = kinded ? args.first : :before
+      filters = kinded ? args.drop(1) : args
+      targets = klass.respond_to?(:descendants) ? klass.descendants : []
+      fresh = filters.reject do |filter|
+        skipped_before_load?(klass, name.to_sym, kind, filter) == true &&
+          targets.none? { |target| skipped_before_load?(target, name.to_sym, kind, filter) == false }
+      end
+      return args if fresh.size == filters.size
+      return nil if fresh.empty?
+
+      kinded ? [kind, *fresh] : fresh
+    end
+
+    # Whether `target`'s callback of this kind and filter is the same object
+    # as an entry of its chain from before the load: true when it is, false
+    # when it is another object (the load added it again), and nil when the
+    # target has no such callback.
+    #
+    # @param target [Class] the class or a descendant.
+    # @param name [Symbol] the callback chain.
+    # @param kind [Symbol] `:before`, `:after` or `:around`.
+    # @param filter [Object] the callback's filter.
+    # @return [Boolean, nil]
+    def self.skipped_before_load?(target, name, kind, filter)
+      chain = target.respond_to?(:__callbacks) ? target.__callbacks[name] : nil
+      entry = chain&.find { |callback| callback.kind == kind && callback.filter == filter }
+      return nil unless entry
+
+      old = @callbacks_before_load[target] && @callbacks_before_load[target][name]
+      !old.nil? && old.any? { |callback| callback.equal?(entry) }
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.

@@ -256,6 +256,22 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_empty extras[:callback_growth]
   end
 
+  # #543: QuietNote's body skips its concern's `stamp` callback with
+  # `if: :quiet?`. The daemon ran that skip again for each mutant, which added
+  # the condition a second time, so `quiet?` ran twice on each save, the test
+  # of the log failed, and every `urgent?` mutant was a false kill. No test
+  # checks `urgent?`, so each of its mutants must survive.
+  def test_the_daemon_does_not_repeat_a_conditional_skip
+    config = config_for(1, model: "quiet_note")
+    config.only = "QuietNote#urgent?"
+    aggregate = nil
+    _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.total, :>, 0
+    assert_equal aggregate.total, aggregate.survived_count, "every urgent? mutant must run and survive"
+  end
+
   # #504: HelperChainNote's body defines its chain through `note_callbacks`.
   # The reload guard skips a chain the class already has, so a mutant in the
   # helper (such as `true` to `false` for `skip_after_callbacks_if_terminated`)

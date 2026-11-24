@@ -42,5 +42,21 @@ class RailsCallbackRestoreTest < Minitest::Test
     assert_equal %w[stamp own], own.fetch("log_after")
     assert_equal %w[stamp own child], own.fetch("child_log_after")
     assert_equal %w[OwnDoubled], own.fetch("grown")
+
+    # #543: probe P8 of the plan. One mutant load must not add a conditional
+    # skip's condition a second time when every class kept its old callback
+    # entry. QuietOwn adds its own conditioned callback, so it has two before
+    # and after. GrandNote adds the callback again before ChildNote's skip, so
+    # Rails must run that skip, and ChildNote gets a second condition, as
+    # before #543 (#578).
+    skips = result.fetch("conditional_skips")
+    assert_equal({ "QuietConcern" => 1, "QuietChild" => 1, "QuietLambda" => 1, "QuietOwn" => 2,
+                   "ChildNote" => 1, "GrandNote" => 1, "ProbeChild" => 1 }, skips.fetch("before"))
+    assert_equal({ "QuietConcern" => 1, "QuietChild" => 1, "QuietLambda" => 1, "QuietOwn" => 2,
+                   "ChildNote" => 2, "GrandNote" => 1, "ProbeChild" => 1 }, skips.fetch("after"))
+    quiet = { "QuietConcern" => %w[quiet? stamp], "QuietChild" => %w[quiet? stamp], "QuietLambda" => %w[quiet? stamp] }
+    assert_equal quiet, skips.fetch("logs_before")
+    assert_equal quiet, skips.fetch("logs_after")
+    assert skips.fetch("typo_raises"), "a conditional skip of a name with no callback still raises"
   end
 end
