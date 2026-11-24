@@ -95,8 +95,8 @@ Only a maintainer may waive a step, in writing on that pull request.
 On the exact pull request head commit:
 
 1. Run "Before every commit" checks, plus website checks for site changes.
-2. Review your diff against the pull request base (`main`, or the lower pull
-   request in a stack). Verify every claim and number against its source.
+2. Review your diff against the pull request base (`main`, `integration/v2.0`,
+   or the lower pull request in a stack). Verify every claim and number against its source.
 3. Never push or open a pull request with a red suite.
 4. Before the first push, run the author self-check skill
    (`.claude/skills/author-self-check/SKILL.md`; Codex and Grok see the same
@@ -165,12 +165,32 @@ issue for something a pull request found, ask what caused it:
 3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code unless a maintainer accepts it in writing on the pull request (see "Fix it in the pull request, or file an issue?").
 4. After fixes, push and check the new lines again.
 5. Require green GitHub checks on the head commit.
-6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing").
+6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing"). The one standing exception is a pull request into `integration/v2.0` (see "The 2.0 integration branch").
 
 Agents use a person's GitHub account. Start every agent comment or reply with its bold name, such as `**Codex:**`.
 Post findings on the relevant code line, never in a separate summary comment.
 
 **Stacked pull requests:** start at the bottom. When a lower pull request changes, update those above it and recheck new lines.
+
+## The 2.0 integration branch
+
+2.0 work goes to the long-lived branch `integration/v2.0`, not to `main`
+(decided by a maintainer on 2026-11-24). It holds changes that
+`main` cannot take before 2.0, such as a changed default.
+
+- A pull request for 2.0 targets `integration/v2.0`. Label it `v2.0`, and
+  `breaking change` when it is one. The whole PR review gate above applies.
+- `ci.yml` runs on pull requests into `integration/v2.0` and on pushes to it.
+  Branch protection does not cover it, so the agent checks the gate itself.
+- An agent may merge its own pull request into `integration/v2.0` when the
+  GitHub checks are green on the head commit and every review thread has a
+  reply. An agent never merges into `main`.
+- After each merge to `main`, merge `main` into `integration/v2.0`. Never
+  merge `integration/v2.0` into `main` before the 2.0 release.
+- 2.0 reaches `main` in one pull request, after the checklist in issue #284
+  is complete. A maintainer merges that pull request.
+- Nothing is released from `integration/v2.0`. The release rules below
+  apply without change.
 
 ## Releasing (manual, a maintainer approves each release)
 
@@ -212,8 +232,10 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    not release without that answer.
 4. Other work waits for the next batch. Label each pull request with the next
    version label, such as `v1.8.0` (see "Labels" above).
-5. A breaking change stays a **draft** pull request. Label it
-   `breaking change` and the possible major version, such as `v2.0`.
+5. A breaking change stays a **draft** pull request while it targets
+   `main`. Label it `breaking change` and the possible major version, such as
+   `v2.0`. Better: target `integration/v2.0`, where it can merge (see "The
+   2.0 integration branch").
 
 A schedule is not a substitute: GitHub records a cron run's actor as the
 last person who edited the workflow, and that person may be a maintainer, so
