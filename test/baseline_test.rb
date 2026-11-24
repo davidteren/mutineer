@@ -243,6 +243,20 @@ class BaselineTest < Minitest::Test
     end
   end
 
+  # #303: with LANG unset Ruby reads files as US-ASCII. A survivor line with a
+  # non-ASCII character must still load, not crash the run with exit 1.
+  def test_load_reads_a_non_ascii_baseline_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "base.json")
+      doc = baseline_doc(%w[aaa], score: 90.0)
+      doc["survivors"].first["diff"] = "-    \"caf\u00e9\" if price >= 100\n"
+      File.write(path, JSON.generate(doc))
+      base = with_ascii_default_external { Mutineer::Baseline.load(path) }
+      assert_instance_of Mutineer::Baseline, base
+      assert_equal 90.0, base.score
+    end
+  end
+
   def test_load_raises_config_error_on_missing_file
     assert_raises(Errno::ENOENT) { Mutineer::Baseline.load("/no/such/baseline.json") }
   end
@@ -308,10 +322,13 @@ class BaselineTest < Minitest::Test
 
   def test_json_report_carries_additive_baseline_block
     base = Mutineer::Baseline.new(baseline_doc([]))
-    results = [Mutineer::Result.killed, survivor("ccc")]
+    killed = Mutineer::Result.killed.with(subject: subject,
+                                          mutation: mutation_at("100", "0", :literal_mutation),
+                                          id: "killedbase001")
+    results = [killed, survivor("ccc")]
     doc = JSON.parse(render(results, base.diff(agg(*results)), format: "json"))
 
-    assert_equal "2.0", doc["schema_version"] # 2.0 corrects fixed_survivors and adds baseline completeness.
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 2.0 = baseline completeness, fixed_survivors corrected; 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
     assert doc["baseline"]["regressed"]
     assert_equal 1, doc["baseline"]["new_survivors"].size
     assert_equal "ccc", doc["baseline"]["new_survivors"].first["id"]

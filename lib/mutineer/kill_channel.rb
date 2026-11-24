@@ -9,6 +9,7 @@ module Mutineer
   #   ["start"]                         the recorder is armed; once, first
   #   ["pass", file, name, id]          a test passed against the mutant
   #   ["kill", file, name, id]          a test failed or errored: it killed it
+  #   ["unavailable", file, name, id]   a test ran but its database failed
   #   ["parallel"]                      the run reached its parallel tests; once
   #   ["skip"]                          what runs next, a run without --matrix
   #                                     skips (see below)
@@ -27,20 +28,22 @@ module Mutineer
   #
   # Minitest runs its serial test classes first and its `parallelize_me!`
   # classes after them, and the stop at the first failure of a run without
-  # `--matrix` skips everything after a serial kill. `parallel` marks where the
+  # `--matrix` skips everything after a serial failure. `parallel` marks where the
   # parallel tests begin, so the parent can tell a kill that the stop would have
   # followed from one it could not. `cleanup` marks where the tests end and the
   # suite's own hooks begin (RSpec `after(:suite)`). It decides no verdict
   # (the `skip` regions do); it only marks a later test line as out of order.
   #
-  # After the first serial kill, a run without `--matrix` skips every later
+  # After the first serial failure, a run without `--matrix` skips every later
   # test and every later test class or example group, but it still runs the
   # rest of the code around the failing test: the remainder of its Minitest
   # class `run` wrapper, the `after(:all)` hooks of its RSpec groups, and the
   # suite hooks. The recorder writes `skip` as it enters something that run
   # would skip and `unskip` as that returns, so a child that exits, crashes or
   # hangs inside a skipped region is one the plain run would have stopped
-  # before (see {Isolation.finish}). The pairs nest.
+  # before (see {Isolation.finish}). Its first failure decides the verdict:
+  # killed for a real kill, error for an unavailable database outcome. The
+  # pairs nest. An unavailable result also leaves the row incomplete.
   #
   # A row is complete only with `start` and `end`, in order, and no lost line: a
   # test that exits the process, a crash, an interrupted run or a recorder that
@@ -60,6 +63,9 @@ module Mutineer
 
     # Event for a test that failed or errored against the mutant: it killed it.
     KILL = "kill"
+
+    # Event for a test whose database failed, so it provides no mutation verdict.
+    UNAVAILABLE = "unavailable"
 
     # Event that opens a recorded run.
     START = "start"
@@ -87,17 +93,18 @@ module Mutineer
 
     # What one child sent. `killed` and `ran` are sorted, unique
     # `[file, name, id]` tests (`ran` includes the killers); `lost` counts lines
-    # that could not be read, including a partial last line. `parallel` and
-    # `cleanup` say the marker arrived, and `serial_kill` that a test killed
-    # before the `parallel` marker. `skipping` counts the {SKIP} regions still
+    # that could not be read, including a partial last line, and unavailable
+    # outcomes. `parallel` and `cleanup` say the marker arrived. `serial_kill`
+    # or `serial_error` says which failure came first before `parallel`.
+    # `skipping` counts the {SKIP} regions still
     # open when the stream ended. `invalid` is set by any line out of order.
-    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :cleanup, :serial_kill, :skipping, :invalid,
+    Report = Struct.new(:killed, :ran, :started, :finished, :parallel, :cleanup, :serial_kill, :serial_error, :skipping, :invalid,
                         :lost, keyword_init: true)
 
     # Writes one test line.
     #
     # @param io [IO] the write end of the channel.
-    # @param event [String] {PASS} or {KILL}.
+    # @param event [String] {PASS}, {KILL}, or {UNAVAILABLE}.
     # @param file [String] the file that defines the test.
     # @param name [String] the test's display name, e.g. `CalculatorTest#test_add`.
     # @param id [String] what tells the test apart from others with its file and
@@ -169,7 +176,7 @@ module Mutineer
     # @return [Report]
     def self.parse(buffer)
       report = Report.new(killed: [], ran: [], started: false, finished: false, parallel: false, cleanup: false,
-                          serial_kill: false, skipping: 0, invalid: false, lost: 0)
+                          serial_kill: false, serial_error: false, skipping: 0, invalid: false, lost: 0)
       buffer.dup.force_encoding(Encoding::UTF_8).each_line do |line|
         fields = line.end_with?("\n") ? parse_line(line) : nil
         fields ? apply(report, fields) : report.lost += 1
@@ -211,10 +218,13 @@ module Mutineer
         report.invalid = true unless open?(report) && !report.cleanup
         test = fields[1, 3]
         report.ran << test
-        return unless fields[0] == KILL
-
-        report.killed << test
-        report.serial_kill = true unless report.parallel
+        if fields[0] == UNAVAILABLE
+          report.lost += 1
+          report.serial_error = true unless report.parallel || report.serial_kill
+        elsif fields[0] == KILL
+          report.killed << test
+          report.serial_kill = true unless report.parallel || report.serial_error
+        end
       end
     end
 
@@ -238,7 +248,7 @@ module Mutineer
 
       valid =
         case fields[0]
-        when PASS, KILL then fields.size == 4
+        when PASS, KILL, UNAVAILABLE then fields.size == 4
         when START, PARALLEL, SKIP, UNSKIP, CLEANUP, LOST, FINISH then fields.size == 1
         end
       fields if valid

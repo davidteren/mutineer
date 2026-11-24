@@ -111,6 +111,12 @@ class ResultTest < Minitest::Test
     assert_equal statuses, statuses.uniq
   end
 
+  def test_unrun_count
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.killed, Mutineer::Result.killed, Mutineer::Result.unplaceable,
+                                         Mutineer::Result.skipped, Mutineer::Result.skipped])
+    assert_equal 3, agg.unrun_count
+  end
+
   def test_incomplete_when_nothing_scored_and_one_mutant_errored
     agg = Mutineer::AggregateResult.new([Mutineer::Result.error])
     assert_predicate agg, :broken_nil_score?
@@ -139,5 +145,4 @@ class ResultTest < Minitest::Test
     assert_equal 0, agg.no_verdict_count
     refute_predicate agg, :incomplete?
   end
-
 end

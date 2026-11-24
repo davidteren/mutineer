@@ -5,6 +5,9 @@ require "English"
 require "minitest/mock"
 require "timeout"
 require "tmpdir"
+require "open3"
+require "json"
+require "stringio"
 require "mutineer/config"
 require "mutineer/daemon_backend"
 
@@ -17,6 +20,32 @@ require "mutineer/daemon_backend"
 # daemon-free on purpose: they run in the default suite and fail the moment the
 # contract moves.
 class DaemonBackendContractTest < Minitest::Test
+  # #495: the daemon's clean check seconds reach the map from its coverage
+  # reply. A reply without the key reads as nil, never 0.0.
+  def test_coverage_reply_carries_clean_check_seconds
+    config = Struct.new(:project_root, :framework).new(Dir.pwd, "minitest")
+    reply = { "map" => { "a.rb:1" => ["t.rb"] }, "failed_test_files" => [], "clean_check_seconds" => 1.5 }
+    map = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(reply), config)
+    assert_in_delta 1.5, map.clean_check_seconds
+    old = reply.except("clean_check_seconds")
+    assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(old), config)
+                                      .clean_check_seconds
+  end
+
+  # A reply whose map is empty (no test covers the sources) still ran the
+  # clean check, so its seconds reach the timing even though no map returns.
+  def test_an_empty_coverage_reply_keeps_its_clean_check_seconds
+    config = Struct.new(:project_root, :framework).new(Dir.pwd, "minitest")
+    reply = { "map" => {}, "failed_test_files" => [], "clean_check_seconds" => 2.5 }
+    timing = {}
+    map = nil
+    capture_io do
+      map = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(reply), config, timing)
+    end
+    assert_nil map
+    assert_in_delta 2.5, timing[:clean_check_seconds]
+  end
+
   # The JobPlan methods DaemonBackend calls across the module boundary.
   SHARED = %i[collect_jobs filter_since scope_since coverage_selection load_verdict test_load_roots source_dirs
               sweep_orphans abort_if_unclean!].freeze
@@ -96,9 +125,251 @@ class DaemonBackendContractTest < Minitest::Test
       assert boot[:rails]
       refute boot[:coverage], "worker daemons boot with Coverage off; only the map-building daemon enables it"
       assert_nil boot[:capture_timeout], "no --capture-timeout: the daemon uses the default"
+      assert_equal false, boot[:verbose], "#517: no --verbose, so the capture warning stays generic"
+      config.verbose = true
+      assert_equal true, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:verbose],
+                   "#517: --verbose reaches the map-building daemon"
+      config.verbose = false
       config.capture_timeout = 300
       assert_equal 300, Mutineer::DaemonBackend.boot_config(config, [test], coverage: true)[:capture_timeout],
                    "PR #183 review: the map-building daemon gets --capture-timeout"
+    end
+  end
+
+  # #491: DaemonServer#boot! unshifts each load_paths entry in turn, so the
+  # list carries the load_path directories reversed, then the test roots.
+  # With no load_path the list is the test roots alone, as before.
+  def test_boot_config_puts_load_path_directories_behind_the_test_roots
+    Dir.mktmpdir("mutineer-contract") do |root|
+      test = File.join(root, "test/models/order_test.rb")
+      FileUtils.mkdir_p(File.dirname(test))
+      File.binwrite(File.join(root, "test/test_helper.rb"), "\n")
+      roots = Mutineer::JobPlan.test_load_roots([test])
+
+      config = Mutineer::Config.new(sources: [], tests: [test], project_root: root, framework: "minitest")
+      assert_equal roots, Mutineer::DaemonBackend.boot_config(config, [test])[:load_paths]
+
+      config.extra_load_paths = ["a", "b", "/abs/c"]
+      boot = Mutineer::DaemonBackend.boot_config(config, [test])
+      assert_equal ["/abs/c", File.join(root, "b"), File.join(root, "a"), *roots], boot[:load_paths]
+      assert_equal [File.join(root, "a"), File.join(root, "b"), "/abs/c"], boot[:extra_load_paths],
+                   "the written order, for the coverage cache key"
+    end
+  end
+
+  # Only a parallel worker daemon gets the shared names: one worker shares
+  # nothing, so its daemon runs no shared-database check.
+  def test_boot_config_sends_shared_databases_only_to_parallel_workers
+    config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest",
+                                  shared_databases: %w[cable])
+
+    assert_equal %w[cable], Mutineer::DaemonBackend.boot_config(config, [], parallel: true)[:shared_databases]
+    assert_empty Mutineer::DaemonBackend.boot_config(config, [])[:shared_databases]
+    assert_empty Mutineer::DaemonBackend.boot_config(config, [], coverage: true)[:shared_databases]
+  end
+
+  # The daemon's database report, as RailsWorkerDb.database_names gives it.
+  TWO_DATABASES = { "names" => %w[primary cable], "primary" => "primary" }.freeze
+
+  def test_a_second_database_forces_one_worker_and_names_it
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, [], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "this app has 2 databases; Mutineer runs one worker. Parallel runs support one database."
+    assert_includes err, "under shared_databases: cable."
+  end
+
+  def test_shared_databases_lifts_the_one_worker_limit
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, %w[cable], 4) }
+
+    assert_equal 4, count
+    assert_empty err
+  end
+
+  def test_one_database_or_one_worker_keeps_the_count_without_a_warning
+    one = { "names" => %w[primary], "primary" => "primary" }
+    _out, err = capture_io do
+      assert_equal 4, worker_count_for(one, [], 4)
+      assert_equal 1, worker_count_for(TWO_DATABASES, [], 1)
+      assert_equal 3, worker_count_for(nil, [], 3), "no worker-DB adapter: nothing to count"
+    end
+    assert_empty err
+  end
+
+  # A typo matches no config. The database it meant stays counted, so the run
+  # keeps one worker, and the warning names the real configs.
+  def test_an_unknown_shared_database_warns_and_lifts_nothing
+    count = nil
+    _out, err = capture_io { count = worker_count_for(TWO_DATABASES, %w[cabel], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "shared_databases names no test database: cabel. This app has primary, cable."
+    assert_includes err, "this app has 2 databases outside shared_databases; Mutineer runs one worker."
+  end
+
+  # Each worker copies the primary database. Sharing it would leave the other
+  # database unisolated, so the run stops before any mutant, at any worker count.
+  def test_listing_the_primary_database_is_a_config_error
+    [4, 1].each do |workers|
+      error = assert_raises(Mutineer::ConfigError) { worker_count_for(TWO_DATABASES, %w[primary cable], workers) }
+      assert_includes error.message, "shared_databases lists primary, the database each worker copies."
+    end
+  end
+
+  # The first daemon lists the databases. When it cannot boot, nobody counted
+  # them, so the run must not start a second worker that could share one.
+  # A --boot app without --rails has no database routing, so it keeps its workers.
+  def test_a_failed_first_boot_keeps_one_worker_on_rails
+    client = Object.new
+    client.define_singleton_method(:start) { raise Mutineer::DaemonBootError, "boom" }
+    results = {}
+    _out, err = capture_io do
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        [true, false].each do |rails|
+          config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest",
+                                        rails: rails)
+          results[rails] = Mutineer::DaemonBackend.send(:prepare_run, config, [], 4)
+        end
+      end
+    end
+
+    assert_equal [nil, 1, nil], results[true]
+    assert_equal [nil, 4, nil], results[false]
+    assert_includes err, "daemon coverage map unavailable"
+    assert_equal 1, err.scan("could not list this app's databases (the first daemon did not boot); " \
+                             "Mutineer runs one worker.").size
+  end
+
+  # A failed lookup must not lift the guard: an uncounted database could be
+  # shared without anyone listing it.
+  def test_a_failed_database_lookup_keeps_one_worker
+    failed = { "error" => "ActiveRecord::ConnectionNotEstablished: no pool" }
+    count = nil
+    _out, err = capture_io { count = worker_count_for(failed, %w[cable], 4) }
+
+    assert_equal 1, count
+    assert_includes err, "could not list this app's databases (ActiveRecord::ConnectionNotEstablished: no pool); " \
+                         "Mutineer runs one worker."
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed, [], 1) }
+    assert_empty err, "one worker was asked for, so nothing changes"
+  end
+
+  # A failed lookup that still names the primary keeps the usage error: the
+  # run exits 2 instead of falling back to one worker.
+  def test_a_failed_lookup_still_rejects_a_listed_primary
+    failed = { "error" => "no pool", "primary" => "primary" }
+    error = assert_raises(Mutineer::ConfigError) { worker_count_for(failed, %w[primary], 4) }
+    assert_includes error.message, "shared_databases lists primary"
+
+    _out, err = capture_io { assert_equal 1, worker_count_for(failed.merge("primary" => nil), %w[primary], 4) }
+    assert_includes err, "could not list this app's databases (no pool)"
+  end
+
+  # Devin on #557 (#496): a narrowed run whose kept tests pass but cover no
+  # source line gets an empty map from a capture that worked. That is a real
+  # map: an uncovered mutant is no_coverage, as in the full run, where other
+  # tests keep the map non-empty. Without narrowing, the 1.9.0 fallback (run
+  # every test) stays.
+  def test_a_narrowed_run_keeps_an_empty_daemon_map_as_a_real_map
+    with_jobs do |jobs, config, source_map|
+      reply = { "map" => {}, "failed_test_files" => [], "clean_check_seconds" => 1.0 }
+      client = Struct.new(:coverage).new(reply)
+      map = nil
+      _out, err = capture_io do
+        map = Mutineer::DaemonBackend.send(:coverage_map_from_client, client, config, {}, narrowed: true)
+      end
+      refute_nil map, "a narrowed empty map must not fall back to every test"
+      refute_includes err, "coverage map unavailable"
+      assert_includes err, "kept cover no source line, so every mutant that did not run at load scores no_coverage"
+      refute_predicate map, :fallback?
+      never_runs = Object.new
+      def never_runs.request(**) = raise("a mutant with no covering test must not run")
+      result = Mutineer::DaemonBackend.send(:job_result, jobs.first, 0, never_runs, 0, config, map, [], source_map)
+      assert_predicate result, :no_coverage?, "job_result gives the coverage verdict, as in process"
+
+      # The fallback map of a failed build still runs every kept test.
+      broken = { "map" => {}, "error" => "boom", "load_lines" => ["app/other.rb:1"] }
+      fallback = nil
+      _out, err = capture_io do
+        fallback = Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(broken), config,
+                                                {}, narrowed: true)
+      end
+      assert_predicate fallback, :fallback?
+      assert_includes err, "the test files since_paired_tests kept"
+      runs = Object.new
+      def runs.request(**) = "killed"
+      def runs.last_cause = nil
+      result = Mutineer::DaemonBackend.send(:job_result, jobs.first, 0, runs, 0, config, fallback, [], source_map)
+      assert_predicate result, :killed?
+
+      capture_io do
+        assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, client, config, {}),
+                   "an empty map without narrowing keeps the full-suite fallback"
+      end
+      failed = { "map" => {}, "failed_test_files" => ["test/a_test.rb"] }
+      assert_raises(Mutineer::SmokeCheckError, "no coverage and a failed capture stops the run, as in process") do
+        Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(failed), config, {},
+                                     narrowed: true)
+      end
+      error = { "map" => {}, "error" => "boom" }
+      capture_io do
+        assert_nil Mutineer::DaemonBackend.send(:coverage_map_from_client, Struct.new(:coverage).new(error), config,
+                                                {}, narrowed: true), "a failed capture still falls back"
+      end
+    end
+  end
+
+  # #496: with `since_paired_tests`, the coverage daemon gets only the tests
+  # paired with the source that has a job, and still gets every source. With
+  # `--baseline` (#552 item 3), it gets every test and nothing narrows.
+  def test_since_paired_tests_narrows_the_tests_sent_to_the_daemon
+    [nil, "base.json"].each { |baseline| assert_daemon_since_tests(baseline) }
+  end
+
+  # One `--daemon` run of {test_since_paired_tests_narrows_the_tests_sent_to_the_daemon}.
+  def assert_daemon_since_tests(baseline)
+    Dir.mktmpdir("mutineer-daemon-since") do |root|
+      FileUtils.mkdir_p(File.join(root, "app"))
+      %w[a b].each { |n| File.write(File.join(root, "app/#{n}.rb"), "class Scope#{n.upcase}\n  def t(x) = x + 1\nend\n") }
+      sources = %w[app/a.rb app/b.rb].map { |s| File.join(root, s) }
+      tests = %w[test/a_test.rb test/b_test.rb]
+      config = Mutineer::Config.new(sources: sources, tests: tests, project_root: root, framework: "minitest",
+                                    since: "HEAD", since_paired_tests: true, rails: true, daemon: true,
+                                    baseline: baseline, tests_by_source: sources.zip(tests.map { |t| [t] }).to_h)
+      stop = Class.new(StandardError)
+      boots = []
+      narrowed_flags = []
+      real_prepare = Mutineer::DaemonBackend.method(:prepare_run)
+      keep_a = ->(jobs, ignored, *_rest, **_kw) { [jobs.select { |s,| s.file.end_with?("a.rb") }, ignored, jobs.size] }
+      _out, err = capture_io do
+        Mutineer::JobPlan.stub(:scope_since, keep_a) do
+          Mutineer::DaemonClient.stub(:new, lambda { |boot:, **|
+            boots << boot
+            raise stop
+          }) do
+            Mutineer::DaemonBackend.stub(:prepare_run, lambda { |*args, narrowed: false|
+              narrowed_flags << narrowed
+              real_prepare.call(*args, narrowed: narrowed)
+            }) do
+              assert_raises(stop) { Mutineer::DaemonBackend.execute(config, [Mutineer::Mutators::Arithmetic]) }
+            end
+          end
+        end
+      end
+
+      assert_equal sources, boots.first[:sources]
+      assert_equal tests, config.tests, "the caller's config keeps the full list"
+      if baseline
+        assert_equal tests.map { |t| File.join(root, t) }, boots.first[:tests]
+        refute_includes err, "--since: running"
+        assert_equal [false], narrowed_flags
+      else
+        assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
+        assert_includes err, "running 1 of 2 test files"
+        assert_equal [true], narrowed_flags, "the map build is told the list was narrowed"
+      end
     end
   end
 
@@ -131,6 +402,7 @@ class DaemonBackendContractTest < Minitest::Test
       def client.start = self
       def client.quit = nil
       def client.request(id:, **) = id.zero? ? "error" : "killed"
+      def client.last_cause = nil
 
       %i[run_serial run_parallel].each do |path|
         args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
@@ -149,6 +421,27 @@ class DaemonBackendContractTest < Minitest::Test
         assert_equal jobs[0][1], results[0].mutation
         assert_predicate results[1], :killed?
         assert_equal jobs[1][0], results[1].subject
+      end
+    end
+  end
+
+  # #388: the cause the daemon's child sent becomes the errored mutant's details.
+  def test_a_daemon_cause_reaches_the_result_on_both_paths
+    with_jobs do |jobs, config, source_map|
+      client = Object.new
+      def client.start = self
+      def client.quit = nil
+      def client.request(id:, **) = id.zero? ? "error" : "killed"
+      def client.last_cause = "ArgumentError: enum declared twice"
+
+      %i[run_serial run_parallel].each do |path|
+        args = path == :run_serial ? [jobs, config, [], nil, source_map] : [jobs, 2, config, [], nil, source_map]
+        results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+          Mutineer::DaemonBackend.send(path, *args)
+        end
+
+        assert_equal "ArgumentError: enum declared twice", results[0].details, path
+        assert_predicate results[1], :killed?
       end
     end
   end
@@ -184,6 +477,98 @@ class DaemonBackendContractTest < Minitest::Test
       end
       assert_equal %i[no_coverage unplaceable], statuses
     end
+  end
+
+  # #297: a def in a concern's hook block that reload can place goes to the
+  # daemon with the stored def in its code and the hook-def values to place it.
+  def test_a_placeable_hook_def_sends_the_stored_def
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+
+    assert_equal %i[killed], results.map(&:status)
+    assert_includes sent.first["code"], "::Mutineer::ConcernBlocks.store_hook_def do"
+    assert_match(%r{store_hook_def do\n\s*def doubled\(x\)\s+x / 2\s+end\nend}, sent.first["code"])
+    assert_equal({ "line" => 23, "name" => "doubled", "singleton" => false }, sent.first["hook_def"])
+  end
+
+  # #479 and #492: the payload carries the reload text with a call superclass
+  # kept, and the run's callback-growth log when one is set, and only then.
+  def test_the_payload_keeps_a_call_superclass_and_carries_the_growth_log
+    path = File.expand_path("fixtures/call_superclass.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "InclusionValue#switch?").first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    [nil, "/tmp/growth.log"].each do |log|
+      Mutineer::ReloadGuards.callback_growth_log = log
+      Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+        Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+      end
+    end
+
+    assert_includes sent.first["code"], "kept_superclass(::Module.nesting.first, :InclusionValue)"
+    refute sent.first.key?("callback_growth_log")
+    assert_equal "/tmp/growth.log", sent.last["callback_growth_log"]
+  ensure
+    Mutineer::ReloadGuards.callback_growth_log = nil
+  end
+
+  # The reload text the daemon payload carries for the first mutant of `only`.
+  #
+  # @return [String]
+  def payload_code(fixture, only)
+    path = File.expand_path("fixtures/#{fixture}", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: only).first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    sent = []
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    client.define_singleton_method(:request) do |payload:, **|
+      sent << payload
+      "killed"
+    end
+    Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+    sent.first["code"]
+  end
+
+  # #512: the payload wraps only the value a superclass local write sets, as
+  # in process, so the daemon child still sets the local.
+  def test_the_payload_keeps_a_superclass_that_sets_a_local
+    code = payload_code("local_superclass.rb", "Quad#four?")
+    assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
+  end
+
+  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  def test_the_payload_keeps_a_superclass_constant_the_file_assigns
+    code = payload_code("const_superclass.rb", "Row#three?")
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
   end
 
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on
@@ -246,6 +631,91 @@ class DaemonBackendContractTest < Minitest::Test
       assert_equal %i[no_coverage killed], results.map(&:status)
       assert_equal [["/p/test/order_test.rb"]] * 2, client.sent, "the daemon runs only the :maybe tests"
     end
+  end
+
+  # A combined clean check that timed out in the daemon reaches the user as a
+  # timeout: the client must pass `clean_timeouts` on to the map, or a
+  # --daemon run reports a red suite with the seed hint again (#476).
+  def test_a_daemon_clean_check_timeout_is_reported_as_a_timeout
+    with_jobs do |_jobs, config, _source_map|
+      cov = Object.new
+      def cov.start = self
+      def cov.quit = nil
+      def cov.coverage = { "map" => {}, "failed_test_files" => [], "failed_clean_tests" => ["combined suite"],
+                           "clean_timeouts" => { "combined suite" => 180 } }
+      err = assert_raises(Mutineer::SmokeCheckError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { cov }) do
+          Mutineer::DaemonBackend.build_coverage_map(config, [])
+        end
+      end
+      assert_includes err.message, "timed out after 180s"
+      refute_includes err.message, "not green"
+    end
+  end
+
+  # #500: the coverage build and the clean check get the same RUBYOPT/RUBYLIB
+  # note as a mutant (#491), for the Minitest and the RSpec error layouts.
+  def test_daemon_coverage_load_errors_name_the_dropped_load_variables
+    load_env = { "RUBYLIB" => "test/support", "BUNDLER_ORIG_RUBYLIB" => nil,
+                 "RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil }
+    with_jobs do |_jobs, config, _source_map|
+      { "minitest" => "1) Error:\nRedTest#test_x:\nLoadError: cannot load such file -- helpers",
+        "rspec" => "An error occurred while loading ./spec/x_spec.rb.\nFailure/Error: require \"helpers\"\n\n" \
+                   "LoadError:\n  cannot load such file -- helpers" }.each do |kind, detail|
+        reply = { "map" => {}, "failed_test_files" => [], "failed_clean_tests" => ["red_test.rb"],
+                  "failed_clean_details" => { "red_test.rb" => detail } }
+        cov = Object.new
+        cov.define_singleton_method(:coverage) { reply }
+        err = with_env(load_env) do
+          assert_raises(Mutineer::SmokeCheckError) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
+        end
+        assert_includes err.message, "does not pass RUBYLIB to the app", kind
+        refute_includes err.message, "test/support", kind
+      end
+
+      cov = Object.new
+      def cov.coverage = { "map" => {}, "failed_test_files" => [], "error" => "LoadError: cannot load such file -- helpers" }
+      _out, warned = capture_io do
+        with_env(load_env) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
+      end
+      assert_match(/cannot load such file -- helpers \(the daemon does not pass RUBYLIB/, warned)
+
+      # A boot failure wraps the LoadError after its own class name.
+      _out, warned = capture_io do
+        with_env(load_env) do
+          Mutineer::DaemonBackend.send(:warn_coverage_fallback,
+                                       "Mutineer::DaemonBootError: boot failed: LoadError: cannot load such file -- x")
+        end
+      end
+      assert_includes warned, "does not pass RUBYLIB to the app"
+    end
+  end
+
+  # The daemon side of the same contract: the coverage reply carries the map's
+  # `clean_timeouts`, so the client above has something to read.
+  def test_the_daemon_coverage_reply_carries_clean_timeouts
+    require "coverage"
+    require "mutineer/daemon_server"
+    server = Mutineer::DaemonServer
+    server.instance_variable_set(:@cfg, {})
+    cmap = Object.new
+    def cmap.build_via_fork(**) = self
+    def cmap.map = {}
+    def cmap.failed_test_files = []
+    def cmap.failed_clean_tests = ["combined suite"]
+    def cmap.failed_clean_details = {}
+    def cmap.clean_timeouts = { "combined suite" => 241 }
+    def cmap.clean_check_seconds = 0.5
+    def cmap.load_lines = []
+    def cmap.load_methods = []
+    reply = Coverage.stub(:running?, false) do
+      Mutineer::CoverageMap.stub(:new, ->(**) { cmap }) { server.send(:build_coverage_map) }
+    end
+    assert_equal({ "combined suite" => 241 }, reply["clean_timeouts"])
+    # #495: and the clean check seconds, which the tool reports as timing.
+    assert_in_delta 0.5, reply["clean_check_seconds"]
+  ensure
+    server&.instance_variable_set(:@cfg, nil)
   end
 
   # An empty test map still falls back to the full --test set, but the boot
@@ -384,7 +854,7 @@ class DaemonBackendContractTest < Minitest::Test
         exit!(0)
       end
       Process.detach(child)
-      orphan = File.join(config.project_root, "app/mutineer_daemon20260101-#{child}-abcdef.rb")
+      orphan = File.join(config.project_root, "app/.mutineer_daemon20260101-#{child}-abcdef.rb")
       aborting_run = lambda do |*|
         File.binwrite(orphan, "class Order; end\n")
         raise Mutineer::DaemonBootError, "daemon gave up"
@@ -422,13 +892,15 @@ class DaemonBackendContractTest < Minitest::Test
   def test_backends_carry_the_collect_jobs_ids_and_legacy_matches
     Dir.mktmpdir("mutineer-ids") do |root|
       source = File.join(root, "order.rb")
-      File.binwrite(source, SOURCE)
+      # `label` has no arithmetic, so it is the one method with no mutants (#386).
+      text = SOURCE.sub(/end\n\z/, "\n  def label\n    :order\n  end\nend\n")
+      File.binwrite(source, text)
       ops = Mutineer::MutatorRegistry.resolve(%w[arithmetic])
       probe = Mutineer::Config.new(sources: [source], project_root: root)
       jobs, = Mutineer::JobPlan.collect_jobs(probe, ops)
       refute_empty jobs
       subject = jobs.first[0]
-      legacy = Mutineer::MutantId.legacy_for_subject(subject, SOURCE, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
+      legacy = Mutineer::MutantId.legacy_for_subject(subject, text, jobs.select { |j| j[0] == subject }.map { |j| j[1] })
       ignore = legacy + jobs.reject { |j| j[0] == subject }.map { |j| j[2] }
 
       config = ->(**kw) { Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
@@ -448,6 +920,39 @@ class DaemonBackendContractTest < Minitest::Test
         # The --baseline diff needs every new id's old id to read an old-format baseline.
         refute_empty extras[:id_map]
         assert_equal extras[:id_map], run_extras[:id_map]
+        # The method counts (#386) reach every backend's report unchanged.
+        assert_equal 2, extras[:subjects]
+        assert_equal [{ subject: "Order#label", file: source, line: 6 }], extras[:unmutated_subjects]
+        assert_equal extras[:subjects], run_extras[:subjects]
+        assert_equal extras[:unmutated_subjects], run_extras[:unmutated_subjects]
+      end
+    end
+  end
+
+  # #374: a run that never forks still returns the dropped-copy ids collect_jobs recorded.
+  def test_backends_carry_dropped_copy_ids
+    Dir.mktmpdir("mutineer-copies") do |root|
+      source = File.join(root, "str.rb")
+      File.binwrite(source, "class Str\n  def a\n    \"hi\" # mutineer:disable-line\n  end\nend\n")
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      config = lambda { |**kw|
+        Mutineer::Config.new(sources: [source], project_root: root, framework: "minitest",
+                             operators: %w[literal_mutation string_literal], **kw)
+      }
+      jobs, ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config.call, ops)
+      assert_empty jobs
+      assert_equal 1, ignored.size
+      refute_empty extras[:copies]
+
+      daemon = Mutineer::DaemonClient.stub(:new, ->(**) { flunk "booted a daemon" }) do
+        Mutineer::DaemonBackend.execute(config.call(daemon: true), ops)
+      end
+      external = Mutineer::ExternalBackend.stub(:smoke_check!, ->(*) { flunk "ran the suite" }) do
+        Mutineer::Runner.execute(config.call(test_command: "false %{files}"))
+      end
+      [daemon, external].each do |_aggregate, _map, run_extras|
+        assert_equal extras[:copies], run_extras[:copies]
+        assert_equal extras[:dropped_id_map], run_extras[:dropped_id_map]
       end
     end
   end
@@ -702,7 +1207,7 @@ class DaemonBackendContractTest < Minitest::Test
       FileUtils.mkdir_p(File.join(root, "app"))
       source = File.join(root, "app/order.rb")
       File.binwrite(source, SOURCE)
-      live = File.join(root, "app/mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
+      live = File.join(root, "app/.mutineer_daemon20260101-#{Process.pid}-abcdef.rb")
       File.binwrite(live, "class Order; end\n")
       config = Mutineer::Config.new(sources: [source], tests: [], project_root: root,
                                     framework: "minitest", only: ["NoSuchMethod"])
@@ -719,10 +1224,29 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
-  # The prepare daemon holds the database lock. It must stay up until each
-  # worker daemon has booted, then quit. Quitting first lets another run drop
-  # the worker databases.
-  def test_the_prepare_daemon_stays_up_until_workers_boot
+  # #416: a serial Rails run keeps the prepare daemon until its last mutant
+  # has run, so a lock still covers the databases while the worker respawns.
+  def test_a_serial_rails_run_keeps_the_prepare_daemon_until_the_last_mutant
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { order << :worker_start; self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| order << :request; "killed" }
+
+      Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+        Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+      end
+      assert_equal %i[worker_start request request prepare_quit worker_quit], order
+    end
+  end
+
+  # A run without --rails takes no database lock, so it does not keep an idle
+  # booted app: the prepare daemon quits once the worker has booted.
+  def test_a_serial_run_without_rails_quits_the_prepare_daemon_after_the_worker_boots
     with_jobs do |jobs, config, source_map|
       order = []
       prepare = Object.new
@@ -730,16 +1254,67 @@ class DaemonBackendContractTest < Minitest::Test
       worker = Object.new
       worker.define_singleton_method(:start) { order << :worker_start; self }
       worker.define_singleton_method(:quit) { order << :worker_quit }
-      worker.define_singleton_method(:request) { |**| "killed" }
+      worker.define_singleton_method(:request) { |**| order << :request; "killed" }
 
       Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
         Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
       end
-      assert_equal :worker_start, order.first
-      assert order.index(:worker_start) < order.index(:prepare_quit)
-      assert order.index(:prepare_quit) < order.index(:worker_quit)
+      assert_equal %i[worker_start prepare_quit request request worker_quit], order
+    end
+  end
 
-      order.clear
+  # #416: a mutant request that raises ends the run, and both daemons still quit.
+  def test_a_serial_request_that_raises_still_quits_both_daemons
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| raise Mutineer::DaemonBootError, "daemon crashed 4 times" }
+
+      assert_raises(Mutineer::DaemonBootError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
+  # A prepare daemon whose quit raises must not leave the worker daemon up:
+  # the worker's quit sits in an inner ensure.
+  def test_a_failing_prepare_quit_still_quits_the_worker
+    with_jobs do |jobs, config, source_map|
+      config.rails = true
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit; raise IOError, "closed stream" }
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { order << :worker_quit }
+      worker.define_singleton_method(:request) { |**| "killed" }
+
+      error = assert_raises(IOError) do
+        Mutineer::DaemonClient.stub(:new, ->(**) { worker }) do
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare)
+        end
+      end
+      assert_equal "closed stream", error.message
+      assert_equal %i[prepare_quit worker_quit], order
+    end
+  end
+
+  # The prepare daemon holds the database lock. In a parallel run it must stay
+  # up until each worker daemon has booted, then quit. Quitting first lets
+  # another run drop the worker databases.
+  def test_a_parallel_run_keeps_the_prepare_daemon_until_workers_boot
+    with_jobs do |jobs, config, source_map|
+      order = []
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { order << :prepare_quit }
       workers = Array.new(2) do
         client = Object.new
         client.define_singleton_method(:start) { order << :worker_start; self }
@@ -757,13 +1332,121 @@ class DaemonBackendContractTest < Minitest::Test
     end
   end
 
+  # #416, gap 3: with no prepare daemon, a Rails run's one worker boots as
+  # "solo", so it takes the exclusive lock and copies its own database. A
+  # --boot run without --rails, or a run with a prepare daemon, keeps "worker".
+  def test_a_serial_run_without_a_prepare_daemon_boots_a_solo_worker_on_rails
+    with_jobs do |jobs, config, source_map|
+      roles = []
+      worker = Object.new
+      worker.define_singleton_method(:start) { self }
+      worker.define_singleton_method(:quit) { nil }
+      worker.define_singleton_method(:request) { |**| "killed" }
+      prepare = Object.new
+      prepare.define_singleton_method(:quit) { nil }
+      new_client = lambda do |boot:, **|
+        roles << boot[:db_role]
+        worker
+      end
+
+      Mutineer::DaemonClient.stub(:new, new_client) do
+        [[true, nil], [false, nil], [true, prepare]].each do |rails, prepare_client|
+          config.rails = rails
+          Mutineer::DaemonBackend.send(:run_serial, jobs, config, [], nil, source_map, prepare_client)
+        end
+      end
+      assert_equal %w[solo worker worker], roles
+    end
+  end
+
+  # #416, gap 3: a "solo" daemon provisions exactly one slot at boot. An
+  # unknown role provisions the default two, so this fails without the branch.
+  def test_a_solo_daemon_provisions_one_slot_at_boot
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    slots = []
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, ->(count) { slots << count }) do
+          Mutineer::RailsWorkerDb.stub(:prepare_worker!, -> { flunk "a solo daemon must not take only the shared lock" }) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+        end
+      end
+    end
+    assert_equal [1], slots
+  ensure
+    %i[@worker_db @schema_path @shared_databases @slot_ready].each do |ivar|
+      Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review: a solo daemon copies its database inside setup_worker_db. A
+  # LoadError from that copy (a MySQL schema.rb that requires a missing file)
+  # must raise out of setup_worker_db, so boot! replies ready false. Rescued
+  # as "routing unavailable", it would let the daemon run mutants against the
+  # app's own test database.
+  def test_a_load_error_while_a_solo_daemon_copies_raises_out_of_setup
+    require "mutineer/daemon_server"
+    require "mutineer/rails_worker_db"
+    errio = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
+    failing_copy = ->(_count) { raise LoadError, "cannot load such file -- missing_schema_helper" }
+    Mutineer::RailsWorkerDb.stub(:available?, true) do
+      Mutineer::RailsWorkerDb.stub(:ruby_schema_path, nil) do
+        Mutineer::RailsWorkerDb.stub(:provision, failing_copy) do
+          error = assert_raises(LoadError) do
+            Mutineer::DaemonServer.send(:setup_worker_db, { "db_role" => "solo" })
+          end
+          assert_includes error.message, "missing_schema_helper"
+        end
+      end
+    end
+    refute_includes errio.string, "worker-DB routing unavailable"
+  ensure
+    %i[@worker_db @schema_path @shared_databases @slot_ready @errio].each do |ivar|
+      Mutineer::DaemonServer.instance_variable_set(ivar, nil)
+    end
+  end
+
+  # #416 review (cubic): a LoadError while the daemon finds the schema file
+  # (ruby_schema_path reaches ActiveRecord::Tasks) must fail the boot, not turn
+  # routing off. Drives the real DaemonServer.run in a child process: the boot
+  # reply is ready false, the daemon exits 1, and the mutant request after it
+  # gets no verdict, so no mutant runs against the app's own test database.
+  def test_a_load_error_while_finding_the_schema_fails_the_boot_before_any_mutant
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      require "mutineer/daemon_server"
+      require "mutineer/rails_worker_db"
+      db = Mutineer::RailsWorkerDb
+      db.define_singleton_method(:available?) { true }
+      db.define_singleton_method(:ruby_schema_path) { raise LoadError, "cannot load such file -- active_record/tasks/missing" }
+      db.define_singleton_method(:provision) { |_slots| nil }
+      db.define_singleton_method(:prepare_worker!) { nil }
+      Mutineer::DaemonServer.run
+    RUBY
+    Dir.mktmpdir("mutineer-boot") do |root|
+      boot = { cmd: "boot", project_root: root, rails: true, db_role: "worker", framework: "minitest" }
+      mutant = { id: 1, worker: 0, timeout: 5, tests: [], payload: { code: "", source_file: File.join(root, "a.rb") } }
+      input = "#{JSON.generate(boot)}\n#{JSON.generate(mutant)}\n"
+      out, err, status = Open3.capture3({ "LANG" => "C.UTF-8" }, RbConfig.ruby, "-I#{lib}", "-e", script,
+                                        stdin_data: input, unsetenv_others: true)
+      replies = out.lines.map { |line| JSON.parse(line) }
+      assert_equal 1, status.exitstatus, "#{out}\n#{err}"
+      assert_equal [false], replies.map { |r| r["ready"] }, "the boot must fail and no verdict may follow\n#{out}"
+      assert_includes replies.first["error"], "LoadError: cannot load such file -- active_record/tasks/missing"
+      refute_includes err, "worker-DB routing unavailable"
+    end
+  end
+
   def test_prepare_run_keeps_the_client_until_the_caller_quits_it
     Dir.mktmpdir("mutineer-prepare") do |root|
       config = Mutineer::Config.new(sources: [], tests: [], project_root: root, framework: "minitest")
       quits = 0
       client = Object.new
       client.define_singleton_method(:start) { self }
-      client.define_singleton_method(:database_count) { 1 }
+      client.define_singleton_method(:databases) { nil }
       client.define_singleton_method(:provision) { |_count| nil }
       client.define_singleton_method(:coverage) do
         { "map" => { "app/order.rb:1" => ["test/order_test.rb"] }, "failed_test_files" => [] }
@@ -789,7 +1472,7 @@ class DaemonBackendContractTest < Minitest::Test
       quits = 0
       client = Object.new
       client.define_singleton_method(:start) { self }
-      client.define_singleton_method(:database_count) { 1 }
+      client.define_singleton_method(:databases) { nil }
       client.define_singleton_method(:provision) { |_count| raise stop }
       client.define_singleton_method(:quit) { quits += 1 }
 
@@ -806,6 +1489,7 @@ class DaemonBackendContractTest < Minitest::Test
     prepare.define_singleton_method(:quit) { order << :prepare_quit }
     worker = Object.new
     worker.define_singleton_method(:start) { order << :worker_start; raise "boot failed" }
+    worker.define_singleton_method(:quit) { order << :worker_quit }
 
     config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest")
     assert_raises(RuntimeError) do
@@ -813,10 +1497,30 @@ class DaemonBackendContractTest < Minitest::Test
         Mutineer::DaemonBackend.send(:run_serial, [], config, [], nil, {}, prepare)
       end
     end
-    assert_equal %i[worker_start prepare_quit], order
+    # The worker is quit too: a daemon whose boot was interrupted must not stay up.
+    assert_equal %i[worker_start prepare_quit worker_quit], order
+  end
+
+  # #392: a mutant that Ruby cannot load is skipped tool-side and never sent to
+  # the daemon, where it would fail to load.
+  def test_a_mutant_ruby_cannot_load_is_skipped_without_a_daemon_request
+    with_jobs do |jobs, config, source_map|
+      subject, mutation, = jobs[0]
+      client = Object.new
+      def client.request(**) = raise("the daemon must not receive an invalid mutant")
+      job = [subject, mutation.with(replacement: "("), "id-0"]
+      result = Mutineer::DaemonBackend.send(:job_result, job, 0, client, 0, config, nil, [], source_map)
+      assert_predicate result, :skipped?
+      assert_equal "id-0", result.id
+    end
   end
 
   private
+
+  # @return [Integer] DaemonBackend.worker_count_for, a private helper.
+  def worker_count_for(databases, shared, workers)
+    Mutineer::DaemonBackend.send(:worker_count_for, databases, shared, workers)
+  end
 
   # A stub daemon client whose request blocks until its worker thread is killed.
   def waiting_client(name, quits, quit_delay: 0)

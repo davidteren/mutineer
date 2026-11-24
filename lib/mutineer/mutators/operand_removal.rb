@@ -37,13 +37,15 @@ module Mutineer
 
       # Emits one mutation that keeps the left operand, then one that keeps
       # the right operand. The order is fixed, because the two mutants share
-      # a token and their occurrence ordinals tell them apart.
+      # a token and their occurrence ordinals tell them apart. A removed
+      # operand that holds a heredoc counts as declined; a kept jump does not.
       #
       # @param node [Prism::AndNode, Prism::OrNode] connector node.
       # @return [void]
       def emit(node)
         [[node.left, node.right], [node.right, node.left]].each do |kept, removed|
-          next if JUMPS.any? { |type| kept.is_a?(type) } || heredoc?(removed)
+          next if JUMPS.any? { |type| kept.is_a?(type) }
+          next decline if heredoc?(removed)
 
           @mutations << Mutation.new(
             start_offset: node.location.start_offset,

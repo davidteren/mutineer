@@ -76,13 +76,98 @@ class SiteDocsTest < Minitest::Test
     assert_empty MutineerSiteDocs.stale_files
   end
 
-  # Every built-in chain-link skip is named on the published page.
+  # Every built-in chain-link skip is named in the chain-link section.
   def test_equivalent_skips_page_names_every_chain_link_skip
     page = File.read("docs/equivalent-skips.html")
+    section = page[/<h2 id="chain-link">.*?(?=<h2)/m]
     Mutineer::Mutators::ChainLink::SKIPPED.each do |name|
-      assert_includes page, ">#{name}<", "equivalent-skips.html is missing #{name}"
+      assert_includes section, ">#{name}<", "equivalent-skips.html chain link is missing #{name}"
     end
     assert_includes page, "endless"
+  end
+
+  # Both twin pages list exactly the call-to-receiver skips.
+  def test_equivalent_skips_page_lists_exactly_the_call_to_receiver_skips
+    expected = Mutineer::Mutators::CallToReceiver::SKIPPED.map(&:to_s).sort
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="call-to-receiver">.*?(?=<h2)/m]
+    assert_equal expected, html.scan(%r{<tr><td><code>(\w+)</code>}).flatten.sort
+    markdown = File.read("docs/equivalent-skips.md")[/^## Call to receiver$.*?(?=^## )/m]
+    assert_equal expected, markdown.scan(/^\| `(\w+)`/).flatten.sort
+  end
+
+  # The endless-range section, not the rest of the page, states the literal rule.
+  def test_equivalent_skips_page_limits_the_endless_range_skip_to_literals
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="endless-range">.*\z/m]
+    markdown = File.read("docs/equivalent-skips.md")[/^## Endless range$.*\z/m]
+    [html, markdown].each do |section|
+      assert_includes section, "array or string literal"
+      refute_includes section, "capitals only"
+      refute_includes section, "a range in parentheses inside a slice"
+      assert_includes section, "ignore:"
+      assert_includes section, "hides every"
+    end
+  end
+
+  # Every call whose endless-range arguments are skipped is named on both pages.
+  def test_equivalent_skips_page_names_every_range_slice_call
+    html = File.read("docs/equivalent-skips.html")
+    md = File.read("docs/equivalent-skips.md")
+    Mutineer::Mutators::RangeLiteral::SLICE_CALLS.each do |name|
+      assert_includes html, "<code>#{name}</code>", "equivalent-skips.html is missing #{name}"
+      assert_includes md, "`#{name}`", "equivalent-skips.md is missing #{name}"
+    end
+  end
+
+  # The unused each/map skip is on both twins, in its own section.
+  def test_equivalent_skips_page_describes_the_unused_each_map_skip
+    phrases = [
+      "each", "map", "collection_method", "declined", "multiple assignment", "argument", "block",
+      "ensure", "while", "all?", "4 of 23"
+    ]
+    html = File.read("docs/equivalent-skips.html")[/<h2 id="collection-method">.*?(?=<h2|<\/article>)/m]
+    markdown = File.read("docs/equivalent-skips.md")[/^## Collection method\n.*?(?=^## |\z)/m]
+    phrases.each do |phrase|
+      assert_includes html, phrase, "equivalent-skips.html is missing #{phrase}"
+      assert_includes markdown, phrase, "equivalent-skips.md is missing #{phrase}"
+    end
+    html_intro = File.read("docs/equivalent-skips.html")[/\A.*?(?=<h2)/m]
+    md_intro = File.read("docs/equivalent-skips.md")[/\A.*?(?=^## )/m]
+    %w[collection-method chain-link call-to-receiver range].each do |name|
+      assert_includes html_intro, name, "equivalent-skips.html intro is missing #{name}"
+      assert_includes md_intro, name, "equivalent-skips.md intro is missing #{name}"
+    end
+  end
+
+  # The present? triage heading sits inside Call to receiver, before Endless range.
+  def test_present_survivor_triage_sits_inside_call_to_receiver
+    html = File.read("docs/equivalent-skips.html")
+    section = html[/<h2 id="call-to-receiver">.*?(?=<h2 id="endless-range">)/m]
+    assert_includes section, '<h3 id="triage-a-present-survivor">'
+    markdown = File.read("docs/equivalent-skips.md")
+    md_section = markdown[/^## Call to receiver$.*?(?=^## )/m]
+    assert_includes md_section, "### Triage a `present?` survivor"
+  end
+
+  # The subsection names the gap and both ways to suppress one site.
+  def test_present_survivor_triage_names_the_gap_and_both_suppressions
+    html = File.read("docs/equivalent-skips.html")
+    section = html[/<h3 id="triage-a-present-survivor">.*?(?=<h2)/m]
+    assert_includes section, "present?"
+    assert_includes section, '""'
+    assert_includes section, "ignore:"
+    assert_includes section, "mutineer:disable-line call_to_receiver"
+
+    markdown = File.read("docs/equivalent-skips.md")
+    md_section = markdown[/^### Triage a `present\?` survivor$.*?(?=^## )/m]
+    assert_includes md_section, "present?"
+    assert_includes md_section, '""'
+    assert_includes md_section, "ignore:"
+    assert_includes md_section, "mutineer:disable-line call_to_receiver"
+  end
+
+  # The suppression guide links readers to the present? triage subsection.
+  def test_results_page_links_to_present_survivor_triage
+    assert_includes File.read("docs/results.md"), "equivalent-skips.html#triage-a-present-survivor"
   end
 
   # The Rails guide is in the primary nav, and every YAML recipe parses.
@@ -99,7 +184,7 @@ class SiteDocsTest < Minitest::Test
     assert_includes page, "--threshold"
     assert_includes page, "GitLab CI"
     blocks = page.scan(/```yaml\n(.*?)```/m).flatten
-    assert_equal 2, blocks.size
+    assert_equal 3, blocks.size
     blocks.each do |body|
       loaded = YAML.safe_load(body)
       assert_kind_of Hash, loaded

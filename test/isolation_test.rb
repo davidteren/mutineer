@@ -28,6 +28,20 @@ class IsolationTest < Minitest::Test
     end
   end
 
+  # #388: the cause reaches `details`, not only stderr.
+  def test_unhandled_exception_names_its_cause
+    result = nil
+    capture_subprocess_io do
+      result = Mutineer::Isolation.run { raise ArgumentError, "enum declared twice" }
+    end
+
+    assert_equal "ArgumentError: enum declared twice", result.details
+  end
+
+  def test_exit_two_without_a_cause_keeps_its_details
+    assert_equal "child exited with status 2", Mutineer::Isolation.run { 2 }.details
+  end
+
   # --- stdout silencing at the fork boundary ------------------------------
   # The test runners do not silence output; Isolation.run does it once, right
   # after fork. These cases replace the runner-level silencing tests.
@@ -149,7 +163,7 @@ class IsolationTest < Minitest::Test
   def test_nesting_keywords_mixed_simple_and_compact
     Object.const_set(:OuterNS, Module.new) unless Object.const_defined?(:OuterNS)
     OuterNS.const_set(:Mid, Module.new) unless OuterNS.const_defined?(:Mid)
-    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep)
+    OuterNS::Mid.const_set(:Deep, Class.new) unless OuterNS::Mid.const_defined?(:Deep, false)
     assert_equal [["module", "OuterNS"], ["class", "Mid::Deep"]],
                  Mutineer::Isolation.nesting_keywords(["OuterNS", "Mid::Deep"])
   end
@@ -167,6 +181,37 @@ class IsolationTest < Minitest::Test
       assert_equal File.join(File.realpath(dir), "lib"), File.dirname($loaded_from)
       # Hidden, so Zeitwerk never lists it as a constant file (#253).
       assert_match(/\A\.mutineer_mutant/, File.basename($loaded_from))
+    end
+  end
+
+  # #364: each mutant load assigns the file's constants again. Ruby's
+  # "already initialized constant" warning must not print, and the warning
+  # level must be back before the tests run.
+  def test_apply_whole_file_does_not_warn_about_reassigned_constants
+    Dir.mktmpdir do |dir|
+      code = "module Isolation364; LIMIT = 10; end\n"
+      source = File.join(dir, "x.rb")
+      verbose = $VERBOSE
+      $VERBOSE = false
+      _, err = capture_io { 2.times { Mutineer::Isolation.apply_whole_file(code, source) } }
+      assert_equal false, $VERBOSE
+      refute_match(/already initialized constant|previous definition/, err)
+    ensure
+      $VERBOSE = verbose
+    end
+  end
+
+  # #295: another run's sweep can run while this mutant loads. The file is
+  # locked and named for a live pid, so the sweep leaves it in place.
+  def test_a_sweep_during_load_keeps_the_mutant_file
+    Dir.mktmpdir do |dir|
+      code = <<~RUBY
+        $kept = Mutineer::JobPlan.sweep_orphans([File.dirname(__FILE__)]).include?(__FILE__) && File.exist?(__FILE__)
+        $locked = File.open(__FILE__) { |f| f.flock(File::LOCK_EX | File::LOCK_NB) == false }
+      RUBY
+      Mutineer::Isolation.apply_whole_file(code, File.join(dir, "x.rb"))
+      assert $kept, "the sweep must not delete a file that is loading"
+      assert $locked, "the file is locked while it loads"
     end
   end
 
@@ -500,4 +545,48 @@ class IsolationTest < Minitest::Test
     refute result.kills.complete
   end
 
+  # #288: the child's diagnostic line can quote DATABASE_URL.
+  def test_error_diagnostic_hides_the_database_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    result = nil
+    _, err = capture_subprocess_io do
+      result = Mutineer::Isolation.run { raise "no connection: #{url}" }
+    end
+
+    assert_predicate result, :error?
+    assert_includes err, "[mutineer-child] RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db"
+    refute_includes err, "s3cret"
+    assert_equal "RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db", result.details
+  ensure
+    ENV["DATABASE_URL"] = saved
+  end
+
+  # #392: a redefine snippet that Ruby cannot load raises the guard's own error
+  # before `load`, so the fork scores `error` and runs no test.
+  def test_apply_surgical_rejects_a_snippet_ruby_cannot_load
+    source = "def mutineer_surgical_probe(a)\n  a + 1\nend\n"
+    Dir.mktmpdir("mutineer-surgical") do |dir|
+      path = File.join(dir, "probe.rb")
+      File.write(path, source)
+      subject = Mutineer::Project.discover([path]).first
+      mutation = Mutineer::Mutators::Arithmetic.new.mutations_for(subject, source).first.with(replacement: "(")
+      error = assert_raises(RuntimeError) { Mutineer::Isolation.apply_surgical(mutation, subject, source) }
+      assert_equal "surgical snippet failed to reparse", error.message
+
+      # In the fork, the raise stops the block before the tests would run.
+      marker = File.join(dir, "tests_ran")
+      result = nil
+      capture_subprocess_io do
+        result = Mutineer::Isolation.run do
+          Mutineer::Isolation.apply_surgical(mutation, subject, source)
+          File.write(marker, "1")
+          0
+        end
+      end
+      assert_predicate result, :error?
+      refute_path_exists marker
+    end
+  end
 end

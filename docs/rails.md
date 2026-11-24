@@ -7,12 +7,12 @@ This guide covers four stages. Stop at the stage that fits your team.
 It does not replace a file you already wrote.
 Pass `--force` to replace one.
 
-See the [README](https://github.com/davidteren/mutineer#github-action) and
-[agent and CI guide](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
+See the [CI guide](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#github-action) and
+[agent recipes](https://davidteren.github.io/mutineer/agentic-coding.html#action) for all Action inputs.
 
 ## One model locally
 
-Add `gem "mutineer", group: :test` to your Gemfile and run `bundle install`.
+Add `gem "mutineer", group: :test, require: false` to your Gemfile and run `bundle install`.
 Create the configuration, then run Mutineer on one model and its test:
 
 ```sh
@@ -22,6 +22,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --test test/models/o
 
 Review each survivor. Add a test for a missed behaviour, or record why the change
 is equivalent before ignoring it. Start without a score threshold.
+Full first-run steps: [First run to steady state](https://github.com/davidteren/mutineer/blob/main/docs/getting-started.md).
 
 ## Report-only in CI
 
@@ -78,7 +79,11 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
       - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
         with:
           sources: app/models
           since: none
@@ -95,6 +100,32 @@ unset in `.mutineer.yml`. Keep `since: none` to scan all chosen sources
 on every pull request, including when only tests change. This avoids a workflow
 edit for each PR, but can take longer than a scan of changed source lines. Add a
 `threshold` when the chosen folders are ready.
+
+```yaml
+name: Mutation testing
+"on": pull_request
+jobs:
+  mutineer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      # A database-backed app also needs the database service and a
+      # `bin/rails db:prepare` step from your test workflow.
+      - uses: davidteren/mutineer@v1
+        env:
+          RAILS_ENV: test
+        with:
+          sources: app/models
+          since: none
+          rails: true
+          use-bundler: true
+          baseline: .mutineer/baseline.json
+          extra-args: "--no-fail-fast"
+```
 
 On `pull_request` events, omitting `since:` normally scans changed source lines
 against the PR's base commit. The Action tries the base branch tip if needed. If
@@ -115,7 +146,8 @@ mutineer:
 ```
 
 Models without a conventionally named test are skipped with a warning, even if
-other tests cover them. To include a model covered by differently named tests,
+other tests cover them. The report counts those models and their mutants.
+To include a model covered by differently named tests,
 pass the relevant test files explicitly. For example:
 
 ```sh
@@ -134,14 +166,21 @@ Add `--threshold 90` when the chosen folders are ready.
 
 Mutineer sets `PARALLEL_WORKERS=1`, so `parallelize` in `test_helper.rb` starts no Rails workers during a mutant run.
 A `--test-command` script that sets `PARALLEL_WORKERS` again turns the workers back on.
-Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer#rails-parallel-tests-spring-bootsnap-and-redis).
+Details: [Rails parallel tests, Spring, Bootsnap, and Redis](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#rails-parallel-tests-spring-bootsnap-and-redis).
 
 ## Daemon
 
 `--daemon` gives each worker its own test database.
 It works with Minitest on a SQLite file, PostgreSQL, or MySQL 8 (`mysql2` or `trilogy`).
-MariaDB is not tested. MySQL 5.7 is not supported.
+MariaDB and MySQL 9 or later are not tested: `--daemon` prints a warning and runs.
+If Mutineer cannot read the server version, it prints a warning and runs.
+On MySQL older than 8.0 (such as 5.7), `--daemon` stops the run before it copies any database.
+Pass `--no-daemon` (or set `daemon: false`) there.
 An app with more than one database runs one worker.
+On Rails 7.1 or later, list the databases your tests never use in `shared_databases`, and the workers run in parallel.
+A mutant scores `error` when a shared database still holds a connection after its tests.
+Transactional tests open a connection to every database with a test pool, so check that caveat first.
+See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database).
 On another adapter, `--daemon` stops the run with an error before it scores any mutant.
 The [support matrix](https://github.com/davidteren/mutineer#is-it-production-ready) lists each case.
 Leave `daemon` commented in `.mutineer.yml` until that matrix says your app fits.

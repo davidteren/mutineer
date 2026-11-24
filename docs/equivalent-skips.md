@@ -1,8 +1,14 @@
 # Equivalent skips
 
 Mutineer skips some code changes to reduce results that rarely help improve tests.
-These built-in skips cannot be turned off. Chain-call skips use the method name
-only, so they are not always equivalent. Endless-range skips are equivalent.
+These built-in skips cannot be turned off. Chain-call skips use the method
+name only, so they are not always equivalent. The endless-range skip applies
+only when the receiver is an array or string literal, where `(1..)` and
+`(1...)` select the same elements.
+Mutineer counts every skip on this page when its operator runs. The collection-method,
+rescue-body, chain-link, call-to-receiver and range operators are not in the default set, so their skips
+are counted only when `--operators` selects them. The dry run prints the count,
+and the JSON report gives it in `summary.declined_by_operator`.
 
 For an equivalent mutant that does appear, use `# mutineer:disable-line` or an
 `ignore:` entry and record a reason. An ignore mapping contains an `id` and an
@@ -12,16 +18,16 @@ is not ignored. `mutineer triage` prints these entries using survivor ids from a
 JSON report. Select survivors with `--id ID` (repeat it for more than one), or
 use `--all` for every survivor. Supply the reason with the required `--reason TEXT`
 argument. The command does not edit files. See
-[Suppressing equivalent mutants](https://github.com/davidteren/mutineer#suppressing-equivalent-mutants).
+[Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
 
 ## Chain link
 
-The `chain_link` operator removes a call from the middle of a chain.
-The `call_to_receiver` operator removes the last call. Both skip the names below
-without checking the receiver or next call. Conversions and copies often leave
-the result unchanged. Removing a middle `new` sends the next call to the class.
-That can raise an error or reach a class method that builds the instance itself.
-Removing a final `new` leaves the class in place of an instance.
+The `chain_link` operator removes a call from the middle of a chain. It skips
+the names below without checking the receiver or next call. Conversions and
+copies often leave the result unchanged. Removing a middle `new` sends the next
+call to the class. That can raise an error or reach a class method that builds
+the instance itself. The `call_to_receiver` operator has its own, shorter list:
+see [Call to receiver](#call-to-receiver).
 
 | Name | Why it is skipped |
 |------|-------------------|
@@ -45,6 +51,181 @@ Removing a final `new` leaves the class in place of an instance.
 | `itself` | Returns the receiver. Dropping it changes nothing. |
 | `new` | The next call goes to the class. That raises, or it is a class method. |
 
+## Call to receiver
+
+The `call_to_receiver` operator replaces the last call of a chain with its
+receiver. It does not use the `chain_link` list. It skips only the names below,
+by name only. It replaces the other conversions, such as `to_s` and `to_i`. On
+the last call, a conversion decides the type of the value that the expression
+returns, so a test can check it. Some of those mutants are equivalent, for
+example `to_s` on a value that is already a string, or inside string
+interpolation. Suppress them with `# mutineer:disable-line call_to_receiver` or an `ignore:`
+entry, as the top of the page says. Scope the marker to the operator,
+as in `# mutineer:disable-line call_to_receiver -- already a String`.
+A scoped marker keeps mutants from other operators.
+It hides every `call_to_receiver` mutant on that line.
+An `ignore:` entry with the survivor `id` suppresses only that one mutant.
+
+| Name | Why it is skipped |
+|------|-------------------|
+| `new` | The class takes the place of an instance, so almost any use raises. |
+| `dup` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
+| `clone` | Copy. The mutant shows when code later changes the copy or the original, or compares the result with the original by identity. |
+| `freeze` | Returns the receiver, now frozen. A `frozen?` check or a later write shows the difference. |
+| `itself` | Returns the receiver. |
+| `to_set` | For common uses of `include?` and `empty?`, an array answers as a set does, so the mutant is often equivalent. Membership can differ: an array compares with `==` and a set with `eql?`, so `[1].include?(1.0)` is true and `Set[1].include?(1.0)` is false. The array keeps duplicates, so `size` and `each` can differ. |
+
+### Triage a `present?` survivor
+
+`call_to_receiver` is not a default operator.
+This mutant appears only when you select that operator.
+Select it with the CLI flag `--operators`.
+Select it with the `.mutineer.yml` key `operators:`.
+Select it with the Action input `operators`.
+The Action passes that input to the CLI as `--operators`.
+The `--operators` list replaces the default set.
+See [Endless range](#endless-range).
+
+The mutant is equivalent in one case.
+The receiver is always a non-blank object, or it is `nil` or `false`.
+A record is one example.
+A non-blank string is another, when the call is only a condition.
+The code uses the result only as a condition.
+
+These cases are real gaps:
+
+- A blank string or a blank param, such as `""` or `" "`.
+- An empty array.
+- An empty hash.
+- An empty relation.
+- A method that returns the `present?` result.
+
+Pass a blank value to kill a gap in a condition.
+Assert the exact value `true` or `false` when a method returns the result.
+
+`if params[:day].present?` survives a test that sends only a valid date.
+Pass `day: ""` and expect the fallback.
+That test kills the mutant.
+
+`def has_tags?(tags) = tags.present?` survives `assert has_tags?(["x"])`.
+`assert_equal true, has_tags?(["x"])` kills that mutant.
+
+Suppress one mutant with an `ignore:` mapping.
+Use the survivor `id` from the JSON report.
+Record a reason.
+
+```yaml
+# .mutineer.yml
+ignore:
+  - id: ID_FROM_THE_JSON_REPORT
+    reason: the receiver is a record or nil, and the result is only a condition
+```
+
+`mutineer triage REPORT.json --id ID --reason TEXT` prints one mapping for that survivor, and one for each id in its `copies`.
+Paste every mapping. An entry ignores only its own id.
+Repeat `--id` for each site you judge equivalent.
+Do not use `--all`.
+`--all` also maps survivors that are real gaps.
+
+An `ignore:` id changes after a file move.
+It also changes after a method rename or a class rename.
+The survivor then returns.
+See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids).
+
+Do not use a line marker for this site.
+The marker hides every `call_to_receiver` mutant on that line.
+It also hides `account.name` becoming `account`.
+That second mutant is not equivalent.
+Use the `ignore:` id above for the `present?` mutant only.
+
+```ruby
+account.name if account.present? # mutineer:disable-line call_to_receiver
+```
+
+A disable marker moves with its line.
+
+`present?` stays off the skip list.
+The operator checks the method name only.
+It cannot inspect the receiver, so a name skip would also hide real gaps.
+
 ## Endless range
 
-The `range` operator swaps `..` and `...`. An endless range (`1..` or `1..nil`) is skipped. `(1..)` and `(1...)` give the same result for slicing, `include?`, `===`, `size`, and patterns, so the mutant is equivalent.
+The `range` operator is not in the default set. Add it to the `operators:` list in `.mutineer.yml`, or pass `--operators`. The `--operators` list replaces the default set, so name the default operators too.
+
+```yaml
+# .mutineer.yml
+operators:
+  - arithmetic
+  - comparison
+  - boolean_connector
+  - boolean_literal
+  - statement_removal
+  - range
+```
+
+```sh
+mutineer run lib --operators arithmetic,comparison,boolean_connector,boolean_literal,statement_removal,range
+```
+
+The `range` operator swaps `..` and `...`. It skips an endless range (`1..` or `1..nil`) only when that range is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice` or `values_at` and the receiver is an array or string literal, as in `"abcd"[1..]` or `%w[a b c].values_at(1..)`. Parentheses around that literal count, as in `("abcd")[1..]`. A `begin` counts only when every branch that can supply its value is such a literal. A rescue or an else can return something else, and backticks do not count, because `` ` `` can be overridden. Index writes such as `"abcd"[1..] = "x"` skip the index too.
+
+An array or a string selects the same elements for `(1..)` and `(1...)`, so that mutant is equivalent. The literal is what fixes the class. A variable, a call, or a constant does not: `list[1..]`, `ARGV[1..]`, `text.byteslice(1..)` and `HASH[1..]` are swapped. A Hash tells `{(1..) => :a}[1..]` from `[1...]`, a Proc called as `fn[1..]` receives the range, and a class of your own can define `[]` or `slice` to treat the two ranges differently. A test can kill those mutants. An earlier assignment is not followed, so `list = [1, 2]; list[1..]` is swapped too.
+
+Every other endless range is swapped. This includes the assigned value in `h[:k] = 1..nil` and a range in parentheses, as in `list[(1..)]`. `(1..)` and `(1...)` differ on `==`, `eql?`, `hash`, `exclude_end?`, `to_s`, `inspect` and `cover?(1..)`, so a test that compares, stores or prints the range can kill the mutant.
+
+Some of these swapped mutants are still equivalent. A variable that holds an Array or a String, such as `argv[1..]`, selects the same elements for both ranges. So does `list[(1..)]`: the parentheses mean it is swapped, and on an Array or a String the two ranges still select the same elements. So does a range used only with `include?`, `===`, `case`/`when`, a `case`/`in` pattern or `clamp`. In a Rails app, a range in an Active Record query also gives an equivalent mutant, because both ranges become the same `>=` SQL condition. That includes `where(created_at: time..)`, `where.not`, `find_by` and `exists?`. So does `validates :age, inclusion: { in: 18.. }`. Suppress one of these with an `ignore:` entry. `# mutineer:disable-line range` hides every `range` mutant on that line, so use it only when every one of them is equivalent.
+
+## Collection method
+
+The `collection_method` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`. The `--operators` list replaces the default set, so name the default operators too.
+
+The operator swaps `each` with `map`, `all?` with `any?`, `first` with `last`, `min` with `max`, and `select` with `reject`. When the call's result is discarded, it skips every swap except `all?` / `any?`, with the exceptions below. For `Enumerable`, `each` returns the receiver and `map` returns a new array. `select` and `reject` walk every element. `first` / `last` and `min` / `max` differ only in the value they return. A discarded value is the same, so no test can tell the mutant from the original. A method of one of these names on another class can still differ, and the check does not see the class, so the skip can hide that difference. For example, `first` on a Hash, a Set, or an Enumerator has no `last`, and the swap raises `NoMethodError`. On an endless Range, `first` works and `last` raises `RangeError` (#501). Each skipped call counts as declined.
+
+`select`, `reject`, `first`, `last`, `min`, and `max` are skipped when the call is a statement of its own. A `select` or `reject` with an inline block (not `&blk`) and no arguments is also skipped when only its truthiness is read, as listed below (#501). Otherwise, inside `&&` / `||` / `and` / `or`, parentheses, a rescue modifier, or `defined?`, the swap stays: the value can decide whether the right side runs, and `defined?` asks whether the method exists (`defined?({}.last)` is `nil`). A `min` or `max` with a block, or with `...` that can forward one, also stays, because the block compares different pairs after the swap. So does a `select` or `reject` with arguments, because `IO.select(readers)` is not `Enumerable#select`.
+
+The check uses the syntax tree only. It does not know the receiver's class. A method named `each` that is not `Enumerable#each` follows the same rule. A lazy enumerator is visible in two ways, and both are still swapped. One is a receiver with a `lazy` call in it, as in `xs.lazy.each`, `xs.lazy.map { }.each`, or `(xs.lazy).each`. The other is a local variable that the same method assigns from such a chain (`enum = xs.lazy`, `enum ||= xs.lazy.map { }`, `enum &&= xs.lazy`, a `for` index (`for enum in [xs.lazy]`), a copy such as `other = enum`, or multiple assignment such as `enum, n = xs.lazy, 1`). The value counts when a `lazy` call or a lazy local sits anywhere in it: in parentheses, a ternary, `begin`, `case`, a rescue modifier, or a chained assignment. That can include `xs.lazy.to_a`, and the swap then stays. `Enumerator::Lazy#each` runs the block and `Lazy#map` does not. The tree shows no order, so one such assignment anywhere in the method counts for every read of that name. The boundary is a lazy enumerator that the method receives or reads from somewhere else: a parameter, an instance variable, the result of another call, a rightward assignment (`xs.lazy => enum`), or a pattern capture, as in `enum.each { }` with `enum` a parameter. The tree shows no `lazy` call, so that discarded statement is still skipped (#501).
+
+The result is discarded, and the swap is skipped, when the call is a statement and nothing keeps that statement's value:
+
+- It is not the last expression of the method.
+- It is not the last expression of a block or a lambda. The method that takes the block may use the block's result. The operator does not guess which methods do. A loop that is the last line of a block is still swapped.
+- It is not the last expression of a branch whose value is kept. A branch is an `if`, `unless`, `case`, `rescue`, `else`, ternary, or modifier.
+- A `while`, `until`, or `for` body discards its value, including the last line. `for` returns the collection, not the body. An `ensure` body discards its value too. `defined?` does not evaluate its operand, so an `each` or `map` inside it is skipped. That includes a `lazy` chain and an interpolation.
+- A `begin`, parentheses, an array, a hash value, a range, the right side of `&&` / `and`, or either side of `||` / `or` keeps the value only when the outer expression keeps it. The left side of `&&` / `and` is read for truthiness only, see below. A hash key is always kept: insertion calls `hash` and `eql?`.
+- The value that string interpolation, symbol interpolation, a backtick or `%x` command, or an interpolated regexp (`/.../` or `%r{}`) reads is kept, even when that expression's result is thrown away. Interpolation calls `to_s` on that value. The command runs. The regexp is compiled. An earlier statement inside the interpolation is still discarded. `defined?` does not read it.
+
+The result is kept, and the swap still runs, when the call is any of these:
+
+- The last expression of the method, a block, or a lambda.
+- Assigned, including `+=`, `||=`, multiple assignment, and a pattern match (`=>`).
+- Passed as an argument, a splat, a keyword value, or a block argument.
+- The receiver of another call, as in `users.each { }.size` or `!users.each`. The next call may use the object. The swap stays even when that next call's own result is discarded.
+- Returned with `return`, `break`, or `next`.
+- The object of `class << obj`.
+- The subject of a `case`, and a `when` value of a `case` that has a subject. `when Hash` calls `Hash === value`, and a Hash receiver gives a Hash from `each` and an Array from `map`.
+- The left side of `||` / `or`, when the `||` result is kept. That operator returns the value.
+
+The swap of `each`, `map`, or a `select` or `reject` with an inline block (not `&blk`) and no arguments is also skipped when only the truthiness of the value is read (#468, #501):
+
+- The condition of `if`, `unless`, `while`, or `until`, including the modifier forms, `elsif`, and the ternary.
+- The left side of `&&` / `and`, when the result of that expression is kept. This holds for `select` and `reject` with a block too. For an `Enumerable` receiver a successful `each` or `map` is never false, so the left side never becomes the result. A custom `each` that returns `nil` can differ (#501). The left side of `||` / `or` is different when the result is kept: that operator returns the value.
+- A `when` condition of a `case` that has no subject.
+- Either side of `||` / `or`, the right side of `&&` / `and`, or a parenthesized expression, when that larger expression is itself only tested: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a`.
+
+Both results are true for an ordinary receiver, so the branch cannot change. A custom `each`, or a core `Enumerator` such as `xs.cycle(2).each { }`, can return `nil` where `map` returns an Array, so the swap can still change the branch. A Hash passed a two-argument lambda, as in `h.map(&fmt)`, works with `map` and raises with `each` (#501). A lazy chain or a lazy local is still swapped here too. `first`, `last`, `min`, and `max` are not skipped in a condition, because they can return `nil`. A `select` or `reject` with arguments is not skipped either: `IO.select(readers)` can return `nil`. In a condition, an `each` or `map` with arguments or with a `&blk` argument is not skipped: `map` takes no arguments, and a Hash accepts a two-argument lambda for `map` but not for `each`. A `select` or `reject` on a bare `ENV` or `IO` is not skipped: `ENV.select` reads live and `ENV.reject` takes a snapshot. A `select` or `reject` without an inline block is not skipped: the swapped name can raise: on an Active Record relation, `select` without a block raises `ArgumentError`, while `reject` without a block returns an Enumerator. A `select` or `reject` with an inline block (not `&blk`) and no arguments returns an Array, a Hash, or an Enumerator, which is always true, even when empty. A custom method with one of these names that returns `false` or `nil` can differ, and the check does not see the class.
+
+`all?` and `any?` are swapped even when the result is discarded. They can stop on different elements. A block can show that change.
+
+The report that opened this skip found the `each` to `map` mutant in 4 of 23 ignore entries.
+
+## Rescue body
+
+The `rescue_body` operator is not in the default set. Select it with `--operators` or with `operators:` in `.mutineer.yml`.
+
+The operator replaces each `rescue` body with `nil`, and turns `x rescue y` into `x rescue nil`. It skips a body whose value is discarded and that holds only literals and variable reads, such as `:failed`, `0`, `"text"`, `true`, `self`, `@cache` or a local variable. Evaluating that body has no effect, and nothing reads its value, so `nil` changes nothing. Each skipped body counts as declined.
+
+The value is discarded only when the `begin ... end` block, or the `x rescue y` statement, is a statement that is not the last one in its list. The last statement of a method, a block, a branch or a `begin` counts as kept, even inside a loop or an `ensure`, so those bodies are still mutated. A body with a method call, a constant, or a class or global variable is still mutated. A call can change state. A constant or a class variable can raise.
+
+A body that is `nil`, `(nil)` or `()`, and an empty body, give no mutant at all, because the edit would change nothing. They are not counted as declined.
+
+On the Fizzy copy measured for #418, this skip declined none of the rescue bodies in `app/` and `lib/`.

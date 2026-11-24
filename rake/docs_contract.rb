@@ -15,19 +15,26 @@ module DocsContract
     "Top-level shape" => "shape",
     "`summary` (object)" => "summary",
     "`survivors[]` (array of object)" => "survivors",
+    "`killed[]` (array of object)" => "killed",
     "`no_coverage[]`, `uncapturable[]`, `unplaceable[]` and `ran_at_load[]` (array of object)" => "other-statuses",
     "`no_verdict[]` (array of object)" => "no-verdict",
     "`ignored[]` (array of object)" => "ignored",
+    "`timing` (object)" => "timing",
     "`per_source[]` (array of object)" => "per-source",
+    "`unpaired_sources[]` (array of object)" => "unpaired-sources",
+    "`unmutated_subjects[]` (array of object)" => "unmutated-subjects",
     "`matrix` (object, only with `--matrix`)" => "matrix",
     "`baseline` (object, only with `--baseline`)" => "baseline",
-    "Exit codes" => "exit-codes"
+    "Exit codes" => "exit-codes",
+    "Dry-run JSON (`--dry-run --format json`)" => "dry-run-json"
   }.freeze
 
   # Table aria-labels the Playwright suite already asserts.
   TABLE_ARIA = {
     "summary" => "Summary fields",
     "survivors" => "Survivor fields",
+    "killed" => "Killed fields",
+    "timing" => "Timing fields",
     "matrix" => "Matrix fields",
     "baseline" => "Baseline fields",
     "exit-codes" => "Exit codes"
@@ -39,13 +46,18 @@ module DocsContract
     "shape" => "Top-level shape",
     "summary" => "summary",
     "survivors" => "survivors[]",
+    "killed" => "killed[]",
     "other-statuses" => "no_coverage / uncapturable / unplaceable / ran_at_load",
     "no-verdict" => "no_verdict[]",
     "ignored" => "ignored[]",
+    "timing" => "timing",
     "per-source" => "per_source[]",
+    "unpaired-sources" => "unpaired_sources[]",
+    "unmutated-subjects" => "unmutated_subjects[]",
     "matrix" => "matrix",
     "baseline" => "baseline",
-    "exit-codes" => "Exit codes"
+    "exit-codes" => "Exit codes",
+    "dry-run-json" => "Dry-run JSON"
   }.freeze
 
   MARKED = %w[
@@ -94,6 +106,9 @@ module DocsContract
       HTML
     end
 
+    # User guides appended to `llms-full.txt`, in reading order.
+    GUIDES = %w[quick-start.md getting-started.md results.md rails-setup.md ci.md cli.md comparison.md].freeze
+
     # Concatenated agent ingest file.
     #
     # @return [String]
@@ -103,11 +118,12 @@ module DocsContract
       readme = readme.gsub("[LICENSE](LICENSE)",
         "[LICENSE](https://github.com/davidteren/mutineer/blob/main/LICENSE)")
       agentic = File.read(File.join(ROOT, "docs/agentic-coding.md"))
+      guides = GUIDES.map { |name| File.read(File.join(ROOT, "docs", name)).rstrip }.join("\n\n---\n\n")
       schema = File.read(SCHEMA_MD)
       <<~TXT
         # Mutineer — full documentation
 
-        > Concatenated from README, the AI-agents/CI guide, and the JSON report schema.
+        > Concatenated from README, the AI-agents/CI guide, the user guides, and the JSON report schema.
         > Source: https://github.com/davidteren/mutineer
 
         ---
@@ -119,6 +135,10 @@ module DocsContract
         ---
 
         #{agentic.rstrip}
+
+        ---
+
+        #{guides}
 
         ---
 
@@ -360,7 +380,10 @@ module DocsContract
           lis = items.map { |item| "<li>#{inline(item)}</li>" }.join
           chunks << "<ul>#{lis}</ul>"
         else
-          para = []
+          # Take the first line whatever it starts with: a line such as `#417 ...`
+          # matches no branch above, and leaving it unread looped forever.
+          para = [line]
+          i += 1
           while i < lines.length && !lines[i].empty? && !lines[i].start_with?("#", "|", "- ", "```", "<!--")
             para << lines[i]
             i += 1
@@ -504,7 +527,7 @@ module DocsContract
         <meta name="twitter:image:alt" content="Mutineer — Make your tests prove it. Ruby mutation testing with Prism and stdlib.">
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='1' fill='%2367286a'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23fff'%3EM%3C/text%3E%3C/svg%3E">
         <script src="assets/mutineer.js?v=e2f61c6ed52e"></script>
-        <link rel="stylesheet" href="assets/mutineer.css?v=bbe02d1403bf">
+        <link rel="stylesheet" href="assets/mutineer.css?v=974bd95abf0a">
         </head>
         <body>
         <a class="skip" href="#main">Skip to content</a>

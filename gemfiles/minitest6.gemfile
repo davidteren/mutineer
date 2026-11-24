@@ -7,6 +7,10 @@ source "https://rubygems.org"
 
 gemspec path: ".."
 
+# Minitest 6.1 allows Prism 1 or 2. Keep Prism 1 here so a Minitest release
+# cannot change the Prism major. gemfiles/prism2.gemfile covers Prism 2 (#400).
+gem "prism", "~> 1.5"
+
 group :test do
   gem "minitest", "~> 6.0"
   # Minitest 6 ships `minitest/mock` as a separate gem.

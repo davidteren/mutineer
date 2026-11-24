@@ -43,6 +43,79 @@ class RunnerTest < Minitest::Test
     assert_predicate result, :survived?, "expected survived, got #{result.status} (#{result.details})"
   end
 
+  def test_run_uses_the_declared_source_encoding_before_mutation
+    Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+      src = File.join(dir, "encoding_calc.rb")
+      File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+        # encoding: ISO-8859-1
+        class Latin1EncodingExample
+          def value
+            # caf\u00E9
+            'caf\u00E9'.upcase
+          end
+        end
+      RUBY
+
+      parsed_source = Mutineer::Parser.parse_file(src).source.source
+      subject = Mutineer::Project.discover([src]).first
+      mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+      result = nil
+      coverage_selection = lambda do |_file, _mutation, _subject, source, _coverage_map|
+        assert_equal Encoding::ISO_8859_1, source.encoding
+        assert_includes source.b, "# caf\u00E9".encode(Encoding::ISO_8859_1).b
+        [:verdict, Mutineer::Result.killed]
+      end
+
+      Mutineer::JobPlan.stub(:coverage_selection, coverage_selection) do
+        result = Mutineer::Runner.run(mutation, source_file: src, subject: subject)
+      end
+
+      assert_predicate result, :killed?
+    end
+  end
+
+  def test_latin1_source_mutation_runs_with_reload_and_redefine
+    skip "in-process mutation needs fork support" unless Process.respond_to?(:fork)
+
+    %w[reload redefine].each do |strategy|
+      Dir.mktmpdir("mutineer-latin1-runner") do |dir|
+        src = File.join(dir, "encoding_calc.rb")
+        test = File.join(dir, "encoding_calc_test.rb")
+        File.binwrite(src, <<~RUBY.encode(Encoding::ISO_8859_1))
+          # encoding: ISO-8859-1
+          class Latin1EncodingExample
+            def value
+              # caf\u00E9
+              'caf\u00E9'.upcase
+            end
+          end
+        RUBY
+        File.write(test, <<~RUBY)
+          require "minitest/autorun"
+          require_relative "encoding_calc"
+
+          class Latin1EncodingExampleTest < Minitest::Test
+            def test_value
+              assert_equal "CAF\u00C9", Latin1EncodingExample.new.value.encode(Encoding::UTF_8)
+            end
+          end
+        RUBY
+
+        parsed_source = Mutineer::Parser.parse_file(src).source.source
+        subject = Mutineer::Project.discover([src]).first
+        mutation = Mutineer::Mutators::CallToReceiver.new.mutations_for(subject, parsed_source).first
+        require src
+
+        Mutineer::JobPlan.stub(:coverage_selection, [:run, [test]]) do
+          map = FakeCoverageMap.new({}, dir, [], false, [])
+          result = Mutineer::Runner.run(mutation, source_file: src, coverage_map: map, subject: subject,
+                                        strategy: strategy)
+          assert_predicate result, :killed?, "#{strategy}: expected killed, got #{result.status} (#{result.details})"
+        end
+      end
+    end
+  end
+
   # The marker of the second test shows which path ran it. The first test
   # writes the seed, which the mutant run pins.
   def test_mutant_run_stops_at_first_failure_but_coverage_capture_does_not
@@ -201,6 +274,22 @@ class RunnerTest < Minitest::Test
     def ran_at_load?(_file, line) = Array(load_lines).include?(line)
     def method_ran_at_load?(_file, line, column) = Array(load_methods).include?([line, column])
     def order_tests(_file, tests) = tests
+    def clean_check_seconds = nil
+  end
+
+  def load_probe(snippet, source, load_lines:)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ start => [] }, "/root", load_lines, false, [])
+    # The line numbers in load_lines are what the assertion names. tests_for is
+    # unused: this probe asks ran_at_load? and the survivor reclassification.
+    ran = Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, map)
+    survived = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              source, map).status
+    [ran, survived]
   end
 
   def selection(source, snippet, tests_by_line, load_lines: [], uncapturable: false, load_methods: [])
@@ -236,6 +325,72 @@ class RunnerTest < Minitest::Test
   def test_coverage_selection_ignores_the_def_line_load_count
     assert_equal :no_coverage, selection("def f(x = 1)\n  x\nend\n", "1", {}, load_lines: [1])[1].status
     assert_equal :no_coverage, selection("def f(x) = x * 2\n", "x * 2", {}, load_lines: [1])[1].status
+  end
+
+  # #435: a define_method call stores its block. A mutant in the call or in
+  # the stored block is ran_at_load when that call's line ran at load, even
+  # though the block body has no strict line of its own. A test that covers
+  # the line still runs, so a kill counts. Without the load line the survivor
+  # stays a survivor. An each block on the same kind of line is not
+  # define_method: the line counts when each runs with no elements, and the
+  # test can run the mutated block (#286). Code that runs only sometimes does
+  # not count, and a one-line def still ignores the block.
+  def test_a_mutant_that_shares_a_load_line_is_ran_at_load
+    source = <<~'RUBY'
+      def greets(*names)
+        names.each { |name| define_method("greet_#{name}") { "Hello, #{name}" } }
+      end
+    RUBY
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :greets, singleton: false, def_node: def_node)
+    loaded = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [2], false, [])
+    cold = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [], false, [])
+
+    ["greet_", "Hello, ", "each"].each do |snippet|
+      start = source.index(snippet)
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                        replacement: "nil", operator: :test)
+      assert_equal :run, Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source, loaded)[0], snippet
+      assert Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, loaded), snippet
+      refute Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, source, cold), snippet
+      survived = Mutineer::Result.new(status: :survived)
+      assert_equal :ran_at_load,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, loaded).status, snippet
+      assert_equal :survived,
+                   Mutineer::JobPlan.load_verdict(survived, "x.rb", mutation, subject, source, cold).status, snippet
+      killed = Mutineer::Result.new(status: :killed)
+      assert_equal :killed,
+                   Mutineer::JobPlan.load_verdict(killed, "x.rb", mutation, subject, source, loaded).status, snippet
+    end
+
+    conditional = "def f(k)\n  return 7 * 6 if k.nil?\n  k\nend\n"
+    assert_equal :no_coverage, selection(conditional, "7 * 6", {}, load_lines: [2])[1].status
+
+    # The string sits in each's block. Boot can count the line with xs = []
+    # and a later test can run the mutated block. It stays a survivor.
+    each_block = "def f(xs)\n  xs.each { |x| use(\"original\") }\nend\n"
+    ran, status = load_probe("original", each_block, load_lines: [2])
+    refute ran
+    assert_equal :survived, status
+
+    # The stored block's body is on its own line, so that line did not run at
+    # load. The define_method call did, and the block it stored is the original.
+    stored = "def greets(name)\n  define_method(\"greet_\#{name}\") do\n    \"Hello\"\n  end\nend\n"
+    ran, = load_probe("Hello", stored, load_lines: [2])
+    assert ran, "the define_method call ran at load"
+    ran, = load_probe("Hello", stored, load_lines: [])
+    refute ran, "no load line"
+
+    singleton = "def greets(name)\n  define_singleton_method(\"greet_\#{name}\") { \"Hello\" }\nend\n"
+    ran, = load_probe("Hello", singleton, load_lines: [2])
+    assert ran, "define_singleton_method stores the block the same way"
+
+    # A later statement on the modifier's line runs only sometimes. The line
+    # can count when the modifier's condition is checked. It stays scored.
+    later = "def f(flag); return \"early\" if flag; compute(flag); end\n"
+    ran, status = load_probe("compute", later, load_lines: [1])
+    refute ran
+    assert_equal :survived, status
   end
 
   # #209: a one-line or endless def ran at load when the method was called at
@@ -281,6 +436,208 @@ class RunnerTest < Minitest::Test
     assert_equal :no_coverage, selection(source, "false", {}, load_lines: [2])[1].status
   end
 
+  # #289: when the strict lines give no tests, the tests of the statement's
+  # first or last line run as :maybe. A strict hit still wins as :run.
+  def test_coverage_selection_retries_with_the_edge_lines_as_maybe
+    source = "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "u + 1", { 2 => ["t_test.rb"] })
+    assert_equal [:run, ["/root/t_test.rb"]],
+                 selection(source, "u - 1", { 2 => ["a_test.rb"], 3 => ["t_test.rb"] })
+  end
+
+  # #289: a mutant whose strict lines ran at load runs the tests of an edge
+  # line as :maybe, so a kill counts and a survivor stays ran_at_load.
+  def test_coverage_selection_runs_a_load_time_mutant_with_an_edge_line_test_as_maybe
+    source = "def f(xs)\n  x = 1; y = xs.map { |v|\n    v }.size + 1\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "+ 1", { 2 => ["t_test.rb"] }, load_lines: [3])
+
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index("+ 1")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
+    map = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [3], false, [])
+    loaded = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                            source, map)
+
+    assert_equal :ran_at_load, Mutineer::JobPlan.selection_verdict(:maybe, loaded).status
+  end
+
+  # #493: the fixture of the reported case. Line 2 holds a lambda, lines 4 to
+  # 6 a multi-line block. The macro's lines 2 to 4 run when a class calls it.
+  STORED_BLOCKS = <<~'RUBY'
+    def self.language_field
+      normalizers[:language] = ->(value) { value.strip }
+      limits[:language] = 35
+      checks << proc do |record|
+        record.errors << :invalid unless record.language == record.language.downcase
+      end
+    end
+  RUBY
+
+  def block_candidate?(source, snippet, load_lines:, kind: :run, load_methods: [], map: true)
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index(snippet)
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + snippet.size,
+                                      replacement: "nil", operator: :test)
+    coverage = map ? FakeCoverageMap.new({}, "/root", load_lines, false, load_methods) : nil
+    [Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, subject, source, coverage),
+     Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, nil, source, coverage)]
+  end
+
+  # #493: a candidate is a :run mutant in a block or lambda whose call ran at
+  # load. It only decides which mutants carry the probe.
+  def test_a_mutant_in_a_block_whose_call_ran_at_load_is_a_candidate
+    assert_equal [true, false], block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2])
+    assert_equal [true, false], block_candidate?(STORED_BLOCKS, "downcase", load_lines: [4])
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], kind: :maybe)[0], "a :maybe selection"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], kind: nil)[0], "no selection"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [3, 4])[0], "only other lines ran at load"
+    refute block_candidate?(STORED_BLOCKS, "35", load_lines: [2, 3, 4])[0], "not in a block"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [2], map: false)[0], "no coverage map"
+    refute block_candidate?(STORED_BLOCKS, "value.strip", load_lines: [])[0], "the call did not run at load"
+
+    # A body on the def line counts when the method is defined (#389).
+    one_line = "def f(xs) = xs.map { |x| x + 1 }.size\n"
+    called = { load_lines: [1], load_methods: [[1, 0]] }
+    refute block_candidate?(one_line, "x + 1", **called)[0], "in a block of a one-line def"
+    refute block_candidate?(one_line, "size", **called)[0], "outside the block of a one-line def"
+    opener = "def f(xs); xs.each do |x|\n  keep(x)\nend; end\n"
+    refute block_candidate?(opener, "keep", load_lines: [1])[0], "the def line is never a load line"
+  end
+
+  # #493: reload places a def of a concern's hook block with the probe, and a
+  # class that includes the concern in a test gets a def with no probe. So
+  # the probe is not evidence there, and such a def is not a candidate.
+  def test_a_def_that_reload_places_from_a_hook_block_is_not_a_candidate
+    source = "module Tagged\n  extend ActiveSupport::Concern\n  included do\n" \
+             "    def tags(xs)\n      xs.each { |x| keep(x) }\n    end\n  end\nend\n"
+    Dir.mktmpdir("mutineer-hook-candidate") do |dir|
+      path = File.join(dir, "tagged.rb")
+      File.write(path, source)
+      subject = Mutineer::Project.discover([path]).find { |s| s.name == :tags }
+      refute_nil subject.reload_hook_call
+      start = source.index("keep")
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 4, replacement: "nil", operator: :test)
+      map = FakeCoverageMap.new({}, "/root", [5], false, [])
+
+      refute Mutineer::JobPlan.stored_block_candidate?(:run, path, mutation, subject, source, map)
+      subject.reload_hook_call = nil
+      assert Mutineer::JobPlan.stored_block_candidate?(:run, path, mutation, subject, source, map)
+    end
+  end
+
+  # #493: under redefine the parent decides "probed" from the def text that
+  # Isolation.mutated_def builds, and the child builds its own text in
+  # apply_surgical. The child's text must hold the parent's text: with a
+  # probe, and when the wrap fails and leaves none.
+  def test_the_def_text_the_parent_checks_is_in_the_text_the_redefine_child_loads
+    source = "class ProbeTextHost\n  def self.fields(xs)\n    xs.each { |x| x + 1 }\n  end\nend\n"
+    Dir.mktmpdir("mutineer-probe-text") do |dir|
+      path = File.join(dir, "probe_text_host.rb")
+      File.write(path, source)
+      load path
+      subject = Mutineer::Project.discover([path]).first
+      start = source.index("+ 1")
+      mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 1, replacement: "-", operator: :test)
+      key = Mutineer::ReachProbe.reach_key
+      sentinel = File.join(dir, "reach.touch")
+      parent = -> { Mutineer::Isolation.mutated_def(mutation, subject, source, reach_path: sentinel, reach_key: key) }
+      child = lambda do
+        text = nil
+        Mutineer::Isolation.stub(:write_beside, ->(code, *, **) { text = code }) do
+          Mutineer::Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel, reach_key: key)
+        end
+        text
+      end
+
+      assert Mutineer::ReachProbe.conclusive?(parent.call, key)
+      assert_includes child.call, parent.call
+
+      Mutineer::ReachProbe.stub(:wrap, nil) do
+        refute Mutineer::ReachProbe.conclusive?(parent.call, key)
+        refute Mutineer::ReachProbe.conclusive?(child.call, key)
+        assert_includes child.call, parent.call
+      end
+    end
+  ensure
+    Object.send(:remove_const, :ProbeTextHost) if Object.const_defined?(:ProbeTextHost, false)
+  end
+
+  # #493: only a candidate with the probe in its code, that survived and that
+  # the probe did not see, changes. All 16 combinations, then the other
+  # statuses. A --matrix row is kept.
+  def test_stored_block_verdict_moves_only_an_unreached_probed_candidate_survivor
+    [true, false].product([true, false], [true, false], %i[survived killed]).each do |candidate, probed, reached, status|
+      result = Mutineer::Result.new(status: status)
+      after = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached)
+      moved = candidate && probed && !reached && status == :survived
+      assert_equal (moved ? :ran_at_load : status), after.status,
+                   "candidate=#{candidate} probed=#{probed} reached=#{reached} #{status}"
+    end
+    %i[killed error timeout no_coverage ran_at_load].each do |status|
+      result = Mutineer::Result.new(status: status)
+      assert_same result, Mutineer::JobPlan.stored_block_verdict(result, candidate: true, probed: true, reached: false)
+    end
+
+    kills = Mutineer::Kills.new(killed_by: [], ran: ["t_test.rb"], complete: true)
+    row = Mutineer::Result.new(status: :survived, kills: kills)
+    assert_same kills, Mutineer::JobPlan.stored_block_verdict(row, candidate: true, probed: true, reached: false).kills
+  end
+
+  # #493: the new step runs last and reads only a :run selection, so a :maybe
+  # mutant keeps the verdict of #254 and #345. A define_method mutant keeps
+  # the verdict of #435 when the probe fired and when it did not.
+  def test_the_three_verdict_steps_keep_the_maybe_and_define_method_verdicts
+    source = "def f(users)\n  users.map { |u| format(\"%s %s\",\n    u + 1,\n    u - 1) }\nend\n"
+    def_node = Mutineer::Parser.parse_string(source).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :f, singleton: false, def_node: def_node)
+    start = source.index("u + 1")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 5, replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ 2 => ["t_test.rb"] }, "/root", [2], false, [])
+    kind, = Mutineer::JobPlan.coverage_selection("x.rb", mutation, subject, source, map)
+    assert_equal :maybe, kind
+    candidate = Mutineer::JobPlan.stored_block_candidate?(kind, "x.rb", mutation, subject, source, map)
+    refute candidate, "a :maybe mutant is not a candidate"
+
+    { false => :no_coverage, true => :survived }.each do |reached, expected|
+      result = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              source, map)
+      result = Mutineer::JobPlan.selection_verdict(kind, result, reached: reached)
+      result = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: true, reached: reached)
+      assert_equal expected, result.status, "reached=#{reached}"
+    end
+
+    stored = "def greets(name)\n  define_method(\"greet_\#{name}\") do\n    \"Hello\"\n  end\nend\n"
+    def_node = Mutineer::Parser.parse_string(stored).value.statements.body.first
+    subject = Mutineer::Subject.new(file: "x.rb", namespace: [], name: :greets, singleton: false, def_node: def_node)
+    start = stored.index("Hello")
+    mutation = Mutineer::Mutation.new(start_offset: start, end_offset: start + 5, replacement: "nil", operator: :test)
+    map = FakeCoverageMap.new({ 3 => ["t_test.rb"] }, "/root", [2], false, [])
+    assert Mutineer::JobPlan.ran_at_load?("x.rb", mutation, subject, stored, map)
+    candidate = Mutineer::JobPlan.stored_block_candidate?(:run, "x.rb", mutation, subject, stored, map)
+    assert candidate, "a define_method block can carry the probe; nothing reads its answer"
+    [true, false].each do |reached|
+      result = Mutineer::JobPlan.load_verdict(Mutineer::Result.new(status: :survived), "x.rb", mutation, subject,
+                                              stored, map)
+      assert_equal :ran_at_load, result.status
+      result = Mutineer::JobPlan.selection_verdict(:run, result, reached: reached)
+      result = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: true, reached: reached)
+      assert_equal :ran_at_load, result.status, "reached=#{reached}"
+    end
+  end
+
+  # #289: a #254 :maybe selection also gets the tests of a first line that it
+  # shares with other code.
+  def test_coverage_selection_adds_the_shared_first_line_to_a_maybe_selection
+    source = "def f(p, q)\n  return if p.nil?; g(p &&\n    qq)\nend\n"
+
+    assert_equal [:maybe, ["/root/t_test.rb"]], selection(source, "qq", { 2 => ["t_test.rb"] })
+    assert_equal :no_coverage, selection(source, "qq", {})[1].status
+  end
+
   # #254: under redefine, a mutant whose owner cannot be named is unplaceable; a
   # :maybe one stays no_coverage, as it was before #254.
   def test_an_unplaceable_maybe_mutant_stays_no_coverage
@@ -303,20 +660,27 @@ class RunnerTest < Minitest::Test
     end
   end
 
-  # #254: for a `:maybe` selection a survivor is no_coverage with no --matrix
-  # row. A kill keeps its whole row, and an error or a timeout stays visible.
+  # #254, #345: a `:maybe` survivor the probe did not see is no_coverage with
+  # no --matrix row. One the probe saw run stays survived and keeps the row.
+  # A kill keeps its whole row, and an error or a timeout stays visible.
   # Any other selection is untouched.
-  def test_selection_verdict_turns_only_a_maybe_survivor_into_no_coverage
+  def test_selection_verdict_turns_only_an_unreached_maybe_survivor_into_no_coverage
     row = Mutineer::Kills.new(killed_by: [], ran: ["t_test.rb"], complete: true)
     killer = Mutineer::Kills.new(killed_by: ["k_test.rb"], ran: ["k_test.rb", "t_test.rb"], complete: true)
     survivor = Mutineer::JobPlan.selection_verdict(:maybe, Mutineer::Result.new(status: :survived, kills: row))
     assert_equal [:no_coverage, nil], [survivor.status, survivor.kills]
+    reached = Mutineer::Result.new(status: :survived, kills: row)
+    assert_same reached, Mutineer::JobPlan.selection_verdict(:maybe, reached, reached: true)
     [Mutineer::Result.new(status: :killed, kills: killer), Mutineer::Result.new(status: :error, kills: row),
      Mutineer::Result.new(status: :timeout, kills: row)].each do |result|
+      assert_same result, Mutineer::JobPlan.selection_verdict(:maybe, result, reached: true), result.status
       assert_same result, Mutineer::JobPlan.selection_verdict(:maybe, result), result.status
     end
     survived = Mutineer::Result.new(status: :survived, kills: row)
-    [:run, nil, false].each { |kind| assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived) }
+    [:run, nil, false].each do |kind|
+      assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived)
+      assert_same survived, Mutineer::JobPlan.selection_verdict(kind, survived, reached: true)
+    end
   end
 
   # --since restricts the job list to mutations on changed lines. Deterministic:
@@ -358,6 +722,116 @@ class RunnerTest < Minitest::Test
 
     config.since = nil
     assert_equal [jobs, ignored, nil], Mutineer::JobPlan.scope_since(jobs, ignored, source_map, config)
+  end
+
+  # #396: an empty `--since` scope returns before the app boot and coverage
+  # capture, while preserving the pre-scope mutant count for the report.
+  def test_empty_since_returns_before_boot_and_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since") do |dir|
+      source = File.join(dir, "calculator.rb")
+      test = File.join(dir, "calculator_test.rb")
+      boot = File.join(dir, "boot.rb")
+      marker = File.join(dir, "booted")
+      File.binwrite(source, "class EmptySinceCalculator\r\n  def add(a, b)\r\n    a + b\r\n  end\r\nend\r\n")
+      File.write(test, "raise 'the unchanged test suite must not run'\n")
+      File.write(boot, "File.write(#{marker.dump}, 'booted')\n")
+      config = Mutineer::Config.new(sources: [source], tests: [test], boot: boot, since: "HEAD",
+                                    operators: ["arithmetic"], project_root: dir)
+
+      Mutineer::ChangedLines.stub(:for, {}) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          _aggregate, _source_map, extras = Mutineer::Runner.execute(config)
+          assert_operator extras[:unscoped_mutants], :>, 0
+        end
+      end
+
+      refute_path_exists marker, "an empty `--since` run must return before application boot"
+    end
+  end
+
+  def test_empty_since_with_only_ignored_mutants_skips_coverage_capture
+    Dir.mktmpdir("mutineer-empty-since-ignored") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class EmptySinceCalculator\n  def add(a, b)\n    a + b # mutineer:disable-line -- unchanged\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"])
+      changed = { File.expand_path(source, dir) => Set[3] }
+
+      Mutineer::ChangedLines.stub(:for, changed) do
+        Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { flunk "coverage capture must not run" }) do
+          aggregate, = Mutineer::Runner.execute(config)
+          assert_equal 1, aggregate.ignored_count
+        end
+      end
+    end
+  end
+
+  def test_nonempty_since_scope_reuses_collected_jobs
+    Dir.mktmpdir("mutineer-since-reuse") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class SinceReuseCalculator\n  def add(a, b)\n    a + b\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"], jobs: 1)
+      collect_calls = 0
+      scope_calls = 0
+      scoped_jobs = nil
+      pool_jobs = nil
+      collect_jobs = Mutineer::JobPlan.method(:collect_jobs)
+      coverage_map = FakeCoverageMap.new({}, dir, [], false, [])
+      coverage_builder = Object.new
+      coverage_builder.define_singleton_method(:build_or_load) { coverage_map }
+      pool = Object.new
+      pool.define_singleton_method(:run) do |jobs, stop_when:, on_result:, &run_one|
+        pool_jobs = jobs
+        results = []
+        jobs.each do |job|
+          result = run_one.call(job.fetch(0), job.fetch(1))
+          on_result.call(result)
+          results << result
+          break if stop_when&.call(result)
+        end
+        results
+      end
+      collected =
+        lambda do |cfg, operators|
+          collect_calls += 1
+          collect_jobs.call(cfg, operators)
+        end
+      scoped =
+        lambda do |jobs, ignored, source_map, cfg, extras: nil|
+          scope_calls += 1
+          assert cfg.since
+          assert_kind_of Hash, source_map
+          assert_kind_of Hash, extras
+          scoped_jobs = jobs.take(1)
+          refute_same jobs, scoped_jobs
+          [scoped_jobs, ignored, jobs.size + ignored.size]
+        end
+
+      Mutineer::JobPlan.stub(:source_dirs, []) do
+        Mutineer::JobPlan.stub(:sweep_orphans, nil) do
+          Mutineer::JobPlan.stub(:collect_jobs, collected) do
+            Mutineer::JobPlan.stub(:scope_since, scoped) do
+              Mutineer::CoverageMap.stub(:new, ->(**_kwargs) { coverage_builder }) do
+                Mutineer::JobPlan.stub(:abort_if_unclean!, nil) do
+                  Mutineer::WorkerPool.stub(:new, pool) do
+                    Mutineer::Runner.stub(:run, ->(*_args, **_kwargs) { Mutineer::Result.new(status: :killed) }) do
+                      aggregate, = Mutineer::Runner.execute(config)
+                      assert_equal 1, aggregate.killed_count
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+
+      assert_equal 1, collect_calls
+      assert_equal 1, scope_calls
+      assert_same scoped_jobs, pool_jobs
+      assert_equal 1, pool_jobs.size
+    end
   end
 
   def test_filter_since_file_absent_from_diff_yields_no_jobs
@@ -436,17 +910,103 @@ class RunnerTest < Minitest::Test
     assert_nil Mutineer::JobPlan.abort_if_unclean!(map)
   end
 
+  # #360: the files are named once, and the opening sentence is not repeated.
+  def test_abort_if_unclean_says_not_green_once_and_names_the_files
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb", "test/b_test.rb"],
+                                          project_root: ROOT)
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+    assert_equal 1, err.message.scan("not green").size, err.message
+    assert_includes err.message, "Failed: test/a_test.rb, test/b_test.rb."
+  end
+
+  # #360: a stored failure report (test name + first error) follows the file list.
+  def test_abort_if_unclean_includes_failure_report_detail
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["calc_test.rb"],
+      failed_clean_details: { "calc_test.rb" => "Failure:\nCalcTest#test_add [calc_test.rb:4]:\nExpected: 3\n  Actual: 4" },
+      project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_equal 1, err.message.scan("not green").size, err.message
+    assert_includes err.message, "Failed: calc_test.rb."
+    assert_includes err.message, "CalcTest#test_add"
+    assert_includes err.message, "Expected: 3"
+  end
+
+  # A combined clean check that hit its deadline is reported as a timeout, not
+  # as a red suite with a seed hint.
+  def test_abort_if_unclean_reports_a_combined_check_timeout
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["combined suite"],
+      clean_timeouts: { "combined suite" => 180 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "combined clean check (the clean-check test files in one process) timed out after 180s"
+    assert_includes err.message, "Set --capture-timeout (capture_timeout in the config) above 180."
+    refute_includes err.message, "not green"
+    refute_includes err.message, "SEED="
+  end
+
+  # The advice names the longest deadline that passed: a lower value than the
+  # scaled combined deadline would change nothing.
+  def test_abort_if_unclean_names_the_longest_deadline_to_beat
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: ["slow_test.rb", "combined suite"],
+      clean_timeouts: { "slow_test.rb" => 120, "combined suite" => 241 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "above 241."
+  end
+
+  # A timed-out check next to a red file: one message names both, so the user
+  # does not fix the red test only to meet the timeout on the next run.
+  def test_abort_if_unclean_reports_a_timeout_next_to_a_red_file
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: %w[slow_test.rb red_test.rb],
+      failed_clean_details: { "red_test.rb" => "Failure:\nRedTest#test_x" },
+      clean_timeouts: { "slow_test.rb" => 120 }, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "Failed: red_test.rb."
+    refute_includes err.message, "Failed: slow_test.rb"
+    assert_includes err.message, "slow_test.rb timed out after 120s"
+    assert_includes err.message, "above 120."
+    assert_includes err.message, "RedTest#test_x"
+  end
+
+  # #360: joined per-file reports are capped so a large unclean suite cannot flood stderr.
+  def test_abort_if_unclean_caps_joined_failure_details
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    details = {
+      "a_test.rb" => "A" * limit,
+      "b_test.rb" => "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+    }
+    map = Mutineer::CoverageMap.from_data(
+      map: {}, failed_test_files: [], failed_clean_tests: details.keys,
+      failed_clean_details: details, project_root: ROOT
+    )
+    err = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+    assert_includes err.message, "…"
+    refute_includes err.message, "UNIQUE_TAIL_SHOULD_NOT_APPEAR"
+  end
+
   def test_abort_if_unclean_names_the_minitest_seed
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], failed_clean_tests: ["test/a_test.rb"],
                                           project_root: ROOT)
     without_seed_env do
-      minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-      assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
-      ENV["SEED"] = "4242"
-      own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
-      assert_includes own.message, "SEED=4242"
-      rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
-      refute_includes rspec.message, "SEED="
+      spec_opts = ENV.delete("SPEC_OPTS")
+      begin
+        minitest = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+        assert_includes minitest.message, "SEED=#{Mutineer::MinitestIntegration::PINNED_SEED}"
+        ENV["SEED"] = "4242"
+        own = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map) }
+        assert_includes own.message, "SEED=4242"
+        rspec = assert_raises(Mutineer::SmokeCheckError) { Mutineer::JobPlan.abort_if_unclean!(map, framework: "rspec") }
+        refute_includes rspec.message, "SEED="
+        assert_includes rspec.message, "seed #{Mutineer::RunSeed::PINNED_SEED}"
+      ensure
+        spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
+      end
     end
   end
 
@@ -515,7 +1075,10 @@ class RunnerTest < Minitest::Test
         map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [test],
                                         cache_dir: File.join(dir, "cache"), project_root: dir)
         capture_subprocess_io do
-          3.times { refute map.send(:subprocess_clean_pass?, [test]), "the clean check must fail under the pinned seed" }
+          3.times do
+            ok, = map.send(:subprocess_clean_pass?, [test])
+            refute ok, "the clean check must fail under the pinned seed"
+          end
         end
       end
     end
@@ -535,7 +1098,7 @@ class RunnerTest < Minitest::Test
                                         cache_dir: File.join(dir, "cache"), project_root: dir)
         subprocess = capture = nil
         capture_subprocess_io do
-          subprocess = map.send(:subprocess_clean_pass?, [test])
+          subprocess, = map.send(:subprocess_clean_pass?, [test])
           capture = map.send(:capture, test)&.fetch("passed")
         end
         script = "require 'mutineer'; Mutineer::ChildStdout.silence; exit Mutineer::TestRunners::Minitest.run([#{test.dump}], stop_at_first_failure: true)"
@@ -579,7 +1142,8 @@ class RunnerTest < Minitest::Test
             outcomes << map.send(:capture, test).fetch("passed")
             rows << File.readlines(log).map { |line| JSON.parse(line) }
             File.write(log, "")
-            outcomes << map.send(:subprocess_clean_pass?, [test])
+            ok, = map.send(:subprocess_clean_pass?, [test])
+            outcomes << ok
             rows << File.readlines(log).map { |line| JSON.parse(line) }
           end
           File.write(log, "")
@@ -710,6 +1274,179 @@ class RunnerTest < Minitest::Test
     end
   end
 
+  # #275: literal_mutation and string_literal both turn "hi" into "". The copy
+  # runs once, and the kept mutant keeps the id of a literal_mutation-only run.
+  def test_collect_jobs_runs_a_cross_operator_copy_once
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, _ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation]).first.map(&:last), jobs.map(&:last)
+      assert_equal 1, extras[:id_map].size
+    end
+  end
+
+  # #275: the registry-first copy stays, whatever the --operators order.
+  def test_collect_jobs_keeps_the_registry_first_copy_in_any_operator_order
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      jobs, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+      assert_equal collect(path, dir, %w[literal_mutation string_literal]).first.map(&:last), jobs.map(&:last)
+    end
+  end
+
+  # #275: chain_link and call_to_receiver both turn node.name.name into
+  # node.name. One copy runs, the chain_link one (it is first in the registry).
+  def test_collect_jobs_runs_a_chain_copy_once
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "chain.rb")
+      File.write(path, "class Chain\n  def a(node)\n    node.name.name\n  end\nend\n")
+      jobs, = collect(path, dir, %w[call_to_receiver chain_link])
+      source = File.read(path)
+      mutated = jobs.map { |_s, m, _id| m.apply(source) }
+      assert_equal mutated.uniq, mutated
+      short = jobs.select { |_s, m, _id| m.apply(source).include?("    node.name\n") }
+      assert_equal [:chain_link], short.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275, #159: an ignore entry for the string_literal copy ignores only that
+  # copy. The literal_mutation copy still runs.
+  def test_collect_jobs_keeps_the_run_copy_when_the_other_operator_copy_is_ignored
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      string_id = collect(path, dir, %w[string_literal]).first.first.last
+      jobs, ignored, = collect(path, dir, %w[literal_mutation string_literal], ignore: [string_id])
+      assert_equal [string_id], ignored.map(&:id)
+      assert_equal [:literal_mutation], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: two ignored copies of one edit are recorded once.
+  def test_collect_jobs_records_one_ignored_copy_across_operators
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi" # mutineer:disable-line))
+      jobs, ignored, = collect(path, dir, %w[string_literal literal_mutation])
+      assert_empty jobs
+      assert_equal [:literal_mutation], ignored.map { |r| r.mutation.operator }
+    end
+  end
+
+  # #275: within a method, mutants follow the registry order, not the
+  # --operators order.
+  def test_collect_jobs_lists_mutants_in_registry_order
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "plus.rb")
+      File.write(path, "class Plus\n  def a(x)\n    \"hi\" + x\n  end\nend\n")
+      jobs, = collect(path, dir, %w[string_literal arithmetic])
+      assert_equal %i[arithmetic string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275 scope: 'hi' gives "" and '', which are different text, so both stay.
+  def test_collect_jobs_keeps_both_copies_of_a_single_quoted_string
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", "'hi'")
+      jobs, = collect(path, dir, %w[literal_mutation string_literal])
+      assert_equal %i[literal_mutation string_literal], jobs.map { |_s, m, _id| m.operator }
+    end
+  end
+
+  # #275: a dropped copy's old-format ignore entry is still reported for
+  # migration, so the run-time migrate warning lists it.
+  def test_collect_jobs_reports_an_old_format_entry_for_a_dropped_copy
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      olds = %w[literal_mutation string_literal].map { |op| collect(path, dir, [op]).last[:id_map].values.first }
+      _jobs, ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal], ignore: olds)
+      assert_equal 1, ignored.size
+      assert_equal olds.sort, extras[:legacy_ignore_matches].keys.sort
+    end
+  end
+
+  # #374: each dropped copy's id is recorded on the kept mutant. The id is the
+  # one that copy has on its own, the two copies are one edit, and a copy on
+  # a different line is not recorded.
+  def test_collect_jobs_records_each_dropped_copy_on_the_kept_mutant
+    Dir.mktmpdir do |dir|
+      [
+        [write_class(dir, "Str", %("hi")), %w[string_literal], :literal_mutation],
+        [write_chain(dir), %w[call_to_receiver], :chain_link]
+      ].each do |path, others, kept_operator|
+        operators = [kept_operator.to_s, *others]
+        jobs, ignored, _map, extras = collect(path, dir, operators)
+        assert_empty ignored, operators.inspect
+        assert_equal 1, extras[:copies].size, operators.inspect
+        kept_id, dropped_ids = extras[:copies].first
+        kept = jobs.find { |_s, _m, id| id == kept_id }
+        refute_nil kept, operators.inspect
+        assert_equal kept_operator, kept[1].operator
+        source = File.read(path)
+        kept_text = kept[1].apply(source)
+        other_jobs = collect(path, dir, others).first
+        matched = other_jobs.select { |_s, mutation, _id| mutation.apply(source) == kept_text }.map(&:last)
+        assert_equal matched.sort, dropped_ids.sort, operators.inspect
+        assert_equal dropped_ids.sort, extras[:dropped_id_map].keys.sort
+        dropped_ids.each do |dropped|
+          refute_includes extras[:id_map].keys, dropped
+          refute_includes jobs.map(&:last), dropped
+        end
+      end
+
+      path = File.join(dir, "either.rb")
+      File.write(path, "class Either\n  def a(x)\n    x || x\n  end\nend\n")
+      jobs, _ignored, _map, extras = collect(path, dir, %w[operand_removal])
+      assert_equal 1, jobs.size
+      assert_equal [jobs.first.last], extras[:copies].keys
+      assert_equal 1, extras[:copies].values.first.size
+      refute_includes extras[:id_map].keys, extras[:copies].values.first.first
+
+      quoted = write_class(dir, "Quote", "'hi'")
+      _jobs, _ignored, _map, extras = collect(quoted, dir, %w[literal_mutation string_literal])
+      assert_empty extras[:copies]
+    end
+  end
+
+  # #374: an ignore entry still ignores only its own copy. The other copy
+  # runs, and neither side records the other as dropped. When both copies are
+  # ignored, the kept one records the dropped id.
+  def test_collect_jobs_records_a_dropped_copy_only_inside_one_bucket
+    Dir.mktmpdir do |dir|
+      path = write_class(dir, "Str", %("hi"))
+      string_id = collect(path, dir, %w[string_literal]).first.first.last
+      _jobs, ignored, _map, extras = collect(path, dir, %w[literal_mutation string_literal], ignore: [string_id])
+      assert_equal [string_id], ignored.map(&:id)
+      assert_empty extras[:copies]
+
+      both = write_class(dir, "Both", %("hi" # mutineer:disable-line))
+      jobs, ignored, _map, extras = collect(both, dir, %w[literal_mutation string_literal])
+      assert_empty jobs
+      assert_equal [:literal_mutation], ignored.map { |result| result.mutation.operator }
+      _jobs, string_ignored, = collect(both, dir, %w[string_literal])
+      assert_equal [string_ignored.first.id], extras[:copies][ignored.first.id]
+    end
+  end
+
+  # #374: --since drops the copy list of a mutant outside the diff.
+  def test_scope_since_drops_copies_outside_the_diff
+    Dir.mktmpdir do |root|
+      path = File.join(root, "g.rb")
+      File.write(path, "class G\n  def changed\n    \"hi\"\n  end\n  def kept\n    \"yo\"\n  end\nend\n")
+      git_commit_all(root)
+      File.write(path, File.read(path).sub('"hi"', '"hi!"'))
+      ops = Mutineer::MutatorRegistry.resolve(%w[literal_mutation string_literal])
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      assert_operator extras[:copies].size, :>, 1
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_equal 1, extras[:copies].size
+      kept_id = extras[:copies].keys.first
+      scoped_jobs, = Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_includes scoped_jobs.map(&:last), kept_id
+    end
+  end
+
   # Every row of a large matrix names the same tests; after share_tests they
   # are one frozen array per test, whatever row they came from.
   def test_share_tests_gives_every_row_the_same_test_objects
@@ -770,7 +1507,498 @@ class RunnerTest < Minitest::Test
     assert_same kept, Mutineer::Runner.unreported_row(Mutineer::Result.survived.with(kills: kept)).kills
   end
 
+  def test_collect_jobs_reports_declined_counts_per_operator
+    Dir.mktmpdir do |root|
+      path = File.join(root, "declines.rb")
+      File.write(path, "class Declines\n  def m(a, b)\n    if foo(<<~X)\n      hi\n    X\n      a + b\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _jobs, _ignored, _map, extras =
+        Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true arithmetic]))
+      assert_equal({ "condition_true" => 1 }, extras[:declined])
+    end
+  end
+
+  # #386: method shapes the five default operators give no mutant. `day` is the
+  # Fizzy shape (a bare if/else with a def-level rescue); the rest are its
+  # siblings. `total` holds `a + b`, so arithmetic mutates it.
+  DAY_SHAPES = <<~RUBY
+    class Day
+      def day
+        if @day
+          Time.parse(@day)
+        else
+          Time.now
+        end
+      rescue ArgumentError
+        :not_found
+      end
+
+      def total(a, b)
+        a + b
+      end
+
+      def noop; end
+
+      def bare_rescue
+        Integer(@day)
+      rescue ArgumentError
+        :invalid
+      end
+
+      def bare_unless
+        unless @day
+          Time.now
+        end
+      end
+
+      def bare_case
+        case @day
+        when Symbol then Time.now
+        else Time.parse(@day)
+        end
+      end
+
+      def ternary
+        @day ? Time.parse(@day) : Time.now
+      end
+
+      def modifier_if
+        Time.now if @day
+      end
+
+      def begin_ensure
+        begin
+          Time.now
+        ensure
+          @day = :done
+        end
+      end
+    end
+  RUBY
+
+  # The default list of DAY_SHAPES, by name and def line: every method but `total`.
+  DAY_SHAPES_UNMUTATED = [["Day#day", 2], ["Day#noop", 16], ["Day#bare_rescue", 18],
+                          ["Day#bare_unless", 24], ["Day#bare_case", 30], ["Day#ternary", 37],
+                          ["Day#modifier_if", 41], ["Day#begin_ensure", 45]].freeze
+
+  # Writes DAY_SHAPES and returns collect_jobs' extras for the operator names.
+  def day_shapes_extras(names)
+    Dir.mktmpdir do |root|
+      path = File.join(root, "day.rb")
+      File.write(path, DAY_SHAPES)
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(names))
+      yield extras, path
+    end
+  end
+
+  def test_collect_jobs_lists_methods_with_no_mutants
+    day_shapes_extras(Mutineer::MutatorRegistry::DEFAULT_NAMES) do |extras, path|
+      assert_equal 9, extras[:subjects]
+      assert_equal(DAY_SHAPES_UNMUTATED.map { |name, line| { subject: name, file: path, line: line } },
+                   extras[:unmutated_subjects])
+    end
+  end
+
+  def test_collect_jobs_lists_no_method_an_operator_reaches
+    day_shapes_extras(%w[condition_false]) do |extras, _path|
+      listed = extras[:unmutated_subjects].map { |h| h[:subject] }
+      # condition_false forces each if, unless, ternary and modifier condition.
+      assert_equal %w[Day#total Day#noop Day#bare_rescue Day#bare_case Day#begin_ensure], listed
+    end
+  end
+
+  # #418: rescue_body reaches each method with a rescue clause, and return_nil
+  # now reaches a method with a def-level rescue (a BeginNode body).
+  def test_collect_jobs_reaches_rescue_methods_with_rescue_body_and_return_nil
+    day_shapes_extras(%w[rescue_body]) do |extras, _path|
+      assert_equal %w[Day#total Day#noop Day#bare_unless Day#bare_case Day#ternary Day#modifier_if Day#begin_ensure],
+                   extras[:unmutated_subjects].map { |h| h[:subject] }
+    end
+    day_shapes_extras(%w[return_nil]) do |extras, _path|
+      assert_equal %w[Day#noop], extras[:unmutated_subjects].map { |h| h[:subject] }
+    end
+  end
+
+  def test_collect_jobs_lists_a_method_whose_candidates_were_all_declined
+    Dir.mktmpdir do |root|
+      path = File.join(root, "notes.rb")
+      File.write(path, "class Notes\n  def note(x)\n    if x == <<~S\n      hi\n    S\n      1\n    end\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true]))
+      assert_equal({ "condition_true" => 1 }, extras[:declined])
+      assert_equal ["Notes#note"], extras[:unmutated_subjects].map { |h| h[:subject] }
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[condition_true comparison]))
+      assert_empty extras[:unmutated_subjects]
+    end
+  end
+
+  def test_collect_jobs_does_not_list_a_method_with_only_ignored_mutants
+    Dir.mktmpdir do |root|
+      path = File.join(root, "sum.rb")
+      File.write(path, "class Sum\n  def total(a, b)\n    a + b # mutineer:disable-line\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [path], project_root: root)
+      jobs, ignored, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      assert_empty jobs
+      refute_empty ignored
+      assert_equal 1, extras[:subjects]
+      assert_empty extras[:unmutated_subjects]
+    end
+  end
+
+  def test_collect_jobs_sorts_unmutated_subjects
+    Dir.mktmpdir do |root|
+      b = File.join(root, "b.rb")
+      a = File.join(root, "a.rb")
+      File.write(b, "class B\n  def two; end\n  def one; end\nend\n")
+      File.write(a, "class A\n  def z; end\nend\n")
+      config = Mutineer::Config.new(sources: [b, a], project_root: root)
+      _, _, _, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+      assert_equal [[a, 2], [b, 2], [b, 3]], extras[:unmutated_subjects].map { |h| [h[:file], h[:line]] }
+      again = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic])).last
+      assert_equal JSON.generate(extras[:unmutated_subjects]), JSON.generate(again[:unmutated_subjects])
+    end
+  end
+
+  def test_collect_jobs_counts_a_method_once_across_path_spellings
+    root = File.expand_path("..", __dir__)
+    one = Mutineer::Config.new(sources: ["lib/mutineer/mutant_id.rb"], project_root: root)
+    three = Mutineer::Config.new(sources: ["lib/mutineer/mutant_id.rb", "./lib/mutineer/mutant_id.rb",
+                                           File.join(root, "lib/mutineer/mutant_id.rb")], project_root: root)
+    ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+    expected = Mutineer::JobPlan.collect_jobs(one, ops).last
+    actual = Mutineer::JobPlan.collect_jobs(three, ops).last
+    assert_operator expected[:subjects], :>, 0
+    assert_equal expected[:subjects], actual[:subjects]
+    assert_equal expected[:unmutated_subjects].size, actual[:unmutated_subjects].size
+  end
+
+  def test_collect_jobs_reports_no_declined_when_none
+    config = Mutineer::Config.new(sources: [CALC], project_root: File.dirname(CALC))
+    _jobs, _ignored, _map, extras = Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(%w[arithmetic]))
+    assert_equal({}, extras[:declined])
+  end
+
+  # #420: --since keeps only methods whose def intersects the diff.
+  def test_scope_since_narrows_unmutated_subjects_to_changed_defs
+    Dir.mktmpdir do |root|
+      path = File.join(root, "calc.rb")
+      File.write(path, <<~RUBY)
+        class Calc
+          def add(a, b)
+            a + b
+          end
+          def note
+          end
+          def leftover
+          end
+        end
+      RUBY
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      # Change an empty (unmutated) method's def line and leave `leftover` alone.
+      File.write(path, File.read(path).sub("def note\n", "def note # touched\n"))
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      before = extras[:unmutated_subjects].map { |h| h[:subject] }.sort
+      assert_includes before, "Calc#note"
+      assert_includes before, "Calc#leftover"
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      names = extras[:unmutated_subjects].map { |h| h[:subject] }
+      assert_equal ["Calc#note"], names, extras.inspect
+      assert_equal 1, extras[:subjects]
+      refute extras.key?(:subject_ranges)
+    end
+  end
+
+  # #420: a changed mutable method stays in subjects; an unchanged empty one drops.
+  def test_scope_since_keeps_changed_mutable_method_and_drops_unchanged_empty
+    Dir.mktmpdir do |root|
+      path = File.join(root, "calc.rb")
+      File.write(path, <<~RUBY)
+        class Calc
+          def add(a, b)
+            a + b
+          end
+          def note
+          end
+        end
+      RUBY
+      [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+       %w[add .], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+      end
+      File.write(path, File.read(path).sub("a + b", "a + b + 0"))
+      config = Mutineer::Config.new(sources: [path], project_root: root, since: "HEAD")
+      ops = Mutineer::MutatorRegistry.resolve(Mutineer::MutatorRegistry::DEFAULT_NAMES)
+      jobs, ignored, map, extras = Mutineer::JobPlan.collect_jobs(config, ops)
+      assert_operator extras[:subjects], :>=, 2
+      Mutineer::JobPlan.scope_since(jobs, ignored, map, config, extras: extras)
+      assert_equal 1, extras[:subjects], extras.inspect
+      assert_empty extras[:unmutated_subjects]
+      refute extras.key?(:subject_ranges)
+    end
+  end
+
+  # #297: the reload mutant of a hook-block def stores the mutated def just
+  # before the hook call, in the same module body, and still parses.
+  def test_hook_mutant_inserts_the_stored_def_before_the_hook_call
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    body = subject.body_loc
+    mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                      replacement: "x - 2", operator: "test")
+    code, hook_def = Mutineer::JobPlan.hook_mutant(mutation.apply(source), mutation, subject, source)
+
+    assert_empty Mutineer::Parser.parse_string(code).errors
+    assert_equal 1, code.scan("::Mutineer::ConcernBlocks.store_hook_def do").size
+    stored = code.index("store_hook_def do\ndef doubled(x)\n      x - 2\n    end\nend; included do")
+    refute_nil stored, code
+    assert_operator stored, :<, code.index("included do\n    def doubled(x)\n      x - 2")
+    assert_equal({ line: 23, name: :doubled, singleton: false }, hook_def)
+  end
+
+  # #345: the def the child places is the stored one, so the probe has to be
+  # inside it. The copy that remains in the file is not the method tests call.
+  def test_hook_mutant_puts_the_reach_probe_in_the_stored_def
+    path = File.expand_path("fixtures/singleton/concern_class_methods.rb", __dir__)
+    source = File.read(path)
+    subject = Mutineer::Project.discover([path], only: "ConcernPricing#doubled").first
+    body = subject.body_loc
+    mutation = Mutineer::Mutation.new(start_offset: body.start_offset, end_offset: body.end_offset,
+                                      replacement: "x - 2", operator: "test")
+    code, = Mutineer::JobPlan.hook_mutant(
+      mutation.apply(source), mutation, subject, source,
+      reach_path: "/tmp/mutineer-reach-hook", reach_key: "mutineer_r0123456789abcdef"
+    )
+
+    assert_empty Mutineer::Parser.parse_string(code).errors
+    stored = code[/store_hook_def do\n.*?^end;/m]
+    assert_includes stored, '::IO.sysopen("/tmp/mutineer-reach-hook"'
+    assert_includes stored, "mutineer_r0123456789abcdef"
+    refute_includes code[/def doubled\(x\)\n      x - 2\n    end\n  end\nend\n/], "::IO.sysopen"
+  end
+
+  def test_unpaired_counts_counts_each_source
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      File.write("blank.rb", "class Blank; end\n")
+      config = Mutineer::Config.new(unpaired_sources: %w[orphan.rb blank.rb], project_root: dir)
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_equal({ "orphan.rb" => 1, "blank.rb" => 0 }, counts)
+      assert_empty failures
+      assert_equal [], config.sources
+    end
+  end
+
+  def test_unpaired_counts_match_collect_jobs
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      config = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir)
+      counts, = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      jobs, = Mutineer::JobPlan.collect_jobs(
+        Mutineer::Config.new(sources: ["orphan.rb"], project_root: dir), arithmetic_ops
+      )
+      assert_equal jobs.size, counts["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_follow_only
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1; end; end\n")
+      hit = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir, only: "Orphan#z")
+      miss = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir, only: "Other#x")
+      assert_equal 1, Mutineer::JobPlan.unpaired_counts(hit, arithmetic_ops).first["orphan.rb"]
+      assert_equal 0, Mutineer::JobPlan.unpaired_counts(miss, arithmetic_ops).first["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_follow_since
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan\n  def z(a)\n    a + 1\n  end\n  def y(a)\n    a + 2\n  end\nend\n")
+      File.write("quiet.rb", "class Quiet; def z(a); a + 1; end; end\n")
+      git_commit_all(dir)
+      File.write("orphan.rb", File.read("orphan.rb").sub("a + 1", "a + 3"))
+      config = Mutineer::Config.new(unpaired_sources: %w[orphan.rb quiet.rb], project_root: dir, since: "HEAD")
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_empty failures
+      assert_equal 1, counts["orphan.rb"]
+      assert_equal 0, counts["quiet.rb"]
+      assert_equal %w[orphan.rb quiet.rb], counts.keys
+    end
+  end
+
+  def test_unpaired_counts_leave_out_suppressed_mutants
+    in_project do |dir|
+      File.write("orphan.rb", "class Orphan; def z(a); a + 1 # mutineer:disable-line\n end; end\n")
+      config = Mutineer::Config.new(unpaired_sources: ["orphan.rb"], project_root: dir)
+      counts, = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_equal 0, counts["orphan.rb"]
+    end
+  end
+
+  def test_unpaired_counts_give_nil_for_a_source_they_cannot_read
+    in_project do |dir|
+      Dir.mkdir("odd.rb")
+      config = Mutineer::Config.new(unpaired_sources: ["odd.rb"], project_root: dir)
+      counts, failures = Mutineer::JobPlan.unpaired_counts(config, arithmetic_ops)
+      assert_nil counts["odd.rb"]
+      assert_equal ["odd.rb"], failures.map { |row| row[:file] }
+      assert_match(/ParseError/, failures.first[:error])
+    end
+  end
+
+  # The calculator with its strong test, one operator, and a throwaway cache.
+  def growth_config(strategy)
+    Mutineer::Config.new(sources: [CALC], tests: [STRONG_TEST], operators: ["arithmetic"], jobs: 1,
+                         strategy: strategy, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT)
+  end
+
+  # #479: a reload run sets the log for its children, returns the rows in
+  # extras, and removes the log after. With no ActiveSupport, nothing grows.
+  def test_a_reload_run_returns_callback_growth_rows_and_removes_the_log
+    seen = nil
+    original = Mutineer::JobPlan.method(:create_callback_growth_log)
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { seen = original.call }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      assert_equal [], extras[:callback_growth]
+    end
+    refute_nil seen
+    refute File.exist?(seen), "the run removes its log"
+    assert_nil Mutineer::ReloadGuards.callback_growth_log
+  end
+
+  # #505 review: an empty --since reload run reports like the daemon path:
+  # nil when its log failed, [] when it has one.
+  def test_an_empty_since_reload_run_reports_callback_growth
+    Dir.mktmpdir("mutineer-empty-since-growth") do |dir|
+      source = File.join(dir, "calculator.rb")
+      File.write(source, "class EmptySinceGrowth\n  def add(a, b)\n    a + b\n  end\nend\n")
+      config = Mutineer::Config.new(sources: [source], project_root: dir, since: "HEAD",
+                                    operators: ["arithmetic"], strategy: "reload")
+      Mutineer::ChangedLines.stub(:for, {}) do
+        Mutineer::JobPlan.stub(:create_callback_growth_log, nil) do
+          _agg, _map, extras = Mutineer::Runner.execute(config)
+          assert extras.key?(:callback_growth)
+          assert_nil extras[:callback_growth]
+        end
+        _agg, _map, extras = Mutineer::Runner.execute(config)
+        assert_equal [], extras[:callback_growth]
+      end
+    end
+  end
+
+  def test_a_redefine_run_has_no_callback_growth_log
+    Mutineer::JobPlan.stub(:create_callback_growth_log, -> { flunk "redefine must not make a log" }) do
+      _agg, _map, extras = Mutineer::Runner.execute(growth_config("redefine"))
+      assert_equal [], extras[:callback_growth]
+    end
+  end
+
+  def test_callback_growth_rows_are_unique_and_project_relative
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "app/models/doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      rows = [%w[Doubled], %w[Doubled], %w[Once]].map { |(name)| "#{name.dump}\t#{model.dump}\n" }
+      File.write(log, rows.join + "broken line\n" + "\"unterminated\t\"x\n")
+      assert_equal [["Doubled", "app/models/doubled.rb"], ["Once", "app/models/doubled.rb"]],
+                   Mutineer::JobPlan.callback_growth_rows(log, root)
+    end
+    assert_equal [], Mutineer::JobPlan.callback_growth_rows(nil, "/")
+  end
+
+  # A non-ASCII class name and path must not raise in the parent when the
+  # default external encoding is US-ASCII (LANG unset, #346).
+  def test_callback_growth_rows_read_non_ascii_bytes_under_us_ascii
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "caf\xC3\xA9.rb")
+      File.write(model, "class Cafe; end\n")
+      File.binwrite(log, "#{"Caf\xC3\xA9".dump}\t#{model.dump}\n".b)
+      rows = with_ascii_default_external { Mutineer::JobPlan.callback_growth_rows(log, root) }
+      assert_equal [["Café", "café.rb"]], rows
+      assert_equal [Encoding::UTF_8, Encoding::UTF_8], rows.first.map(&:encoding)
+    end
+  end
+
+  # A newline or tab in a path stays in its field: the log dumps each field.
+  def test_callback_growth_rows_keep_a_path_with_a_newline
+    Dir.mktmpdir do |root|
+      model = File.join(root, "odd\ndir\tname", "doubled.rb")
+      FileUtils.mkdir_p(File.dirname(model))
+      File.write(model, "class Doubled; end\n")
+      log = File.join(root, "growth.log")
+      Mutineer::ReloadGuards.callback_growth_log = log
+      klass = Class.new
+      Object.const_set(:RunnerGrowthDoubled, klass)
+      Mutineer::ReloadGuards.log_callback_growth([klass], model)
+      assert_equal [["RunnerGrowthDoubled", "odd\ndir\tname/doubled.rb"]], Mutineer::JobPlan.callback_growth_rows(log, root)
+    ensure
+      Mutineer::ReloadGuards.callback_growth_log = nil
+      Object.send(:remove_const, :RunnerGrowthDoubled) if Object.const_defined?(:RunnerGrowthDoubled)
+    end
+  end
+
+  # The check only reports: a temp directory that refuses the log warns once,
+  # and the run goes on with no check.
+  def test_a_log_the_temp_directory_refuses_warns_and_the_run_goes_on
+    agg = extras = nil
+    _out, err = capture_io do
+      real = Tempfile.method(:create)
+    refuse = lambda do |basename = "", *rest, **kw, &blk|
+      raise Errno::EACCES, "tmp" if Array(basename).first == "mutineer-callback-growth"
+
+      real.call(basename, *rest, **kw, &blk)
+    end
+    Tempfile.stub(:create, refuse) do
+        agg, _map, extras = Mutineer::Runner.execute(growth_config("reload"))
+      end
+    end
+    assert_match(/\[mutineer\] could not create the callback-growth log, so this run does not check/, err)
+    assert_nil extras[:callback_growth], "no log means nothing was checked (#505)"
+    assert_operator agg.killed_count, :>, 0
+  end
+
+  # #505: nil only when the run had to check and has no log. A run that does
+  # not reload gets an empty list, and a real log gives its rows.
+  def test_callback_growth_is_nil_only_for_a_checking_run_without_a_log
+    Dir.mktmpdir do |root|
+      log = File.join(root, "growth.log")
+      model = File.join(root, "doubled.rb")
+      File.write(model, "class Doubled; end\n")
+      File.write(log, "#{"Doubled".dump}\t#{model.dump}\n")
+      rows = [["Doubled", "doubled.rb"]]
+      { [true, nil] => nil, [false, nil] => [], [true, log] => rows, [false, log] => rows }.each do |(checks, path), want|
+        got = Mutineer::Runner.send(:callback_growth, path, checks, root)
+        want.nil? ? assert_nil(got, [checks, path].inspect) : assert_equal(want, got, [checks, path].inspect)
+      end
+    end
+  end
+
   private
+
+  def in_project
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) { yield dir }
+    end
+  end
+
+  def arithmetic_ops
+    Mutineer::MutatorRegistry.resolve(["arithmetic"])
+  end
+
+  def git_commit_all(dir)
+    [%w[init -q], %w[config user.email t@t], %w[config user.name t],
+     %w[add .], %w[commit -qm base]].each do |args|
+      assert system("git", "-C", dir, *args, out: File::NULL, err: File::NULL), "git #{args.first}"
+    end
+  end
 
   def with_rails_env(value)
     orig = ENV["RAILS_ENV"]
@@ -778,6 +2006,26 @@ class RunnerTest < Minitest::Test
     yield
   ensure
     orig.nil? ? ENV.delete("RAILS_ENV") : (ENV["RAILS_ENV"] = orig)
+  end
+
+  # Writes `class <name>; def a; <body>; end; end` to dir and returns its path.
+  # The body is on line 3.
+  def write_chain(dir)
+    path = File.join(dir, "chain.rb")
+    File.write(path, "class Chain\n  def a(node)\n    node.name.name\n  end\nend\n")
+    path
+  end
+
+  def write_class(dir, name, body)
+    path = File.join(dir, "#{name.downcase}.rb")
+    File.write(path, "class #{name}\n  def a\n    #{body}\n  end\nend\n")
+    path
+  end
+
+  # JobPlan.collect_jobs on one file with the named operators.
+  def collect(path, dir, operators, ignore: [])
+    config = Mutineer::Config.new(sources: [path], project_root: dir, ignore: ignore)
+    Mutineer::JobPlan.collect_jobs(config, Mutineer::MutatorRegistry.resolve(operators))
   end
 
   def line_of(mutation, source)

@@ -20,7 +20,7 @@ change against the intended behaviour before asking the agent to add a test:
    mutineer run app/ --since origin/main --threshold 90 --format json --output .mutineer/run.json
    ```
 
-3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer#mutant-ids). For each survivor, feed
+3. Parse `survivors[]`. Each entry carries a ready-made `diff` and an `id`. Unrelated edits can preserve the id; file moves, renames, project-root changes, and changes to repeated-name or repeated-mutation order can change it. See [Mutant ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). For each survivor, feed
    the agent a prompt like:
 
    > This change to `{subject}` (`{file}:{line}`) was **not** caught by any test:
@@ -40,10 +40,21 @@ Keep `fail_fast` disabled (the default). If the active `.mutineer.yml` sets it t
 value when the loop ends, before committing. A fail-fast run is partial,
 and its score and exit code do not cover the full scope.
 
+```yaml
+# .mutineer.yml, during the loop
+fail_fast: false
+```
+
+Or turn it off for one run without editing the file:
+
+```sh
+mutineer run lib --no-fail-fast
+```
+
 Zero survivors alone is not success: an empty or fully suppressed scope, or a run
 with no usable verdicts, also has zero survivors. If the score is null, stop and
 report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` for
-harness failures, and fix them before starting a new run. A
+harness failures, and fix them before starting a new run. Also check `summary.unpaired_mutants` (Mutineer 1.9.0 or later). Above 0, a source with no paired test was skipped. Its mutants are not in the score or in `no_verdict[]`, so they cannot fail `--threshold`. They count in the unrun-share warning on stderr, except under `--fail-fast`. `unpaired_sources[]` names each skipped source. Add a test for each entry whose `mutants` is above 0, then run again. `--test` replaces pairing, so if you pass it, list every test file, the new ones included. Under `--since`, an entry with `mutants` 0 has no mutant on a changed line. Also look for an entry whose `mutants` is `null`. That count failed, and `summary.unpaired_mutants` leaves it out. Report that run as incomplete. Do not accept it. A
 positive threshold fails when nothing can be scored and something broke, or when
 more than one mutant has no verdict and they exceed 10% of those attempted; it
 does not require zero errors. Keep the threshold in the command equal to your target.
@@ -193,8 +204,11 @@ is optional; write your own explanation or omit that field. Ignore mappings and
 the configuration. For the GitHub Action, check the resolved gem version selected
 by `version:`. With `use-bundler: true`, check Mutineer in `Gemfile.lock` instead.
 Older versions do not apply mapping entries and do not warn, so the named mutant
-is not ignored. Ignored mutants are excluded from the score and listed in
-`ignored[]`. Set an attempt limit for the agent, then ask a person to review
+is not ignored. When a survivor lists `copies`, add an entry for each of
+those ids too. On a later run that mutant is in `ignored[]`, and `copies`
+there names the same ids. Add any of them that are still missing. An entry
+ignores only its own id. Ignored mutants are excluded from the score and
+listed in `ignored[]`. Set an attempt limit for the agent, then ask a person to review
 unresolved survivors. Failed attempts alone do not prove that a mutant is equivalent.
 
 ## Reading exit codes in a pipeline
@@ -203,8 +217,8 @@ unresolved survivors. Failed attempts alone do not prove that a mutant is equiva
 | Code | Meaning |
 |------|---------|
 | `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error. |
-| `2` | Usage / invalid-flag error (mistyped flag, bad path, unreadable baseline). |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
+| `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
 Branch on these directly; never scrape the human report. The JSON `summary` and `baseline` blocks carry

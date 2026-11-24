@@ -2,6 +2,7 @@
 
 require "digest"
 require "uri"
+require_relative "redaction"
 
 module Mutineer
   # Per-worker database isolation for the daemon path.
@@ -53,6 +54,9 @@ module Mutineer
     ].freeze
     # Infix that keeps a worker database off Rails' own `<base>-<n>` names.
     WORKER_NAME_MARK = "-mutineer-"
+    # Suffix of the SQLite run lock beside the base database file.
+    # The file stays. The kernel frees the lock when the last holder exits.
+    SQLITE_LOCK_SUFFIX = "-mutineer.lock"
     # Database we connect to while the test database is a template. Advisory
     # locks are per database, so every run must take them here, not on a slot.
     MAINTENANCE_DATABASE = "postgres"
@@ -286,7 +290,7 @@ module Mutineer
     end
 
     # Create each worker database before any worker daemon starts.
-    # SQLite is a no-op: the file is copied on first use. Postgres drops and
+    # SQLite takes the run lock and copies files on first use. Postgres drops and
     # recreates each exact slot name from the test database. MySQL creates each
     # slot, loads the schema, and copies rows. The caller must be the only
     # daemon connected to that test database.
@@ -300,7 +304,10 @@ module Mutineer
 
       count = Integer(slots)
       return if count < 1
-      return if sqlite_adapter?(current_adapter)
+      if sqlite_adapter?(current_adapter)
+        provision_sqlite
+        return
+      end
 
       if postgres_adapter?(current_adapter)
         provision_postgres(count)
@@ -315,15 +322,37 @@ module Mutineer
             "worker-DB isolation does not support adapter #{current_adapter.inspect} yet."
     end
 
-    # Take the shared run lock and drop this process's connection to the test
-    # database. Worker daemons call this at boot. They do not create databases.
-    # SQLite has no lock here. The file copy still happens in {after_fork}.
+    # Take the SQLite run lock for this process.
+    # Ask for it alone, then share it so worker daemons can join.
+    # A failed share raises the same message as a failed exclusive request.
+    #
+    # @return [void]
+    # @raise [RuntimeError] when another run holds the lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.provision_sqlite
+      config = primary_db_config
+      base = sqlite_lock_base(config)
+      return unless base
+
+      lock = "#{base}#{SQLITE_LOCK_SUFFIX}"
+      hold_sqlite_lock(lock, base, shared: false)
+      hold_sqlite_lock(lock, base, shared: true)
+    end
+
+    # Take the shared run lock. Worker daemons call this at boot. They do not
+    # create databases. Postgres and MySQL also drop this process's connection
+    # to the test database. SQLite only takes the lock: the file copy still
+    # happens in {after_fork}.
     #
     # @return [void]
     # @raise [RuntimeError] when another run holds the exclusive lock.
+    # @raise [SystemCallError] when the SQLite lock file cannot be opened.
     def self.prepare_worker!
       return unless available?
-      return if sqlite_adapter?(current_adapter)
+      if sqlite_adapter?(current_adapter)
+        prepare_sqlite_worker!
+        return
+      end
 
       if mysql_adapter?(current_adapter)
         prepare_mysql_worker!
@@ -343,6 +372,20 @@ module Mutineer
       disconnect_app!
     end
 
+    # Take the shared SQLite run lock. A worker daemon calls this at boot.
+    # No file means there is nothing to lock (blank, `:memory:`, or a memory URI).
+    #
+    # @return [void]
+    # @raise [RuntimeError] when another run holds the exclusive lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.prepare_sqlite_worker!
+      config = primary_db_config
+      base = sqlite_lock_base(config)
+      return unless base
+
+      hold_sqlite_lock("#{base}#{SQLITE_LOCK_SUFFIX}", base, shared: true)
+    end
+
     # Point this process at one worker database. Postgres and MySQL only connect.
     # The slot was copied at {provision}.
     #
@@ -352,20 +395,42 @@ module Mutineer
       ActiveRecord::Base.establish_connection(worker_db_config(slot))
     end
 
-    # How many database configs the test environment declares. One is normal.
-    # More than one means the run must use a single worker.
+    # The database config names the test environment declares, and the one
+    # each worker copies (the config `ActiveRecord::Base` uses). The tool
+    # counts the names that `shared_databases` does not list: more than one
+    # means the run must use a single worker.
     #
-    # @return [Integer]
-    def self.database_count
-      return 1 unless available?
+    # A config with `database_tasks: false` counts: workers would share it like
+    # any other. A replica does not, as before: it reads another config's database.
+    # No rescue: a failure must reach the tool, which then keeps one worker.
+    #
+    # @return [Hash{String => Object}] "names" (Array<String>) and "primary" (String).
+    def self.database_names
+      names = test_configs.reject(&:replica?).map(&:name)
+      { "names" => names, "primary" => primary_database_name }
+    end
 
+    # The config name each worker copies: the one `ActiveRecord::Base` uses.
+    #
+    # @return [String]
+    def self.primary_database_name
+      ActiveRecord::Base.connection_db_config.name
+    end
+
+    # The database config `ActiveRecord::Base` is using.
+    #
+    # @return [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    def self.primary_db_config
+      ActiveRecord::Base.connection_db_config
+    end
+
+    # The test environment's database configs, hidden ones and replicas included.
+    #
+    # @return [Array<ActiveRecord::DatabaseConfigurations::DatabaseConfig>]
+    def self.test_configs
       env = ENV["RAILS_ENV"].to_s
       env = "test" if env.empty?
-      list = ActiveRecord::Base.configurations.configs_for(env_name: env)
-      count = list.size
-      count < 1 ? 1 : count
-    rescue StandardError
-      1
+      ActiveRecord::Base.configurations.configs_for(env_name: env, include_hidden: true)
     end
 
     # Child-side (after fork): route this process's ActiveRecord at the worker's
@@ -436,7 +501,10 @@ module Mutineer
     # @param schema_path [String] absolute path to the app's Ruby schema file.
     # @return [Boolean]
     def self.schema_current?(schema_path)
-      text    = File.read(schema_path)
+      # UTF-8, not Parser.read. This file loads in the app's Ruby, which may
+      # not ship Prism. A require of parser.rb would disable worker-database
+      # routing (#346). Rails writes schema.rb as UTF-8.
+      text    = File.read(schema_path, encoding: "UTF-8")
       version = schema_file_version(text)
       conn = ActiveRecord::Base.connection
       base       = ActiveRecord::Base
@@ -457,6 +525,77 @@ module Mutineer
     # @return [Integer, nil]
     def self.schema_file_version(text)
       text[/define\(version:\s*([\d_]+)/, 1]&.delete("_")&.to_i
+    end
+
+    # Record each pool that runs SQL in this fork from now on. Run in the fork
+    # before its tests, so {touched_shared_databases} also sees a pool that a
+    # test disconnects or removes before it ends.
+    #
+    # @return [void]
+    def self.watch_sql
+      @sql_pools = {} # used as a set: one entry per pool, not per query
+      ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        connection = payload[:connection]
+        @sql_pools[connection.pool] = true if connection.respond_to?(:pool)
+      end
+    end
+
+    # Turns off Rails' pending-migration check in this mutant fork (#385).
+    # `rails/test_help` runs it when the tests load, and it queries every
+    # database, shared ones too, so {touched_shared_databases} would flag every
+    # mutant. The clean check still runs it, before any mutant.
+    #
+    # @return [void]
+    def self.skip_schema_check!
+      ActiveRecord.maintain_test_schema = false if ActiveRecord.respond_to?(:maintain_test_schema=)
+    end
+
+    # Names from `shared` whose database this fork used. Run in a fork after
+    # its tests: a name here means a test used a database that parallel
+    # workers share, so the verdict cannot be trusted. A pool counts when it
+    # is still connected, or when it ran SQL since {watch_sql}. It names a
+    # shared database when its config has a shared name, when its class also
+    # holds a shared writer pool (a replica in the same `connects_to`), or when
+    # its config names the same database as a shared config. Transactional
+    # tests connect every registered writing pool, so a pool registered for a
+    # shared database shows up here after any test.
+    #
+    # Only names in {database_names} count: the tool warned about any other
+    # name, and no worker shares a database that does not exist.
+    #
+    # No rescue: a failed check must raise (scored `error`), never read as clean.
+    # shortcut: a connection made outside Active Record (a raw driver) is not
+    # seen; upgrade when such an app needs `shared_databases`.
+    #
+    # @param shared [Array<String>] database config names in `shared_databases`.
+    # @return [Array<String>]
+    def self.touched_shared_databases(shared)
+      return [] if shared.empty? || !available?
+
+      shared &= database_names["names"]
+      return [] if shared.empty?
+      # Rails 7.0 reads `:all` below as a role name and lists no pool, so the
+      # check would always pass. Fail every mutant instead of trusting it.
+      raise "shared_databases needs Rails 7.1 or later" if ActiveRecord.version < Gem::Version.new("7.1")
+
+      pools = ActiveRecord::Base.connection_handler.connection_pool_list(:all)
+      owners = pools.filter_map { |p| [pool_owner(p), p.db_config.name] if shared.include?(p.db_config.name) }.to_h
+      by_database = test_configs.filter_map { |c| [c.database, c.name] if shared.include?(c.name) && c.database }.to_h
+      used = pools.select(&:connected?) | (@sql_pools&.keys || [])
+      used.filter_map do |pool|
+        config = pool.db_config
+        shared.include?(config.name) ? config.name : owners[pool_owner(pool)] || by_database[config.database]
+      end.uniq
+    end
+
+    # The class a pool belongs to, by name. `connects_to` registers a class's
+    # writer and replica pools under it. Rails 8 keeps it in a descriptor.
+    #
+    # @param pool [ActiveRecord::ConnectionAdapters::ConnectionPool]
+    # @return [String]
+    def self.pool_owner(pool)
+      config = pool.pool_config
+      config.respond_to?(:connection_descriptor) ? config.connection_descriptor.name : config.connection_name
     end
 
     # The Ruby schema file a SQLite worker loads over an out-of-date copy, as
@@ -524,6 +663,298 @@ module Mutineer
       adapter.start_with?("sqlite")
     end
 
+    # True for a SQLite config whose database name is a plain file path:
+    # not `:memory:`, not a `file:` URI, not blank.
+    # A `file:` URI is resolved by {sqlite_lock_base}, not by this predicate.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [Boolean]
+    def self.sqlite_file_config?(config)
+      database = config.database.to_s
+      sqlite_adapter?(config.adapter.to_s) && !database.empty? && database != ":memory:" && !database.start_with?("file:")
+    end
+
+    # Absolute path of a plain SQLite config's file, resolved as the Rails
+    # adapter does: against `Rails.root` when it is set.
+    # Rails rewrites a plain name before SQLite opens it. A `file:` URI is
+    # not rewritten; {sqlite_uri_file} resolves that name the way SQLite does.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String]
+    def self.sqlite_file(config)
+      root = defined?(Rails.root) && Rails.root
+      root ? File.expand_path(config.database, root.to_s) : File.expand_path(config.database)
+    end
+
+    # Absolute path of the SQLite file this config locks, or nil when the
+    # database is not a shared file. Blank names, `:memory:`, a memory URI,
+    # and a URI SQLite rejects before opening a file have no lock.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String, nil]
+    def self.sqlite_lock_base(config)
+      database = config.database.to_s
+      if database.start_with?("file:")
+        return unless sqlite_adapter?(config.adapter.to_s)
+
+        sqlite_uri_file(database)
+      else
+        return unless sqlite_file_config?(config)
+
+        sqlite_file(config)
+      end
+    end
+
+    # Absolute path of the SQLite run lock, or nil when {sqlite_lock_base}
+    # finds no shared file.
+    #
+    # @param config [ActiveRecord::DatabaseConfigurations::DatabaseConfig]
+    # @return [String, nil]
+    def self.sqlite_lock_path(config)
+      base = sqlite_lock_base(config)
+      return unless base
+
+      "#{base}#{SQLITE_LOCK_SUFFIX}"
+    end
+
+    # Absolute path of the file a `file:` URI opens, or nil when that URI
+    # does not open a shared file.
+    #
+    # SQLite opens a relative URI path from the working directory. Rails does
+    # not rewrite a `file:` name, so this does not use `Rails.root`. The
+    # daemon has already changed to the project root, which is `Rails.root`
+    # for a run started in the app. A plain name for that same file then
+    # locks the same path. Extra leading slashes are collapsed so
+    # `file:////tmp/db.sqlite3` locks `/tmp/db.sqlite3`. The filesystem root
+    # is not a database file, so a path of `/` has no lock.
+    #
+    # @param uri [String] a database name that starts with `file:`.
+    # @return [String, nil]
+    def self.sqlite_uri_file(uri)
+      parsed = sqlite_uri_parts(uri)
+      return unless parsed
+
+      path, memory = parsed
+      return if memory || path.empty? || path == ":memory:"
+
+      expanded = File.expand_path(path).sub(%r{\A/{2,}}, "/")
+      # `/` is not a database file. The lock name would be `/-mutineer.lock`.
+      return if expanded == "/"
+
+      expanded
+    end
+
+    # Path and memory flag of a `file:` URI, or nil when SQLite rejects it.
+    #
+    # The steps match SQLite's `file:` parser. The authority is empty or
+    # `localhost`. `%HH` is decoded. `%00` ends the part being read. A raw
+    # `?` starts the query and `#` starts a fragment, which is ignored.
+    # `mode=memory` is in-memory. Any other `mode` or `cache` value makes
+    # SQLite refuse the open, so there is no shared file to lock.
+    # `vfs` and the other query keys do not change the path.
+    #
+    # @param uri [String] a database name that starts with `file:`.
+    # @return [Array(String, Boolean), nil] the decoded path and whether
+    #   `mode=memory` won, or nil when the URI is rejected.
+    def self.sqlite_uri_parts(uri)
+      bytes = uri.b.bytes
+      index = 5
+      if bytes[index] == 0x2f && bytes[index + 1] == 0x2f
+        index += 2
+        auth_at = index
+        index += 1 while index < bytes.length && bytes[index] != 0x2f
+        authority = bytes[auth_at...index].pack("C*")
+        return if !authority.empty? && authority != "localhost"
+      end
+
+      path = []
+      name = []
+      value = []
+      state = :path
+      options = { mode: nil, cache: nil }
+      while index < bytes.length
+        byte = bytes[index]
+        break if byte == 0x23 # #
+
+        index += 1
+        if byte == 0x25 && sqlite_uri_hex?(bytes[index]) && sqlite_uri_hex?(bytes[index + 1]) # %
+          octet = bytes[index, 2].pack("C*").to_i(16)
+          index += 2
+          if octet.zero?
+            index = sqlite_uri_skip_null(bytes, index, state)
+            next
+          end
+          byte = octet
+        elsif state == :name && (byte == 0x26 || byte == 0x3d) # & or =
+          if name.empty?
+            index = sqlite_uri_skip_empty_option(bytes, index)
+            next
+          end
+          if byte == 0x26
+            return unless sqlite_uri_option(name, [], options)
+
+            name = []
+            next
+          end
+          state = :value
+          value = []
+          next
+        elsif (state == :path && byte == 0x3f) || (state == :value && byte == 0x26) # ? or &
+          if state == :value
+            return unless sqlite_uri_option(name, value, options)
+
+            name = []
+            value = []
+          end
+          state = :name
+          next
+        end
+        case state
+        when :path then path << byte
+        when :name then name << byte
+        when :value then value << byte
+        end
+      end
+      if state == :name && !name.empty?
+        return unless sqlite_uri_option(name, [], options)
+      elsif state == :value
+        return unless sqlite_uri_option(name, value, options)
+      end
+
+      memory = (options[:open_flags].to_i & 0x80) != 0
+      [sqlite_uri_text(path), memory]
+    end
+
+    # Advance to the delimiter that ends the part a `%00` truncated.
+    # The delimiter itself stays, so the caller can parse it.
+    #
+    # @param bytes [Array<Integer>]
+    # @param index [Integer]
+    # @param state [Symbol] `:path`, `:name`, or `:value`.
+    # @return [Integer]
+    def self.sqlite_uri_skip_null(bytes, index, state)
+      while index < bytes.length
+        byte = bytes[index]
+        break if byte == 0x23 # #
+        break if state == :path && byte == 0x3f # ?
+        break if state == :name && (byte == 0x3d || byte == 0x26) # = or &
+        break if state == :value && byte == 0x26 # &
+
+        index += 1
+      end
+      index
+    end
+
+    # Advance past the value of a query parameter whose name was empty.
+    # SQLite ignores that parameter. `index` already points at the next byte.
+    #
+    # @param bytes [Array<Integer>]
+    # @param index [Integer]
+    # @return [Integer]
+    def self.sqlite_uri_skip_empty_option(bytes, index)
+      index += 1 while index < bytes.length && bytes[index] != 0x23 && bytes[index - 1] != 0x26
+      index
+    end
+
+    # Record one query parameter. `mode` and `cache` are the keys that decide
+    # whether a file opens. An unknown value is a URI SQLite rejects.
+    # A later `mode` replaces the earlier one only when SQLite allows it.
+    # Adding write or create after a narrower mode is refused.
+    #
+    # @param name [Array<Integer>] parameter name bytes.
+    # @param value [Array<Integer>] parameter value bytes.
+    # @param options [Hash] `:open_flags` and `:cache`, updated in place.
+    # @return [Boolean] false when SQLite would reject this parameter.
+    def self.sqlite_uri_option(name, value, options)
+      key = sqlite_uri_text(name)
+      text = sqlite_uri_text(value)
+      case key
+      when "mode"
+        return false unless sqlite_uri_mode(text, options)
+      when "cache"
+        return false unless %w[shared private].include?(text)
+
+        options[:cache] = text
+      end
+      true
+    end
+
+    # Apply one `mode` value to the open flags SQLite starts with.
+    # The default is read-write and create, as in `sqlite3_open`.
+    # SQLite refuses a later mode whose non-memory bits are greater than the
+    # flags still set, for example `mode=ro&mode=rw`. `mode=memory` then
+    # `mode=rw` is a disk file again. The memory bit is `0x80`.
+    #
+    # @param text [String] the mode value.
+    # @param options [Hash] `:open_flags` is updated in place.
+    # @return [Boolean] false when the value is unknown or not allowed.
+    def self.sqlite_uri_mode(text, options)
+      readonly = 0x01
+      readwrite = 0x02
+      create = 0x04
+      memory = 0x80
+      bits = {
+        "ro" => readonly,
+        "rw" => readwrite,
+        "rwc" => readwrite | create,
+        "memory" => memory
+      }[text]
+      return false unless bits
+
+      mask = readonly | readwrite | create | memory
+      flags = options[:open_flags] ||= readwrite | create
+      return false if (bits & ~memory) > (mask & flags)
+
+      options[:open_flags] = (flags & ~mask) | bits
+      true
+    end
+
+    # @param bytes [Array<Integer>]
+    # @return [String] UTF-8 when the bytes are valid text, otherwise binary.
+    def self.sqlite_uri_text(bytes)
+      text = bytes.pack("C*")
+      utf8 = text.dup.force_encoding(Encoding::UTF_8)
+      return utf8 if utf8.valid_encoding?
+
+      text.force_encoding(Encoding::ASCII_8BIT)
+    end
+
+    # @param byte [Integer, nil]
+    # @return [Boolean]
+    def self.sqlite_uri_hex?(byte)
+      return false if byte.nil?
+
+      (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x46) || (byte >= 0x61 && byte <= 0x66)
+    end
+
+    # Open the SQLite run lock once and take it.
+    # A second open in this process would fight the first, so the same file is reused.
+    # Never unlocks the file. The kernel frees the lock when the last holder exits.
+    #
+    # @param lock_path [String] absolute path of the lock file.
+    # @param base [String] absolute database path, named in the stop message.
+    # @param shared [Boolean] shared lock when true, exclusive when false.
+    # @return [void]
+    # @raise [ArgumentError] when this process already has the lock open for another path.
+    # @raise [RuntimeError] when another run holds a conflicting lock.
+    # @raise [SystemCallError] when the lock file cannot be opened.
+    def self.hold_sqlite_lock(lock_path, base, shared:)
+      file = @sqlite_lock_file
+      if file && !file.closed?
+        current = file.path
+        unless current == lock_path
+          raise ArgumentError, "sqlite run lock is already open for #{current}, not #{lock_path}"
+        end
+      else
+        file = File.open(lock_path, File::RDONLY | File::CREAT, 0o644)
+        @sqlite_lock_file = file
+      end
+      mode = shared ? File::LOCK_SH : File::LOCK_EX
+      return if file.flock(mode | File::LOCK_NB)
+
+      raise "another Mutineer run is using #{base}"
+    end
+
     # @param adapter [String]
     # @return [Boolean]
     def self.postgres_adapter?(adapter)
@@ -536,6 +967,27 @@ module Mutineer
     # @return [Boolean]
     def self.mysql_adapter?(adapter)
       adapter == "mysql2" || adapter == "trilogy"
+    end
+
+    # Classify a MySQL `SELECT VERSION()` text against the support matrix.
+    # MariaDB is matched by name first: it reports 10.x or 11.x, and some
+    # builds prefix `5.5.5-`, so a numeric check alone would misread it.
+    #
+    # @param version [String, nil]
+    # @return [Symbol] `:supported` (MySQL 8), `:not_supported` (before 8),
+    #   `:not_tested` (MariaDB, MySQL 9 or later), or `:unreadable`.
+    def self.mysql_version_support(version)
+      text = version.to_s
+      return :not_tested if text.match?(/mariadb/i)
+
+      major = text[/\A(\d+)\.\d+/, 1]
+      return :unreadable unless major
+
+      major = major.to_i
+      return :not_supported if major < 8
+      return :not_tested if major > 8
+
+      :supported
     end
 
     # Drop and recreate slots `0...count` from the booted test database.
@@ -775,11 +1227,17 @@ module Mutineer
 
     # The child inherited the parent's lock session. Drop the Ruby wrapper
     # without sending a disconnect, so the parent's locks stay held.
+    # Close the SQLite lock file when it is open. Never unlock it.
+    # A second call in this process does nothing for that file.
     # Clearing the held-name list stops the child from sending RELEASE_LOCK
     # on that shared session.
     #
     # @return [void]
     def self.forget_lock_connection_after_fork!
+      file = @sqlite_lock_file
+      @sqlite_lock_file = nil
+      file.close if file && !file.closed?
+
       @mysql_held_locks = []
       conn = @lock_connection
       @lock_connection = nil
@@ -839,7 +1297,8 @@ module Mutineer
     #
     # @param count [Integer]
     # @return [void]
-    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, or another run holds the lock.
+    # @raise [RuntimeError] when `count` exceeds {MYSQL_LOCK_SLOTS}, the server is
+    #   MySQL older than 8.0, or another run holds the lock.
     def self.provision_mysql(count)
       if count > MYSQL_LOCK_SLOTS
         raise "MySQL worker databases support at most #{MYSQL_LOCK_SLOTS} workers"
@@ -849,6 +1308,10 @@ module Mutineer
       remember_mysql_base_config(hash)
       base = hash[:database].to_s
       conn = open_mysql_connection(hash, base)
+      if (refusal = check_mysql_server(conn, password: hash[:password]))
+        conn.close
+        raise "could not provision #{base}: #{refusal}"
+      end
       unless try_mysql_lock(conn, base, shared: false)
         conn.close
         raise "another Mutineer run is using #{base}"
@@ -879,6 +1342,56 @@ module Mutineer
 
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} mysql worker database(s) from #{base}"
+    end
+
+    # Read the server version and print a warning when the matrix does not
+    # test it. Does not close `conn` or raise: the caller does both. A failed
+    # version query only warns, with its cause shown. URL passwords, the
+    # DATABASE_URL password and the configured `password` are hidden in the
+    # cause and in the version text.
+    #
+    # @param conn [Mysql2::Client, Trilogy]
+    # @param password [String, nil] the configured password, hidden when it appears.
+    # @return [String, nil] the refusal text for MySQL older than 8.0, else nil.
+    def self.check_mysql_server(conn, password: nil)
+      secret = password.to_s
+      hide = lambda do |text|
+        out = Redaction.text(text)
+        next out if secret.empty?
+        # A short password would match inside ordinary words, so hide it only as a whole word.
+        pattern = secret.length >= 4 ? secret : /(?<![[:alnum:]])#{Regexp.escape(secret)}(?![[:alnum:]])/
+        out.gsub(pattern, Redaction::REDACTED)
+      end
+      failure = nil
+      raw = begin
+        mysql_rows(conn, "SELECT VERSION() AS version").first&.fetch("version", nil)
+      rescue StandardError => e
+        failure = hide.call("#{e.class}: #{e.message.lines.first.to_s.strip}")
+        nil
+      end
+      support = mysql_version_support(raw)
+      version = raw.nil? ? nil : hide.call(raw)
+
+      case support
+      when :not_supported
+        "MySQL #{version} is not supported. --daemon needs MySQL 8.0 or later. " \
+          "Pass --no-daemon (or daemon: false) to stay serial."
+      when :not_tested
+        warn "[mutineer] server version #{version} is not tested with --daemon. " \
+             "The run continues. If a result looks wrong, pass --no-daemon."
+        nil
+      when :unreadable
+        shown = if failure
+                  "an error: #{failure}"
+                elsif version.to_s.empty?
+                  "nothing"
+                else
+                  "\"#{version}\""
+                end
+        warn "[mutineer] could not read the MySQL server version (got #{shown}). " \
+             "The run continues. --daemon is tested on MySQL 8."
+        nil
+      end
     end
 
     # Take one shared GET_LOCK name and drop this process's app connection.

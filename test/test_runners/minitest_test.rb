@@ -27,6 +27,11 @@ class TestRunnersMinitestTest < Minitest::Test
   CLEANUP  = File.join(FIX, "stop_at_first_failure_cleanup_test.rb")
   LATER    = File.join(FIX, "stop_at_first_failure_later_class_test.rb")
   NESTED   = File.join(FIX, "stop_at_first_failure_nested_run_test.rb")
+  DB_ERROR = File.join(FIX, "in_test_db_error_test.rb")
+  DB_ERROR_PARALLEL = File.join(FIX, "in_test_db_error_parallel_test.rb")
+  DB_ERROR_NESTED = File.join(FIX, "in_test_db_error_nested_parallel_test.rb")
+  DB_ERROR_ANON = File.join(FIX, "in_test_db_error_anon_parallel_test.rb")
+  DB_ERROR_LINE = "[mutineer-child] a test failed with a database error, so the run has no verdict: "
 
   # Wraps each assertion in capture_subprocess_io, which reopens $stdout.
   SUBPROCESS_IO = File.join(FIX, "calculator_subprocess_io_test.rb")
@@ -251,6 +256,13 @@ class TestRunnersMinitestTest < Minitest::Test
   def test_stop_at_first_failure_runs_classes_in_file_order
     assert_equal "aaabbbp", class_order(%w[a b], stop_at_first_failure: true)
     assert_equal "bbbaaap", class_order(%w[b a], stop_at_first_failure: true)
+  end
+
+  # #282: a clean check arms no hook. It still runs files in the order given,
+  # the same order as the mutant run.
+  def test_a_plain_run_uses_the_same_file_order_as_a_mutant_run
+    assert_equal class_order(%w[a b], stop_at_first_failure: true), class_order(%w[a b])
+    assert_equal "bbbaaap", class_order(%w[b a])
   end
 
   # Minitest 5.15 and older shuffle `runnables.reject { ... }`, a new array.
@@ -485,4 +497,262 @@ class TestRunnersMinitestTest < Minitest::Test
     assert_equal 7, code
   end
 
+  # --- #296: an in-test database error is `error`, not `killed` -------------
+
+  # Runs the actual recorder and parent isolation boundary together. Fixture
+  # variables stay in the child so later tests cannot inherit these modes.
+  def db_error_verdict(env, matrix:, file: DB_ERROR)
+    result = nil
+    capture_subprocess_io do
+      timeout = env.value?("timeout") ? 1 : 10
+      result = Mutineer::Isolation.run(timeout: timeout, channel: matrix) do |io|
+        env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+        options = matrix ? { record_to: io } : { stop_at_first_failure: true }
+        Mutineer::TestRunners::Minitest.run([file], **options)
+      end
+    end
+    result
+  end
+
+  %w[exit crash timeout].each do |mode|
+    define_method("test_matrix_keeps_database_error_before_later_#{mode}") do
+      env = { "FIRST" => "connection", "SECOND" => mode }
+      assert_equal :error, db_error_verdict(env, matrix: false).status, "plain run"
+      result = db_error_verdict(env, matrix: true)
+      assert_equal :error, result.status, "matrix run"
+      assert_empty result.kills.killed_by
+      refute result.kills.complete
+      # #417 / KTD5: early end after a serial DB error gets the fixed text.
+      assert_equal Mutineer::ChildCause::MATRIX_EARLY_END, result.details
+    end
+  end
+
+  def test_database_error_names_its_cause
+    expected = "a test failed with a database error: ActiveRecord::ConnectionNotEstablished: the database is gone"
+    [false, true].each do |matrix|
+      result = db_error_verdict({ "FIRST" => "connection" }, matrix: matrix)
+      assert_equal :error, result.status, "matrix=#{matrix}"
+      assert_equal expected, result.details, "matrix=#{matrix}"
+    end
+  end
+
+  def test_matrix_keeps_database_error_before_an_assertion_then_exit
+    env = { "FIRST" => "connection", "SECOND" => "fail", "THIRD" => "exit" }
+    assert_equal :error, db_error_verdict(env, matrix: false).status, "plain run"
+    result = db_error_verdict(env, matrix: true)
+    assert_equal :error, result.status, "matrix run"
+    assert_equal ["InTestDatabaseErrorFixture#test_b_second"], names(result.kills.killed_by)
+    refute result.kills.complete
+  end
+
+  def test_matrix_keeps_an_earlier_assertion_kill_before_database_error_then_exit
+    env = { "FIRST" => "fail", "SECOND" => "connection", "THIRD" => "exit" }
+    assert_equal :killed, db_error_verdict(env, matrix: false).status, "plain run"
+    result = db_error_verdict(env, matrix: true)
+    assert_equal :killed, result.status, "matrix run"
+    assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+    refute result.kills.complete
+  end
+
+  def test_matrix_database_errors_are_neither_killers_nor_complete_outcomes
+    ["connection", "pool_timeout", "connection_failed", "deadlock", "lock_wait"].each do |kind|
+      result = db_error_verdict({ "FIRST" => "fail", "SECOND" => kind }, matrix: true)
+      assert_equal :killed, result.status
+      assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+      refute result.kills.complete
+      matrix = Mutineer::KillMatrix.new([result])
+      unavailable = result.kills.ran.find { |test| test[1] == "InTestDatabaseErrorFixture#test_b_second" }
+      refute_nil unavailable
+      assert_equal 0, matrix.kill_count(unavailable)
+      assert_empty matrix.blind
+      assert_empty matrix.redundant
+    end
+  end
+
+  def test_matrix_database_error_only_does_not_create_a_blind_test
+    result = db_error_verdict({ "FIRST" => "connection" }, matrix: true)
+    assert_equal :error, result.status
+    assert_empty result.kills.killed_by
+    assert_equal 3, result.kills.ran.size
+    refute result.kills.complete
+    assert_empty Mutineer::KillMatrix.new([result]).blind
+  end
+
+  def test_matrix_code_database_errors_still_kill_and_complete
+    %w[statement_invalid connection_not_defined].each do |kind|
+      result = db_error_verdict({ "FIRST" => kind }, matrix: true)
+      assert_equal :killed, result.status
+      assert_equal ["InTestDatabaseErrorFixture#test_a_first"], names(result.kills.killed_by)
+      assert result.kills.complete
+    end
+  end
+
+  # Runs DB_ERROR with the fixture variables in `env` (keys without the
+  # MUTINEER_FIXTURE_ prefix). Returns [exit status, child stderr]. The stderr
+  # line tells the new exit 2 apart from a crash, which fork_status also
+  # turns into 2.
+  def db_error_run(env, file: DB_ERROR, **kwargs)
+    Dir.mktmpdir("mutineer-db-error") do |dir|
+      err = File.join(dir, "stderr")
+      code = fork_status do
+        STDERR.reopen(err, "w")
+        env.each { |key, value| ENV["MUTINEER_FIXTURE_#{key}"] = value }
+        Mutineer::TestRunners::Minitest.run([file], **kwargs)
+      end
+      [code, File.read(err)]
+    end
+  end
+
+  def assert_db_error(klass, result)
+    code, err = result
+    assert_equal 2, code, err
+    assert_includes err, "#{DB_ERROR_LINE}ActiveRecord::#{klass}: "
+  end
+
+  def test_each_listed_database_error_returns_two
+    { "connection" => "ConnectionNotEstablished", "pool_timeout" => "ConnectionTimeoutError",
+      "connection_failed" => "ConnectionFailed", "deadlock" => "Deadlocked",
+      "lock_wait" => "LockWaitTimeout" }.each do |kind, klass|
+      assert_db_error klass, db_error_run({ "FIRST" => kind })
+    end
+  end
+
+  # Minitest keeps a copy of the same class when it cannot marshal the error.
+  def test_unmarshalable_database_error_returns_two
+    assert_db_error "ConnectionNotEstablished", db_error_run({ "FIRST" => "connection_unmarshalable" })
+  end
+
+  def test_first_database_error_decides_on_every_path
+    env = { "FIRST" => "deadlock", "SECOND" => "fail" }
+    result = db_error_run(env, stop_at_first_failure: true)
+    assert_db_error "Deadlocked", result
+    assert_includes result.last, "holds a lock on a second connection or thread."
+    assert_db_error "Deadlocked", db_error_run(env)
+    IO.pipe do |_rd, wr|
+      assert_db_error "Deadlocked", db_error_run(env, record_to: wr)
+    end
+  end
+
+  # Minitest records the setup error before the teardown error.
+  def test_setup_database_error_with_failing_teardown_returns_two
+    assert_db_error "ConnectionTimeoutError", db_error_run({ "SETUP" => "pool_timeout", "TEARDOWN" => "runtime" })
+  end
+
+  def test_assertion_then_teardown_database_error_returns_one
+    assert_equal 1, db_error_run({ "FIRST" => "fail", "TEARDOWN" => "connection" }).first
+  end
+
+  def test_first_assertion_failure_decides
+    assert_equal 1, db_error_run({ "FIRST" => "fail", "SECOND" => "connection" }).first
+  end
+
+  # A mutant can cause bad SQL, so other database errors still kill.
+  def test_statement_invalid_in_test_returns_one
+    assert_equal 1, db_error_run({ "FIRST" => "statement_invalid" }).first
+  end
+
+  # Rails 8 raises ConnectionNotDefined for an unknown role or shard: the code's
+  # fault, so it still kills.
+  def test_connection_not_defined_returns_one
+    assert_equal [1, ""], db_error_run({ "FIRST" => "connection_not_defined" })
+  end
+
+  # Only the outer reporter counts: a test that records a database error on its
+  # own reporter does not decide the run.
+  def test_database_error_on_a_nested_reporter_is_ignored
+    assert_equal [1, ""], db_error_run({ "FIRST" => "nested_connection", "SECOND" => "fail" })
+  end
+
+  def test_unknown_minitest_shape_keeps_one_for_a_database_error
+    code = fork_status do
+      Mutineer::MinitestIntegration::OuterReporter.define_singleton_method(:hook_for_loaded_minitest) { nil }
+      ENV["MUTINEER_FIXTURE_FIRST"] = "connection"
+      Mutineer::TestRunners::Minitest.run([DB_ERROR])
+    end
+    assert_equal 1, code
+  end
+
+  def test_passing_run_with_the_hook_returns_zero
+    assert_equal 0, db_error_run({}).first
+  end
+
+  def test_database_error_line_is_redacted
+    result = db_error_run({ "FIRST" => "connection", "MESSAGE" => "could not connect to postgres://user:secret@db/app" })
+    assert_db_error "ConnectionNotEstablished", result
+    refute_includes result.last, "secret"
+    assert_includes result.last, "Check that the database server is up and has free connections."
+  end
+
+  # #347: test_b is recorded before test_a (test_a waits until test_b has
+  # finished), but test_a is first in the queue. The stderr line names
+  # test_a's Deadlocked, not the ConnectionNotEstablished that finished first.
+  def test_parallel_queue_order_names_the_earlier_database_error
+    env = { "FIRST" => "deadlock", "SECOND" => "connection" }
+    [nil, { stop_at_first_failure: true }].each do |kwargs|
+      result = db_error_run(env, file: DB_ERROR_PARALLEL, **(kwargs || {}))
+      assert_db_error "Deadlocked", result
+      refute_includes result.last, "ConnectionNotEstablished"
+      assert_includes result.last, "holds a lock on a second connection or thread."
+    end
+    matrix = db_error_verdict(env, matrix: true, file: DB_ERROR_PARALLEL)
+    assert_equal :error, matrix.status
+    assert_empty matrix.kills.killed_by
+    refute matrix.kills.complete
+  end
+
+  # The connection error finishes first. The assertion is earlier in the
+  # queue, so the run is killed and the connection error is not a killer.
+  def test_parallel_queue_order_keeps_an_earlier_assertion
+    env = { "FIRST" => "fail", "SECOND" => "connection" }
+    result = db_error_run(env, file: DB_ERROR_PARALLEL)
+    assert_equal 1, result.first
+    assert_empty result.last
+    assert_equal 1, db_error_run(env, file: DB_ERROR_PARALLEL, stop_at_first_failure: true).first
+
+    matrix = db_error_verdict(env, matrix: true, file: DB_ERROR_PARALLEL)
+    assert_equal :killed, matrix.status
+    assert_equal ["InTestDatabaseErrorParallel#test_a_first"], names(matrix.kills.killed_by)
+    unavailable = matrix.kills.ran.find { |test| test[1] == "InTestDatabaseErrorParallel#test_b_second" }
+    refute_nil unavailable
+    assert_equal 0, Mutineer::KillMatrix.new([matrix]).kill_count(unavailable)
+  end
+
+  # A serial failure is recorded before the parallel class runs, so it still
+  # decides when a later parallel test hits the other outcome.
+  def test_serial_failure_still_decides_ahead_of_a_parallel_class
+    assertion = { "SERIAL" => "fail", "FIRST" => "connection" }
+    code, err = db_error_run(assertion, file: DB_ERROR_PARALLEL)
+    assert_equal 1, code
+    assert_empty err
+
+    database = { "SERIAL" => "deadlock", "FIRST" => "fail" }
+    result = db_error_run(database, file: DB_ERROR_PARALLEL)
+    assert_db_error "Deadlocked", result
+    refute_includes result.last, "ConnectionNotEstablished"
+  end
+
+  # A serial test queues the parallel class on its own reporter as test_b then
+  # test_a. The outer run queues test_a then test_b. The assertion in test_a
+  # decides, and the connection error that the nested run queued first does not.
+  def test_nested_parallel_queue_does_not_decide_the_outer_run
+    result = db_error_run({}, file: DB_ERROR_NESTED)
+    assert_equal 1, result.first, result.last
+    assert_empty result.last
+
+    matrix = db_error_verdict({}, matrix: true, file: DB_ERROR_NESTED)
+    assert_equal :killed, matrix.status
+    assert_equal ["InTestDatabaseErrorNestedOrder#test_a_first"], names(matrix.kills.killed_by)
+    unavailable = matrix.kills.ran.find { |test| test[1] == "InTestDatabaseErrorNestedOrder#test_b_second" }
+    refute_nil unavailable
+    assert_equal 0, Mutineer::KillMatrix.new([matrix]).kill_count(unavailable)
+  end
+
+  # Two anonymous classes inherit one method, so a key of class name plus
+  # source location is the same. The connection class finishes first. The
+  # assertion class was queued first, and that is what decides.
+  def test_anonymous_classes_that_share_a_method_follow_queue_order
+    result = db_error_run({}, file: DB_ERROR_ANON)
+    assert_equal 1, result.first, result.last
+    assert_empty result.last
+  end
 end

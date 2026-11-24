@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "fs_path"
+
 module Mutineer
   # Realpath-based path normalization against a project root. Shared by the
   # coverage cache (map keys) and mutant ids (the path hashed into each id), so
@@ -18,10 +20,13 @@ module Mutineer
     def relative(path, root)
       abs = absolute(path, root)
       real_root = root_real(root)
-      prefix = real_root.end_with?("/") ? real_root : "#{real_root}/"
-      return abs unless abs.start_with?(prefix)
+      # Byte prefix: a non-UTF-8 file name is binary, and a non-ASCII root
+      # is UTF-8. start_with? raises on that mix (#346).
+      prefix = real_root.b
+      prefix += "/".b unless prefix.end_with?("/".b)
+      return abs unless FsPath.bytes_start_with?(abs, prefix)
 
-      abs.delete_prefix(prefix)
+      FsPath.bytes_delete_prefix(abs, prefix)
     end
 
     # Expands `path` against `root`, resolved to its real path when it exists.
@@ -30,16 +35,18 @@ module Mutineer
     # @param root [String] project root.
     # @return [String] absolute path.
     def absolute(path, root)
+      path = FsPath.read(path)
+      root = FsPath.read(root)
       # Join, don't expand: File.expand_path collapses `..` textually, before any
       # symlink is followed, so `link/../x.rb` would name the wrong file. The file
       # system resolves `..` physically in File.realpath.
       # A leading `~` names the home directory (as File.expand_path reads it), so
       # expand it rather than joining it under the root.
       raw = if File.absolute_path?(path) then path
-            elsif path.start_with?("~") then File.expand_path(path)
-            else File.join(File.expand_path(root), path)
+            elsif path.b.start_with?("~".b) then File.expand_path(path)
+            else File.expand_path(root).b + File::SEPARATOR.b + path.to_s.b
             end
-      File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw)
+      FsPath.read(File.exist?(raw) ? File.realpath(raw) : File.expand_path(raw))
     end
 
     # Canonical project root (`/var` vs `/private/var`). Any file system error
@@ -49,9 +56,9 @@ module Mutineer
     # @param root [String] project root.
     # @return [String] realpath of the root when it exists, else its expanded path.
     def root_real(root)
-      File.realpath(File.expand_path(root))
+      FsPath.read(File.realpath(File.expand_path(root)))
     rescue SystemCallError
-      File.expand_path(root)
+      FsPath.read(File.expand_path(root))
     end
   end
 end

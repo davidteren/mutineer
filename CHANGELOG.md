@@ -13,6 +13,1229 @@ All notable changes to this project are documented here. The format is based on
   each `unverified_survivors[]` entry is a baseline survivor this run did not
   decide, with its current `status`. Schema `2.0`.
 
+### Changed
+
+- **Breaking: `--baseline` fails an incomplete run, and a survivor without a
+  verdict is not fixed (#283).** A run where nothing could be scored and
+  something broke, or where more than one mutant has no verdict and they
+  exceed 10% of those attempted, now sets the new `baseline.incomplete`, and
+  `--baseline` exits 1 without `--threshold`. A baseline survivor counts as
+  fixed only when this run killed it, ignored it, or no longer has it. Other
+  baseline survivors go into the new `baseline.unverified_survivors[]` with
+  their status. The human report names them and the Action summary counts
+  them. A run that produces no results reports no stored survivors as fixed.
+  Under `--only` or `--fail-fast`, known kills and ignores still count as
+  fixes; absent, untested survivors are listed as unverified with status
+  `not_run`. An empty unscoped run uses the same label. This label belongs
+  only to baseline entries; it does not add a mutant status or change counts
+  or gates.
+  Selecting fewer source files or operators also lists omitted survivors as
+  `not_run`. A source that pairing drops (no paired test) is one of those. A
+  removed mutant within the selected scope, or a source file actually removed
+  from the project, still counts as fixed. A foreign stored path whose
+  removal cannot be checked stays unverified (tracked in #343).
+  Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
+  before. If CI turns red after the upgrade and `baseline.incomplete` is
+  true, read `no_verdict[]` in the JSON report: the run is incomplete, and
+  the tests did not get weaker. If `baseline.regressed` is true, a new
+  survivor or a score drop failed the job. If the
+  same mutants time out on every run, a retry does not help: raise
+  `--timeout` or ignore those mutants.
+- **Breaking: the JSON report uses schema `2.0` (#283).**
+  `baseline.fixed_survivors` no longer includes a survivor whose current
+  result is undecided. Consumers that require schema `1.x` must support the
+  new major and read `baseline.unverified_survivors` for those entries.
+  Existing full-run `1.x` reports remain valid baseline inputs; `--since`
+  reports remain invalid baselines (exit 2). Mutant ids and the gem version
+  do not change.
+- **Breaking (Action): the Action rejects a JSON baseline report without a
+  boolean `baseline.incomplete` (#283).** A gem selected through `version` or
+  `use-bundler` that omits this field now gives exit 2 with an upgrade
+  message, instead of treating an unknown completeness result as success.
+  The report remains available. Older reports without a baseline block still
+  work.
+- The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
+  now also live on `AggregateResult`. The `Reporter` names remain
+  compatibility aliases, and the CLI and report use the same limits.
+
+### Fixed
+
+- **A baseline survivor that is now `ran_at_load` is not listed as fixed
+  (#286).** 1.7.0 listed it as fixed. It is now in
+  `baseline.unverified_survivors[]`.
+
+## [1.10.0] - 2026-11-24
+
+### Added
+
+- **`since_paired_tests` runs only the tests of the changed sources under `--since` (#496).**
+  Turn it on with `since_paired_tests: true` in `.mutineer.yml` or with `--since-paired-tests`.
+  An in-process or `--daemon` run under `--since` then uses only the test files paired with the sources that have a mutant on a changed line: their convention tests and the tests of each matching `tests:` map entry.
+  Every source still loads, and the jobs, the mutant ids and the report's source list do not change.
+  It is off by default, so no run changes without it. That includes a GitHub Action run on a `pull_request` event with default inputs.
+  A mutant that only a test of an unchanged source kills shows as `survived` or `no_coverage`. A mutant that only such a test covers, and does not kill, shows as `no_coverage` instead of `survived`, which is outside the score, so a narrowed `--threshold` gate can pass where a full run fails. Use a full run for a `--threshold` gate you rely on. A `--baseline` run (flag or `baseline` key) does not narrow, so its new-survivor check sees that mutant as `survived` (#552). Run the same command with `--no-since-paired-tests`, and if the mutant is killed there, add that test to the `tests:` map for the changed source.
+  `--test`, `--test-command`, `--baseline`, and `--coverage-from` on an in-process `--rails` or `--boot` run keep the full test list, and stderr says the setting has no effect. A run that ignores `--coverage-from` still narrows. A dry run is not changed.
+  The test list is part of the coverage cache key, so a narrowed run never gets a full cache hit on a full-run map. Partial recapture can reuse the entries of the tests it kept, when the tests it dropped pair with no source by convention. The narrowed run then saves its map over the full-run one in the same folder. Pass `--cache-dir .mutineer/since` to keep both.
+  No rate of lost kills is measured yet. A self-run on Mutineer's own `lib/` for pull request #525 ran 3 of 37 test files in 4.0 s, but its full run exited 1 after 164.6 s, so the two could not be compared (#553).
+  The limits are in #552. Making it the default is #553 (2.0).
+- **A source in a `packs/` folder pairs with the test in its pack (#494).**
+  `packs/catalog/app/models/item.rb` can pair with `packs/catalog/test/models/item_test.rb` or `packs/catalog/spec/models/item_spec.rb`.
+  The rule applies to a source at `packs/<pack path>/app/` or `packs/<pack path>/lib/`, only when the other rules find no test.
+  Inside the pack, the same rules apply with the pack folder as the root: split tests, `test/lib/`, the concern namespace path, and a longer source keeping its file.
+  Existing convention pairs stay the same.
+  An app with no `packs/` folder does not change.
+  Before this, a pack source with no `tests:` map entry was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A pack source that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  A `tests:` map entry still adds its tests to the pack tests. A pack source that the map paired with other tests, such as integration tests only, now also runs its pack tests. An app whose map entry for each pack already names that pack's test folder runs the same tests. The pack test now runs first for each mutant of its source. A standalone run can rebuild its coverage cache once. A suite that depends on test order can give a different verdict.
+  A failed test marks a pack source `uncapturable` only when pairing gives the source that test. A same-named test elsewhere, also one given with `--test` or a `tests:` map, no longer marks it, so its uncovered mutants show `no_coverage`.
+  Pass the source folders, such as `packs/*/app`. A source folder that holds test files, such as `packs`, lists each test file as an unpaired source.
+  Pack roots other than `packs/`, a `{path}` placeholder for the `tests:` map, and the other limits are in #554.
+- **`load_path:` in `.mutineer.yml` and `--load-path DIR` (short `-I DIR`) put directories on `$LOAD_PATH` (#491).**
+  A suite that needs an extra directory, such as `test/support`, set it with `RUBYOPT=-I` before. `--daemon` does not pass `RUBYOPT` or `RUBYLIB` to the app (#100), so every mutant of such a suite scored `error` there.
+  The value is a directory or a list of directories, relative to the project root or absolute. Repeat the flag for more. The command-line list replaces the file's list, unlike `ruby -I`, which adds.
+  Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require:` files and the tests, in-process and under `--daemon`.
+  Ruby searches them in the written order, after the test-helper directories Mutineer finds itself. With no boot file, `lib` comes first. That order holds from before the boot file and the sources load, also when Bundler or `RUBYOPT` already put `lib` or a test-helper directory on `$LOAD_PATH`.
+  A path that is not a directory exits 2 with `mutineer: not a directory: <path> (<origin>)`. A blank entry, or a value that is not a string or a list of strings, exits 2.
+  `--test-command` does not use the directories and does not check them; it warns (#535). A blank entry or a wrong shape still exits 2 there. The daemon still drops `RUBYOPT` and `RUBYLIB`. The directories travel in its boot config.
+  The coverage cache key holds the directories in the written order and every `.rb` file under them, except the run's sources and tests. So a reorder (#536), an edit to a file in a directory outside the project root (#539), and a new file that shadows one in a later directory (#544) each capture every test again. Mutineer reads those files on every run, also on a cache hit, so a large directory adds read time. Other files there, such as YAML data, are not part of the key (#548).
+  A run without the setting keeps its `$LOAD_PATH` and its coverage cache.
+  `--l` and `-l` now stop with "ambiguous option" (`--list-operators` or `--load-path`); before, they listed the operators. Use `--li` or the full name.
+- **Reload warns when a class runs a callback more than once (Refs #479).**
+  Reload keeps both copies of a callback when it cannot tell which old copy a new one repeats, for example the same `before_save(&:stamp)` in a concern and in the class body.
+  A test that counts callback runs or errors can then kill every mutant of that file falsely.
+  After a `--strategy reload` or `--daemon` run, stderr names each class whose own callback count grew, once for each class and file, and says how to check those kills.
+  The warning changes no verdict, no score and no exit code. `--format json` lists the same classes in `summary.callback_growth` (#505).
+  The six cases in #479 remain. The full fix is the full-reload strategy (#389).
+  A class body that calls `define_callbacks` itself now keeps its chain on reload (#504), so such a class can show here too. A class body that calls `reset_callbacks` still loses a concern's callback, and this warning does not see that (#530).
+- **`killed[]`, `unplaceable[]` and `ran_at_load[]` entries in `--format json` carry `diff` (#498).**
+  It is the same unified diff a `survivors[]` entry gives, so a consumer can match a killed mutant by its change, or run an unplaceable or ran-at-load mutant itself, without patching private reporter methods.
+  It is in every report, with no flag. A report whose mutants are mostly killed is about twice as large: on Mutineer's own self-check run, 233 killed diffs added 52,242 bytes to a 53,464-byte report.
+  The JSON `schema_version` is now `1.11`.
+- **Entries with a `diff` carry `diff_base64` when the text is not the exact patch (#518).**
+  For a source whose magic encoding is not UTF-8 or binary and a non-ASCII changed line, an invalid byte or a byte with no Unicode mapping on a changed line, or a binary-tagged source whose changed line is not UTF-8, `diff_base64` holds the patch in the file's own bytes, as one line of standard base64. `git apply --unidiff-zero` accepts the decoded bytes.
+  To apply any entry: for a file with a `working-tree-encoding` Git attribute use `diff`; else decode `diff_base64` when present; else use `diff`.
+  A byte with no Unicode mapping (such as `0xA5` in ISO-8859-3) on a mutant's line no longer stops the report with `Encoding::UndefinedConversionError`: `diff` prints it as `\xNN`.
+  The key and `diff_encoding` are absent when the change may hold a credential: redaction would change the text or the bytes, or a credential is configured and the bytes are not valid UTF-8. This holds under `--output` too. Such an entry has no exact patch (#540). A UTF-8 source with an invalid byte still stops the run before the report (#538).
+  A project whose files are valid UTF-8 gets no new key. A source path that is not valid UTF-8 still cannot be applied (#532). Additive key (schema `1.11`).
+- **`summary.callback_growth` in `--format json` lists the classes that the reload callback warning names (#505).**
+  Each row is `{ class, file }`, sorted by file and class, so a JSON-only tool can see which kills of a file a repeated callback may have made false.
+  `[]` means that the run logged no growth, and a run that does not reload has `[]`. `null` means that a reload or `--daemon` run could not create its log, so it checked nothing.
+  `[]` is not proof that no class grew: a check that fails inside a mutant's child logs nothing (#531).
+  No verdict, score, count or exit code changes. Additive key (schema `1.11`).
+- **`no_verdict[]` entries in `--format json` carry `diff` (#526).**
+  An errored, timed-out or uncapturable mutant's entry has the same `diff` (and `diff_encoding`) as a `survivors[]` entry, so a consumer can run that mutant again itself, for example after a container's memory limit killed its child.
+  An entry with no mutation, such as a failure before the fork, has `diff: null`.
+  Each entry with a diff grows by about 224 bytes (the #498 measure: 52,242 bytes for 233 diffs).
+  `uncapturable[]` entries stay as they are. Additive key (schema `1.11`).
+- **The JSON report and the human summary show timing (#495).**
+  `--format json` has a top-level `timing` object: `total_seconds`, `boot_seconds`, `coverage_seconds`, `clean_check_seconds` and `mutants_seconds`, with `null` for a phase the run did not have.
+  Each `survivors[]`, `killed[]` and `no_verdict[]` entry has `seconds`, the wall-clock time of its run, so slow tests and timeouts near the limit show.
+  The human summary of a run with results prints a `Time:` line.
+  The values change from run to run, so the JSON report is byte-identical for the same results except `timing` and `seconds`, and a refreshed baseline file now always differs.
+- **The GitHub Action step summary shows unpaired sources (#481).**
+  When `summary.unpaired_sources` is above 0, a line below the score table gives the unpaired mutants, the sources with no paired test, and the sources whose mutants were not counted.
+  Those mutants are not in the score, so a high score no longer hides them.
+  A report from a CLI older than 1.9.0 has no such key, and the line stays out.
+  No Action input or default changes.
+- **`survivors[]` entries have `diff_encoding` for a non-UTF-8 source (#510).**
+  The JSON `diff` is UTF-8, so `git apply` rejected it for a source with `# encoding: EUC-JP` (or `Shift_JIS`, `ISO-8859-1`) and a changed line with non-ASCII text.
+  The entry now has `diff_encoding`, the source's encoding. Transcode the hunk lines to it, and `git apply --unidiff-zero` accepts the patch.
+  The exception is a file with a `working-tree-encoding` Git attribute: Git applies the UTF-8 form there, so use `diff` as it is.
+  The key is absent for a UTF-8 or ASCII source, for an invalid or binary-tagged one, and when a changed line does not convert back to its own bytes (some Windows-31J characters), where no transcoding can restore the line. For an invalid, lossy, or binary-tagged source, `git apply` still rejects the diff when the changed lines hold bytes that cannot be restored. Such an entry carries `diff_base64`, the exact patch (#518). A diff whose changed lines are all ASCII still applies. See `docs/json-schema.md`.
+  The same key is on a `killed[]`, `unplaceable[]` or `ran_at_load[]` entry, which carries `diff` (#498).
+  Additive key (schema `1.11`).
+
+### Changed
+
+- **`collection_method` declines more truthiness-only reads (Refs #501).**
+  A condition that only tests the value no longer gets a swap for `each`, `map`, or a `select` or `reject` with an inline block (not `&blk`) and no arguments.
+  That covers a call nested in a larger condition: `if a && xs.each { }`, `if (xs.each { })`, and `if xs.each { } || a`.
+  Those mutants were equivalent, so the run now counts them as declined.
+  On Mutineer's own `lib/` the count does not change: 525 swaps and 119 declined, before and after.
+  The score can rise a little, and the mutant count falls, when `collection_method` is selected and your code has such a condition.
+  A swap that is declined no longer takes a position: the ids of later swaps of the same name in that method can shift, so a saved `ignore:` entry or baseline can then match a different mutant without a warning. Check those entries after you upgrade. `STABILITY.md` names this as an exception, and #508 tracks the general fix, planned for 2.0.
+  In a condition, an `each` or `map` call with arguments or with a `&blk` argument, and a `select` or `reject` on a bare `ENV` or `IO`, keep their swap. A bare statement such as `xs.each(1)` is still declined, as before.
+  A custom method named `select`, `reject`, `each` or `map` that returns `false` or `nil` can differ, and the check does not see the class.
+  The other limits in #501 stay open. See `docs/equivalent-skips.md`, "Collection method".
+- **`collection_method` skips more equivalent swaps, and keeps a stored lazy enumerator (#468).**
+  It now declines `select` / `reject` (no arguments), `first` / `last`, and `min` / `max` (no block) when the call is a statement of its own and its value is discarded. `all?` / `any?` still swap.
+  It also declines `each` / `map` when only its truthiness is read: an `if`, `unless`, `while`, `until`, or subjectless `when` condition, or the left side of `&&` / `and`.
+  A local variable that the same method assigns from a `lazy` chain keeps its `each` / `map` swap.
+  Declined swaps count in `summary.declined_by_operator`.
+  On Mutineer's own `lib/`, the new rules decline no extra call (118 of 347 `each` / `map` calls were declined before and after, and none of the six other names gained a decline).
+  A run with `collection_method` can report fewer mutants. Mutant ids number only the emitted swaps, so the id of a later swap of the same name in the same method can change. A baseline or `ignore:` list can need a refresh.
+  The limits that remain are in #501. See `docs/equivalent-skips.md`, "Collection method".
+- **126 private methods of `Mutineer::CoverageMap` moved into eight modules
+  (#201).** They now live in `lib/mutineer/coverage_map/`, in the modules
+  `FailedTestBlame`, `CaptureReuse`, `Capture`, `Cache`, `SkeletonDigest`,
+  `Recording`, `CleanCheck` and `ChildScripts`. `CoverageMap` includes each
+  module. Each method keeps its name, body and private visibility. The public
+  methods, the constants, the constructor, the path helpers and three script
+  helpers that read `__dir__` stay in `lib/mutineer/coverage_map.rb`. The
+  public API, the coverage cache format, CLI output and the JSON report do not
+  change.
+
+### Fixed
+
+- **A one-worker `--rails --daemon` run keeps its run lock while its worker daemon respawns (Refs #416).**
+  A `--rails --daemon` run with one worker (`--jobs 1`, `--fail-fast`, a run with one mutant, an app with a second database that `shared_databases` does not list, or an app whose databases Mutineer cannot list) quit its first daemon once the worker daemon had booted.
+  When that worker crashed, no process held the run lock until the new worker daemon had booted, so a second run on the same test database could start in that window.
+  The first daemon now stays up until the run ends, on SQLite, PostgreSQL and MySQL.
+  The cost is one more booted copy of the app, with its coverage data, in memory during the mutant phase of every one-worker `--rails --daemon` run. It adds no boot and uses no CPU.
+  A `--boot` run without `--rails` takes no database lock, so it still quits its first daemon once the worker daemon has booted.
+  A parallel run still quits its first daemon once its worker daemons hold their locks. While all of its worker daemons are down at once, it holds no lock (#416).
+- **A `--rails --daemon` run whose first daemon did not boot now takes the run lock and copies its worker database (Refs #416).**
+  When the first daemon failed to boot with an error, the run went on with one worker daemon. A boot timeout still stops the run, with no fallback. That daemon took only the shared lock, so two such runs on the same test database did not stop each other. On PostgreSQL and MySQL it also copied no worker database.
+  The one worker daemon of such a run now asks for the exclusive lock, copies its worker database, and then shares the lock, as a first daemon does.
+  When another run holds the lock, the run exits 1 with `mutineer: daemon failed to boot under the app bundle: RuntimeError: another Mutineer run is using <base>`.
+  On PostgreSQL and MySQL this run now copies its worker database. Before, it used the copy an earlier run left, or none. It needs the same database rights as a normal run, and it exits 1 when the copy fails.
+  On SQLite the worker file was already copied on first use, so only the lock changes.
+  Like a normal run, such a run now exits 1 at boot when Mutineer cannot copy its database: an adapter other than SQLite, PostgreSQL or MySQL, or MySQL older than 8.0. Before, it booted without a copy, and on an adapter Mutineer cannot route each mutant scored `error`.
+  When that one worker daemon crashes, the run holds no lock until the new daemon has booted. The new daemon asks for the lock again and copies the worker database again. So the run stops with the lock message if another run took the lock, and on PostgreSQL and MySQL it exits 1 if that copy fails, for example while another session uses the PostgreSQL test database (#416).
+- **A `LoadError` while a `--rails` daemon sets up worker databases fails the boot (Refs #416).**
+  This covers every daemon's schema file lookup, the lock of every worker daemon, and the copy of a PostgreSQL or MySQL worker database at boot. A SQLite file is copied later, when a mutant first uses its slot.
+  The run exits 1 with `mutineer: daemon failed to boot under the app bundle: LoadError: <message>`. When the first daemon fails this way, the run first prints `daemon coverage map unavailable` and starts its one worker daemon, which then fails with the same line.
+  Before, the daemon printed `worker-DB routing unavailable` and went on with routing off. A worker daemon then ran mutants against the app's own test database, and a first daemon skipped the copy when the run asked for it.
+  Only a `LoadError` from loading Mutineer's own worker-database file still turns routing off, as before.
+- **`docs/rails-setup.md` lists the run lock limits that stay open (Refs #416).**
+  A run without `--daemon` takes no database lock. A run takes its lock after its boot file and `--require` files have loaded. A parallel run whose worker daemons are all down at once holds no lock. A fallback run holds no lock while its one worker daemon respawns. A one-worker run whose first daemon dies after it booted holds no lock while its worker daemon respawns.
+  Each limit is tracked in #416. The fifth gap in #416, `file:` URI SQLite names, was already fixed in 1.9.0 by pull request #461 (#412).
+- **`--daemon --verbose` shows why a test file's coverage capture failed, with the load note (#517).**
+  `--verbose` did not reach the daemon's coverage build, so its `[mutineer] coverage skipped for <file>` warning for a failed fork capture said `fork capture produced no result (re-run with --verbose for the error)`, even under `--verbose`.
+  The daemon now gets `--verbose`, and the warning shows the real error, as in-process.
+  When that error is `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, the first such warning of a run ends with the same `RUBYOPT`/`RUBYLIB` note as a mutant (#491). Later warnings carry no note.
+  The note names only the variable, never its value. `--verbose` does not change the coverage cache digest.
+  Without `--verbose`, the warning stays generic and has no note (#537).
+- **`--coverage-from` (in-process `--rails` or `--boot` runs only) refuses a capture whose `timings` hold a non-number or infinite number (#513).**
+  Before, a hand-edited `coverage.json` with a string timing raised in test ordering with a backtrace.
+  Now the run stops with the usual "not the shape a coverage cache saves" reason.
+  The same change corrects three stale doc comments in `CoverageMap` (`spawn_script`, `fork_capture`, `exact_failed_test?`).
+- **A mutant in a block that a class macro stored before the mutant is `ran_at_load`, not `survived` (#493).**
+  A class macro such as `language_field` stores blocks (`validate { ... }`, `normalizes ..., with: ->(v) { ... }`).
+  A class that calls the macro while it loads keeps the original blocks.
+  A mutant inside such a block then passed every test, because no test ran the mutated code, and it counted as a survivor.
+  An in-process `redefine` run with a boot file loads the class of each method in the sources before the mutants, so lazy loading did not prevent this.
+  `reload` and `--daemon` gave the same false survivors when the class loaded at boot (Rails eager load).
+  The run now adds the reach probe of #345 to a mutant in a block or lambda literal whose call ran at load.
+  A survivor that the probe did not see return during a test is `ran_at_load`. A survivor that the probe saw stays `survived`.
+  A kill, an error and a timeout do not change. The rule holds for in-process `redefine`, in-process `reload` and `--daemon`.
+  `--test-command` does not use it: that backend runs the load again for each mutant.
+  On the reported shape (a macro with a lambda and a block, 17 mutants), 5 false survivors moved and the score went from 60.0 to 90.0.
+  Three runs on other code moved no mutant: this gem's own gate (3 files, 269 mutants), the checks of the bundled Rails app, and the Fizzy sample (63 mutants, `--daemon`).
+  In the first two, no mutant carried the new probe. The Fizzy counts and survivor ids equal the recorded sample.
+  The probe now stays inside a block or lambda literal. When it cannot, the mutant gets no probe and keeps its verdict.
+  An unreached survivor of #345 in that state is `no_coverage`, as is each unreached survivor of #345 with no probe. A kill, an error and a timeout keep their verdict.
+  Effects on a run after the upgrade:
+  `summary.ran_at_load` can rise and `summary.survived` can fall by the same number. The `ran_at_load[]` list names each mutant.
+  The moved mutants leave the denominator, so this move can raise a score and cannot lower it. A `--threshold` gate that failed on the score can pass.
+  When each scored mutant moves, the score is `null`. `--threshold` passes a `null` score when no mutant broke, so exit 1 can become exit 0.
+  With `--baseline` and no `--since`, a baseline survivor that is now `ran_at_load` is listed as fixed, as for each 1.x status that leaves the score.
+  The completeness gate can go from pass to fail. `attempted` gets smaller with each moved survivor.
+  A `--threshold` run fails when more than 1 mutant and more than 10% of the attempted mutants have no verdict.
+  Example: 14 killed, 5 survived and 2 errored passes `--threshold 70`. With the 5 survivors as `ran_at_load` it fails, and the message gives the count of mutants with no verdict.
+  Limits, all in `docs/json-schema.md`:
+  a mutated expression in such a block that no test reaches is `ran_at_load` and no longer `survived`, and so is one that raises into a `rescue` in each test (#286).
+  A `def` that reload places from a concern's hook block keeps its 1.9.0 verdict, and so does a block whose call runs only sometimes (#507).
+  So does a mutant whose probe cannot speak (#507). That is a probed expression that holds `next`, `break`, `return`, `redo`, `retry` or a call of `raise`, `fail`, `throw`, `exit`, `exit!` or `abort`.
+  It is also an expression in the operand of `defined?`, which gets no probe.
+  When the macro and its caller are both sources, in-process `redefine` does not kill a mutant that only the stored block runs. `--daemon` with lazy loading can (#507).
+  A block in a one-line or endless `def` is unchanged (#389). No JSON key and no status is new.
+- **The reach probe keeps the value of `return`, `next`, `break`, `yield` and a command call (#345, found in the review of #493).**
+  For a mutated expression that spans lines, the probe text started on a new line.
+  After `return`, `next`, `break`, `yield` or a command call with no parentheses, that line break ended the statement.
+  The statement then lost its value. For example `return` gave `nil`, and the probe did not record the run.
+  Such a mutant could score `killed` because of the probe, or `no_coverage` though a test ran it.
+  The probe text now starts on the line of the expression.
+  Ten more shapes changed the program and are fixed. After a string that a backslash continues, the probe read as an index call on that string.
+  A probe around the regexp of `/(?<name>...)/ =~ s` stopped the assignment of the named captures. The probe now goes around the whole match.
+  The probe called `Thread.current`, which failed in a namespace with its own `Thread` constant. It now calls `::Thread.current`.
+  A wrapper in place of an assignment target (`x.name, y = 1, 2`) stopped the setter. The probe now goes around the whole assignment.
+  In the operand of `defined?`, a wrapper changed the answer. The probe is no longer placed there.
+  A test with a strict `File` double, or an RSpec mock of `File.write`, saw the probe's write fail and scored a kill. The probe now writes with `IO.sysopen` and ignores any error from that write.
+  A flip-flop inside `&&` or `||` in a condition became a range inside the wrapper. The probe now goes around the whole condition.
+  The probe kept its "already written" flag per fiber. A run at load on an enumerator fiber hid a later test run on that fiber. The flag is now per thread, so the clear after load reaches it.
+  In a condition, a wrapper made a flip-flop a range and a bare regexp a plain value. Around the body of `begin ... end until c`, it stopped the first run before the check. The probe now goes around the whole statement.
+  Before this release only a continuation-line mutant (#254, #289) carried the probe, so only such a mutant in one of those places can change its verdict.
+  A `killed` or `error` that the probe caused can become `survived`, so a score can fall and a `--threshold` gate can fail.
+  A continuation-line survivor whose probe was around a block literal can become `no_coverage`.
+- **Reload keeps the callbacks of a class whose body calls `define_callbacks` (#504).**
+  `--strategy reload` and `--daemon` run the class body again. A second `define_callbacks :save` gave the class and each subclass a new empty chain.
+  A callback from an included concern, or from a subclass in another file, was then lost, because the concern's `included` block and the other file do not run again. Nothing warned.
+  A test that needed that callback failed for every mutant of the file (false kills), and a mutant in a method that only that callback called survived (false survivors).
+  Now a `define_callbacks` call during the mutant load skips each chain that the class itself defined before the load. `define_model_callbacks` calls it, so it is covered too. A name that is new to the class, and every call outside the load, runs as Rails wrote it.
+  The skip also drops the options of the call, so a mutant in a method that calls `define_callbacks` or `define_model_callbacks` (such as a `job_callbacks` helper the class body calls) would never reach Rails. Such a method, and a method of the same file that calls it by name or through `super`, is now `unplaceable` under reload and counted in `summary.unplaceable` (a later line of a multi-line statement stays `no_coverage`). The match is by name and the whole method is marked, so its other lines, and a same-named method in another class of the file, lose their verdicts under reload. In 1,700 Ruby files (Fizzy `app/` and `lib/`, Mutineer `lib/`, seven Rails 7.2 gems), the rule marks 5 methods, all in Rails' own code, and none in Fizzy or Mutineer. `--strategy redefine` is unchanged.
+  The class body's own callbacks still run once where reload can pair the copies. Where it cannot, the #479 warning names the class.
+  Checked with ActiveSupport 7.2.4, 8.0.5 and 8.1.4.1. On a Rails that does not write `_run_<name>_callbacks` on the class, the guard does nothing and the chain is cleared, as before (#530).
+  After the upgrade, such a file can show survivors where it showed kills, so a score can fall.
+  Still open: `reset_callbacks` in a class body, a body that adds a callback before its own `define_callbacks`, a method that only computes the names or options of a `define_callbacks` call, a call through `send`, `public_send`, `__send__` or `method`, and a caller in another file (#530), and the cases of #479.
+- **Reload scores a class whose superclass is a constant that the same file assigns, such as `BaseRow = Struct.new(:v)` then `class Row < BaseRow` (#503).**
+  `--strategy reload` and `--daemon` load the mutant file over its classes. The assignment built a new `BaseRow`, so Ruby raised `TypeError: superclass mismatch` for `Row`, and every mutant of the file scored `error`.
+  Now the reload keeps the class that `BaseRow` already has, so `Row` reopens with the same parent, and an instance or a subclass in another file still sees the mutant.
+  The reload keeps only a value it can prove holds no class the file builds again: `Struct.new`, `Data.define` or `Class.new` with literal arguments, with or without a block. Any other value, such as `Class.new(Fields)` or a builder method of the file (`BaseRow = build_base`), keeps its text, so that file still errors visibly (#527).
+  A bare assignment (`BaseRow = ...`) matches a bare superclass (`< BaseRow` or `< ::BaseRow`) in any scope of the file. A path assignment matches only a path superclass spelled the same, so `Base = ...` beside `class User < ActiveRecord::Base` is not kept. `BaseRow = ...` inside `module Billing` with `class Row < Billing::BaseRow` still errors (#527).
+  A method inside the kept value, such as one in the block of `BaseRow = Struct.new(:v) do ... end`, is now `unplaceable` under reload, because that block does not run again. `--strategy redefine` runs it.
+  After the upgrade, `summary.errored` can fall for such a file, and `killed`, `survived` and `unplaceable` can rise, so a score can change.
+  The shape is in 0 of 392 Ruby files of the Fizzy sample app, 0 of 90 files of Mutineer's `lib/`, and 0 of 1,218 files of seven Rails 7.2 gems.
+  Still open: the shapes of #527 that error visibly, a `Struct.new ... do` constant with no class statement for it in the same file (#528), and a `||=` constant whose block does not run again (#529).
+- **Reload scores a class whose superclass sets a local variable, such as `class Q < (base = Struct.new(:a))` (#512).**
+  `--strategy reload` and `--daemon` now keep the live superclass and still set the local, to that same class, so a later line that reads it works.
+  Before, every mutant of such a file scored `error` with "superclass mismatch".
+  This covers a plain write (`base = ...`), alone or in one pair of parentheses, and a chain (`a = b = ...`).
+  A superclass that sets a local in another way (`||=`, multiple assignment, double parentheses, a write deeper in the expression) keeps its text. When its call builds a new class, the file still errors, visibly (#527).
+  A superclass that is a bare variable read (`base = Struct.new(:a)`, then `class Q < base`, also in parentheses) keeps its text too, so that file errors, as in 1.9.0, when the earlier line builds a new class (#527).
+  A read deeper in the expression (`Class.new(base)`) is still wrapped and can keep a stale parent (#533).
+  The unreleased #492 change kept the old parent there, but the earlier line builds a new class on each load, so a mutant in that class's block survived falsely and a later read of the variable killed mutants falsely.
+  After the upgrade from 1.9.0, `summary.errored` can fall for a file with a superclass local write, and `killed` and `survived` can rise, so a score can change.
+  The shape is in 0 of 392 Ruby files of the Fizzy sample app.
+- **Reload scores a class whose superclass is a call, such as `Data.define` or `Struct.new` (#492).**
+  `class X < Data.define(:a)` builds a new superclass each time Ruby runs it.
+  `--strategy reload` and `--daemon` load the mutant file over the class, so Ruby raised `TypeError: superclass mismatch` and every mutant of the file scored `error`.
+  Now the reload reopens a loaded class with the superclass it already has. The class stays the same object, so an instance or a subclass that another file holds still sees the mutant.
+  This covers a superclass that is a call, such as `Struct.new`, `Class.new` and `DelegateClass`, and that sets no local variable of the file. A plain local write of such a call is covered too (#512).
+  A method inside the superclass call's block (`class X < Struct.new(:a) do ... end`) is now `unplaceable` under reload, because that block does not run again.
+  A superclass constant that the same file assigns from a class builder is covered too (#503). The rare superclass shapes of #527 still error when their call builds a new class. A superclass call that reads a class the file builds again, such as `Class.new(Fields)`, or that calls a builder method of the file, keeps the old class, so a mutant in that class can survive falsely (#533).
+- **A `--daemon` mutant run now stops at the first failing test (#490).**
+  Before this, each daemon fork ran every covering test, while the in-process run stopped at the first failure.
+  One failing test already kills the mutant, so the daemon now stops there too.
+  This can change verdicts, not only speed.
+  Before, a mutant that its first test killed scored `timeout` when all its covering tests took longer than the daemon's 60-second limit per mutant.
+  It now scores `killed`, as with `--no-daemon`. `timeout` is outside the score, so the mutation score can change.
+  `--matrix` still runs every covering test in-process. `--matrix` with `--daemon` still exits 2.
+- **A `--daemon` mutant that cannot load a file now says why (#491).**
+  The daemon does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing.
+  When a mutant errors with `LoadError: cannot load such file` and you set `RUBYLIB` or a `RUBYOPT` with `-I`, `no_verdict[].details` now names the variable and the `load_path` setting above, and links "Extra load paths" in `docs/rails-setup.md`.
+  The note names only the variable, never its value.
+- `--dry-run` with `--rails` or `--boot` no longer needs `--test`. The human listing now shows the unpaired source and mutant counts (#410). A real run still needs a test.
+- **The random-order warning of `--test-command` sees two more fixed seeds (#368).**
+  It reads the minitest-reporters seed line, so a random order there now gets the warning.
+  It also reads `--seed N` and `--order rand:N` in `.rspec` and `.rspec-local`, so those no longer give a false alarm.
+  Mutineer still only warns and sets no seed. The remaining blind spots are listed in `docs/rails-setup.md`.
+- **The 12 known limits of reading `--test-command` output are documented (#342).**
+  `docs/rails-setup.md` lists each one and its result.
+  The #515 and #516 entries below fix most of limits 4 and 9. #549 tracks each limit that stays open, and the code comments cite it.
+  This entry changes no scoring on its own.
+- **A `--test-command` crash no longer scores `killed` because of summary-like text away from a line start (#515).**
+  When the clean run prints its Minitest or RSpec summary at the start of a line, a mutant run's summary and its `# Running:` line now count only at the start of a line.
+  So summary-like text in a Minitest `-v` test name, after a progress dot, or in an indented RSpec example name no longer makes a crash read as a kill, when the run printed its real summary at a line start.
+  Such a crash now scores `error`, not `killed`. It counts in `no_verdict[]` and leaves the score, so the mutation score can change.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
+  A Minitest run that stops after `# Running:` with no summary text after it still scores `killed`, as before (#342 limits 3 and 8).
+  Estimate: far below 1 project in 1,000, unmeasured.
+  A real kill can now score `error` when a wrapper or interleaved parallel output moves its failing summary off the line start, on exit 1 or after a SimpleCov gate.
+  After a SimpleCov gate, a run whose passing summary is only off the line start also scores `error`, not `survived`.
+  The reason then says "not at the start of a line". Estimate: below 1 in 100 `--test-command` setups, unmeasured.
+  When no summary of the clean run starts a line, such as with a wrapper that prefixes each line, matching stays as in 1.9.0.
+  On exit 1, a line-start `# Running:` followed only by passing summary text away from a line start (a `-v` test name before a stop, or a real summary a wrapper moved) also scores `error` with that reason, never `killed`. 1.9.0 also scored it `error`.
+  Limits 3, 7 and 8 of #342 are accepted and keep their verdicts. #549 tracks them.
+- **A SimpleCov gate that stops a chain of `--test-command` suites scores `error`, not `survived` (#516).**
+  With SimpleCov's gate message and a passing summary, a mutant now scores `survived` only when its run printed at least as many summary lines as the clean run.
+  With fewer, a suite of the chain did not run and could have killed the mutant, so it scores `error`. The reason gives both counts.
+  Such a mutant leaves the score and counts in `no_verdict[]`, so the mutation score can change.
+  With a positive `--threshold`, a run fails with exit 1 when more than one mutant has no verdict and they are more than 10% of those attempted, or when no mutant was scored and one has no verdict.
+  Turn the coverage gate off for mutation runs.
+  Estimate: below 1 in 100 `--test-command` setups, unmeasured.
+  When the clean run printed no summary line, the rule stays as in 1.9.0. #549 tracks the cases that still score `survived`.
+- **The random-order warning of `--test-command` follows RSpec's option order (#522).**
+  RSpec reads `.rspec`, `.rspec-local`, the command, then `SPEC_OPTS`, and the last order option wins.
+  Mutineer now reads them the same way. A seed in `.rspec` that a later `--order rand` overrides now gets the warning.
+  With `--options FILE` or `-O FILE` in the command, Mutineer skips `.rspec` and `.rspec-local`, as RSpec does.
+  The warning now says "found no fixed seed in effect". It is a warning only: no verdict, score, exit code or JSON field changes.
+  #549 tracks the blind spots that stay, such as a `cd` inside a wrapper.
+- **A red clean check under `--rails` names the failing test and its error
+  (#497).** Rails' Minitest plugin removes every `Minitest::SummaryReporter`.
+  The clean check built its failure report on one, so under `--rails` the
+  "not green" message named the test file but no test, message or backtrace.
+  The report now comes from `Mutineer::MinitestFailureReport`, which that
+  plugin leaves in place. It applies to the per-file and the combined clean
+  check, in-process, `--boot` and `--daemon`.
+- **The JSON and HTML reports, and the human report under `--verbose`, name the cause of an errored mutant (#480).** A
+  `--test-command` mutant that scores error adds the command's last non-blank
+  output line to its `details`, redacted and cut at 500 characters. An RSpec
+  example that fails with a database error now writes the same cause line as
+  Minitest (#347). The HTML report has an "Errored mutants" section, and the
+  human report lists errored mutants under `--verbose`. Each entry has the
+  method, `file:line`, operator, id and cause.
+- **The `--daemon` coverage build and clean check name a dropped load path
+  too (#500).** When the coverage build fails, or the clean check is red,
+  with `LoadError: cannot load such file`, the message ends with the same
+  `RUBYOPT`/`RUBYLIB` note as a mutant (#491). So does a daemon that fails
+  to boot with that error. Before this, those paths printed the bare
+  `LoadError`. The daemon's own warning for one test file it could not
+  capture gets the note under `--verbose`, on its first such warning (#517).
+
+## [1.9.0] - 2026-11-16
+
+### Added
+
+- **New opt-in operator `rescue_body` mutates `rescue` clauses (#418).**
+  It replaces the whole body of each `rescue` clause with `nil`, including a one-statement body.
+  It also turns `x rescue y` into `x rescue nil`.
+  A re-raise or a `retry` body is mutated too, because `nil` swallows the error.
+  An empty body, a body that is already `nil`, `(nil)` or `()`, and an `ensure` body give no mutant.
+  A body whose value is discarded and that holds only literals and variable reads is declined, and counts in `summary.declined_by_operator`.
+  See `docs/equivalent-skips.md`, "Rescue body".
+  Before this, no operator mutated a one-statement `rescue` body.
+  The default operator set does not change.
+- **`return_nil` reaches a method with a def-level `rescue`, `else` or `ensure` (#418).**
+  It replaces the final expression of the body, or of the `else` clause when there is one, with `nil`.
+  It does the same for each `rescue` clause. The `ensure` value is not a return value, so it is left alone.
+  Before this, `return_nil` gave such a method no final-expression mutant.
+  A run with `return_nil` can now report a different number of mutants and new survivors. With `--baseline`, refresh the baseline.
+  With both operators, a one-statement `rescue` body gives the same edit twice. The run keeps the `return_nil` mutant, lists the `rescue_body` id in its `copies`, and counts that copy in `dropped`.
+  A final explicit `begin ... end` block gets the same mutants as the def-level form, so RuboCop's `Style/RedundantBegin` autocorrect does not change them (#470).
+- **`run` says when an `ignore:` entry matches no mutant (#377).**
+  The warning names the id and says the list covers only that run's sources and operators.
+  The warning does not change the exit code.
+  `--format json` lists the ids in `summary.unmatched_ignores`, in file order, each id once.
+  `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+  `--since` does not warn about an entry whose mutant is outside the diff: matching happens before the diff narrows the run.
+  A run of some files warns about entries those files and operators do not match. The warning says so.
+  A source you passed that has no paired test still counts: its entries are not reported as unmatched, and `run` agrees with `run --dry-run` of the same files.
+  `--only` skips the check. The list is then empty, which does not mean every entry matched.
+  A dropped repeat of an edit counts as matched.
+  An old-format id that still matches is not in this list. The old-id warning still names it.
+  `mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1.
+  That exit code is the CI check, in 1.x and after 2.0.
+  The key is part of schema `1.10`.
+- **A report names the dropped copy of an edit (#374).**
+  When two operators, or one operator twice, make the same change on one
+  line, one copy runs and the other is dropped. The JSON report now lists
+  each dropped id on the kept mutant as `copies`, on survivors, ignored
+  mutants, and the other mutant rows. `summary.dropped` counts them. They
+  stay out of `total` and out of the score. `mutineer triage` prints an
+  `ignore:` entry for the survivor and for each of those ids, so one round
+  writes every entry. An entry still ignores only its own id. The human
+  report, the HTML report, the dry run, and the Action summary show the
+  count. A dropped copy of an ignored mutant is listed on the kept mutant,
+  so that entry no longer looks unused. Both keys are part of schema `1.10`.
+- **A source that cannot load alone points at `boot:` (#376).**
+  When a source raises `NameError` (including `NoMethodError`) while it
+  loads, and the run has no `boot:` file, stderr adds one line. The names
+  it needs come from `boot:` or `--boot`, which loads before the sources.
+  Listing the entry file as an earlier source also loads it first.
+  In that run, `require:` files still load after the sources, so a source
+  cannot use them while it loads. With a boot file they load after the
+  boot file, and the parent does not require the sources.
+  `--test-command` does not load `require:` files. The hint line is absent
+  for any other load error, and for a `NameError` in the boot file or a
+  `require:` file. A dry run does not load the source, so it does not print
+  the line. `--daemon` and `--test-command` do not require sources in the
+  tool process, so they do not print it either. `--help` describes `--boot`
+  as an app entry point or a gem's `lib/<name>.rb`, and no longer limits it
+  to Rails apps.
+- **A run counts sources that have no paired test (#381).**
+  The report names each skipped source and how many mutants it holds.
+  JSON adds `summary.unpaired_sources`, `summary.unpaired_mutants`, and `unpaired_sources[]`.
+  The human report, the HTML report, and the dry run show the same counts.
+  Unpaired mutants are excluded from the score and cannot fail `--threshold`.
+  They join the unrun-share stderr warning, except under `--fail-fast`.
+  That warning does not change the exit code.
+  Schema version is `1.10`.
+  Compare it as two integers, so `1.10` follows `1.9`.
+  On Fizzy at `d5b7b749d`, 106 sources and 312 mutants were unpaired.
+  The paired run total was 759, so the share was 29.1%.
+  On Fizzy at `f220e4832`, 92 sources and 149 mutants were unpaired.
+  The paired total was 922, so the raw share was 13.9%.
+  After the 10 ignored mutants leave the denominator, the share is 14.0%.
+  Mutineer now parses those sources.
+  A disable-line warning or a git-diff warning can name them.
+  The Action step summary does not show these counts (#481).
+  A dry run with `--rails` or `--boot` and no `--test` still exits 2 (#410).
+  #349 measured the unrun share (of attempted plus unrun) on Fizzy at `f220e4832`, with Mutineer at `46ee2bb3`.
+  A full daemon run with the default operators had 840 attempted mutants, 1 unplaceable, 0 skipped (invalid) and 149 unpaired.
+  Without the unpaired mutants, the share was 1 of 841 (0.12%).
+  With them, it was 150 of 990 (15.2%), so the warning fired.
+  With all 21 operators, the four paired files that can hold an unrun mutant had 24 under redefine and 20 under reload.
+  Against the default run's 840 attempted mutants, that is at most 2.8%.
+  The 10% limit stays.
+  A share above it that comes from unpaired mutants is a true count, not noise.
+  The 2 skipped (invalid) mutants in the all-operator runs came from a `literal_mutation` bug that this release fixes (#469).
+- **A concern pairs with the test that mirrors its namespace (#379).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_test.rb`.
+  That path matches `Storage::Totaled`.
+  The `concerns/` path still wins when it has a test.
+  Existing pairs stay the same.
+  Before this, the concern was skipped and added no score.
+  The skip line was `no test found by convention`.
+  A concern that was skipped can now run.
+  That can change a score or a gate.
+  `--baseline` treats new survivors as new.
+  Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace load can move a `--threshold` run from exit 0 to exit 1.
+  Those mutants move from `no_coverage` to `uncapturable`.
+  A `nil` score with a broken mutant then fails the gate.
+  The share of mutants with no verdict also rises.
+  With `use-bundler: false`, an Action with an empty `version` installs the latest gem.
+  Pin `version`, or refresh the baseline, before the next run.
+  With `use-bundler: true`, the Gemfile picks the version.
+  A failed namespace test does not mark a concern that has a test at its `concerns/` path.
+  A namespace split name pairs under #408.
+- **A concern pairs with a split test at its namespace path (#408).**
+  `app/models/concerns/storage/totaled.rb` can pair with `test/models/storage/totaled_bytes_test.rb`.
+  The `concerns/` path still wins when it has a test that pairs, exact or split.
+  A split owned by a longer source does not count.
+  A longer source keeps its file when that source pairs with it.
+  That includes a longer concern with no test of its own, and a model or `lib/` file of the longer name.
+  A model keeps a split file it already pairs with. The concern may use that same file. The model does not lose it.
+  A shorter concern keeps a namespace split when the longer concern already has a test at the `concerns/` path.
+  The longer concern does not add that file.
+  A namespace spec stays the only file. A failed split beside it does not mark the concern.
+  Before this, a namespace split name left the concern skipped, with no score.
+  A concern that was skipped can now run. That can change a score or a gate.
+  `--baseline` treats new survivors as new. Refresh the baseline.
+  See `docs/ci.md`, "Refresh the baseline".
+  A failed namespace split moves those mutants from `no_coverage` to `uncapturable`.
+  On the Fizzy tree measured for #379, no unpaired concern had a namespace split name.
+  One of 352 `app/` sources paired with a split file.
+- **Mutineer now reports the methods that got no mutants (#386).** A
+  method whose body is one `if` with a `rescue` gets no mutant from the
+  default operators, and the run did not say so. The dry run summary now
+  ends with `no mutants in N of M methods`, and `--dry-run --verbose`
+  prints one `no mutants:` line per method. The human report has a
+  `No mutants:` row. The JSON report adds `summary.subjects`,
+  `summary.unmutated_subjects` and a top-level `unmutated_subjects[]`
+  list, and `schema_version` is now `1.10`. A program that calls
+  `Reporter#report` without the method counts gets `null` for all three,
+  not `0`; the CLI always fills them. An empty run says how many
+  methods it found and points to `--list-operators`. Scores, exit codes,
+  the mutants that run and the default operators do not change. The
+  README names `condition_true` and `condition_false` for these methods.
+  For a one-statement `rescue` body, use the new opt-in `rescue_body`
+  operator (#418).
+- **`mutineer config KEY` prints a resolved setting (#394).** It prints the
+  `cache_dir` or `baseline` that `mutineer run` would use with the same
+  options and `.mutineer.yml`. It writes nothing. An unknown key exits 2. The
+  GitHub Action now asks the installed CLI for these two settings, so it no
+  longer copies the CLI's rules. With an older installed CLI that does not
+  have the command, the Action uses its own copy of the rules, as before.
+- **The JSON report names why a mutant errored (#388).** When the mutant's
+  child raises, under `reload`, `redefine` or the daemon,
+  `no_verdict[].details` now holds `Class: first message line`, at most 500
+  characters, for example `ArgumentError: enum declared twice`. Before, it
+  said only `child exited with status 2` or `daemon verdict: error`, and the
+  cause was on stderr alone. The line is redacted in the child, and every
+  `details` value is redacted again when the report is written.
+- **Errored mutants without a raised exception name their cause (#417).** A
+  Minitest database connection or lock error puts
+  `a test failed with a database error: Class: message` in `details`. An
+  RSpec error outside examples uses a fixed line that names that case. A
+  `--matrix` early end after a serial database error uses its own fixed
+  line. `--test-command` and the human/HTML errored lists stay deferred (#480).
+- **A daemon crash names itself in `details` (#388).** A mutant whose daemon
+  died or did not reply in time now has `daemon crashed` or `daemon stopped
+  answering`, not `daemon verdict: error`.
+- **`no_verdict[]` entries gain `operator` and `token` (#388),** as in
+  `no_coverage[]`. Both are `null` for an entry with no mutant. Schema
+  `1.10`.
+- **`.mutineer.yml` accepts a `tests:` map (#382).**
+  Each entry names `sources` and `tests` patterns.
+  When the run holds a matching source, those test files join the run's test list beside convention-paired tests.
+  Coverage still picks the tests for each mutant.
+  `--test` replaces pairing and the map.
+  A malformed map exits 2; without `--test`, a pattern that matches no file exits 2 (including `--dry-run`).
+- **`--test` accepts a file, a directory, or a quoted glob (#380).**
+  A directory selects `*_test.rb`, `*_spec.rb`, and `test_*.rb` files.
+  It skips `test_helper.rb`.
+  A blank value exits 2.
+  A directory or glob with no test file exits 2.
+  With `--test-command`, an empty directory stays as typed.
+  Each expanded directory or glob prints its file count on stderr.
+  The Action `test` input accepts a directory.
+  A directory needs mutineer 1.9.0 or later.
+- **JSON reports list every killed mutant (#361).** `--format json` adds a
+  top-level `killed[]` of lean mutant objects (`subject`, `file`, `line`,
+  `operator`, `token`, `id`), sorted like `no_coverage[]`. Its length equals
+  `summary.killed`. `schema_version` is `1.10`.
+- **`--dry-run --format json` prints candidates with stable ids (#362).** The
+  document carries `mutants[]` (same lean shape) and a summary with `total`,
+  `by_operator`, `declined`, and `declined_by_operator`. Ids match a later real
+  run of the same job plan. `--output` writes the file; `--format html` under
+  `--dry-run` stays human and warns that the format is unused.
+
+### Changed
+
+- **Behavior change.** An in-process `--since` run with no mutant on a changed line
+  skips the coverage map (#396). It no longer boots the app or runs the unmutated suite to say there is nothing to test.
+  A red suite or a boot file that fails no longer fails that run.
+  A missing `--boot` or `--require` file is still a usage error.
+  Thanks to @dannyward630.
+- **`collection_method` skips `each` and `map` when the result is discarded (#436).**
+  For Enumerable, `each` returns the receiver and `map` returns a new array.
+  No test can tell those two apart when that value is thrown away.
+  A method of either name on another class can still differ. The check does
+  not see the class, so that skip can hide the difference.
+  The swap is declined, and the dry run and JSON report count it in
+  `declined_by_operator`.
+  The last expression of a method, block, or lambda is still swapped.
+  So are assignment, an argument, a chained call, `return` / `break` / `next`,
+  and a condition.
+  A `while`, `until`, `for`, or `ensure` body is skipped, including its last line.
+  The value read by string or symbol interpolation, a backtick or `%x`
+  command, or an interpolated regexp still swaps. Interpolation calls `to_s`
+  on that value, the command runs, and the regexp is compiled, even when
+  their result is thrown away. An earlier statement inside the interpolation
+  is still skipped. `defined?` does not evaluate its operand, so an `each` or
+  `map` inside it is skipped, including a `lazy` chain and an interpolation.
+  A hash key still swaps, because insertion calls `hash` and `eql?`.
+  The last line of each `rescue` clause, including a later clause, is kept or discarded as its `begin` is.
+  A receiver chain that calls `lazy` still swaps, because `Enumerator::Lazy#each`
+  runs the block and `Lazy#map` does not.
+  A lazy enumerator stored in a variable is still skipped.
+  `all?`, `any?`, `first`, `last`, `min`, `max`, `select`, and `reject` are unchanged.
+  The operator is not in the default set, so a default run's mutant count and
+  score do not change.
+  On `lib/` of this repository, 86 of 149 `each` and `map` calls are discarded
+  (57.7%).
+  The other 313 `collection_method` swaps on `lib/` stay.
+  The operator's mutant count there drops from 462 to 376.
+  A run that names `collection_method` can report fewer mutants and a different score.
+  With `--baseline`, refresh the baseline.
+  The report that opened the issue found this mutant in 4 of 23 ignore entries.
+  See `docs/equivalent-skips.md`.
+- **Behavior change.** A continuation-line survivor that ran is scored (#345).
+  Ruby counts one line of a statement. A mutant on a later line is a `:maybe`
+  selection (#254, #289): Mutineer runs the tests of the statement's other
+  lines, and a kill already counted. A survivor was `no_coverage` even when
+  those tests had run the mutated expression, so it left the score. The child
+  now writes a sentinel the first time that expression returns during a test.
+  That survivor moves from `no_coverage` to `survived`: it appears in
+  `survivors[]` and in `summary.survived`, and it leaves `summary.no_coverage`.
+  It enters the score. A survivor the sentinel does not record stays
+  `no_coverage`, still outside the score, and `summary.no_coverage` still
+  counts it. The same rule covers a trailing operator (`&&`, `+`), a method
+  chain, a multi-line argument list, a hash entry, and a heredoc
+  interpolation, under `reload`, `redefine`, and `--daemon`. A call that runs
+  only while the mutant file loads does not count: that write is cleared
+  before the tests. A raise inside the expression does not count, so an
+  operand that fails before a mutated operator runs stays `no_coverage`.
+  Every one of the 24,918 mutants from every operator on this gem's `lib/`
+  and `test/fixtures/` either does not re-parse, as before, or wraps. The
+  fallback that would leave an unwrappable mutant as `no_coverage` did not
+  occur. A score can fall. A `--threshold` gate that passed can fail.
+  `--baseline` treats the new survivors as new. Refresh the baseline.
+- **A coverage cache hit checks only the tests that cover the sources
+  (#398).** Before, a hit ran every `--test` file alone and then all of them
+  together. Now it runs only the files that cover a line of the run's
+  sources. With the built-in runner, a mutant runs only those files, so the
+  other files cannot change a result. `--test-command` builds no coverage
+  map, so its clean run still runs every `--test` file. A red covering test
+  still stops the run. A file whose last capture failed is captured again
+  on each hit and does not also run alone. The together check after a
+  fresh capture and with `--coverage-from` also uses the covering files
+  only. Mutineer prints one stderr line with the number of files it did not
+  check. When no test covers any source line, every file is still checked.
+  A standalone run no longer treats a line that ran only while the sources
+  loaded as coverage of every test (#426).
+- **Behavior change.** On a cache hit, a red test that covers no source
+  line no longer stops the run. A fresh capture still stops on it, because
+  capture runs every test (#96). So the same red test can stop a cold run
+  and pass a warm one.
+- **A method-body edit recaptures only the tests that cover that source
+  (#421).** The cache stores a run-inputs digest, a skeleton of each
+  source, and a fingerprint of each test. When a source changes only
+  inside method bodies, and the edit does not move a line or change a
+  method that ran at load, the next run recaptures the tests in that
+  source's map entries, plus any test file that was added or edited.
+  The paired test keeps lines that ran only at load. Recapturing
+  another test does not give it those lines, or another source's
+  load-only lines. The map matches a full capture. A red covering test
+  still stops the run. A class-body edit, an added or removed line, a
+  load-time method, a `--require` file, a change to which test pairs
+  with a source, or a project file the tests load still recaptures
+  every test. A cache saved before this change rebuilds once.
+  #421 stays open for files outside the run's sources, and for the
+  Fizzy timing check.
+- **The error for a test file passed as a source names three fixes (#380).**
+  Quote the glob, pass the directory, or repeat `--test`.
+- **`--dry-run` exits 2 for a blank `--test` or a directory with no test file (#380).**
+  Those values used to exit 0 on a dry run.
+
+### Fixed
+
+- **A clean check that times out is reported as a timeout (#476).**
+  The combined clean check runs the files selected for the clean check in one process.
+  It had the same deadline as one file's capture, 120 s by default.
+  A green suite that took longer was killed and reported as "the unmutated suite is not green (combined suite)", with the seed hint.
+  Now the message says the check timed out after N s, that no test failed, and to set `--capture-timeout` above the longest deadline that passed.
+  A real failure still says "not green". When one check times out and another file fails, the message names both.
+  The combined check's deadline is now the larger of `--capture-timeout` and 1.5 times the summed capture seconds of the files it runs, rounded up.
+  A per-file clean check on a cache hit that times out is reported the same way.
+- **`literal_mutation` no longer writes `""` over a string that has no quotes of its own (#469).**
+  That covers a heredoc line, a part of a `%(...)` or `%Q(...)` string, a `%w[]` or `%W[]` element, and a text part of a regex, a backtick string or an interpolated symbol (`:"a#{x}"`, a `%I[]` element).
+  The edit inserted text instead of emptying the string. Some of these mutants broke the parse and were counted as skipped (invalid). The others ran as the wrong edit.
+  Each such string is now declined and counts in `summary.declined_by_operator`. A text part of a `"..."` string still mutates, because `""` closes and reopens the string.
+  A run with `literal_mutation` can report fewer mutants. With `--baseline`, refresh the baseline.
+  On Fizzy at `f220e4832` (392 files in `app/` and `lib/`), `literal_mutation` made 1290 `""` mutants before this change, and 6 of them did not parse. It now declines 147 of them (11.4%) and makes 1143, none invalid.
+- **A standalone cache hit no longer checks every test just because each
+  test loads the sources (#426).** Standalone capture loads every source
+  before each test. The class line, the `def` line, and any other line that
+  runs only then were credited to every test, so the clean check kept them
+  all. Those lines still count as `ran_at_load`. A test keeps such a line
+  when it is a convention-paired test for that source. A `tests:` map entry
+  does not count. When the run has no convention-paired test for the source,
+  every test keeps the line, so a reload kill is not dropped.
+  A line the test runs after the sources load stays credited to that test,
+  including the `def` line of a method the test calls. Boot and daemon runs
+  already omitted the load lines and do not change. A coverage cache saved
+  before this change rebuilds once. So does a cache whose paired tests no
+  longer match, including when an exact spec that the run did not select
+  appears or disappears and replaces a split test.
+  **Score effect.** The exact-survivor oracle does not change. A reload kill
+  of a line that runs only at load stays a kill when the convention-paired
+  test is in the run (`Catalog.price`, and a hook def the file calls while
+  it loads). `--strategy redefine` still reports `ran_at_load` for that line.
+  An unpaired test no longer runs that mutant when a convention-paired test
+  is in the run.
+  A kill that only the unpaired test would have caught can become
+  `ran_at_load` or a survivor. The checked fixtures do not hit that case.
+  Issue #467 tracks that case and the run with no paired test.
+- **A restored subclass skip keeps the reloaded parent conditions (#440).**
+  A parent callback with `if:` or `unless:`, and a subclass `skip_callback`
+  with `if:` or `unless:`, leave a merged copy on the subclass. Reloading
+  the parent appended the new callback and dropped that copy. The reload
+  then put the copy back, so the subclass still ran the parent's old
+  conditions. The copy is now built again from the reloaded callback, and
+  the subclass's own conditions are added the way `skip_callback` adds
+  them. A subclass callback that is not that copy stays as it was. So
+  does a copy left when the parent callback had no conditions (#414):
+  there is no parent condition object to carry, and a subclass callback
+  of the same name must not be rewritten. A parent condition that is only
+  a symbol, or another interned object, is also left on the old copy. An
+  independent subclass callback can name that same symbol, so the symbol
+  is not evidence of a `skip_callback` merge. A Proc copied from the
+  parent is evidence, and that Proc is carried. Redefine does not re-run
+  the class body, so it does not take this path. Reload and the daemon do.
+- **A non-ASCII path and a non-UTF-8 source no longer stop the run (#346).**
+  With `LANG` and `LC_ALL` unset, a source file, test file, or project
+  folder whose name is not ASCII made coverage fail, or the path missed
+  its match, so the run stopped or scored those mutants `no_coverage`.
+  Those mutants now get a verdict, so a score can change. With `--baseline`, refresh the baseline.
+  Paths are read as UTF-8 when the bytes are UTF-8, and as binary
+  otherwise, and compared in that encoding. Minitest is given the path
+  in `Dir.pwd`'s encoding when those bytes are valid there, and as binary
+  otherwise (under `LC_ALL=C` that encoding is already binary). Its
+  failure backtrace is retagged the same way, so a killed mutant is not
+  reported as an error. RSpec is given the
+  path as UTF-8, which its path regexp requires.
+  This covers the in-process coverage subprocess, the fork capture used
+  by `--rails` and `--daemon`, pairing (including a split test name),
+  and `--since` path keys.
+  A source file whose magic comment names an encoding (`# encoding: EUC-JP`,
+  and the other forms Ruby accepts) is read in that encoding. The comment
+  is taken from the first line, or the second after a shebang, within the
+  first 4096 bytes. The mutant keeps those bytes, so Ruby can load it.
+  The daemon receives the text through JSON, which is Unicode, and writes
+  the file back in the encoding the comment names. The comment forms are
+  the ones Ruby accepts, including an indented comment and a vim
+  `fileencoding` modeline. `# encoding=NAME` with no space is not one of
+  them. A file with no such comment is still read as UTF-8. A redefine
+  snippet has no comment of its own, so the write adds one when the
+  snippet is already in another encoding. The daemon still reads `db/schema.rb`
+  as UTF-8. `rails_worker_db.rb` loads on the app's Ruby, which may not
+  ship Prism, and requiring Prism there would turn off worker-database
+  routing.
+- **The clean check and the mutant runs share one RSpec seed, and one order inside a Minitest file (#282).**
+  A random RSpec order used a new seed in every process.
+  The clean check and a mutant run could disagree, and a hang could score `killed` on one run and `timeout` on the next.
+  A random order now uses seed `1` for coverage capture, the clean checks and the mutant runs, unless the suite sets a seed (`--seed`, `--order rand:N`, `SPEC_OPTS`, `.rspec`, or `config.seed`).
+  A defined order is left as it is.
+  A mutant run now passes each spec file by its real path, as the clean check does.
+  RSpec hashes that path into the random order, so a symlinked project root (such as `/var` on macOS) no longer gives the two runs different orders.
+  Reading `config.seed` in a spec helper, as the generated `Kernel.srand config.seed` does, does not set one.
+  A `config.seed=` in a spec helper, a `--require` file, or the boot file does, and the clean check and the mutant runs keep it.
+  The coverage cache includes `SPEC_OPTS` and the project `.rspec` and `.rspec-local` files, so a changed seed there is captured again.
+  `~/.rspec` is not part of that cache key.
+  Minitest already used seed `1`.
+  Classes inside one file were still shuffled with the whole class list, so adding a file changed their order.
+  Each file is now shuffled from that seed alone, on the clean check and the mutant runs.
+  Files run in the order that run was given.
+  A mutant run's files stay in coverage order (paired, then cheapest).
+  The combined clean check uses the order the tests were given.
+  Those two file lists can differ.
+  `--test-command` still sets no seed (#368).
+  A coverage cache from another `SPEC_OPTS`, or from a version that did not pin the RSpec seed, is captured again.
+- **Direct stderr and stdout hide the `DATABASE_URL` password in more cases (#341).**
+  A boot file, a forked test, and a program that test starts inherit a pipe.
+  Mutineer copies each line and hides the `DATABASE_URL` password before the
+  line reaches the terminal. `abort` in a boot file is included. A line with
+  no password is unchanged. A fork that sets `DATABASE_URL` itself is
+  redacted in that process. A password that contains a newline stays
+  together until a newline follows it or the stream ends, so neither half is
+  printed. The daemon does not boot when stderr cannot be redirected. A fork
+  whose own copier cannot start writes nothing further. A fork that execs a
+  program hands it the parent's pipe, so that output is still shown and
+  redacted. If the program would run with a `DATABASE_URL` the parent does
+  not know, its output is dropped instead. The same holds for `spawn` and
+  `system` when their environment hash sets a `DATABASE_URL` this process
+  does not know. That program's own redirects of stdout and stderr are
+  replaced too, so an `Open3` capture of it gets no output. Other ways to start a program with its own password, such
+  as backticks, `IO.popen`, or a shell command that sets the variable, still
+  pass that password through. Shutdown writes every byte already
+  queued, including a report a slow reader has not taken yet. The daemon does this in its own process, so a
+  password the boot file assigns is hidden even when the tool's environment
+  does not have it. `--test-command` output is redacted with the tool's
+  `DATABASE_URL` and with `DATABASE_URL` from dotenv files in the project
+  (`.env`, `.env.local`, `.env.development`, `.env.development.local`,
+  `.env.test`, `.env.test.local`). A double-quoted value may span lines. A
+  quote that never closes is a plain value on its own line, as in dotenv. A
+  backslash before `$` is a literal dollar. An invalid byte does not stop
+  the read. A Ruby process the command starts hides a bare password it
+  assigns itself, including one set only in that process (#457). A program
+  that is not Ruby ignores that copier, so when that Ruby execs a program
+  with a `DATABASE_URL` the tool did not know, the program's output is
+  dropped. A password inside a URL is still hidden.
+- **Redaction no longer blanks a host, a database name, one character, or a
+  common word (#341).** A password that equals the host or the database name
+  stays readable outside a URL, as a password that equals the username
+  already did. A one-character password (`a`, `1`) stays readable outside a
+  URL, so it does not erase that character from every line. The words
+  `password`, `test`, `secret`, `postgres`, and the rest of the list in
+  `Redaction::COMMON_WORDS` stay readable as bare words. The password is
+  still hidden inside a URL and as the value of a `password=` parameter.
+  Local and CI URLs often use these words. A production password usually
+  does not.
+- **A `file:` SQLite name locks the file it opens (#412).**
+  `file:storage/test.sqlite3?mode=rwc` takes the same run lock as
+  `storage/test.sqlite3` when both names open that file. A second daemon
+  run stops with `another Mutineer run is using <file>`. A memory URI
+  (`file::memory:` or `mode=memory`) takes no lock. An empty `file:` URI
+  is a private temporary database and takes no lock. A relative `file:`
+  path is resolved from the working directory, which the daemon sets to
+  the app root before the lock. A later `mode` that adds write or create
+  access, such as `mode=ro&mode=rw`, is a URI SQLite rejects, so it takes
+  no lock. Other run-lock gaps are unchanged (#416): in-process `--rails`
+  runs, the lock taken after boot and `--require` files, a prepare daemon
+  that fails to boot, and the `--jobs 1` respawn window. A custom VFS that
+  does not open the URI path is not covered.
+- **An RSpec example's database error scores `error`, and a parallel Minitest
+  class follows queue order (#347).** The first failed RSpec example now
+  follows the Minitest rule. An Active Record connection or lock error
+  (`ConnectionNotEstablished`, including pool timeouts, `ConnectionFailed`,
+  `Deadlocked`, `LockWaitTimeout`) scores `error`, on a full run, a stop, and
+  `--matrix`. A later example's connection error does not change an earlier
+  assertion. On Rails 8, `ConnectionNotDefined` is a code error and still scores
+  `killed`. Rails 7.2 raises a plain `ConnectionNotEstablished` for an undefined
+  connection, so that mutant scores `error`. Other statement errors, such as bad
+  SQL, still score `killed`. A `before` hook counts as the example's own exception. An `after`
+  hook does not replace it. The stderr line is the same one Minitest writes.
+  With `--matrix`, that example is not a killer and the row stays incomplete.
+  There is no `--daemon` for RSpec. Errors are out of the score, so a lost
+  connection during a run no longer raises it, and a run that used to count
+  the example as a kill can change its score or fail `--threshold`. Refresh
+  the baseline when that happens.
+  Under Minitest `parallelize_me!`, the first failure is the earliest test in
+  the queue, not the thread that finishes first. A serial failure still
+  decides, because those classes run first. A mutant that mixed a database
+  error and an assertion in one parallel class no longer flips between
+  `killed` and `error` across runs. The JSON report names a Minitest
+  in-test database error in `no_verdict[].details` (#417). It does not name
+  an RSpec example's database error (#480). Active Record 7.2
+  reports SQLite `database is locked` as `StatementInvalid`, so that mutant
+  still scores `killed` (#347).
+- **`--strategy redefine` no longer false-kills path anchors in a read-only
+  source directory (#339).** Redefine loads the mutated method from a hidden
+  file. When that directory is not writable, the file is in the system temp
+  directory. `__dir__`, `__FILE__`, and `require_relative` then pointed there,
+  so every mutant raised `ENOENT` or `LoadError` and scored `killed`. The
+  snippet now resolves those against the original source file, including
+  calls on `self` and `Kernel` and `send` with a literal name, whether the
+  directory is writable or not. A leading `~` stays a path segment, and the
+  load does not call an instance method named `require`. A symlinked source keeps the loaded path for
+  `__FILE__` and the real directory for `__dir__` and `require_relative`. A
+  test that checks `__FILE__` against the source path used to fail for every
+  redefined mutant. It now fails only when the mutation changes the result,
+  so a redefine score can go down. Reload, in process and on the daemon,
+  still needs a writable directory: the write fails and the mutant scores
+  `error`, which stays out of the score. The read-only warning is gone.
+- **A killed mutant stays killed when the failure message holds raw bytes (#434).**
+  Rails' `assert_response` appends a short response body as raw bytes.
+  The reporter prints that message on the silenced stdout.
+  After Rails sets both `Encoding.default_external` and `Encoding.default_internal`
+  to UTF-8, that write raised `Encoding::UndefinedConversionError`, and the child
+  scored the mutant `errored`. The silenced stdout is binary now, so the bytes
+  are discarded and the failure still counts as a kill. Those mutants move
+  from `errored` into the score, so a score can rise. This holds for
+  in-process reload and redefine runs and for daemon reload runs.
+  The daemon forces reload; redefine is not available there.
+  RSpec already writes its failure text to a StringIO, which accepts the bytes.
+- **A mutant in `define_method` or `define_singleton_method` on a load line is `ran_at_load` (#435).**
+  A class method such as `greets` runs when the including class loads.
+  Rails turns eager load on when `CI` is set, so that call happens before
+  the mutant. The call's own mutants were `ran_at_load`. A mutant of a
+  string inside the block on that same line was a survivor, and the score
+  fell to 0.0. It is now `ran_at_load` too, under `reload`, `redefine`, and
+  the daemon. A kill still counts. `CI` itself changes nothing: only
+  whether the line ran at load does. Without eager load the class loads
+  after the mutant, and those mutants stay killed. An equivalent
+  `each` → `map` still survives in that case. On the reported method, 2 of
+  5 mutants moved, so that run's score goes from 0.0 to no score. A run
+  that still has other survivors can score higher, because these mutants
+  leave the denominator. `--threshold` passes a nil score when no mutant broke, as here. The new case is
+  a `define_method` or `define_singleton_method` call whose line ran at
+  load, including the block that call stores. Another block on that line,
+  such as `each` with an empty array, stays scored: the line can count
+  without the block, and a test can run the mutated block. An
+  empty `each` that shares its line with `define_method` can still hide
+  that call (#286). That needs the call to have been made with no elements while
+  the class loaded, then again with elements by a test that does not check
+  the generated method. The reported call is `greets :alice`. Re-running
+  the caller's class body, so these mutants can be killed, stays #389. A
+  one-line or endless `def` still uses its call count, so a block on the
+  `def` line is unchanged (#389).
+- **An endless range on a Hash, Proc, or other non-literal receiver is swapped (#344).**
+  The `range` operator skipped an endless range (`1..`, `1..nil`) used as an
+  index of `[]`, `[]=`, `slice`, `slice!`, `byteslice`, `bytesplice`,
+  `values_at`, or an index write. The only exception was a constant whose
+  name contained a lower-case letter, such as `Array[1..]`. Every variable,
+  call, and other constant was skipped, including `HASH[1..]`, `ARGV[1..]`,
+  `list[1..]`, `fn[1..]`, and `{(1..) => :a}[1..]`. A Hash, a Proc, and a
+  custom `[]` or `slice` can tell `1..` from `1...`, so the skip hid a mutant
+  a test can kill. The operator now skips that range only when the receiver
+  is an array or string literal, including parentheses around one. A
+  `begin` counts only when every branch that can supply its value is such
+  a literal, so a rescue or an else that returns a Hash is swapped.
+  Backticks are swapped too, because `` ` `` can be overridden. A
+  variable, a call, or a constant is swapped, and an earlier
+  assignment is not followed. On a real Array or String the new mutant is
+  often equivalent, as in `argv[1..]` or `text.byteslice(offset..)`. In this
+  gem's `lib/`, 14 such ranges were skipped and none was a literal, so a
+  `range` run there goes from 45 mutants to 59. A run that names `range`
+  can gain mutants, survivors, and new mutant ids. Re-check `ignore:` entries
+  for `range`, and save a new baseline. Active Record conditions such as
+  `where(created_at: time..)`, `where.not`, `find_by`, and `exists?` were
+  already swapped. They still are: both ranges become the same `>=` SQL.
+  Suppress one equivalent mutant with an `ignore:` entry.
+  `# mutineer:disable-line range` hides every `range` mutant on that line,
+  so use it only when every one of them is equivalent.
+- **Reload pairs a repeated callback when the other entry is a different one (#413).**
+  After a class body ran again, the repeat was paired by kind and by a
+  filter identity that still put different callbacks in one bucket.
+  `&:name` procs have no source, so they shared one bucket. Blocks in
+  the reloaded file shared a bucket when Ruby gave them the same label,
+  with no comparison of their code. A validator shared a bucket with
+  another of its class and attributes, with no comparison of option
+  names. `if:` and `unless:` were not part of the bucket. The class
+  body's new copy then stayed beside the old one, and a test that
+  counts errors or callback runs killed every mutant of the file.
+  `&:name` now matches the symbol. A block matches its code, so a value
+  it captured that differs on each load (a new object, a time, a random
+  value) still pairs when no other entry has that code. A validator
+  matches its option names, not values a mutant method can change. An
+  `if:` or `unless:` is part of the match.
+  A concern entry that is the same symbol, the same code, or the same
+  option names still cannot be told apart, so both copies stay. A
+  callback the class body adds only on its first run (`@done ||=`) still
+  keeps every identical copy. Issue #479 tracks those cases. Full reload
+  (#389) would build the class once. Reload and the daemon share this
+  path. Redefine does not run the class body again, so it does not add
+  the second copy.
+  **Score change:** a Rails model whose test counts those callbacks can
+  now show survivors that were false kills, so its score can go down.
+- **`--since` narrows the No mutants method count (#420).**
+  `summary.subjects`, `summary.unmutated_subjects`, and `unmutated_subjects[]`
+  keep methods whose `def` range intersects a changed line. The human and
+  dry-run lines no longer say the count is un-narrowed.
+- **The HTML report and Action step summary show the No mutants count (#419).**
+  HTML adds `no_mutants` / `methods` (and `declined` when present). The Action
+  summary table gains a No mutants column from `summary.unmutated_subjects`.
+- **A not-green clean run names the failing test and the first error (#360).**
+  The SmokeCheckError line still says `not green` once and lists the files.
+  It now also prints the reporter's failing test name and first failure
+  message (capped), for Minitest and RSpec, including `--rails` / `--daemon`
+  forks and a warm-cache clean check.
+- **The Action accepts an `output` path that starts with a dash, a tilde, or
+  ends in a newline (#401).** Before, `output: -dash/pr.json` stopped the step
+  with a `dirname` or `ruby` usage error, so a same-file `baseline` was not
+  checked. Path ops use Ruby (portable on macOS BSD tools) with `--`, so a
+  leading dash stays a path. `report=` uses `File.absolute_path`, so a
+  literal `~` name is not treated as a home shortcut. An `output` folder or
+  file name that ended in a newline lost it, so the report went to the wrong
+  place or the `report` output named the wrong path. A folder that differs
+  from the cache directory only by a newline is not created. The same-file
+  error keeps a newline in the path. The Action test runs one table of
+  unusual names (space, newline, leading dash, `*`, non-ASCII, `~`) through
+  every path input. A `.mutineer.yml` baseline that ends in a newline works
+  with `mutineer config` (#394).
+- **A reload of a parent class no longer puts a skipped callback back on
+  its subclasses (#414).** With the subclasses already loaded, Rails
+  appended the parent's `before_save` again, including onto a subclass
+  that had skipped it. Saves then failed, and a weak test looked strong.
+  Reload, redefine, and the daemon now leave each subclass chain as it was.
+  A callback replaced on one chain stays on every other chain.
+- **A second SQLite daemon run stops instead of sharing worker files (#404).**
+  Two `--rails --daemon` runs in one checkout used the same worker database
+  files, and both could stop with a false "the unmutated suite is not green".
+  A run now holds a lock on `<base file>-mutineer.lock` beside the database
+  file, and a second run stops with `another Mutineer run is using <base>`,
+  as PostgreSQL and MySQL runs already do. Mutineer never deletes the lock
+  file. A `file:` name that opens a disk file takes that same lock (#412).
+
+## [1.8.2] - 2026-11-10
+
+### Fixed
+
+- **Redaction no longer hides a password inside other words (#341).** A
+  form of the database password (raw, decoded or escaped) longer than 3
+  characters, made only of ASCII letters, digits and underscores, is now
+  hidden only as a whole word, like a short one. With
+  password `test`, the backtrace path `user_test.rb` stays readable. Such a
+  password inside a longer word is no longer hidden. The word `test` on its
+  own is still hidden, also right after an escape such as `%40` or `\n`, a
+  colour code, or a `-p` flag. That escape rule now covers short forms
+  too. A longer form with any
+  other character is still hidden wherever it appears.
+- **Redaction keeps the host after a password with an `@` (#341).** In
+  `postgres://u:p@ss@h/db and p@ss`, only `p@ss` is hidden now. Before, the
+  host and the rest of the line were hidden too. One known limit: in a URL
+  other than DATABASE_URL, a password that holds an `@`, a host, a `/`, `:`,
+  `?` or `#`, and a space, shows the part after that `@` when the URL's own
+  host has nothing after it, or has an `@` in its path or query. #341 tracks
+  it.
+- **Daemon shutdown no longer waits a second (#341).** A process the app
+  started could keep the daemon's error output open. Each quit or respawn of
+  `--daemon` then waited one second. Mutineer now stops waiting once the
+  daemon has exited and its output is read.
+- **One line that Prism 2 rejects no longer skips every mutant in the file
+  (#392).** Prism 2.0 and later report an operator write to a bare constant
+  inside a method (`T += 1`, `T ||= 1`, `T &&= 1`) as a dynamic constant
+  assignment. Ruby's `parse.y` does the same, but Ruby 3.4 and 4.0 load such
+  a file with their own Prism 1. Mutineer kept a mutant only when the mutated
+  file parsed with no errors, so on Prism 2 every mutant of that file was
+  counted as `skipped (invalid)`. When Prism reports an error, Mutineer now
+  asks the running Ruby to compile the mutant, and skips it only when Ruby
+  cannot. This holds in the dry run, in process, with `--test-command`, on
+  `--daemon`, and for the redefine strategy's method snippet. A project gets
+  Prism 2 when its bundle loads it, for example
+  through minitest 6.1. On Prism 2, the mutants of such a file that were
+  skipped now get a verdict, so the score, the counts, and the JSON report
+  can change for those projects. Prism 1 runs do not change.
+- **`--test-command` warns about a random test order (#338).** Mutineer
+  sets no seed for your command, so the clean run and each mutant run can
+  run the tests in different orders. An order-dependent suite can then fail
+  a mutant run for a reason the mutant did not cause, and that mutant
+  scores a false `killed`. When the clean run prints a random seed
+  (Minitest `Run options: --seed N`, RSpec `Randomized with seed N`) and
+  Mutineer finds no fixed seed, it now prints one warning with the fix for
+  that runner: put `SEED=1` before the `mutineer` command for Minitest, or
+  add `--order defined` to an RSpec command and keep `--order rand` out of
+  `SPEC_OPTS`, which RSpec reads after the command. The docs for
+  `--test-command` say the same. Mutineer does not set the seed itself, so scores do not
+  change. It cannot see a seed set in a wrapper script or `.rspec`, or a
+  Minitest `test_order`, so the warning can print when the order is
+  already fixed. #368 tracks these limits.
+- **Reload places a hook-block mutant before the rest of its file runs
+  (#348).** Under `--strategy reload`, a placeable mutated method from a
+  concern's `included` or `prepended` block reached the classes that include
+  or prepend the concern only after the whole mutant file loaded. Methods
+  that reload cannot place still score `unplaceable`. A later line in the same
+  file that called the method while the file loaded, such as
+  `TOTAL = Host.new.doubled(2)`, still used the original method. Mutineer
+  now places the mutated method when the load reaches the hook call, before
+  the rest of the file runs, in-process and on `--daemon`. Such a mutant can
+  now be killed where it used to survive or score `ran_at_load`, so the
+  score of an affected file can change. A mutant that raises in such a
+  load-time call now scores `error`. The alias and kept-method checks
+  still score `error`. The kept-method check runs after the load, so a
+  method handle the file holds only while it loads does not count.
+- **The Action creates the cache folder when `output` points into it
+  (#340).** On a fresh checkout, `output: .mutineer/pr.json` exited 2,
+  because `.mutineer/` did not exist yet. The CLI already created that
+  folder (#270), but the Action checks the path itself before it runs the
+  CLI. The Action now creates the cache folder when it is the missing parent
+  of `output`: `.mutineer` by default, the `cache_dir` from `.mutineer.yml`,
+  or a `--cache-dir` in `extra-args` (any short form the CLI accepts, such
+  as `--cache`). Any other missing folder still exits 2.
+  or a `--cache-dir` in `extra-args` (or a prefix of it down to `--cac`, such as
+  `--cache`). Any other missing folder still exits 2.
+- **Reload runs a Rails class body a second time without errors (#378,
+  #384).** Reload loads the mutant file over the class that is already
+  defined, so its body runs again. A model that declares an `enum`, and a
+  class that calls `skip_callback` (a controller's `skip_before_action` or
+  `allow_unauthenticated_access` calls it), raised on that second run, and
+  every mutant in the file scored `error`. While the mutant file loads, an
+  enum the class had before the load now skips Rails' conflict check, and
+  `skip_callback` does not raise for a callback the first run already
+  removed: one named by a method the class has, such as a callback from the
+  parent class or an included concern. A skip that names no such method or
+  parent callback still raises. Both checks run as usual while the tests
+  run. This holds on `--daemon` and with `--strategy reload`.
+- **Reload no longer runs validators and block callbacks twice (#390).**
+  The second run of a class body added a second copy of each `validates`,
+  each `validate` block, and each callback written as a block or a lambda,
+  such as `before_save do ... end`. Rails removes a repeated callback only
+  when it names a method. A test that counts errors or side effects then
+  failed for every mutant in the file, so those mutants scored `killed`
+  falsely. After the mutant file loads, Mutineer now keeps one copy of each:
+  the new one, in the place of the old one, so the order of callbacks does
+  not change. Entries from an included concern stay, because the reload does
+  not run the concern's block again. When Mutineer cannot tell which old
+  entry a new one repeats, it keeps both, as before (#413). This holds on
+  `--daemon` and with `--strategy reload`. With eager loading on, a mutant
+  of a parent class file still adds a callback back to each subclass that
+  skipped it (#414).
+  **Score change:** a Rails model with such a test can now show survivors
+  that were false kills before, so its score can go down.
+- **Concern mutants load when the test app loads lazily (#383).** With
+  `eager_load` off (the Rails test default), the mutant's load was the first
+  use of the concern, so Rails loaded the original file inside it. The
+  original `included` block then came back, and the mutant's block raised
+  `MultipleIncludedBlocks`. Mutineer now loads the original file first, through
+  the app's autoloader, so the mutant's block replaces it.
+- **The pending-migration check no longer trips `shared_databases` (#385).**
+  `rails/test_help` checks every database for pending migrations when the
+  tests load, shared ones too. A parallel `--daemon` run then reported the
+  shared database as used and scored every mutant `error`. Mutant forks of a
+  run with `shared_databases` now turn that check off. The clean check, which
+  runs before any mutant, still makes it.
+- **No Rails deprecation warning from concern mutants (#387).** Placing a
+  mutant inside an `included` block looked at every module. Rails 8.2 keeps a
+  deprecated constant as a module that warns on every call, so each such
+  mutant printed `LoadInterlockAwareMonitor is deprecated`. Mutineer now skips
+  that module.
+
+## [1.8.1] - 2026-11-02
+
+### Fixed
+
+- **No "already initialized constant" warnings under reload (#364).** Each
+  mutant loads its whole file again, so every constant in the file was
+  assigned twice. Ruby then printed two warning lines per constant, per
+  mutant, on stderr. Mutineer now turns warnings off while it loads the
+  mutant file, in-process and on `--daemon`, and turns them back on before
+  the tests run. Warnings that the tests raise still print. Other warnings
+  raised while the mutant file loads, such as an unused variable under `-w`,
+  no longer print either. Scores and the JSON report do not change.
+- **The "not green" message says it once (#360).** When the clean run of a
+  file's tests failed, the message said "the unmutated suite is not green"
+  twice. It now says it once, then names the test files after `Failed:`.
+  A failure that only the check of all test files together finds is listed
+  as `Failed: combined suite`.
+  Under Minitest, the seed hint follows them.
+  The message itself still does not name the failing tests or the first
+  error; #360 tracks that. On the default in-process path, the failing
+  test's own report still prints on stderr before the message.
+- **An unexpected error no longer prints an unredacted message (#341).**
+  An error that no other handler expected went to Ruby's default printer,
+  which did not hide a database password in its message. The CLI now prints
+  that error with the password hidden, with its backtrace, and exits 1, as
+  before. No known path raised such an error with the password.
+- **An ambiguous or malformed option is a usage error (exit 2).** An option
+  that matches more than one flag, such as `--ver` (`--verbose` or
+  `--version`), or a value given to a flag that takes none, such as
+  `--verbose=1`, crashed with a backtrace and exit 1. It now prints one line
+  and exits 2, like every other bad option. This holds for `init` and
+  `triage` too.
+
+## [1.8.0] - 2026-10-29
+
+### Highlights
+
+Read these before you upgrade. Details are in the sections below.
+
+- **Scores can change after the upgrade.** Under `--strategy reload`, most methods
+  in a concern's `included` or `prepended` block are now scored (#297). Runs
+  that list `call_to_receiver` get more mutants (#274). Runs that list
+  `range` get new mutants for endless ranges (#299). A mutant that two
+  operators make now counts once (#275). These can change counts, scores
+  and survivors. If you gate on `--baseline`, write a new full baseline.
+- **Delete `ignore:` entries for `range` mutants (#299).** A new `range`
+  mutant can take an old id, so an old entry can hide a real survivor.
+- **Fewer false kills.** Under `--test-command`, a non-zero exit other than 1
+  scores `error`, and so does an exit 1 with no failing test in the summary
+  line (#292). An Active Record connection or lock error inside a Minitest
+  test scores `error` too (#296). Before, these scored `killed`.
+- **Exit codes match STABILITY.md (#288).** A boot, source or `require:`
+  file that raises while it loads exits 1. A missing boot or `require:`
+  file exits 2.
+- **`--threshold` compares the exact score (#280).** A run with 1999 of
+  2000 mutants killed shows 100.0% but no longer passes `--threshold 100`.
+- **New report data.** The JSON report adds `summary.declined` and
+  `summary.declined_by_operator` (schema `1.9`), and stderr warns when many
+  mutants could not run (#291).
+- **Parallel `--daemon` with unused test databases (#316).** List them under
+  `shared_databases` to run more than one worker. Needs Rails 7.1 or later.
+- **The gem ships the agent skill (#315).**
+- **Releases wait for a maintainer.** Nothing publishes on a schedule or on
+  a tag push.
+
+### Added
+
+- **`shared_databases` config key** (#316). An app with a second test
+  database ran one worker under `--daemon`. List the databases your tests
+  never use (`shared_databases: [cable]`), and the workers share them and run
+  in parallel. After each mutant, a parallel worker checks those databases.
+  The mutant scores `error` when a pool for one is still connected after the
+  tests, or ran SQL during them. A replica in the same `connects_to` counts
+  as its database. Listing the primary database stops the run with exit 2.
+  A name that matches no test database warns and is not checked. The check
+  needs Rails 7.1 or later. Three safety changes come with it for
+  `--rails --daemon`: a test database with `database_tasks: false` now
+  counts toward the one-worker limit, and the run keeps one worker when the
+  app's databases cannot be listed or the first daemon does not boot
+  (before, each case could start several workers). See
+  [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database)
+  for the transactional-tests caveat.
+- **Counts of mutants that were not scored (#291).** Operators now count the
+  candidates they decline: a heredoc they cannot mutate safely, or an
+  equivalent skip such as an endless range or a skipped chain-link name. The
+  dry run prints the count. The human report prints it when the run has
+  mutants; when every candidate was declined, the empty-run warning names the
+  count instead (that warning is off under `--allow-empty`). The JSON report
+  adds `summary.declined` and `summary.declined_by_operator` (schema `1.9`).
+  A new stderr warning fires when unplaceable and skipped-invalid mutants are
+  more than one and more than 10% of the mutants a run tried to score. The
+  warning does not change the exit code. Measured on commit caa9e1a (this
+  change merged with main) with every operator: the dry run on `lib/`
+  declines 195 candidates beside 17,374 mutations (call_to_receiver 122,
+  chain_link 45, range 12, statement_removal 10, return_nil 6); the dry run
+  on the Rails fixture app declines 0 beside 69 mutations. A
+  `--strategy redefine --rails` run on the fixture app models (order,
+  price_list, billing/fee) has 0 unplaceable and 0 skipped-invalid of 12
+  attempted, so no warning. The fixture has no concerns, so it cannot tune
+  the 10% limit.
+- **Included and prepended block methods under reload.** After you upgrade,
+  follow the [full baseline refresh recipe](https://davidteren.github.io/mutineer/agentic-coding.html#ci-gate)
+  with `--no-since --format json --output .mutineer/refreshed-baseline.json` and your
+  existing source and test options. Review the report and replace the stored
+  baseline. This applies only to runs that use `--strategy reload`: under
+  redefine these methods stay `unplaceable`. GitHub Action users on reload,
+  the Action's default (a Rails app without a daemon uses redefine), must
+  replace the file passed to the `baseline` input too. A check against an older
+  report lists the new survivors as regressions.
+  Under `--strategy reload`, in-process and on the daemon, a method in a
+  concern's `included` or `prepended` block is now mutated and scored (#297).
+  Mutineer loads the mutated method into each class that already has it. A
+  prepended wrapper that calls `super` reaches that mutated method too. A
+  concern included into an object's singleton class is supported. A class
+  that includes the concern later gets it from the reloaded block. The
+  rest of the block does not run again, so validators and callbacks are not
+  added twice. These mutants used to be `unplaceable`, so a reload score can go
+  down and a `--threshold` gate can start to fail. Some methods stay
+  `unplaceable`: a method in a class, module or `Struct.new` block inside the
+  block, a method inside another method or block, a method with an explicit
+  receiver other than `self` (such as `def base.tag` in `included do |base|`),
+  a hook-block method whose source line conflicts with another `def` or an
+  explicit Ruby method creator (the full rule is in `docs/json-schema.md`),
+  every method in a block that uses `alias` or `alias_method`, a method the
+  block itself calls, and every method in a block whose `included do` call is
+  not a plain line of the module
+  body (for example inside `if`, `unless`, or `x = included do`). The full list
+  is in `docs/json-schema.md`. If a class aliases a method that Mutineer does
+  run (one not in that list) outside the block, the mutant scores `error`,
+  because the alias keeps the original method. This also applies when a
+  wrapper replaces the original name and calls the saved alias. A retained
+  `Method` or `UnboundMethod` for the original also makes the mutant score
+  `error`: a wrapper can call that handle without testing the mutated method.
+  `--strategy redefine` still
+  reports all of these methods `unplaceable`.
 - **The gem ships the agent skill.** `skills/mutineer/SKILL.md` is now
   packaged in the gem, and the gemspec opts in as a
   [Rails Hyperdrive](https://github.com/rails-hyperdrive/rails-hyperdrive)
@@ -22,6 +1245,128 @@ All notable changes to this project are documented here. The format is based on
   fails if the gemspec stops shipping the skill or drops the opt-in (#315).
 
 ### Fixed
+
+- **`--daemon` stops on MySQL older than 8.0 (#298).** The support matrix said
+  MySQL 5.7 is not supported, but `--daemon` ran on it. Mutineer now reads the
+  server version before it copies any worker database. MySQL older than 8.0
+  stops the run with `could not provision <base>: MySQL <version> is not
+  supported`. Pass `--no-daemon` (or set `daemon: false`) to stay serial.
+  MariaDB, MySQL 9 or later, and a server version Mutineer cannot read print
+  one warning and run.
+- **An in-test database error scores `error`, not `killed` (#296).** When
+  the first failing test of a Minitest mutant run failed with an Active
+  Record connection or lock error (`ConnectionNotEstablished`, including pool
+  timeouts, `ConnectionFailed`, `Deadlocked`, `LockWaitTimeout`), the mutant
+  now scores `error` on `--daemon` and in-process. This includes an error in
+  `setup`. Errors are out of the score, so a lost database connection during
+  a run no longer raises the score. A stderr line names the error. A mutant
+  that really causes a deadlock, or that breaks connection-handling code, now
+  also scores `error`. More `error` verdicts can fail a `--threshold` run
+  through the existing no-verdict gate. Other database errors, such as a bad
+  SQL statement, still score `killed`. So does `ConnectionNotDefined`, which
+  Rails 8 raises for an unknown role or shard. Rails 7.2 raises a plain
+  `ConnectionNotEstablished` there, so such a mutant scores `error` on 7.2.
+  With `--matrix`, a database-failed test is never a killer and leaves its
+  row incomplete, even if an earlier assertion already killed the mutant.
+- **An old temp file of the other mode no longer stops the boot (#287).**
+  Before the app boots, each mode sweeps the source directories. In 1.7.0
+  an in-process run removed only old `mutineer_mutant*.rb` files and the
+  daemon removed only old `mutineer_daemon*.rb` files, so a file the other
+  mode left made Zeitwerk raise. Now both boot sweeps remove an orphan of
+  either mode, and the daemon tells Zeitwerk to skip both names. You no
+  longer delete such a file by hand. A file of your own whose name only
+  starts with `mutineer_mutant` or `mutineer_daemon`, such as
+  `mutineer_mutant_helper.rb`, is no longer removed: a sweep now matches
+  only the temp file shape. An unlocked old file is removed even when its
+  creator's pid has been reused; a held file lock still protects it.
+  Do not run Mutineer older than 1.7.0
+  at the same time in the same checkout: it still writes temp files
+  without the dot, and a newer run's mutants error when Zeitwerk finds
+  one.
+- **A second in-process run no longer deletes a live mutant file (#295).**
+  Each in-process run sweeps the source directories before its boot and
+  after its run. That sweep treated every `.mutineer_mutant*.rb` file as an
+  orphan, so it could delete another run's file between the write and the
+  load, and that mutant scored `errored`. Now the file is locked while it
+  loads, as the daemon's file is, and a sweep keeps a file whose creating
+  process still runs.
+- **The `range` operator swaps endless ranges outside slices.** Before, it
+  skipped every endless range (`1..`, `1..nil`) as equivalent. But `(1..)`
+  and `(1...)` differ on `==`, `hash`, `exclude_end?` and `to_s`, so a test
+  can kill that mutant. Now the operator skips an endless range only when it
+  is a direct index argument of `[]`, `[]=`, `slice`, `slice!`, `byteslice`,
+  `bytesplice`, `values_at` or an index write, and the receiver is not a
+  class (`Array[1..]` is swapped). A Hash, Proc, or custom `[]`/`slice` can
+  still tell `1..` from `1...`, so those skips can hide a killable mutant. See
+  [Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html#endless-range).
+  A run that names `range` can get new mutants, new survivors and new mutant
+  ids. A new mutant can take the id of an older `range` mutant in the same
+  method, so an old `ignore:` id can name a different mutant. If you use
+  `range`:
+  - Delete the `ignore:` entries for `range` mutants.
+  - Save a new report with the same operators you gate with:
+    `mutineer run <paths> --operators <list> --no-since --format json --output <file>`.
+    Use it as your new baseline.
+  - Print new entries with
+    `mutineer triage <file> --reason TEXT (--id ID ... | --all)` and paste
+    them under `ignore:`. The command does not edit files.
+
+  Some new mutants are equivalent, for example a range used only with
+  `include?`, or a range in an Active Record query such as
+  `where(created_at: time..)`. Suppress them with `# mutineer:disable-line`
+  or an `ignore:` entry. (#299)
+- **A test file given as a source after `--test` now exits 2 in more layouts
+  (#293).** The check missed Minitest `test_*.rb` files under `test/` or
+  `spec/`, and `*_test.rb` or `*_spec.rb` files in the same directory as a
+  `--test` file, such as the project root. Mutineer then mutated that file as
+  a source and never ran it as a test. With `--format json`, the stray file's
+  Minitest output also made the report invalid JSON. A support file with a
+  `test_` name under the top-level `test/` or `spec/` (other than
+  `test_helper.rb`) now also exits 2 when given as a source with `--test`.
+- **A mutant on a later line of a call inside a one-line block can be killed
+  (#289).** A call can span several lines, such as
+  `users.map { |u| format("%s",` with arguments on the next lines. Mutineer
+  used to pick no tests for a mutant on a later line, so it was always
+  `no_coverage`. Now, when the lines of the statement give no tests, Mutineer
+  retries. It runs the tests that ran the first or last line of the
+  statement, never the `def` line. A kill counts. A survivor stays
+  `no_coverage` (or `ran_at_load`), because those tests may not have run it. A
+  score can rise with no test change. Such a mutant can now also end as
+  `error` or `timeout`. That counts toward the `--threshold` completeness
+  check.
+- Mutineer reads its files and pipes as UTF-8 when `LANG` and `LC_ALL` are
+  unset (#303). Before, a non-ASCII character in a source file, a baseline, a
+  coverage cache, a triage report, `.mutineer.yml` (for `migrate`),
+  `db/schema.rb`, a `--since` diff, test-command output, or a daemon message
+  stopped the run with "invalid byte sequence in US-ASCII" (exit 2) or a
+  backtrace (exit 1). An invalid byte in test-command output now shows as
+  `\xNN`. Non-ASCII file and folder names are not covered yet (#346).
+- **Upgrade note for `--test-command` with a custom failure exit code (#292).**
+  An RSpec setup with `--failure-exit-code 3` now scores every kill as
+  `error`. Use the default exit code, or a wrapper that maps a failure to
+  exit 1. An `error` verdict leaves the score, so the score can drop, and more
+  `error` verdicts can fail a `--threshold` run through the existing no-verdict
+  check. A mutant that only trips a SimpleCov `minimum_coverage` gate now
+  scores `survived` when the output has SimpleCov's gate message and a
+  passing Minitest or RSpec summary line. Without a summary line that
+  Mutineer recognizes, the gate's exit scores `error`, which leaves the
+  score. Either way the old false kill is gone, so the score can drop. A `--baseline` made before
+  this change can report new survivors and errors: make a new baseline after
+  the upgrade.
+- **A `--test-command` exit other than 1 no longer counts as a kill (#292).**
+  Only exit 1 scores `killed`, the same rule as the in-process backend. One
+  exception: a SimpleCov gate exit whose summary reports a failing test also
+  scores `killed`. Any other non-zero exit scores `error`, such as a wrapper's
+  137 after an out-of-memory kill.
+- **A load crash under `--test-command` scores `error` (#292).** When the clean
+  run prints a Minitest or RSpec summary line, an exit 1 also needs a failing
+  test in that line. Code under test that calls `exit 1` or `abort` while the
+  default Minitest reporter runs its tests still scores `killed`, as in
+  process. Under RSpec or minitest-reporters, that case now scores `error`.
+  When a SimpleCov `minimum_coverage` gate replaces the exit code, the summary
+  line decides: a failing test is a kill, and a passing run is `survived`, as
+  in process. When the clean run
+  prints no summary line, Mutineer warns once and keeps the exit-code rule.
 
 - **`--output .mutineer/run.json` on a fresh checkout.** The documented
   report path no longer exits 2 when `.mutineer/` does not exist yet. The
@@ -80,34 +1425,32 @@ All notable changes to this project are documented here. The format is based on
   database's own `schema_format:` (Rails 8.1) and a string format such as
   `"sql"`, the same as SQLite.
 
-- **`--baseline` fails an incomplete run, and a survivor without a verdict is
-  not fixed (#283).** A run where nothing could be scored and something
-  broke, or where more than one mutant has no verdict and they exceed 10% of
-  those attempted, now sets the new `baseline.incomplete`, and `--baseline`
-  exits 1 without `--threshold`. A baseline survivor counts as fixed only
-  when this run killed it, ignored it, or no longer has it. Other baseline
-  survivors go into the new `baseline.unverified_survivors[]` with their
-  status. The human report names them and the Action summary counts them.
-  A run that produces no results reports no stored survivors as fixed.
-  Under `--only` or `--fail-fast`, known kills and ignores still count as
-  fixes; absent, untested survivors are listed as unverified with status
-  `not_run`. An empty unscoped run uses the same label. This label belongs
-  only to baseline entries; it does not add a mutant status or change counts
-  or gates.
-  Selecting fewer source files or operators also lists omitted survivors as
-  `not_run`. A removed mutant within the selected scope, or a source file
-  actually removed from the project, still counts as fixed. A foreign stored
-  path whose removal cannot be checked stays unverified (tracked in #343).
-  Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
-  before. If CI turns red after the upgrade and `baseline.incomplete` is
-  true, read `no_verdict[]` in the JSON report: the run is incomplete, and
-  the tests did not get weaker. If `baseline.regressed` is true, a new
-  survivor or a score drop failed the job. If the
-  same mutants time out on every run, a retry does not help: raise
-  `--timeout` or ignore those mutants.
-- **A baseline survivor that is now `ran_at_load` is not listed as fixed
-  (#286).** 1.7.0 listed it as fixed. It is now in
-  `baseline.unverified_survivors[]`.
+- **No `DATABASE_URL` password in load errors and mutineer's own messages (#288).**
+  A load error in the tool process (an
+  in-process `--boot` or `--rails` run, a source file, or a `require:`
+  file) no longer prints the raw password or a backtrace. The run prints a
+  `mutineer: cannot load <path>: ...` message (a `SyntaxError` keeps its code
+  excerpt) and exits 1. By default, a load error adds a hint to re-run with `--verbose`;
+  verbose output gives a redacted backtrace and cause chain. CLI error messages, the
+  fork child's error line, the worker crash text in the report, the daemon's
+  stderr lines (except bare passwords known only to the app after boot),
+  the failing test report and any load error from the
+  clean-suite and coverage checks, and the `--verbose` test command output
+  are redacted too. Output that app code or a test writes straight to
+  stderr in a fork or subprocess is not filtered (#341 tracks this and the
+  other known gaps). A `password=` query parameter in DATABASE_URL is now
+  hidden too.
+  Daemon stderr is now copied line by line as UTF-8, so an invalid byte
+  shows as U+FFFD. Output without a newline waits for a newline or EOF, so
+  credentials split across writes can be redacted together. A password that
+  equals the username no longer blanks the same text elsewhere (for example
+  `role "postgres"`). Each password form of 3 characters or fewer is hidden
+  only when no ASCII letter, digit or underscore touches either edge.
+  The limit applies separately to raw, decoded and escaped forms: `%61%62`
+  is still replaced inside longer text, while its decoded `ab` is matched
+  only as a whole token. A longer form is hidden wherever it appears,
+  and the password inside a URL is always
+  hidden.
 
 - **`--strategy redefine` and path-relative methods.** Redefine now loads
   the mutated method from a hidden file beside the source, as reload does.
@@ -119,23 +1462,105 @@ All notable changes to this project are documented here. The format is based on
   the run warns that path-relative methods there can be falsely killed
   (tracked in #339).
 
+- `--test-command` now sets `DISABLE_BOOTSNAP_COMPILE_CACHE=1` for the test
+  command. Mutineer writes each mutant over the source file, and Bootsnap keys
+  its compile cache on path, size and whole-second mtime. Two same-size mutants
+  written in the same second could load the first one's cached code, so a
+  mutant could be scored on code that was not the mutant. Each mutant boot now
+  compiles the app again, which is slower. The variable works through
+  `require "bootsnap/setup"` on Bootsnap 1.7.0 or later; an app that calls
+  `Bootsnap.setup` itself must pass
+  `compile_cache_iseq: ENV["DISABLE_BOOTSNAP_COMPILE_CACHE"].nil?`, so only
+  mutant runs lose the cache. The `--daemon` path is unchanged (#285).
+
+- **A mutant that two operators make is scored once** (#275).
+  `literal_mutation` and `string_literal` both turn `"hi"` into `""`, and
+  `chain_link` and `call_to_receiver` both turn `node.name.name` into
+  `node.name`. Each copy had its own id, so one surviving edit counted twice.
+  Now one copy runs: the copy of the operator that comes first in
+  `mutineer --list-operators`, whatever the `--operators` order. Only the
+  same text counts: a single-quoted `'hi'` still gives two mutants (`""` and
+  `''`). Both edits must also start on the same line: in a chain with one
+  call per line, the two copies start on different lines, so both are kept,
+  and `--since` filters each copy by its own start line.
+  - Every kept mutant keeps its id. The dropped copy's id no longer appears
+    in reports. Runs that use only one of these operators keep the same
+    mutants and ids.
+  - If you combine these operators, the mutant count and the score can move
+    with no code change, so a `--threshold` or `--baseline` gate can change
+    its result. Regenerate a `--baseline` file after upgrading, from a full
+    `--format json` run with no `--since`, `--only` or `--fail-fast` (pass
+    `--no-since` and `--no-fail-fast` when `.mutineer.yml` sets them). A
+    scoped report is refused as a baseline, and a partial one misses
+    mutants. In a full (unscoped) comparison, a dropped copy that survived
+    is listed as fixed.
+  - An ignore entry for one copy's id still ignores only that copy, as for
+    the #159 copies. So if you ignore the copy a report shows, the other copy
+    then runs and is reported, and it needs its own entry. Keep both entries:
+    a run with one operator alone still uses its entry, and
+    `mutineer migrate` keeps both as current ids. This also fixes the #159
+    copies: an `ignore:` list that names both copies of a repeated edit no
+    longer makes `mutineer migrate` exit 1.
+  - An old-format ignore entry that matches only a dropped copy gets the
+    old-id-format warning and counts in `summary.legacy_id_matches.ignore`,
+    so `mutineer migrate` updates it. For the #159 copies this is new: such
+    an entry was not counted before, so with one operator the count can go
+    up, and the warning can name an id that no report shows.
+  - Within a method, mutants now run and list in the `--list-operators`
+    order. This applies to any run whose `--operators` or `operators:` list
+    is in another order, so `--dry-run` lists and `--fail-fast` can differ.
+- **A nested method's mutant under `--strategy redefine`.** Redefine now
+  also loads the mutated method into each method that encloses it. Before,
+  a call to the outer method defined the original inner method again, so
+  the mutant could falsely survive (#290). For a method nested in other
+  methods, redefine now gives the same verdict as reload when a test calls
+  an enclosing method by its own name. Mutant ids do not change, so
+  baselines and `ignore:` entries stay valid. Scores under redefine can
+  rise, and an `ignore:` entry added only to hide such a survivor can now
+  be removed. A method defined inside a non-builder block (for example
+  inside `define_method`), inside a `module_function` method, inside
+  `class << self` in a method, or called through an alias of the outer
+  method can still falsely survive under redefine. An enclosing method
+  that a memoizer or decorator wraps after its `def` loses that wrapper
+  when redefine loads it, so its verdict can differ from reload. Use
+  `--strategy reload` for those cases.
+
 ### Changed
 
-- The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
-  now also live on `AggregateResult`. The `Reporter` names remain compatibility
-  aliases, and the CLI and report use the same limits.
-
-- **The JSON report uses schema `2.0` (#283).** `baseline.fixed_survivors`
-  no longer includes a survivor whose current result is undecided. Consumers
-  that require schema `1.x` must support the new major and read
-  `baseline.unverified_survivors` for those entries. Existing full-run `1.x`
-  reports remain valid baseline inputs; `--since` reports remain invalid
-  baselines (exit 2). Mutant ids and the gem version do not change.
-- **The Action rejects a JSON baseline report without a boolean
-  `baseline.incomplete` (#283).** A gem selected through `version` or
-  `use-bundler` that omits this field now gives exit 2 with an upgrade message,
-  instead of treating an unknown completeness result as success. The report
-  remains available. Older reports without a baseline block still work.
+- **A release waits for a maintainer.** The Monday release-PR schedule is
+  gone, and pushing a `vX.Y.Z` tag leaves the gem unpublished. A human
+  collaborator with maintain or admin prepares a release PR by hand, tags by
+  hand, then runs the Release workflow on that tag with `confirm=publish`.
+  A required reviewer approves the `rubygems` GitHub environment before the
+  gem is pushed. A new Release run refuses to start the publish when that
+  environment is missing, has no required reviewers, or lets admins bypass
+  them. Re-running only the publish job of an earlier run does not repeat
+  that check. The publish job builds the commit that was dispatched, and it
+  stops before `gem push` if the tag moved while the job waited for
+  approval. The job no longer moves the floating major tag (`v1`). When the
+  release is the newest stable tag in its line, the job prints the command
+  and a maintainer runs it, so a ruleset can keep that tag for maintainers.
+  For a patch on an older line, it prints no command.
+- **Load failures now use the runtime-error exit code (#288).** An
+  `ArgumentError` or `SystemCallError` raised while a boot file, a source
+  file or a `.mutineer.yml` `require:` file loads now exits 1 (runtime
+  error), instead of 2 (usage error). A missing boot or `require:` file now
+  exits 2 (usage error) with a one-line message. Before, it crashed with a
+  raw `LoadError` and a backtrace, and exited 1. With `--daemon` it is
+  checked before the daemon starts, so it exits 2 there too. Both moves bring
+  the code in line with the exit-code table in STABILITY.md, which already
+  lists a bad path as 2 and a runtime error as 1.
+- **`call_to_receiver` now mutates last-call conversions such as `to_s` and
+  `to_i`.** `m[1].to_i` now gives the mutant `m[1]`. Before, the operator skipped the
+  same names as `chain_link`. Now it skips only `new`, `dup`, `clone`,
+  `freeze`, `itself` and `to_set`. `chain_link` does not change. Only runs
+  that list `call_to_receiver` in `--operators` (or `operators:`) change: they
+  get more mutants (113 more on Mutineer's own `lib/`). If you gate such a run
+  with `--threshold` or `--baseline`, expect new survivors: write a new
+  full-scope baseline with `mutineer run ... --no-since --no-fail-fast
+  --format json`, with no `--only`. A `to_s` mutant on a value that is already
+  a String is equivalent: suppress it with
+  `# mutineer:disable-line call_to_receiver` or an `ignore:` entry. (#274)
 - Explain mutation testing before setup, with a runnable beginner guide and a
   first run on one file. Simplify wording across the website and clarify Rails
   setup, CI baselines, and reasons for ignoring a mutant.
@@ -1531,6 +2956,11 @@ Rails hardening + CI batch (issues #8–#13), all verified Rails-free.
 - `.mutineer.yml` configuration (CLI > config > default precedence).
 - Byte-correct source handling for multibyte (UTF-8) sources.
 
+[1.10.0]: https://github.com/davidteren/mutineer/releases/tag/v1.10.0
+[1.9.0]: https://github.com/davidteren/mutineer/releases/tag/v1.9.0
+[1.8.2]: https://github.com/davidteren/mutineer/releases/tag/v1.8.2
+[1.8.1]: https://github.com/davidteren/mutineer/releases/tag/v1.8.1
+[1.8.0]: https://github.com/davidteren/mutineer/releases/tag/v1.8.0
 [1.7.0]: https://github.com/davidteren/mutineer/releases/tag/v1.7.0
 [1.6.0]: https://github.com/davidteren/mutineer/releases/tag/v1.6.0
 [1.5.0]: https://github.com/davidteren/mutineer/releases/tag/v1.5.0

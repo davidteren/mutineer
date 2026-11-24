@@ -7,6 +7,7 @@ require_relative "daemon_client"
 require_relative "progress"
 require_relative "job_plan"
 require_relative "orphan_guard"
+require_relative "reach_probe"
 
 module Mutineer
   # Daemon execution backend. Boots the app ONCE in a persistent subprocess under
@@ -33,8 +34,11 @@ module Mutineer
 
     # The daemon's per-mutant tempfile, written into the source dir so
     # require_relative resolves. The leading dot hides it from Zeitwerk (#253);
-    # older versions wrote it without one. Kept in step with DaemonServer#sweep_temps.
-    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon*.rb"
+    # older versions wrote it without one. Daemon files only, unlike the boot
+    # sweeps ({OrphanGuard::TEMP_BASENAME}): this sweep runs after the boot and
+    # waits up to {SWEEP_GRACE} while any file it matches is still owned, so a
+    # parallel in-process run's live files would add that wait to every daemon run.
+    DAEMON_TEMP_GLOB = "{.,}mutineer_daemon#{"[0-9]" * 8}-*.rb"
 
     # Seconds the end-of-run sweep waits for an orphaned child to die. Its
     # watchdog notices a dead daemon within {OrphanGuard::POLL}.
@@ -50,14 +54,21 @@ module Mutineer
     #   source map, and the {JobPlan.collect_jobs} extras.
     def self.execute(config, operator_classes)
       jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-      jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
-      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+      jobs, ignored_results, extras[:unscoped_mutants] =
+        JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
 
       # Nothing to mutate (`--since` matched no changed line, or every mutant is
       # suppressed). Return before booting anything: the coverage daemon and the
       # worker daemons below each boot the whole app, and README documents
       # `--since origin/<base>` for PR CI, where a docs-only PR is routine.
       return [AggregateResult.new(ignored_results), source_map, extras] if jobs.empty?
+
+      # With `since_paired_tests`, keep only the tests paired with the sources
+      # that have a job (#496). The daemon still gets every source.
+      narrowed_config = JobPlan.narrow_tests_for_since(config, jobs)
+      narrowed = !narrowed_config.equal?(config)
+      config = narrowed_config
+      abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 
       # Worker count = resolved --jobs, capped at the job count (no idle daemons).
       # >1 → N concurrent daemon handles, each on its OWN worker DB (N-handles, the
@@ -75,23 +86,30 @@ module Mutineer
       # One booted process copies worker databases, then builds the coverage map.
       # A cached map still provisions: the copy has to happen while no worker is
       # connected to the template database. That process keeps its database lock
-      # until the worker daemons have taken theirs.
+      # until the run ends in a serial Rails run, and until the worker daemons
+      # have taken theirs in a parallel run (#416).
       prepare_client = nil
+      # #495: phase seconds for the report. The worker daemons' boots add to boot_seconds.
+      timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
       begin
-        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count)
+        coverage_map, worker_count, prepare_client = prepare_run(config, abs_tests, worker_count, timing,
+                                                                 narrowed: narrowed)
 
         results =
           if worker_count > 1
-            run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client)
+            run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           else
-            run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client)
+            run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client, timing)
           end
       ensure
-        # run_serial and run_parallel quit this client once workers hold locks.
-        # Quit again here when they never reached that point. A second quit is a no-op.
+        # run_serial quits this client when a Rails run ends, or once its worker
+        # has booted in a run without rails. run_parallel quits it once workers
+        # hold locks. Quit again here when they never reached that point.
+        # A second quit is a no-op.
         prepare_client&.quit
       end
 
+      extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
       sweep_daemon_temps(config)
@@ -158,30 +176,40 @@ module Mutineer
     # @param abs_tests [Array<String>]
     # @param worker_count [Integer] slots requested before the database count is known.
     # @return [Array] the coverage map (or nil), the worker count to start, and
-    #   the prepare daemon. The caller quits that daemon after worker daemons
-    #   hold their locks. It is nil when this process could not boot one.
-    def self.prepare_run(config, abs_tests, worker_count)
+    #   the prepare daemon. The caller quits that daemon when a serial Rails
+    #   run ends, once the worker has booted in a serial run without rails, or
+    #   after the worker daemons of a parallel run hold their locks. It is nil
+    #   when this process could not boot one.
+    # @param timing [Hash] phase seconds; this fills boot, coverage and clean check.
+    # @param narrowed [Boolean] passed to {coverage_map_from_client} (#496).
+    def self.prepare_run(config, abs_tests, worker_count, timing = {}, narrowed: false)
       client = nil
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       begin
         client = DaemonClient.new(boot: boot_config(config, abs_tests, coverage: true),
                                   app_root: config.project_root).start
       rescue DaemonBootTimeout
         raise
       rescue DaemonBootError => e
-        warn_coverage_fallback("#{e.class}: #{e.message}")
-        return [nil, worker_count, nil]
+        warn_coverage_fallback("#{e.class}: #{e.message}", narrowed: narrowed)
+        # No daemon listed a Rails app's databases, so no second worker may
+        # share them. A --boot app without --rails has no database routing.
+        unknown = { "error" => "the first daemon did not boot" }
+        timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
+        return [nil, config.rails ? worker_count_for(unknown, [], worker_count) : worker_count, nil]
       end
 
       begin
-        count = client.database_count.to_i
-        if count > 1 && worker_count > 1
-          warn "[mutineer] this app has #{count} databases; Mutineer runs one worker. " \
-               "Parallel runs support one database."
-          worker_count = 1
-        end
+        # Raises ConfigError when shared_databases lists the primary database.
+        worker_count = worker_count_for(client.databases, config.shared_databases, worker_count)
         # Raises DaemonBootError. Callers must not score mutants after this.
         client.provision(worker_count)
-        [coverage_map_from_client(client, config), worker_count, client]
+        timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
+        coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        coverage_map = coverage_map_from_client(client, config, timing, narrowed: narrowed)
+        # The daemon runs the clean checks inside its map build; report them apart.
+        timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
+        [coverage_map, worker_count, client]
       rescue Exception # rubocop:disable Lint/RescueException
         # An interrupt must also quit it, or the daemon keeps its database lock.
         client.quit
@@ -189,27 +217,98 @@ module Mutineer
       end
     end
 
+    # The worker count once the booted app's databases are known. Each worker
+    # copies only the primary database, so a second database forces one worker
+    # unless `shared_databases` lists it. Listing the primary is a config error.
+    # A failed lookup also forces one worker: a database nobody counted must
+    # never be shared by accident.
+    #
+    # @param databases [Hash, nil] the daemon's report: "names" and "primary",
+    #   or "error" (with "primary" when it resolves). nil when the app has no
+    #   worker-DB adapter.
+    # @param shared [Array<String>] the `shared_databases` config names.
+    # @param worker_count [Integer] the workers requested.
+    # @return [Integer] the workers to start.
+    # @raise [Mutineer::ConfigError] when `shared` lists the primary database.
+    def self.worker_count_for(databases, shared, worker_count)
+      return worker_count if databases.nil?
+
+      primary = databases["primary"]
+      if shared.include?(primary)
+        raise ConfigError, "shared_databases lists #{primary}, the database each worker copies. " \
+                           "List only the other databases, the ones parallel workers may share."
+      end
+
+      if databases["error"]
+        if worker_count > 1
+          warn "[mutineer] could not list this app's databases (#{databases["error"]}); Mutineer runs one worker."
+        end
+        return 1
+      end
+
+      names = Array(databases["names"])
+      unknown = shared - names
+      if unknown.any?
+        warn "[mutineer] shared_databases names no test database: #{unknown.join(", ")}. " \
+             "This app has #{names.join(", ")}."
+      end
+
+      unshared = names - shared
+      return worker_count unless unshared.size > 1 && worker_count > 1
+
+      outside = shared.empty? ? "" : " outside shared_databases"
+      warn "[mutineer] this app has #{unshared.size} databases#{outside}; Mutineer runs one worker. " \
+           "Parallel runs support one database. To run in parallel, list each one " \
+           "your tests never use under shared_databases: #{(unshared - [primary]).join(", ")}."
+      1
+    end
+
     # Turn one daemon's coverage reply into a map. Does not start or stop the daemon.
     #
     # @param client [Mutineer::DaemonClient]
     # @param config [Mutineer::Config]
+    # @param timing [Hash] phase seconds; this sets the clean check from the reply.
+    # @param narrowed [Boolean] true when `since_paired_tests` narrowed the
+    #   test list. An empty map from a capture that worked is then a real map
+    #   (its mutants are no_coverage, as in the full run), not a fallback (#496).
     # @return [Mutineer::CoverageMap, nil]
-    def self.coverage_map_from_client(client, config)
+    def self.coverage_map_from_client(client, config, timing = {}, narrowed: false)
       data = client.coverage
+      # #495: read it here, so a reply with an empty map keeps it too.
+      timing[:clean_check_seconds] = data["clean_check_seconds"] if data.is_a?(Hash)
       # A red unmutated suite must abort, even when the shipped map is empty.
       # Falling back to the full --test set would treat those failures as kills.
       if data.is_a?(Hash) && Array(data["failed_clean_tests"]).any?
-        JobPlan.abort_if_unclean!(CoverageMap.from_data(
-          map: data["map"] || {},
-          failed_test_files: data["failed_test_files"] || [],
-          project_root: config.project_root,
-          failed_clean_tests: data["failed_clean_tests"]
-        ), framework: config.framework)
+        begin
+          JobPlan.abort_if_unclean!(CoverageMap.from_data(
+            map: data["map"] || {},
+            failed_test_files: data["failed_test_files"] || [],
+            project_root: config.project_root,
+            failed_clean_tests: data["failed_clean_tests"],
+            failed_clean_details: data["failed_clean_details"] || {},
+            clean_timeouts: data["clean_timeouts"] || {}
+          ), framework: config.framework)
+        rescue SmokeCheckError => e
+          # After the cut of the failure report, so the note is never cut off (#500).
+          raise SmokeCheckError, DaemonClient.with_load_env_hint(e.message)
+        end
+      end
+
+      if narrowed && data.is_a?(Hash) && data["map"] == {} && data["error"].nil?
+        empty = CoverageMap.from_data(map: {}, failed_test_files: data["failed_test_files"] || [],
+                                      project_root: config.project_root, load_lines: data["load_lines"] || [],
+                                      load_methods: data["load_methods"] || [],
+                                      clean_check_seconds: data["clean_check_seconds"])
+        # As in process: no coverage and a failed capture stops the run.
+        JobPlan.abort_if_unclean!(empty, framework: config.framework)
+        warn "[mutineer] --since: the test files since_paired_tests kept cover no source line, so every mutant " \
+             "that did not run at load scores no_coverage. Run without --since-paired-tests to check."
+        return empty
       end
 
       unless data && !(data["map"] || {}).empty?
         reason = data.is_a?(Hash) && data["error"] ? data["error"] : "empty map"
-        warn_coverage_fallback(reason)
+        warn_coverage_fallback(reason, narrowed: narrowed)
         # No narrowing ({job_result} runs every test), but the lines and
         # methods that ran at boot still classify a survivor on one of them.
         load_lines = data.is_a?(Hash) ? Array(data["load_lines"]) : []
@@ -217,56 +316,80 @@ module Mutineer
         return nil if load_lines.empty? && load_methods.empty?
 
         return CoverageMap.from_data(map: {}, failed_test_files: [], project_root: config.project_root,
-                                     load_lines: load_lines, load_methods: load_methods)
+                                     load_lines: load_lines, load_methods: load_methods, fallback: true)
       end
 
       CoverageMap.from_data(map: data["map"], failed_test_files: data["failed_test_files"] || [],
                             project_root: config.project_root, load_lines: data["load_lines"] || [],
-                            load_methods: data["load_methods"] || [])
+                            load_methods: data["load_methods"] || [],
+                            clean_check_seconds: data["clean_check_seconds"])
     rescue DaemonBootTimeout
       raise # a second daemon for the mutant runs would hang just as long
     rescue DaemonBootError => e
-      warn_coverage_fallback("#{e.class}: #{e.message}")
+      warn_coverage_fallback("#{e.class}: #{e.message}", narrowed: narrowed)
       nil
     end
 
-    # Stderr note when daemon coverage is unavailable (full --test set per mutant).
+    # Stderr note when daemon coverage is unavailable (every kept test per mutant).
     #
     # @api private
     # @param reason [String] short cause (boot error message, empty map, …).
+    # @param narrowed [Boolean] `since_paired_tests` narrowed the test list, so
+    #   the mutants run against that narrowed list, not the full one (#496).
     # @return [void]
-    def self.warn_coverage_fallback(reason = "unknown")
-      warn "[mutineer] daemon coverage map unavailable (#{reason}); running every " \
-           "mutant against the full --test set (score not comparable to an in-process run)."
+    def self.warn_coverage_fallback(reason = "unknown", narrowed: false)
+      tests = narrowed ? "the test files since_paired_tests kept" : "the full --test set"
+      # A missing file gets the dropped RUBYOPT/RUBYLIB note, as a mutant does (#500).
+      warn "[mutineer] daemon coverage map unavailable (#{DaemonClient.with_load_env_hint(reason)}); running every " \
+           "mutant against #{tests} (score not comparable to an in-process run)."
     end
     private_class_method :warn_coverage_fallback
 
-    # Serial path: one daemon (worker 0), one mutant at a time. Honors --fail-fast
-    # (stop at the first survivor).
+    # Serial path: one worker daemon (worker 0), one mutant at a time. Honors
+    # --fail-fast (stop at the first survivor). In a Rails run the prepare
+    # daemon stays up until the run ends, so its lock still covers the
+    # databases while the worker daemon respawns after a crash (#416). A run
+    # without `rails` takes no database lock, so it quits that daemon once
+    # the worker has booted.
     #
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
-    #   the databases. Quit once this worker has booted and taken its lock.
+    #   the databases. Quit when this run ends, after the last mutant. nil when
+    #   the first daemon did not boot: a Rails worker then boots as "solo", so
+    #   it takes the run lock and copies its own database itself (#416).
+    # @param timing [Hash] phase seconds; this adds the worker boot and sets the mutant runs.
     # @return [Array<Mutineer::Result>] results in input order.
-    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil)
+    def self.run_serial(jobs, config, abs_tests, coverage_map, source_map, prepare_client = nil, timing = {})
       client = nil
       begin
-        client = DaemonClient.new(boot: boot_config(config, abs_tests),
-                                  app_root: config.project_root).start
-        prepare_client&.quit
-        prepare_client = nil
+        boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        db_role = prepare_client.nil? && config.rails ? "solo" : nil
+        # Assigned before start, so the ensure quits a daemon interrupted mid-boot.
+        client = DaemonClient.new(boot: boot_config(config, abs_tests, db_role: db_role),
+                                  app_root: config.project_root)
+        client.start
+        timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
+        unless config.rails
+          prepare_client&.quit
+          prepare_client = nil
+        end
         results = []
         progress = Progress.new(jobs.size)
+        mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         jobs.each_with_index do |job, i|
           r = job_result(job, i, client, 0, config, coverage_map, abs_tests, source_map)
           results << r
           progress.tick
           break if config.fail_fast && r.survived?
         end
+        timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         results
       ensure
-        prepare_client&.quit
-        client&.quit
+        begin
+          prepare_client&.quit
+        ensure
+          client&.quit
+        end
       end
     end
 
@@ -281,8 +404,10 @@ module Mutineer
     # @api private
     # @param prepare_client [Mutineer::DaemonClient, nil] the daemon that copied
     #   the databases. Quit once every worker has booted and taken its lock.
+    # @param timing [Hash] phase seconds; this adds the worker boots and sets the mutant runs.
     # @return [Array<Mutineer::Result>] one result per input job, in input order.
-    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client = nil)
+    def self.run_parallel(jobs, worker_count, config, abs_tests, coverage_map, source_map, prepare_client = nil,
+                          timing = {})
       results  = Array.new(jobs.size)
       progress = Progress.new(jobs.size)
       queue    = Queue.new
@@ -297,15 +422,20 @@ module Mutineer
       # holds one.
       clients = []
       threads = []
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       begin
         worker_count.times do
-          clients << DaemonClient.new(boot: boot_config(config, abs_tests), app_root: config.project_root)
+          clients << DaemonClient.new(boot: boot_config(config, abs_tests, parallel: true),
+                                      app_root: config.project_root)
           clients.last.start
         end
       ensure
         prepare_client&.quit
       end
+      timing[:boot_seconds] = timing[:boot_seconds].to_f + (Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started)
 
+      mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      finished = Queue.new
       clients.each_with_index do |client, worker|
         threads << Thread.new do
           loop do
@@ -317,6 +447,8 @@ module Mutineer
             results[i] = job_result(jobs[i], i, client, worker, config, coverage_map, abs_tests, source_map)
             progress.tick
           end
+          # #495: before the quit in `ensure`, as run_serial stops its timer.
+          finished << Process.clock_gettime(Process::CLOCK_MONOTONIC)
         rescue Exception => e # rubocop:disable Lint/RescueException
           # The daemon gave up for good, or a defect escaped. Stop feeding the
           # other workers, so they stop after their current mutant, and hand the
@@ -330,6 +462,8 @@ module Mutineer
       # Join every worker before raising, so all daemons have quit and the
       # end-of-run sweep sees each child gone.
       threads.each(&:join)
+      last = Array.new(finished.size) { finished.pop }.max
+      timing[:mutants_seconds] = last - mutants_started if last
       raise errors.pop unless errors.empty?
 
       # Every job was popped by some worker and every pop assigns, so no slot can
@@ -372,11 +506,14 @@ module Mutineer
       # load and read as a false `killed`.
       # Narrow to covering tests (shared with the in-process path via
       # JobPlan.coverage_selection, so scores match). :verdict = no_coverage/uncapturable,
-      # no fork. No map, or an empty one (build failed) → run the full --test set
-      # (fallback, not narrowed).
-      sel = coverage_map && !coverage_map.map.empty? && JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      # no fork. No map, or the fallback map of a failed build (boot lines only)
+      # → run every test the run kept, not narrowed by coverage. A narrowed
+      # run's empty map from a capture that worked is a real map (#496).
+      sel = coverage_map && (!coverage_map.map.empty? || !coverage_map.fallback?) &&
+            JobPlan.coverage_selection(subject.file, mutation, subject, source, coverage_map)
+      seconds = nil # #495: set only when a request ran the mutant
       r =
-        if Parser.parse_string(mutated).errors.any?
+        if Parser.invalid?(mutated)
           Result.skipped
         elsif sel && sel[0] == :verdict
           sel[1]
@@ -384,52 +521,104 @@ module Mutineer
           # A :maybe mutant that cannot be placed stays no_coverage, as in-process.
           sel && sel[0] == :maybe ? Result.no_coverage : Result.unplaceable
         else
-          verdict = client.request(
-            id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
-            payload: { "code" => mutated, "source_file" => File.expand_path(subject.file, config.project_root) },
-            tests: sel ? sel[1] : abs_tests
-          )
-          # A survivor whose line ran at load, as in-process (Runner.run).
-          loaded = JobPlan.load_verdict(result_for(verdict), subject.file, mutation, subject, source, coverage_map)
-          # Tests that may not have run the mutant, as in-process (#254).
-          JobPlan.selection_verdict(sel && sel[0], loaded)
+          # Same probe as in-process (#345, #493): the daemon child loads this text.
+          candidate = JobPlan.stored_block_candidate?(sel && sel[0], subject.file, mutation, subject, source,
+                                                      coverage_map)
+          sentinel = (sel && sel[0] == :maybe) || candidate ? ReachProbe.sentinel : nil
+          reach_key = sentinel && ReachProbe.reach_key
+          begin
+            # The same text as in-process (Runner.run): a hook-block def placed
+            # (#297), a live superclass kept (#492, #512, #503).
+            code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source,
+                                                 reach_path: sentinel&.path, reach_key: reach_key)
+            payload = { "code" => code, "source_file" => File.expand_path(subject.file, config.project_root) }
+            if hook_def
+              payload["hook_def"] = hook_def.to_h { |key, value| [key.to_s, key == :name ? value.to_s : value] }
+            end
+            # #479: Runner.execute set the log for this run; the child appends to it.
+            payload["callback_growth_log"] = ReloadGuards.callback_growth_log if ReloadGuards.callback_growth_log
+            # The daemon clears these after load and before tests (#345).
+            if sentinel
+              payload["reach_path"] = sentinel.path
+              payload["reach_key"] = reach_key
+            end
+            started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            verdict = client.request(
+              id: req_id, worker: worker, timeout: config.daemon_timeout || DEFAULT_TIMEOUT,
+              payload: payload, tests: sel ? sel[1] : abs_tests
+            )
+            seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+            # A survivor whose line ran at load, as in-process (Runner.run).
+            details = client.last_cause if verdict == "error"
+            loaded = JobPlan.load_verdict(result_for(verdict, details), subject.file, mutation, subject, source,
+                                           coverage_map)
+            # A :maybe survivor the probe saw run counts; one it did not stays
+            # no_coverage, as in-process (#254, #345).
+            reached = ReachProbe.reached?(sentinel)
+            selected = JobPlan.selection_verdict(sel && sel[0], loaded, reached: reached)
+            # A survivor in a block whose call ran at load, whose mutated
+            # expression did not return in a test, as in-process (#493). No
+            # conclusive probe in the sent text means no change.
+            JobPlan.stored_block_verdict(selected, candidate: candidate, reached: reached,
+                                                   probed: candidate && ReachProbe.conclusive?(payload["code"], reach_key))
+          ensure
+            ReachProbe.close_sentinel(sentinel)
+          end
         end
-      r.with(subject: subject, mutation: mutation, id: id)
+      r.with(subject: subject, mutation: mutation, id: id, seconds: seconds)
     end
 
     # The boot config the daemon needs to boot the app once: where to boot, the
     # --require files to load after it, the test load roots (so
-    # `require "test_helper"` resolves in every fork), framework, and whether this
-    # is Rails.
+    # `require "test_helper"` resolves in every fork) and the `load_path`
+    # directories, framework, whether this
+    # is Rails, and --verbose for the coverage build's capture warnings.
     #
     # @param config [Mutineer::Config] the run config.
     # @param abs_tests [Array<String>] absolute --test paths.
     # @param coverage [Boolean] whether this daemon builds the coverage map.
     # @param db_role [String, nil] "prepare" (copy databases on command),
-    #   "worker" (lock only), or nil to pick from `coverage`.
+    #   "worker" (lock only), "solo" (the one worker of a run whose first
+    #   daemon did not boot: lock and copy one slot at boot), or nil to pick
+    #   from `coverage`.
+    # @param parallel [Boolean] whether this daemon is one of several workers.
+    #   Only then does it check `shared_databases` after each mutant.
     # @return [Hash] the boot config shipped to the daemon.
-    def self.boot_config(config, abs_tests, coverage: false, db_role: nil)
+    def self.boot_config(config, abs_tests, coverage: false, db_role: nil, parallel: false)
+      extra_dirs = JobPlan.extra_load_dirs(config)
       {
         project_root: config.project_root,
         boot: File.expand_path(config.boot || "config/environment", config.project_root),
         # Required after the boot, as in-process (Runner.execute); also part of
         # the coverage digest.
         require_paths: config.require_paths.map { |f| File.expand_path(f, config.project_root) },
-        load_paths: JobPlan.test_load_roots(abs_tests),
+        # DaemonServer#boot! unshifts one entry at a time, so the last is
+        # searched first: the test-helper roots, then the load_path
+        # directories in the written order (#491), as in-process.
+        load_paths: extra_dirs.reverse + JobPlan.test_load_roots(abs_tests, project_root: config.project_root),
+        # The same directories in the written order, for the coverage cache key.
+        extra_load_paths: extra_dirs,
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,
-        # Coverage narrowing. Only the short-lived map-building daemon starts
-        # Coverage (before boot); worker daemons boot with it OFF (no wasted
+        # Databases the workers share. A parallel worker fails a mutant whose
+        # tests used one. One worker shares nothing, so it gets no names.
+        shared_databases: parallel ? config.shared_databases : [],
+        # Coverage narrowing. Only the map-building daemon starts Coverage
+        # (before boot); worker daemons boot with it OFF (no wasted
         # instrumentation/memory across every mutant fork). `sources`/`tests` are the
         # map-build inputs.
         coverage: coverage,
         # "prepare" copies worker databases when asked. "worker" only locks.
-        # A direct client that omits this provisions at boot instead.
+        # "solo" locks and copies one slot at boot (#416). A direct client
+        # that omits this provisions at boot instead.
         db_role: db_role || (coverage ? "prepare" : "worker"),
         # The map-building daemon's capture limit (--capture-timeout); nil = default.
         capture_timeout: config.capture_timeout,
+        # --verbose: the map-building daemon's capture warning shows the real
+        # error, as in-process (#517). Not part of the coverage digest.
+        verbose: config.verbose,
         sources: config.sources.map { |s| File.expand_path(s, config.project_root) },
         tests: abs_tests
       }
@@ -440,14 +629,15 @@ module Mutineer
     # resolved tool-side before a request is ever sent.
     #
     # @param verdict [String] the daemon's verdict word.
+    # @param details [String, nil] the cause the daemon sent with an `"error"`.
     # @api private
     # @return [Mutineer::Result] the matching result.
-    def self.result_for(verdict)
+    def self.result_for(verdict, details = nil)
       case verdict
       when "survived" then Result.survived
       when "killed"   then Result.killed
       when "timeout"  then Result.timeout
-      else Result.error("daemon verdict: #{verdict}")
+      else Result.error(details || "daemon verdict: #{verdict}")
       end
     end
 
@@ -456,6 +646,6 @@ module Mutineer
     # {build_coverage_map} from the daemon suite. Everything else is daemon-pipeline
     # internals with no caller outside this file.
     private_class_method :sweep_daemon_temps, :run_serial, :run_parallel, :job_result, :result_for,
-                         :prepare_run, :coverage_map_from_client
+                         :prepare_run, :coverage_map_from_client, :worker_count_for
   end
 end

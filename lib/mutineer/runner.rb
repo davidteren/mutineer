@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "pathname"
+require "rbconfig"
 require_relative "parser"
 require_relative "project"
 require_relative "result"
@@ -15,10 +16,40 @@ require_relative "project_path"
 require_relative "file_swap"
 require_relative "external_backend"
 require_relative "daemon_backend"
+require_relative "reach_probe"
 require_relative "job_plan"
 require_relative "rails_run_env"
+require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
 
 module Mutineer
+  # Raised when the tool process cannot load a project file: the boot file, a
+  # standalone source, or a `--require` path. The message is redacted and the
+  # original exception is not kept as `cause`, so neither can show the
+  # DATABASE_URL password. The CLI maps it to a runtime error (exit 1).
+  class ProjectLoadError < StandardError
+    # @return [Array<String>] the redacted `Class: message` of each exception
+    #   in the original `cause` chain, outermost first.
+    attr_reader :causes
+
+    # @return [String, nil] an extra line when a source raises NameError
+    #   (including NoMethodError) and the run has no boot file. Nil for
+    #   every other load failure, including a NameError in the boot file
+    #   or a `require:` file.
+    attr_reader :hint
+
+    # @param message [String] the redacted message.
+    # @param causes [Array<String>] see {#causes}.
+    # @param hint [String, nil] see {#hint}.
+    # @return [ProjectLoadError]
+    def initialize(message, causes: [], hint: nil)
+      super(message)
+      @causes = causes
+      @hint = hint
+    end
+  end
+
   # Orchestrates one mutation end-to-end: apply it textually, validate the
   # result, select its covering test files from the coverage map, then run only
   # those against the mutated source in an isolated child process (strategy
@@ -32,7 +63,13 @@ module Mutineer
     # Full orchestration: resolve operators, discover subjects, build the
     # coverage map, run every mutation, and aggregate. Returns
     # [AggregateResult, source_map, extras], where extras is the hash
-    # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`), unchanged.
+    # {JobPlan.collect_jobs} returns (`:legacy_ignore_matches`, `:id_map`,
+    # `:dropped_id_map`, `:copies`, `:declined`, `:subjects`, `:unmutated_subjects`), plus
+    # `:unscoped_mutants` under `--since`, and `:callback_growth`: each class and file
+    # whose callback count grew after a reload (#479), empty under redefine, and
+    # nil when a reload or `--daemon` run could not create its log, so it checked
+    # nothing (#505). A `--test-command` run leaves that key out: it does not
+    # reload, so read it with `fetch(:callback_growth, [])`.
     # The CLI then reports + applies the exit code; the integration test asserts
     # directly on the AggregateResult.
     #
@@ -46,8 +83,24 @@ module Mutineer
     def self.execute(config)
       # Rails reads PARALLEL_WORKERS when a test helper calls parallelize.
       # Set it before any boot or child spawn, then put the caller's value back.
+      # The ensure below reads these. Set them before anything that can raise.
+      filter_owned = false
+      urls_owned = false
       previous_parallel_workers = ENV["PARALLEL_WORKERS"]
       RailsRunEnv.pin_process!
+      # The CLI installs the filter first and owns it for the report that
+      # follows this method. A library caller owns it for the run itself.
+      # Direct writes from a fork or a subprocess then go through the pipe (#341).
+      case OutputFilter.install
+      when :started
+        filter_owned = true
+      when :failed
+        raise "cannot redirect stdout and stderr for redaction"
+      end
+      if Redaction.extra_urls.empty?
+        Redaction.extra_urls = DatabaseUrls.from_files(config.project_root)
+        urls_owned = true
+      end
       operator_classes = MutatorRegistry.resolve(config.operators || MutatorRegistry::DEFAULT_NAMES)
 
       # External backend: run the suite as a subprocess in the app's own runtime.
@@ -58,27 +111,88 @@ module Mutineer
       # Daemon backend: boot the app ONCE in a persistent subprocess under the
       # app's bundle and fork per mutant. Tool-side we only discover jobs + build
       # payloads (Prism), so branch before any in-process boot.
-      return DaemonBackend.execute(config, operator_classes) if config.daemon
+      # #479: each reload child logs a class whose callback count grew, and
+      # the run returns them once each in extras[:callback_growth].
+      checks_growth = config.daemon || config.strategy == "reload"
+      growth_log = JobPlan.create_callback_growth_log if checks_growth
+      ReloadGuards.callback_growth_log = growth_log
 
-      # Both strategies (whole-file reload and redefine, #279) write
-      # .mutineer_mutant*.rb into each source dir (so require_relative and
-      # __dir__ resolve). Redefine falls back to the system temp dir for a
-      # read-only source dir, which this sweep does not reach; the OS cleans
-      # it, as in 1.x. A SIGKILL'd child skips the tempfile's
-      # ensure-unlink, orphaning it. `ensure` is unreliable vs SIGKILL, so the
-      # PARENT sweeps each source dir before and after the run. Orphans are
-      # impossible after a normal run. The first sweep runs before the boot: a
-      # file an older version left without the dot would stop Zeitwerk (#253).
-      dirs = JobPlan.source_dirs(config)
-      JobPlan.sweep_orphans(dirs)
-      if config.strategy == "redefine"
-        dirs.reject { |d| File.writable?(d) }.each do |d|
-          warn "[mutineer] #{d} is not writable: redefine loads its mutants from the system temp dir, " \
-               "so a method there that uses __dir__ or require_relative can be falsely killed. " \
-               "Make the directory writable to avoid this (#339)."
-        end
+      if config.daemon
+        # The daemon loads these files itself and would report a missing one as
+        # a boot failure (exit 1). Check here so it stays a usage error (exit 2),
+        # as it is in process.
+        check_boot_files!(config)
+        result = DaemonBackend.execute(config, operator_classes)
+        result[2][:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
+        return result
       end
 
+      # Both strategies (whole-file reload and redefine, #279) write
+      # .mutineer_mutant*.rb into each source dir. Redefine falls back to the
+      # system temp dir for a read-only source dir, which this sweep does not
+      # reach; the OS cleans it, as in 1.x. The snippet rewrites `__dir__`,
+      # `__FILE__`, and `require_relative` to the original file, so that
+      # fallback does not false-kill (#339). A SIGKILL'd child skips the
+      # tempfile's ensure-unlink, orphaning it. `ensure` is unreliable vs
+      # SIGKILL, so the PARENT sweeps each source dir before and after the run.
+      # Orphans are impossible after a normal run. The first sweep runs before
+      # the boot: a file an older version left without the dot would stop
+      # Zeitwerk (#253).
+      dirs = JobPlan.source_dirs(config)
+      JobPlan.sweep_orphans(dirs)
+      # A `--since` run with no changed mutant has nothing to execute. Collect
+      # and scope once before loading the app or capturing coverage so an empty
+      # scope can return without paying for a full clean-suite run. Nonempty
+      # scopes reuse this work after coverage capture instead of repeating source
+      # discovery, parsing, and git diff. With `since_paired_tests`, a nonempty
+      # scope then keeps only the tests paired with the sources that have a job
+      # (#496). Every source still loads.
+      since_scope = nil
+      if config.since
+        # The empty-scope return skips the later require calls, so keep missing
+        # boot and --require paths as usage errors on that path too.
+        check_boot_files!(config)
+
+        since_jobs, since_ignored, since_source_map, since_extras =
+          JobPlan.collect_jobs(config, operator_classes)
+        since_jobs, since_ignored, since_extras[:unscoped_mutants] =
+          JobPlan.scope_since(since_jobs, since_ignored, since_source_map, config, extras: since_extras)
+        if since_jobs.empty?
+          # As the daemon path reports an empty run (#505).
+          since_extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
+          return [AggregateResult.new(since_ignored), since_source_map, since_extras]
+        end
+        config = JobPlan.narrow_tests_for_since(config, since_jobs)
+        since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
+      end
+
+      # Before boot and `--require`, so a `config.seed=` in those files is
+      # recorded and every forked child keeps it (#282).
+      prepare_rspec_seed!(config)
+
+      # #495: phase seconds for the report; nil for a phase the run skips.
+      timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # The load_path directories go on $LOAD_PATH before the boot file, the
+      # sources and the require: files load (#491). One splat keeps the
+      # written order. Then the test-helper roots go in front of them (with
+      # no boot file, lib first), in the order the capture subprocess and the
+      # daemon use, before anything loads. No include? filter: bundler or
+      # RUBYOPT may have put lib or a root behind the load_path directories.
+      # Without load_path, nothing changes here, and the roots are added
+      # later with the filter, as in earlier versions.
+      refront = !config.extra_load_paths.empty?
+      if refront
+        $LOAD_PATH.unshift(*JobPlan.extra_load_dirs(config))
+        abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
+        if config.boot
+          # One at a time, as DaemonServer#boot! does.
+          JobPlan.test_load_roots(abs_tests, project_root: config.project_root).each { |d| $LOAD_PATH.unshift(d) }
+        else
+          libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
+          $LOAD_PATH.unshift(*(libs + JobPlan.test_load_roots(abs_tests, project_root: config.project_root)).uniq)
+        end
+      end
       # Boot mode: require the boot file ONCE so the app env (e.g. Rails) is booted
       # in the parent and inherited by every fork. Do NOT manually require the
       # sources. Under Zeitwerk a manual require of an autoloadable file raises;
@@ -102,27 +216,36 @@ module Mutineer
         when :idle then Coverage.start(lines: true, methods: true)
         when :suspended then Coverage.resume
         end
-        require File.expand_path(config.boot, config.project_root)
+        require_project_file(config.project_root, config.boot)
       else
-        config.sources.each { |f| require File.expand_path(f, config.project_root) }
+        # No boot file, so each source loads here, and require: files load
+        # after this loop (#217). A NameError means the source named
+        # something that is not loaded yet; the hint points at boot:, which
+        # loads first (#376).
+        config.sources.each do |f|
+          require_project_file(config.project_root, f, on_name_error: SOURCE_NEEDS_BOOT_HINT)
+        end
       end
-      config.require_paths.each { |f| require File.expand_path(f, config.project_root) }
+      config.require_paths.each { |f| require_project_file(config.project_root, f) }
       preload_owners(config) if config.boot && config.strategy == "redefine"
+      timing[:boot_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - boot_started
 
+      coverage_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       if config.boot
         # Rails/Minitest test files do `require "test_helper"`, which needs the
         # test root on $LOAD_PATH (`bin/rails test` adds it). Prepend each test
         # file's helper root here in the parent so loading them in the fork
         # children (both coverage capture and per-mutant) resolves.
         boot_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
-        JobPlan.test_load_roots(boot_tests).each { |d| $LOAD_PATH.unshift(d) unless $LOAD_PATH.include?(d) }
+        JobPlan.test_load_roots(boot_tests, project_root: config.project_root).each { |d| $LOAD_PATH.unshift(d) unless refront || $LOAD_PATH.include?(d) }
 
         # Boot mode now uses coverage selection too: capture each test's coverage
         # by forking the booted parent, then select covering tests per mutant.
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
-          load_paths: config.load_paths, framework: config.framework,
+          load_paths: config.load_paths + config.extra_load_paths, framework: config.framework,
+          extra_load_paths: config.extra_load_paths, # cache key only (#536, #539, #544)
           boot_path: File.expand_path(config.boot, config.project_root),
           require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
@@ -134,25 +257,34 @@ module Mutineer
         Coverage.suspend if own_coverage && Coverage.running?
       else
         # As in boot mode, and with lib first as `rake test` does.
-        test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) })
+        test_roots = JobPlan.test_load_roots(config.tests.map { |t| File.expand_path(t, config.project_root) },
+                                             project_root: config.project_root)
         libs = config.load_paths.map { |p| File.expand_path(p, config.project_root) }
-        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) })
+        $LOAD_PATH.unshift(*(libs + test_roots).uniq.reject { |d| $LOAD_PATH.include?(d) }) unless refront
         # Relative, so the cache digest does not depend on the checkout path.
         rel_roots = test_roots.map { |d| Pathname(d).relative_path_from(File.expand_path(config.project_root)).to_s }
         coverage_map = CoverageMap.new(
           source_paths: config.sources, test_paths: config.tests,
           cache_dir: File.expand_path(config.cache_dir, config.project_root), project_root: config.project_root,
-          load_paths: config.load_paths + rel_roots, framework: config.framework,
-          require_paths: config.require_paths,
+          load_paths: config.load_paths + rel_roots + config.extra_load_paths, framework: config.framework,
+          extra_load_paths: config.extra_load_paths, # cache key only (#536, #539, #544)
+          require_paths: config.require_paths, verbose: config.verbose,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end
+      timing[:clean_check_seconds] = coverage_map.clean_check_seconds
+      # The clean checks run inside the map build; report them apart.
+      timing[:coverage_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - coverage_started - timing[:clean_check_seconds].to_f
       JobPlan.abort_if_unclean!(coverage_map, framework: config.framework)
 
       # Collect every (subject, mutation) up front so the pool can fan them out.
-      jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-
-      jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+      if since_scope
+        jobs, ignored_results, source_map, extras = since_scope
+      else
+        jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
+      end
 
       strategy = config.strategy
       # Fail-fast must be serial: a parallel stop_when fires on the first survivor
@@ -164,12 +296,14 @@ module Mutineer
           framework = config.framework
           stop_when = config.fail_fast ? ->(r) { r.survived? } : nil
           progress  = Progress.new(jobs.size)
+          mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           bare = WorkerPool.new(jobs_n).run(jobs, stop_when: stop_when,
                                                   on_result: ->(_r) { progress.tick }) do |subject, mutation|
             run(mutation, source_file: subject.file, coverage_map: coverage_map,
                 subject: subject, strategy: strategy, rails: config.rails, framework: framework,
                 timeout: config.timeout || Isolation::DEFAULT_TIMEOUT, matrix: config.matrix)
           end
+          timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started unless jobs.empty?
           # The bare Results carry only status (Subjects hold live AST nodes that
           # do not marshal); reattach subject+mutation+id in the parent, in order.
           # filter_map drops nils for jobs --fail-fast left unscheduled.
@@ -181,10 +315,18 @@ module Mutineer
           JobPlan.sweep_orphans(dirs)
         end
 
+      extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
+      extras[:timing] = timing
       [AggregateResult.new(results + ignored_results), source_map, extras]
     ensure
+      ReloadGuards.callback_growth_log = nil
+      File.delete(growth_log) if growth_log && File.exist?(growth_log)
       # A caller that set PARALLEL_WORKERS keeps that value after the run.
       RailsRunEnv.restore_process!(previous_parallel_workers)
+      OutputFilter.uninstall if filter_owned
+      # The CLI set its own list before this method and restores it. Clear
+      # only the list this call loaded.
+      Redaction.extra_urls = [] if urls_owned
     end
 
     # A `--matrix` error that carries no {Kills} row (the worker crashed, or its
@@ -226,7 +368,8 @@ module Mutineer
         FileSwap.restore_orphans(dirs)
 
         jobs, ignored_results, source_map, extras = JobPlan.collect_jobs(config, operator_classes)
-        jobs, ignored_results, extras[:unscoped_mutants] = JobPlan.scope_since(jobs, ignored_results, source_map, config)
+        jobs, ignored_results, extras[:unscoped_mutants] =
+          JobPlan.scope_since(jobs, ignored_results, source_map, config, extras: extras)
 
         # Nothing to mutate: return before the smoke check, which runs the whole
         # --test set to calibrate a timeout no mutant would use (#76).
@@ -237,22 +380,53 @@ module Mutineer
         # 3x the clean run, floor 30s, ceiling 300s: a heuristic. The floor covers
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
-        smoke_elapsed = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        smoke_elapsed, check_summary, random_order, clean_summaries = ExternalBackend.smoke_check!(config.test_command, abs_tests)
+        # #495: each command boots the app itself, and nothing captures coverage.
+        timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: smoke_elapsed, mutants_seconds: nil }
         timeout = [[smoke_elapsed * 3, 30].max, 300].min.ceil
+        # #292: the summary check needs a summary line to look for. Without one
+        # on the clean run, keep the exit-code rule and say what that costs.
+        unless check_summary
+          warn "[mutineer] the clean run of --test-command printed no Minitest or RSpec summary line " \
+               "(such as \"3 runs, 3 assertions, 0 failures, 0 errors\" or \"3 examples, 0 failures\"), " \
+               "so the crash check is off: an exit 1 counts as a kill even when the suite crashed " \
+               "before its tests ran. Use the default Minitest or RSpec progress output to turn it on."
+        end
+        # #338: each mutant run picks its own order, so an order-dependent
+        # suite can fail a mutant run for a reason the mutant did not cause.
+        if random_order
+          runner, seed = random_order
+          fix = if runner == :minitest
+                  "set SEED=#{seed} before the mutineer command (SEED=#{seed} mutineer run ...), " \
+                    "not inside --test-command"
+                else
+                  # SPEC_OPTS is read after the command line, so it would undo the fix.
+                  "add --order defined to the rspec command in --test-command and keep " \
+                    "--order rand out of SPEC_OPTS"
+                end
+          warn "[mutineer] the clean run of --test-command printed a #{runner == :minitest ? 'Minitest' : 'RSpec'} " \
+               "seed (#{seed}) and Mutineer found no fixed seed in effect, so each mutant run may use a new test " \
+               "order and an order-dependent suite can give a false kill. To fix the order, #{fix}."
+        end
 
         results = []
         progress = Progress.new(jobs.size)
+        mutants_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         begin
           jobs.each do |subject, mutation, id|
             r = run_external(subject, mutation, config.test_command, abs_tests,
-                             timeout: timeout, verbose: config.verbose)
+                             timeout: timeout, verbose: config.verbose, check_summary: check_summary,
+                             clean_summaries: clean_summaries)
             results << r.with(subject: subject, mutation: mutation, id: id)
             progress.tick
             break if config.fail_fast && r.survived? # stop at the first survivor
           end
+          # Before the cleanup below, so recovery time is not mutant time.
+          timing[:mutants_seconds] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - mutants_started
         ensure
           FileSwap.restore_orphans(dirs)
         end
+        extras[:timing] = timing
 
         [AggregateResult.new(results + ignored_results), source_map, extras]
       end
@@ -260,19 +434,24 @@ module Mutineer
 
     # Runs one mutant through the external backend: apply the whole-file mutation
     # on disk, run the command, restore. An invalid (non-reparsing) mutant would
-    # fail to load and score a false `killed`, so skip it tool-side (Prism, already
-    # cheap) and never write the file, preserving the `skipped` verdict the
+    # fail to load (scored `error`, or a false `killed` without the summary
+    # check), so skip it tool-side (Prism, already cheap) and never write the file, preserving the `skipped` verdict the
     # in-process path gives at the pre-fork check.
     #
+    # @param check_summary [Boolean, :line] passed to {ExternalBackend.run}.
+    # @param clean_summaries [Integer] passed to {ExternalBackend.run}.
     # @return [Mutineer::Result] verdict for this mutant.
-    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:)
-      source  = File.read(subject.file)
+    def self.run_external(subject, mutation, command, abs_tests, timeout:, verbose:, check_summary:, clean_summaries: 0)
+      source  = Parser.read(subject.file)
       mutated = mutation.apply(source)
-      return Result.skipped if Parser.parse_string(mutated).errors.any?
+      return Result.skipped if Parser.invalid?(mutated)
 
-      FileSwap.with(subject.file, mutated) do
-        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = FileSwap.with(subject.file, mutated) do
+        ExternalBackend.run(command, abs_tests, timeout: timeout, verbose: verbose, check_summary: check_summary,
+                            clean_summaries: clean_summaries)
       end
+      result.with(seconds: Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
     end
 
     # Loads the class or module of every subject in the booted parent, before
@@ -314,7 +493,8 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to run.
     # @param source_file [String] source file path.
     # @param coverage_map [Mutineer::CoverageMap, nil] coverage map.
-    # @param subject [Mutineer::Subject, nil] subject for surgical strategy.
+    # @param subject [Mutineer::Subject, nil] subject for surgical strategy;
+    #   redefine also loads each of its enclosing subjects.
     # @param strategy [String] mutation strategy.
     # @param timeout [Integer] child timeout in seconds.
     # @param rails [Boolean] whether Rails reconnect handling is enabled.
@@ -324,11 +504,11 @@ module Mutineer
     # @return [Mutineer::Result] mutant result.
     def self.run(mutation, source_file:, coverage_map: nil, subject: nil, strategy: "reload",
                  timeout: Isolation::DEFAULT_TIMEOUT, rails: false, framework: "minitest", matrix: false)
-      source  = File.read(source_file)
+      source  = Parser.read(source_file)
       mutated = mutation.apply(source)
 
       # Validity rule: a mutant that does not re-parse is skipped before forking.
-      return Result.skipped if Parser.parse_string(mutated).errors.any?
+      return Result.skipped if Parser.invalid?(mutated)
 
       # Coverage selection (both standalone and boot mode): a mutation on a line
       # no test exercises is :no_coverage (no fork); otherwise exactly the
@@ -340,27 +520,64 @@ module Mutineer
       return kind == :maybe ? Result.no_coverage : Result.unplaceable if subject&.unplaceable?(strategy)
 
       abs_tests = payload
-
-      result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
-        # Forking inherits the parent's live DB connection; sharing one socket
-        # across processes corrupts it. Drop it so AR reconnects per child.
-        reconnect_active_record if rails
-        if strategy == "redefine"
-          Isolation.apply_surgical(mutation, subject, source)
-        else
-          Isolation.apply_whole_file(mutated, source_file)
-        end
-        if channel
-          # --matrix: every covering test runs, and each outcome goes to the parent.
-          TestRunners.for(framework).run(abs_tests, record_to: channel)
-        else
-          # One failing test already kills the mutant, so the child stops there.
-          TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
-        end
+      # A :maybe mutant records whether the mutated expression ran (#345). So
+      # does a mutant in a block whose call ran at load (#493).
+      candidate = JobPlan.stored_block_candidate?(kind, source_file, mutation, subject, source, coverage_map)
+      sentinel = kind == :maybe || candidate ? ReachProbe.sentinel : nil
+      reach_key = sentinel && ReachProbe.reach_key
+      # The reload text is built once, before the fork, so the parent checks
+      # the text that the child loads. It is the same text the daemon loads: a
+      # hook-block def placed (#297), a live superclass kept (#492, #512, #503). Under
+      # redefine the child builds the def text itself
+      # ({Isolation.apply_surgical}), from the same values.
+      unless strategy == "redefine"
+        reload_code, hook_def = JobPlan.reload_code(mutated, mutation, subject, source, reach_path: sentinel&.path,
+                                                                                        reach_key: reach_key)
       end
-      result = relative_kills(result, coverage_map.project_root)
-      result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
-      JobPlan.selection_verdict(kind, result)
+      # No conclusive probe in that text means no evidence, so the verdict
+      # stays. A candidate is never a hook-block def.
+      probed = candidate && ReachProbe.conclusive?(
+        reload_code || Isolation.mutated_def(mutation, subject, source, reach_path: sentinel.path,
+                                                                        reach_key: reach_key), reach_key
+      )
+
+      begin
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = Isolation.run(timeout: timeout, channel: matrix) do |channel|
+          # Forking inherits the parent's live DB connection; sharing one socket
+          # across processes corrupts it. Drop it so AR reconnects per child.
+          reconnect_active_record if rails
+          if strategy == "redefine"
+            # Load each enclosing def too: its body holds the original nested def,
+            # which a call to it would define again over the mutant (#290).
+            Isolation.apply_surgical(mutation, subject, source, reach_path: sentinel&.path, reach_key: reach_key)
+            s = subject
+            while (s = s.enclosing_subject)
+              Isolation.apply_surgical(mutation, s, source, reach_path: sentinel&.path, reach_key: reach_key)
+            end
+          else
+            Isolation.apply_whole_file(reload_code, source_file, hook_def: hook_def)
+          end
+          # A reload can run the expression while the file loads. That is not
+          # a test reaching it (#345).
+          ReachProbe.forget_load(sentinel.path, reach_key) if sentinel
+          if channel
+            # --matrix: every covering test runs, and each outcome goes to the parent.
+            TestRunners.for(framework).run(abs_tests, record_to: channel)
+          else
+            # One failing test already kills the mutant, so the child stops there.
+            TestRunners.for(framework).run(abs_tests, stop_at_first_failure: true)
+          end
+        end
+        seconds = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        result = relative_kills(result, coverage_map.project_root)
+        result = JobPlan.load_verdict(result, source_file, mutation, subject, source, coverage_map)
+        reached = ReachProbe.reached?(sentinel)
+        result = JobPlan.selection_verdict(kind, result, reached: reached)
+        JobPlan.stored_block_verdict(result, candidate: candidate, probed: probed, reached: reached).with(seconds: seconds)
+      ensure
+        ReachProbe.close_sentinel(sentinel)
+      end
     end
 
     # Rewrites the test files of a result's {Kills} row relative to the project
@@ -424,6 +641,122 @@ module Mutineer
       nil
     end
     private_class_method :reconnect_active_record
+
+    # The callback growth rows of a run (#479), or nil when the run had to
+    # check them and could not create its log (#505). A run that does not
+    # reload checks nothing and grows nothing, so it gets an empty list.
+    #
+    # @api private
+    # @param growth_log [String, nil] the log file, or nil when there is none.
+    # @param checks_growth [Boolean] the run reloads (`reload` or `--daemon`).
+    # @param project_root [String] the run's project root.
+    # @return [Array<Array(String, String)>, nil] each class name and its file.
+    def self.callback_growth(growth_log, checks_growth, project_root)
+      return nil if checks_growth && growth_log.nil?
+
+      JobPlan.callback_growth_rows(growth_log, project_root)
+    end
+    private_class_method :callback_growth
+
+    # The absolute path of a project file `require` can load: as given, or
+    # with `.rb` or the native-extension suffix.
+    #
+    # @api private
+    # @param root [String] the project root.
+    # @param path [String] the path as the user gave it.
+    # @raise [Errno::ENOENT] when the requested file does not exist.
+    # @raise [ArgumentError] when Ruby cannot expand the path.
+    # @return [String]
+    def self.project_file!(root, path)
+      file = File.expand_path(path, root)
+      suffixes = ["", ".rb", ".#{RbConfig::CONFIG.fetch('DLEXT')}"]
+      raise Errno::ENOENT, path unless suffixes.any? { |suffix| File.file?("#{file}#{suffix}") }
+
+      file
+    end
+    private_class_method :project_file!
+
+    # Checks that the boot file and every --require file exist, so a missing
+    # one stays a usage error (exit 2) on paths that skip the later require.
+    #
+    # @api private
+    # @param config [Config]
+    # @raise [Errno::ENOENT] when a file does not exist.
+    # @return [void]
+    def self.check_boot_files!(config)
+      [config.boot, *config.require_paths].compact.each { |f| project_file!(config.project_root, f) }
+    end
+    private_class_method :check_boot_files!
+
+    # Installs the RSpec seed watcher in this process when the run uses
+    # RSpec. Boot and `--require` files then load with the watcher on, and
+    # forks inherit the record of a seed they set. A project without rspec
+    # is left for the child to report, as before.
+    #
+    # @api private
+    # @param config [Mutineer::Config]
+    # @return [void]
+    def self.prepare_rspec_seed!(config)
+      return unless config.framework == "rspec"
+
+      require "rspec/core"
+      ::RSpec::Core::Runner.disable_autorun!
+      TestRunners::RSpecSeed.install!
+    rescue LoadError
+      nil
+    end
+    private_class_method :prepare_rspec_seed!
+
+    # Extra line when a source raises NameError and the run has no boot file.
+    # `require:` files load after the sources, so they cannot define names the
+    # source needs while it loads (#376, #217).
+    SOURCE_NEEDS_BOOT_HINT = "a source that needs other files loaded first takes them from " \
+                             "`boot:` (or `--boot`), which loads before the sources; " \
+                             "`require:` files load after them"
+    private_constant :SOURCE_NEEDS_BOOT_HINT
+
+    # Require one project file in the tool process. A failure becomes a
+    # {ProjectLoadError} whose message, and each cause in its list, is
+    # redacted. The original backtrace is kept; the cause is not, because
+    # Ruby would print its raw message.
+    #
+    # @api private
+    # @param root [String] the project root.
+    # @param path [String] the path as the user gave it.
+    # @param on_name_error [String, nil] {ProjectLoadError#hint} when the file
+    #   raises NameError. Sources pass {SOURCE_NEEDS_BOOT_HINT}. The boot
+    #   file and `require:` files pass nil: those errors are not this case.
+    # @raise [Errno::ENOENT] when the requested file does not exist.
+    # @raise [ProjectLoadError] when the file raises while it loads.
+    # @return [void]
+    def self.require_project_file(root, path, on_name_error: nil)
+      # Outside the rescue: a path Ruby cannot expand (`~nosuchuser/boot.rb`)
+      # stays a usage error (exit 2), not a load failure.
+      file = project_file!(root, path)
+
+      begin
+        require file
+      rescue StandardError, ScriptError => e
+        # Every part is redacted on its own, so the message build cannot raise
+        # on mixed encodings and leave the raw error as the new one's cause.
+        causes = []
+        cause = e.cause
+        while cause
+          causes << Redaction.describe(cause)
+          cause = cause.cause
+        end
+        # The exception that escaped, not an exception it wrapped. A
+        # RuntimeError whose cause is a NameError is a different failure.
+        hint = on_name_error if e.is_a?(NameError)
+        error = ProjectLoadError.new(
+          "cannot load #{Redaction.text(path)}: #{Redaction.describe(e)}",
+          causes: causes, hint: hint
+        )
+        error.set_backtrace(e.backtrace)
+        raise error, cause: nil
+      end
+    end
+    private_class_method :require_project_file
 
     # Pure, injectable predicate: true when a transactional-fixture transaction is
     # already open on the connection. Keys off open_transactions so it is correct

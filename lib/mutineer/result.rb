@@ -4,13 +4,16 @@ module Mutineer
   # Immutable outcome of running one mutant. Ten distinct states:
   #   killed       - a test failed/errored, so the mutation was caught.
   #   survived     - every test passed, so the mutation went undetected.
-  #   error        - the child crashed (unhandled exception): exit status 2.
+  #   error        - the child crashed (unhandled exception), or a Minitest
+  #                  run's first failure was a database connection or lock
+  #                  error (#296): exit status 2.
   #   timeout      - the parent SIGKILLed a child that overran its wall clock.
   #   skipped      - the mutated source failed to re-parse (invalid); no fork.
   #   no_coverage  - no test exercises the mutated line; not run, not scored.
-  #                  Also a mutant on a later line of a multi-line statement,
-  #                  in code that runs only sometimes, that the statement's
-  #                  tests ran but did not kill (#254): they may not reach it.
+  #                  Also a mutant on a later line of a multi-line statement
+  #                  (#254, #289) whose tests ran and did not kill it, when a
+  #                  probe on the mutated expression did not see it run (#345).
+  #                  A survivor the probe saw run is survived, and counts.
   #   uncapturable - the line's would-be covering test errored during capture,
   #                  so coverage was lost. Excluded from the denominator exactly
   #                  like no_coverage, but reported separately: it signals a
@@ -20,9 +23,17 @@ module Mutineer
   #                  it, so it is not run. Under `--strategy redefine` the
   #                  method belongs to a class or module that cannot be named
   #                  statically (for example each class that includes a
-  #                  concern). Under either strategy the method is in a
-  #                  concern's `included` or `prepended` block, which does not
-  #                  run again in a class that already includes it (#256).
+  #                  concern), and every method in a concern's `included` or
+  #                  `prepended` block is one (#256). Under `--strategy reload`
+  #                  only some methods in such a block are: those it cannot
+  #                  load into each class that has them (#297; the cases are
+  #                  listed in docs/json-schema.md). A method inside the block
+  #                  of a class statement's superclass call is one too
+  #                  (`class X < Struct.new(:a) do ... end`, #492), and so
+  #                  is a method inside the value of a superclass constant
+  #                  the same file assigns (`BaseRow = Struct.new(:v) do
+  #                  ... end` with `class Row < BaseRow`, #503), and so is
+  #                  a method that calls `define_callbacks` (#504).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.
@@ -30,7 +41,10 @@ module Mutineer
   #                  loaded. That run happened before the mutant was applied,
   #                  so a test can check a value the original code computed.
   #                  A survivor on such a line, and a line that ran only at
-  #                  load, get this status; a kill stays killed. Excluded from
+  #                  load, get this status; a kill stays killed. A survivor
+  #                  in a block whose call ran at load gets it too, when the
+  #                  mutated expression did not return during a test (#493).
+  #                  Excluded from
   #                  the denominator and from the no-verdict gate, like
   #                  unplaceable. `--test-command` verifies these mutants.
   #   ignored      - a known-equivalent mutant the user suppressed, via an
@@ -44,7 +58,8 @@ module Mutineer
   # crash. Never conflate them via `details` string parsing. `uncapturable` and
   # `unplaceable` are pre-fork results, and `no_coverage` and `ran_at_load` are
   # pre-fork or a reclassified result (JobPlan.selection_verdict,
-  # JobPlan.load_verdict): all excluded from the score denominator.
+  # JobPlan.load_verdict, JobPlan.stored_block_verdict): all excluded from the
+  # score denominator.
   #
   # `subject`, `mutation`, and `id` are nil when the Result is built by
   # Isolation/Runner (which only know the outcome); the orchestrator attaches
@@ -56,11 +71,18 @@ module Mutineer
   # carries the {Kills} its child reported. It annotates the verdict and never
   # decides it.
   #
+  # `seconds` is the wall-clock time of the mutant's run step, set by the
+  # backend after the verdict is final (#495). It is nil when no time was
+  # measured: a verdict made before any run (skipped, a coverage-selection
+  # verdict, unplaceable, ignored), or a worker that crashed before it reported.
+  # A verdict changed after the run (a survivor made no_coverage or ran_at_load)
+  # keeps the run's time.
+  #
   # A Result crosses a process boundary only through WorkerPool's Marshal pipe,
   # from a fork back to the process that forked it, so both ends always run the
   # same code. Nothing persists a marshaled Result (reports, baselines and the
   # coverage cache are JSON), so a new field needs no Marshal compatibility.
-  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason) do
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason, :seconds) do
     # Every field but `status` defaults to nil. `reason` is the text a user
     # gave for an ignored mutant, from an inline marker or an `ignore:` mapping.
     #
@@ -71,7 +93,9 @@ module Mutineer
     # @param id [String, nil] the stable mutant id.
     # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
     # @param reason [String, nil] why an ignored mutant was suppressed.
-    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil)
+    # @param seconds [Float, nil] wall-clock seconds of the mutant's run step.
+    def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil,
+                   seconds: nil)
       super
     end
 
@@ -162,7 +186,8 @@ module Mutineer
   # cleanly (see Isolation.finish). It is false when the child timed out,
   # errored or exited the process early, when the recorder never armed, when
   # its lines arrived out of order, when Minitest returned after an Interrupt
-  # with tests unseen, or when the row does not agree with the verdict.
+  # with tests unseen, when a test had a database connection or lock failure,
+  # or when the row does not agree with the verdict.
   Kills = Data.define(:killed_by, :ran, :complete)
 
   # Aggregates a flat list of Results into counts, the mutation score, and the
@@ -216,6 +241,12 @@ module Mutineer
     def timeout_count         = count(:timeout)
     # @return [Integer] ignored count.
     def ignored_count         = count(:ignored)
+    # Mutants that exist but did not run: unplaceable plus skipped invalid.
+    # Neither is in the score. The reporter adds unpaired mutants to the
+    # unrun share unless `--fail-fast` is set. `unrun_count` excludes them.
+    #
+    # @return [Integer] unplaceable plus skipped-invalid count.
+    def unrun_count           = unplaceable_count + skipped_invalid_count
 
     # Every generated, classified mutation. NOT the score denominator.
     #

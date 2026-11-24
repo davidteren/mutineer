@@ -10,7 +10,10 @@ require "open3"
 # pull_request_target guard, since: none), report freshness vs staleness,
 # summary/annotation rendering (workflow-command escaping included), the
 # extra-args --format/--output guard, the old-format id warning (#126), and a
-# failing run whose output and baseline are the same file (#160).
+# failing run whose output and baseline are the same file (#160). The stub
+# answers `mutineer config` with the real CLI, a fixed value, or as an older
+# release without that command (#394). One table of unusual path names runs
+# through every path input (#401).
 class ActionHarnessTest < Minitest::Test
   HARNESS = File.expand_path("fixtures/action_harness.sh", __dir__)
 
@@ -22,21 +25,52 @@ class ActionHarnessTest < Minitest::Test
     assert status.success?, "harness exited #{status.exitstatus}\nstdout:\n#{out}\nstderr:\n#{err}"
     refute_match(/FAIL:/, out, "harness reported failures:\n#{out}")
 
-    { "case1" => 1, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
+    { "case1" => 1, "case1c" => 0, "case1d" => 0, "case1e" => 0, "case1f" => 0, "case2" => 0, "case3" => 1, "case3b" => 1, "case4" => 1,
       "case5" => 1, "case6" => 2, "case7" => 1, "case8" => 2, "case8b" => 2, "case9" => 0,
       "case10" => 1, "case11" => 2, "case11b" => 2, "case12" => 1,
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
-      "case16" => 2, "case17" => 2, "case18" => 1, "case19" => 1,
-      "case20" => 1, "case21" => 2, "case22" => 0 }.each do |c, code|
+      "case16" => 2, "case17" => 2, "case17b" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
+      "case18d" => 0, "case18i" => 0, "case18e" => 0, "case18f" => 0, "case18g" => 0, "case18h" => 0,
+      "case13b" => 2, "case14c" => 2,
+      "case20" => 1, "case21" => 1, "case22" => 1, "case23" => 2, "case24" => 0 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
     assert_includes out, "OK: caller output delivered"
     assert_includes out, "OK: report output names caller path"
+    assert_includes out, "OK: trailing-newline baseline kept"
+    assert_includes out, "OK: trailing-newline path rejected before running"
+    assert_includes out, "OK: cache dir created"
+    assert_includes out, "OK: output delivered into fresh cache dir"
+    assert_includes out, "OK: non-cache missing parent rejected"
+    assert_includes out, "OK: yml cache dir created"
+    assert_includes out, "OK: output delivered into yml cache dir"
+    assert_includes out, "OK: newline-ended cache dir created"
+    assert_includes out, "OK: no truncated cache dir"
+    assert_includes out, "OK: extra-args cache dir created"
+    assert_includes out, "OK: extra-args = cache dir created"
+    assert_includes out, "OK: short-form cache dir created"
+    assert_includes out, "OK: CLI-named cache dir created"
+    assert_includes out, "OK: fallback cache dir created"
+    assert_includes out, "OK: CLI-named baseline kept"
+    assert_includes out, "OK: CLI-named baseline rejected before running"
+    assert_includes out, "OK: fallback baseline kept"
+    assert_includes out, "OK: fallback baseline rejected before running"
     assert_includes out, "OK: scoped to base.sha"
     assert_includes out, "OK: stale file NOT deleted (baseline-safe)"
     assert_includes out, "OK: rejected before running"
     assert_includes out, "OK: passing-run warnings"
+    assert_includes out, "OK: dropped summary line"
+    assert_includes out, "OK: dropped copy id on the survivor"
+    assert_includes out, "OK: dropped copy id on the annotation"
+    assert_includes out, "OK: old report has no dropped line"
+    assert_includes out, "OK: unpaired summary line"
+    assert_includes out, "OK: no not-counted part when every source is counted"
+    assert_includes out, "OK: unpaired hint keeps pairing for the other sources"
+    assert_includes out, "OK: unpaired line names the uncounted source"
+    assert_includes out, "OK: no unpaired line at zero"
+    assert_includes out, "OK: old report has no unpaired line"
+    assert_includes out, "OK: scoped unpaired line names changed lines"
     assert_includes out, "OK: no errors on passing run"
     assert_includes out, "OK: one old-format id warning"
     assert_includes out, "OK: no old-format id warning when the report has no counts"
@@ -60,17 +94,17 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: escaped-path baseline kept"
     assert_includes out, "OK: escaped path rejected before running"
     assert_includes out, "a%25b%0Ac.json"
-    incomplete = out[/case18 baseline line: .*/].to_s
+    incomplete = out[/case20 baseline line: .*/].to_s
     assert_includes incomplete, "; 1 unverified survivor(s) (see baseline.unverified_survivors in the report)",
                     "unverified count missing:\n#{out}"
-    assert_includes out[/case19 baseline line: .*/].to_s, "; incomplete run (read no_verdict[] first): REGRESSED.", "regressed+incomplete drifted"
+    assert_includes out[/case21 baseline line: .*/].to_s, "; incomplete run (read no_verdict[] first): REGRESSED.", "regressed+incomplete drifted"
     assert_includes incomplete, ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[]).",
                     "incomplete marker missing"
-    assert_includes out[/case20 baseline line: .*/].to_s, ": INCOMPLETE (nothing could be scored; see no_verdict[]).",
+    assert_includes out[/case22 baseline line: .*/].to_s, ": INCOMPLETE (nothing could be scored; see no_verdict[]).",
                     "nil-score incomplete marker missing"
     assert_includes out, "OK: old baseline report needs an upgrade"
     assert_includes out, "OK: old baseline report delivered"
-    assert_includes out[/case21 baseline line: .*/].to_s, "completeness unavailable (upgrade the gem)",
+    assert_includes out[/case23 baseline line: .*/].to_s, "completeness unavailable (upgrade the gem)",
                     "an old report must not imply that completeness passed"
     refute_includes out[/case3 baseline line: .*/].to_s, "unverified", "no empty unverified count should appear"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
@@ -93,5 +127,16 @@ class ActionHarnessTest < Minitest::Test
     assert_includes args_of.call("5:"), "--no-since", "since: none must pass --no-since through"
     refute_includes args_of.call("5:"), "--since origin", "since: none must not also scope"
     assert_includes sec.call("7:"), "file=sub/lib/calc.rb", "working-directory prefix regressed"
+
+    # #401: every cell of the unusual-path table ran. 5 names x 5 rows, plus
+    # 3 names x 2 extra-args rows; the rest are known gaps with an issue.
+    table = sec.call("19:")
+    gaps = table.scan(/TABLE-GAP: (\S+)/).flatten
+    assert_equal [], gaps, "known gaps drifted:\n#{table}"
+    assert_equal 36 - gaps.size, table.scan("TABLE-OK:").size, "a table cell did not run:\n#{table}"
+    near = sec.call("19b:")
+    assert_includes near, "OK: newline parent is not the cache dir"
+    assert_includes near, "OK: newline cache dir created"
+    refute_includes near, "FAIL:"
   end
 end

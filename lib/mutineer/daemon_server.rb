@@ -7,6 +7,10 @@ require_relative "child_coverage"
 require_relative "orphan_guard"
 require_relative "concern_blocks"
 require_relative "redaction"
+require_relative "database_urls"
+require_relative "output_filter"
+require_relative "child_cause"
+require_relative "source_bytes"
 
 module Mutineer
   # App-side daemon (persistent worker).
@@ -28,13 +32,32 @@ module Mutineer
   #
   # Protocol (one JSON object per line, both directions):
   #   boot in  : {"cmd":"boot","project_root":"...","boot":"config/environment","require_paths":[...],
-  #               "load_paths":["test"],"framework":"minitest","rails":true}
-  #   ready out: {"ready":true,"ruby":"3.3.6","database_count":1}
+  #               "load_paths":["test"],"framework":"minitest","rails":true,"verbose":false,"db_role":"worker"}
+  #              (db_role: "prepare" copies databases on the provision command, "worker"
+  #               takes the shared lock, "solo" provisions one slot at boot (#416),
+  #               absent provisions "slots" at boot)
+  #              ("load_paths" holds the test-helper roots and the user's
+  #               load_path directories; boot! unshifts each in turn, #491;
+  #               "extra_load_paths" repeats those directories in order for
+  #               the coverage cache key)
+  #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
+  #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
   #   provision: {"cmd":"provision","slots":N} -> {"ok":true} or {"ok":false,"error":"..."}
   #   run  in  : {"id":N,"worker":I,"payload":{"code":"<ruby>","source_file":"app/models/order.rb"},
   #               "tests":["test/models/order_test.rb"],"timeout":30}
+  #              (a mutant with a reach probe, #345 and #493, also sends "reach_path" and "reach_key" inside
+  #               "payload". The child clears that file, and the thread variable
+  #               named by reach_key, after load and before tests, so a
+  #               load-time call is not a test reaching the expression, #345)
+  #              (a mutant of a def in a concern's hook block adds to the payload
+  #               "hook_def":{"line":12,"name":"total","singleton":false}, #297)
+  #              (a reload run adds "callback_growth_log":"/tmp/...", the file
+  #               the child appends a class whose callback count grew to, #479)
   #   verdict  : {"id":N,"verdict":"survived"|"killed"|"error"|"timeout"}
+  #              (an "error" adds "details" when the child sent a cause line:
+  #               a raise → "Class: message" (#388); an in-test database error →
+  #               "a test failed with a database error: Class: message" (#417))
   #   quit in  : {"cmd":"quit"}
   #
   # Worker isolation: when the app is Rails, each fork is routed to its own
@@ -45,29 +68,23 @@ module Mutineer
   #
   # Verdict mapping: child exit 0=survived (suite passed), 1=killed (suite
   # failed), 2=error (child raised AROUND the test: load, boot, or worker-DB
-  # routing failure); parent-detected timeout. Tagging an in-test DB error (one
-  # fired inside a test body, vs at routing time) as `error` rather than
-  # `killed` is only observable under the concurrent gate and is not yet
-  # implemented.
+  # routing failure); parent-detected timeout. Exit 2 also covers a run whose
+  # first failing test failed with an Active Record connection or lock error
+  # inside the test (#296): {MinitestIntegration::InTestDatabaseError} decides.
   module DaemonServer
     # Poll interval (seconds) for the per-fork deadline wait loop.
     POLL = 0.02
-    # Basename glob for a mutant file written beside a source file.
-    # Tempfile puts hyphens in the name, so it is not a constant name. The
-    # leading dot hides a new file from Zeitwerk (#253); a file an older
-    # version left behind has none, so the glob matches both.
-    DAEMON_TEMP_BASENAME = "{.,}mutineer_daemon*.rb"
-
-    # Skips daemon mutant files when Zeitwerk scans an autoload directory.
-    # The boot sweep keeps a file another process still holds. Zeitwerk skips a
-    # hidden one (#253), but one an older version wrote has no dot, and it would
-    # stop the next boot, because its name is not a constant.
+    # Skips mutant files of both modes ({OrphanGuard::TEMP_BASENAME}) when
+    # Zeitwerk scans an autoload directory. The boot sweep keeps a file another
+    # process still holds. Zeitwerk skips a hidden one (#253), but one an older
+    # version wrote has no dot, and it would stop the next boot, because its
+    # name is not a constant.
     module DaemonTempIgnore
       # @return [void]
       def setup
         dirs = Array(Mutineer::DaemonServer.instance_variable_get(:@source_dirs))
         dirs.each do |dir|
-          ignore(File.join(dir, Mutineer::DaemonServer::DAEMON_TEMP_BASENAME))
+          ignore(File.join(dir, Mutineer::OrphanGuard::TEMP_BASENAME))
         end
         super
       end
@@ -87,11 +104,15 @@ module Mutineer
         output ||= @protocol
         @errio = errio
         @output = output
+        # The client sends UTF-8 JSON; with LANG unset the pipe would read as US-ASCII (#303).
+        # Replies are UTF-8 too, including a non-ASCII path (#346).
+        input.set_encoding(Encoding::UTF_8)
+        output.set_encoding(Encoding::UTF_8)
         boot_line = input.gets
         return if boot_line.nil? # client vanished before boot
 
         boot!(JSON.parse(boot_line.strip))
-        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION, "database_count" => database_count))
+        output.puts(JSON.generate("ready" => true, "ruby" => RUBY_VERSION, "databases" => databases))
         output.flush
 
         input.each_line do |line|
@@ -154,6 +175,19 @@ module Mutineer
         @framework = cfg.fetch("framework", "minitest")
         @source_dirs = Array(cfg["source_dirs"]).map { |d| File.expand_path(d) }
         Dir.chdir(cfg["project_root"]) if cfg["project_root"]
+        # The parent's drain knows the tool's DATABASE_URL. A URL the app
+        # loads from a dotenv file, or assigns before it prints, is hidden
+        # here, where this process can see it (#341). Stderr only: stdout is
+        # the protocol channel reserved above. Point fd 1 at the filtered
+        # stderr so `puts` from the app takes the same path.
+        Redaction.extra_urls = DatabaseUrls.from_files(Dir.pwd)
+        unless OutputFilter.install(streams: [:stderr]) == :started
+          raise "cannot redirect stderr, so a database password would be printed"
+        end
+        if @protocol
+          STDOUT.reopen(STDERR)
+          $stdout = STDOUT
+        end
         ENV["RAILS_ENV"] ||= "test" if cfg["rails"]
         Array(cfg["load_paths"]).each { |d| $LOAD_PATH.unshift(File.expand_path(d)) }
         # Start Coverage BEFORE the app loads, so booted source lines are
@@ -182,6 +216,8 @@ module Mutineer
         # can surface a clean error rather than hang on the handshake.
         @output.puts(JSON.generate("ready" => false, "error" => describe_error(e)))
         @output.flush
+        # exit! skips at_exit, so flush the stderr pipe before it.
+        OutputFilter.uninstall
         exit!(1)
       end
 
@@ -192,16 +228,33 @@ module Mutineer
       #
       # `db_role` "prepare" waits for a provision command (the first daemon).
       # "worker" only takes the shared lock (a worker daemon, including a
-      # respawn). Anything else provisions now, which is what a direct client
-      # that never sends the command needs. SQLite provisioning does nothing.
+      # respawn). "solo" provisions one slot now: it is the one worker of a
+      # run whose first daemon did not boot, so it must take the exclusive
+      # lock and copy its own database (#416). A respawn does the same.
+      # Anything else provisions now, which is what a direct client that
+      # never sends the command needs. SQLite takes the run lock and copies
+      # files on first use.
+      #
+      # Only a LoadError from loading the adapter file turns routing off. Any
+      # later failure (the schema lookup, the lock, or a PostgreSQL or MySQL
+      # copy) raises, so the boot fails: a daemon with routing off would run
+      # mutants against the app's own test database (#416).
       def setup_worker_db(cfg)
-        require_relative "rails_worker_db"
-        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
-        # Only the booted app knows its schema file (`schema_dump:` can rename it).
-        @schema_path = @worker_db&.ruby_schema_path
+        # Only a parallel worker daemon gets these names (DaemonBackend.boot_config).
+        @shared_databases = Array(cfg["shared_databases"]).map(&:to_s)
         # Each SQLite slot is seeded once, on first use (not every mutant fork).
         # Postgres and MySQL slots are copied at provision time, so this flag is unused there.
         @slot_ready = {}
+        begin
+          require_relative "rails_worker_db"
+        rescue LoadError => e
+          @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
+          @worker_db = nil
+          return
+        end
+        @worker_db = RailsWorkerDb.available? ? RailsWorkerDb : nil
+        # Only the booted app knows its schema file (`schema_dump:` can rename it).
+        @schema_path = @worker_db&.ruby_schema_path
         return unless @worker_db
 
         case cfg["db_role"]
@@ -209,24 +262,51 @@ module Mutineer
           nil
         when "worker"
           @worker_db.prepare_worker!
+        when "solo"
+          @worker_db.provision(1)
         else
           @worker_db.provision(cfg.fetch("slots", 2).to_i)
         end
-      rescue LoadError => e
-        @errio.puts("[daemon] worker-DB routing unavailable: #{redact(e.message)}")
-        @worker_db = nil
       end
 
-      # Database configs in the booted test environment. 1 when the app has no
-      # worker-DB adapter. The tool uses this to force a single worker.
+      # The booted test environment's database config names and the one each
+      # worker copies, for the tool's worker count. nil when the app has no
+      # worker-DB adapter. A failed lookup is reported, not hidden: the tool
+      # then keeps one worker. That report still names the primary when it
+      # resolves, so the tool still rejects a `shared_databases` that lists it.
       #
-      # @return [Integer]
-      def database_count
-        return 1 unless @worker_db
+      # @return [Hash, nil]
+      def databases
+        return nil unless @worker_db
 
-        @worker_db.database_count
+        @worker_db.database_names
+      rescue StandardError => e
+        { "error" => describe_error(e), "primary" => primary_database_name }
+      end
+
+      # The primary config name alone, or nil when it does not resolve either.
+      #
+      # @return [String, nil]
+      def primary_database_name
+        @worker_db.primary_database_name
       rescue StandardError
-        1
+        nil
+      end
+
+      # Raise when a test in this fork used a database that parallel workers
+      # share (`shared_databases`). Its verdict may rest on another worker's
+      # rows, so the mutant is scored `error`. A serial run sends no names.
+      #
+      # @return [void]
+      # @raise [RuntimeError] when a shared database holds a connection.
+      def check_shared_databases!
+        return if @worker_db.nil? || @shared_databases.nil? || @shared_databases.empty?
+
+        used = @worker_db.touched_shared_databases(@shared_databases)
+        return if used.empty?
+
+        raise "shared database used during a parallel run: #{used.join(", ")}. " \
+              "Remove it from shared_databases, or see https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database"
       end
 
       # Run {RailsWorkerDb.provision} and report success or the cause. A failure
@@ -252,15 +332,22 @@ module Mutineer
         cmap = CoverageMap.new(
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
+          extra_load_paths: Array(@cfg["extra_load_paths"]),
           boot_path: @cfg["boot"], require_paths: Array(@cfg["require_paths"]),
           framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
-          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
+          capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT,
+          verbose: @cfg["verbose"] == true # the capture warning shows the real error (#517)
         ).build_via_fork(after_fork: coverage_after_fork)
         # Nothing reads Coverage after the map, so a mutant forked from this
         # daemon does not pay for it (#228).
         Coverage.suspend if Coverage.running?
         { "map" => cmap.map, "failed_test_files" => cmap.failed_test_files,
-          "failed_clean_tests" => cmap.failed_clean_tests, "load_lines" => cmap.load_lines.to_a,
+          "failed_clean_tests" => cmap.failed_clean_tests,
+          "failed_clean_details" => cmap.failed_clean_details,
+          "clean_timeouts" => cmap.clean_timeouts,
+          # #495: the tool reports this as timing.clean_check_seconds.
+          "clean_check_seconds" => cmap.clean_check_seconds,
+          "load_lines" => cmap.load_lines.to_a,
           "load_methods" => cmap.load_methods.to_a }
       rescue Exception => e # rubocop:disable Lint/RescueException
         error = describe_error(e)
@@ -270,11 +357,13 @@ module Mutineer
 
       # `Class: message` for an error the daemon reports, with credentials hidden.
       # Rails parses DATABASE_URL itself, so its URI error can carry the password.
+      # {Redaction.describe} never raises, so a rescue that calls this cannot
+      # make the raw error the cause of a new one.
       #
       # @param error [Exception]
       # @return [String]
       def describe_error(error)
-        redact("#{error.class}: #{error.message}")
+        Redaction.describe(error)
       end
 
       # Hide database credentials in text bound for the client or stderr.
@@ -313,7 +402,12 @@ module Mutineer
         # Seed the slot's DB until the first killed/survived fork for this worker slot.
         first_use = @worker_db && !@slot_ready[worker]
         daemon = Process.pid
+        cause_rd, cause_wr = IO.pipe
+        cause_wr.sync = true
         pid = fork do
+          child = Process.pid
+          cause_rd.close
+          ChildCause.arm!(cause_wr, child)
           # New process group so a per-fork timeout can SIGKILL the whole subtree,
           # and silence the child's stdout so test output stays out of the diagnostics.
           Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -327,22 +421,49 @@ module Mutineer
               # A routing failure raises here and is scored `error`, never a false verdict.
               @worker_db&.after_fork(worker, first_use ? @schema_path : nil, seed: first_use)
               apply_payload(req["payload"])
-              run_tests(Array(req["tests"]))
+              # A reload can run the probed expression while the file loads.
+              # Drop that write before tests, matching the in-process child (#345).
+              # A request with no payload (a test stub) has nothing to clear.
+              loaded = req["payload"] || {}
+              forget_load_reach(loaded["reach_path"], loaded["reach_key"])
+              # A parallel worker records each pool that runs SQL, so a test
+              # that closes its shared connection is still caught below.
+              if @worker_db && @shared_databases&.any?
+                @worker_db.skip_schema_check!
+                @worker_db.watch_sql
+              end
+              result = run_tests(Array(req["tests"]))
+              check_shared_databases!
+              result
             rescue Exception => e # rubocop:disable Lint/RescueException
               @errio.puts("[daemon-child] #{describe_error(e)}")
+              ChildCause.write(cause_wr, e, child)
               2
+            ensure
+              ChildCause.disarm!
             end
           exit!(code)
         end
+        cause_wr.close
         verdict = wait_verdict(pid, timeout)
         # Mark ready only when the child finished cleanly after seeding
-        # (killed/survived). Timeout can interrupt mid-copy; error is a routing
-        # failure. Both leave the slot unready so the next fork seeds again.
+        # (killed/survived). Timeout can interrupt mid-copy; error can be a
+        # routing failure or a database error inside a test (#296). Both leave
+        # the slot unready so the next fork seeds again. A shared-database
+        # error (check_shared_databases!) also exits 2, so it seeds again too:
+        # the exit code cannot tell it from a routing failure. That costs only
+        # time, in a run where that check then fails every mutant.
         @slot_ready[worker] = true if first_use && %w[killed survived].include?(verdict)
         # A SIGKILLed timeout child skipped its Tempfile unlink. Sweep the orphan
         # so it cannot outlive the run.
         sweep_temps if verdict == "timeout"
-        { "id" => req["id"], "verdict" => verdict }
+        reply = { "id" => req["id"], "verdict" => verdict }
+        cause = verdict == "error" && ChildCause.read(cause_rd)
+        reply["details"] = cause if cause
+        reply
+      ensure
+        cause_rd&.close
+        cause_wr.close if cause_wr && !cause_wr.closed?
       end
 
       # Hide kept mutant files from Zeitwerk before the app builds its loaders.
@@ -371,12 +492,13 @@ module Mutineer
         Zeitwerk::Loader.prepend(DaemonTempIgnore)
       end
 
-      # Remove orphaned mutant tempfiles from the source dirs (parent-side; the
-      # SIGKILL path cannot run the child's ensure). Mirrors JobPlan.sweep_orphans.
-      # Skips a file another process still owns ({OrphanGuard.mutant_file_in_use?}).
+      # Remove orphaned mutant tempfiles of both modes from the source dirs
+      # (parent-side; the SIGKILL path cannot run the child's ensure). Mirrors
+      # JobPlan.sweep_orphans. Skips a file another process still owns
+      # ({OrphanGuard.mutant_file_in_use?}).
       def sweep_temps
         @source_dirs.to_a.each do |dir|
-          Dir.glob(File.join(dir, DAEMON_TEMP_BASENAME)).each do |path|
+          Dir.glob(File.join(dir, OrphanGuard::TEMP_BASENAME)).each do |path|
             next if OrphanGuard.mutant_file_in_use?(path)
 
             File.unlink(path) rescue nil # rubocop:disable Style/RescueModifier
@@ -420,6 +542,21 @@ module Mutineer
         end
       end
 
+      # Empties the reach sentinel after the mutant file has loaded. Same rule
+      # as {ReachProbe.forget_load}. Written here because this file cannot
+      # require Prism.
+      #
+      # @param path [String, nil] sentinel path, inside the run payload.
+      # @param key [String, nil] thread-local key, `mutineer_r` plus 16 hex
+      #   digits, the same pattern as {ReachProbe::KEY_FORMAT}.
+      # @return [void]
+      def forget_load_reach(path, key)
+        return unless path.is_a?(String) && !path.empty?
+
+        Thread.current.thread_variable_set(key.to_sym, nil) if key.is_a?(String) && key.match?(/\Amutineer_r[0-9a-f]{16}\z/)
+        File.write(path, "")
+      end
+
       # Write the tool-built mutated text beside the real source and `load` it,
       # reopening the mutated class/method in THIS child only. It goes in the
       # source file's directory (like Isolation.apply_whole_file) so a
@@ -432,30 +569,43 @@ module Mutineer
       # removes orphans and never touches a live file. Same path for reload
       # (whole file) and redefine (wrapped snippet). The backend sends the whole
       # file, so the concern blocks it stores replace the forgotten ones (#256).
+      # With a `"hook_def"`, the load places the mutated hook-block def into each
+      # class that has the method, before the rest of the file runs; it raises
+      # when none was stored, so the mutant scores `error` (#297, #348).
       def apply_payload(payload)
+        hook = payload["hook_def"]
+        hook &&= { line: hook.fetch("line"), name: hook.fetch("name").to_sym, singleton: hook.fetch("singleton") }
+        ReloadGuards.callback_growth_log = payload["callback_growth_log"] # #479
         dir = File.dirname(File.expand_path(payload.fetch("source_file")))
         Tempfile.create([".mutineer_daemon", ".rb"], dir) do |f|
           # Held until this block ends, including SIGKILL (the kernel drops it).
           # Another run's sweep sees the lock and does not delete the file.
           f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
-          f.write(payload.fetch("code"))
+          # JSON delivered Unicode. Write the encoding the comment names (#346).
+          f.binmode
+          f.write(SourceBytes.for_file(payload.fetch("code")))
           f.flush
-          ConcernBlocks.replace(payload.fetch("source_file")) { load f.path }
+          ConcernBlocks.load_mutant(payload.fetch("source_file"), f.path, hook_def: hook)
         end
       end
 
       # Load the covering test files and run them; 0 = all passed (survived),
-      # 1 = a failure/error (killed). Minitest only; rspec is not yet on this path.
+      # 1 = a failure/error (killed), 2 = the first failure was an in-test
+      # database error (error, #296). Minitest only; rspec is not yet on this path.
       # {MinitestIntegration.run} is the method the daemon's clean check uses,
-      # so each mutant fork gets the same seed and class list (#282). It loads
+      # so each mutant fork gets the same seed and, within each file, the same
+      # class order as the clean check (#282). It loads
       # only stdlib, so the daemon still needs no Prism. The fork requires
       # nothing else first: the test files' `require "test_helper"` loads
       # rails/test_help after the class list is reset, as in the clean check.
+      # One failing test already kills the mutant, so the fork stops there, as
+      # the in-process mutant run does (#490). `--matrix` never reaches the
+      # daemon: the CLI rejects `--matrix` with `--daemon`.
       def run_tests(tests)
         raise "unsupported framework #{@framework.inspect}" unless @framework == "minitest"
 
         require_relative "minitest_integration"
-        MinitestIntegration.run(tests.map { |t| File.expand_path(t) })
+        MinitestIntegration.run(tests.map { |t| File.expand_path(t) }, stop_at_first_failure: true)
       end
     end
   end

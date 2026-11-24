@@ -12,41 +12,179 @@ module Mutineer
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.
     # @param offset [Integer] byte offset of the position.
-    # @param loose [Boolean] also return the lines when the position is in
-    #   code that runs only sometimes when the statement runs (the right side of
-    #   `a && b`, a branch, the body of `x if c`). The tests that ran the
-    #   statement then include every test that ran the position, but may not
-    #   have run it (#254).
+    # @param loose [Boolean] return the lines also when their tests may not
+    #   have run the position: when it is in code that runs only sometimes
+    #   when the statement runs (the right side of `a && b`, a branch, the body
+    #   of `x if c`, #254), and with a first or last line that holds other code
+    #   (the opener of a one-line block, #289). The `def` line is never
+    #   given, because it counts when the file loads. So every test that ran
+    #   the position is among the tests of these lines, unless the statement
+    #   starts on the `def` line.
     # @return [Array<Integer>] the lines of the statement, with the body of each
     #   heredoc in it. Empty when no statement in the body holds the position.
-    #   A first or last line that holds other code is left out, because Ruby
-    #   can count that line without the statement: the `def` line counts when
-    #   the file loads, and `x if done; y(` counts when `y` does not run.
+    #   Unless `loose`, a first or last line that holds other code is left out,
+    #   because Ruby can count that line without the statement: the `def` line
+    #   counts when the file loads, and `x if done; y(` counts when `y` does
+    #   not run.
     def self.for(def_node, source, offset, loose: false)
-      return [] unless def_node.body
-
-      path = path_to(def_node.body, offset) || []
-      index = path.rindex(&:newline?)
-      return [] unless index
-
-      statement = path[index]
-      unless loose
-        # Code that runs only sometimes inside the statement: the tests that ran
-        # the statement need not have run it.
-        return [] if path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) }
-
-        # Ruby counts the line of `x while c` or `x if c` when it checks `c`,
-        # also when `x` never runs. The path is the modifier, its body, statement.
-        return [] if index >= 2 && modifier?(path[index - 2])
-      end
+      statement = statement_at(def_node, offset, conditional: !loose)
+      return [] unless statement
 
       location = statement.location
       lines = (location.start_line..last_line(statement)).to_a
-      lines.delete(location.start_line) unless before(source, location).strip.empty?
-      after = after(source, location).strip
-      lines.delete(location.end_line) unless after.empty? || after.start_with?("#")
+      return lines - [def_node.location.start_line] if loose
+
+      strict_lines(source, location, lines)
+    end
+
+    # Lines of the statement that {for} drops because they share the line with
+    # other code, when that drop leaves no line. Empty when {for} keeps a line,
+    # when no statement holds the offset, or when the code runs only sometimes
+    # (a branch, the right side of `&&`, the body of `x if c`): those lines can
+    # count without this code (#187, #254).
+    #
+    # A one-line block on a call that ran at load has no strict line of its own.
+    # The call's line can count without the block: `each` on an empty array
+    # still counts the line. {JobPlan.ran_at_load?} does not treat that as the
+    # block having run. It uses these lines only for a `define_method` or
+    # `define_singleton_method` call (#435). For a block of another call, the
+    # reach probe tells if a test ran it ({JobPlan.stored_block_verdict}, #493).
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the position.
+    # @return [Array<Integer>] the dropped lines, or an empty array.
+    def self.shared_lines(def_node, source, offset)
+      statement = statement_at(def_node, offset, conditional: true)
+      return [] unless statement
+
+      location = statement.location
+      lines = (location.start_line..last_line(statement)).to_a
+      return [] unless strict_lines(source, location, lines.dup).empty?
+
       lines
     end
+
+    # The statement that holds `offset`, or nil when none does. With
+    # `conditional`, also nil when the code runs only sometimes ({sometimes?}
+    # or a modifier such as `x if c`).
+    #
+    # @param def_node [Prism::DefNode, nil] the method that holds the position.
+    # @param offset [Integer] byte offset of the position.
+    # @param conditional [Boolean] drop code that runs only sometimes.
+    # @return [Prism::Node, nil]
+    def self.statement_at(def_node, offset, conditional:)
+      return nil unless def_node&.body
+
+      path = path_to(def_node.body, offset) || []
+      index = path.rindex(&:newline?)
+      return nil unless index
+      return nil if conditional && conditional_code?(path, index)
+
+      path[index]
+    end
+    private_class_method :statement_at
+
+    # Whether the statement at `index` runs only sometimes when its parent runs.
+    #
+    # @param path [Array<Prism::Node>] nodes from the method body down to the offset.
+    # @param index [Integer] index of the statement on `path`.
+    # @return [Boolean]
+    def self.conditional_code?(path, index)
+      # Code that runs only sometimes inside the statement: the tests that ran
+      # the statement need not have run it.
+      path[index..].each_cons(2).any? { |parent, child| sometimes?(parent, child) } ||
+        # Ruby counts the line of `x while c` or `x if c` when it checks `c`,
+        # also when `x` never runs. The path is the modifier, its body, statement.
+        (index >= 2 && modifier?(path[index - 2]))
+    end
+    private_class_method :conditional_code?
+
+    # `lines` with a first or last line removed when that line holds other code.
+    # Ruby can count the line without this statement: the `def` line counts when
+    # the file loads, and `x if done; y(` counts when `y` does not run.
+    #
+    # @param source [String] the source text of the file.
+    # @param location [Prism::Location] the statement's location.
+    # @param lines [Array<Integer>] the statement's lines; modified in place.
+    # @return [Array<Integer>] `lines`.
+    def self.strict_lines(source, location, lines)
+      lines.delete(location.start_line) unless before(source, location).strip.empty?
+      rest = after(source, location).strip
+      lines.delete(location.end_line) unless rest.empty? || rest.start_with?("#")
+      lines
+    end
+    private_class_method :strict_lines
+
+    # Calls that store a block as a method. The block does not run when the
+    # call does, so a mutant in the call or in the block is the original method
+    # once that call has run at load (#435). Another call can store its block
+    # too, and the syntax does not say so. {enclosing_block_lines} gives the
+    # lines of such a call, and the reach probe gives the verdict (#493).
+    STORED_METHOD_CALLS = %i[define_method define_singleton_method].freeze
+
+    # Lines of the nearest {STORED_METHOD_CALLS} call that holds `offset`: the
+    # call's strict lines, or the line it shares with other code when strict
+    # mode drops every line. Empty when `offset` is not in such a call, or when
+    # that call runs only sometimes. A line here ran only if the caller recorded
+    # it; an empty `each` on the same line can count without this call (#286).
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the position.
+    # @return [Array<Integer>]
+    def self.stored_method_lines(def_node, source, offset)
+      return [] unless def_node&.body
+
+      path = path_to(def_node.body, offset)
+      call = path&.reverse_each&.find do |node|
+        node.is_a?(Prism::CallNode) && STORED_METHOD_CALLS.include?(node.name)
+      end
+      return [] unless call
+
+      call_statement_lines(def_node, source, call.location.start_offset)
+    end
+
+    # Lines of each statement that holds a block or a lambda literal around
+    # `offset`, with the line rule of {stored_method_lines}. Empty when no
+    # block or lambda in the method body holds `offset`. A statement that runs
+    # only sometimes (`validate { ... } if c`) gives no lines. That check is
+    # for the call that holds the block, not for the place of `offset` in the
+    # block. A line here says that the call ran. It does not say that the
+    # block ran, or that the call stored it (#493).
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the position.
+    # @return [Array<Integer>]
+    def self.enclosing_block_lines(def_node, source, offset)
+      return [] unless def_node&.body
+
+      blocks = (path_to(def_node.body, offset) || []).select do |node|
+        node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
+      end
+      blocks.flat_map { |block| call_statement_lines(def_node, source, block.location.start_offset) }.uniq
+    end
+
+    # Lines of the statement that holds the call at `offset`: its strict
+    # lines, or the line it shares with other code when strict mode drops
+    # every line. Empty when no statement holds `offset`, or when that
+    # statement runs only sometimes.
+    #
+    # @param def_node [Prism::DefNode] the method that holds the position.
+    # @param source [String] the source text of the file.
+    # @param offset [Integer] byte offset of the call.
+    # @return [Array<Integer>]
+    def self.call_statement_lines(def_node, source, offset)
+      statement = statement_at(def_node, offset, conditional: true)
+      return [] unless statement
+
+      location = statement.location
+      lines = (location.start_line..last_line(statement)).to_a
+      kept = strict_lines(source, location, lines.dup)
+      kept.empty? ? lines : kept
+    end
+    private_class_method :call_statement_lines
 
     # Whether the code at `offset` runs each time the method runs: it is in
     # the first statement of the body, not in a statement nested in it or in

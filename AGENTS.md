@@ -11,6 +11,10 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   `load`s a tempfile snippet instead — don't reintroduce `eval`.
 - **Least astonishment.** Names match behaviour, no hidden side effects, explicit
   failures over silent ones. Match the surrounding code's idiom.
+- **Never release without a maintainer's yes.** Do not push a `v*` tag, merge
+  a release PR, run a release workflow, or `gem push` on your own. You may
+  suggest a release. Cut it only after a maintainer agrees to that release,
+  and then do only steps 1 to 4 of the release procedure in "Releasing".
 
 ## Before every commit (local gate)
 
@@ -26,6 +30,15 @@ integration, also run the suite on Minitest 6:
 ```sh
 BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle install
 BUNDLE_GEMFILE=gemfiles/minitest6.gemfile bundle exec rake test
+```
+
+Ruby 3.4 and 4.0 ship Prism 1. For changes to parsing or parse errors, also
+run the suite on Prism 2. The variable makes a skipped Prism 2 test fail:
+
+```sh
+bundle install                                 # root bundle, for the child test commands
+BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle install
+MUTINEER_REQUIRE_PRISM_ERRORS=1 BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle exec rake test
 ```
 
 - **`yard:strict` requires 100% documentation, including private methods AND
@@ -60,102 +73,401 @@ independent of Node and Playwright. CI runs these checks in `website browser tes
 
 ## CI gates that block merge
 
-`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+`yard:strict` · `test` (×2 OS) · `test (minitest 6)` · `test (ruby 3.4, prism 2)` · `rails dogfood` + daemon integration · `website browser tests` · socket/gitguardian.
+
+Today branch protection on `main` requires only `test (ruby 3.4 on
+ubuntu-latest)`, `test (ruby 3.4 on macos-latest)`, `yard strict (ruby 3.4)`
+and `rails dogfood (ruby 3.4)`, and admins can merge past it. The proposed ruleset
+`.github/rulesets/main-merge-gate.json` requires every `ci.yml` job plus
+Socket and GitGuardian on an up-to-date head, and resolved review threads,
+with no bypass. A maintainer applies it by hand (issue #355):
+`docs/plans/2026-11-22-355-merge-gate-ruleset.md`. When you rename or add a
+`ci.yml` job, update the ruleset JSON in the same pull request. Once the
+ruleset is applied, a maintainer re-applies the JSON before the merge (see the doc).
 
 ## PR review gate (before any merge)
 
-Applies to every open pull request, including a stack. Do not merge until
-the current head meets this bar.
+Every pull request must meet this gate on its current head, including stacks, docs-only, and "small" changes.
+Only a maintainer may waive a step, in writing on that pull request.
 
 ### Before opening a new pull request
 
-Run the checks in "Before every commit". For a site change, run the website
-checks too. Open the pull request when those checks pass.
+On the exact pull request head commit:
 
-After a later commit, run the checks that the new lines affect.
+1. Run "Before every commit" checks, plus website checks for site changes.
+2. Review your diff against the pull request base (`main`, `integration/v2.0`,
+   or the lower pull request in a stack). Verify every claim and number against its source.
+3. Never push or open a pull request with a red suite.
+4. Before the first push, run the author self-check skill
+   (`.claude/skills/author-self-check/SKILL.md`; Codex and Grok see the same
+   copy under `.agents/skills/` and `.grok/skills/`). It catches the defect
+   kinds review bots found most often here, such as doc sentences that hold
+   only in the common case and doc copies left stale.
+
+After another commit, run the test checks again in full, and review only the
+new commits. Review all of the pull request again when the new commits touch a
+code file the first review did not see, change more than about 50 lines of
+code, change a public contract (a CLI flag, a config key, the JSON schema, an
+exit code or an Action input), or rewrite the branch history. A full review
+again after a small fix only reviews lines that did not change.
+
+### Labels
+
+GitHub lets only people with triage access or higher set labels, so a
+maintainer labels a pull request from a contributor who cannot. A person with
+that access, or an agent that uses that person's account, labels every pull
+request, except the release pull requests that `release-pr.yml` opens:
+
+| Category | Required |
+|---|---|
+| Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
+| Issue and matching labels | Name the issue it closes, if any, with `Closes #N` in the body. Add matching labels, such as `priority: high` (high priority) or `risk: medium` (medium risk). |
+| Target release | Use a version label, such as `v1.8.0` or `v2.0`. Tentative targets are acceptable. |
+
+Use existing labels only (`gh label list`). Ask a maintainer before adding a new label.
+
+**Issues get their labels when they are created.** Labelling is part of
+filing an issue, not a later pass. Pass them to `gh issue create` with
+`--label`. Every issue gets all four:
+
+| Category | Required |
+|---|---|
+| Type | `bug`, `enhancement`, `documentation`, `dependencies`, or `github_actions` |
+| Priority | `priority: high`, `priority: medium`, or `priority: low` |
+| Risk | `risk: high`, `risk: medium`, or `risk: low` |
+| Target | A version label, such as `v1.10.0` or `v2.0`. Use `backlog` when no release is planned for it. |
+
+`gh label list` gives the meaning of each priority and risk label. Add
+`needs decision` when work cannot start until a maintainer decides. An issue
+template sets only the type label. A person who cannot set labels files the
+issue without the rest, and a maintainer adds them. An older plan in
+`docs/plans/` can show an issue command with fewer labels. This rule applies
+to that command too: add the missing labels when you file the issue.
+
+### Fix it in the pull request, or file an issue?
+
+An issue filed for later is not a substitute for a fix. Before you file an
+issue for something a pull request found, ask what caused it:
+
+- **New code in this pull request gives a silent wrong result** (a false
+  survivor, a false kill, a wrong score or exit code, with no error or
+  warning): fix it in this pull request, or take that code out. Do not file
+  it for later, unless a maintainer accepts it in writing on the pull request.
+- **The defect is older than this pull request**, or the user sees an error
+  or a warning, or a maintainer accepted the limit in writing on the pull
+  request: file an issue, with its labels, and name its number in the change
+  (see "Shift-left rules" below).
 
 ### After the pull request is open
 
-1. Read every review comment. Fix a real finding, or write why the comment
-   is wrong.
-2. Reply on every thread before resolving it. A fix reply names the commit.
-   A decline reply gives the reason.
-3. GitHub checks are green on the head commit.
-4. A person merges.
+1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
+2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
+3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code unless a maintainer accepts it in writing on the pull request (see "Fix it in the pull request, or file an issue?").
+4. After fixes, push and check the new lines again.
+5. Require green GitHub checks on the head commit.
+6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing"). The one standing exception is a pull request into `integration/v2.0` (see "The 2.0 integration branch").
 
-**Stacked pull requests:** start at the bottom of the stack. After a lower
-pull request changes, update the ones above it and review the new lines.
+Agents use a person's GitHub account. Start every agent comment or reply with its bold name, such as `**Codex:**`.
+Post findings on the relevant code line, never in a separate summary comment.
 
-## Releasing (tag-driven — CI publishes, no manual `gem push`)
+**Stacked pull requests:** start at the bottom. When a lower pull request changes, update those above it and recheck new lines.
+
+## The 2.0 integration branch
+
+2.0 work goes to the long-lived branch `integration/v2.0`, not to `main`
+(decided by a maintainer on 2026-11-24). It holds changes that
+`main` cannot take before 2.0, such as a changed default.
+
+- A pull request for 2.0 targets `integration/v2.0`. Label it `v2.0`, and
+  `breaking change` when it is one. The whole PR review gate above applies.
+- `ci.yml` runs on pull requests into `integration/v2.0` and on pushes to it.
+  Branch protection does not cover it, so the agent checks the gate itself.
+- An agent may merge its own pull request into `integration/v2.0` when the
+  GitHub checks are green on the head commit and every review thread has a
+  reply. An agent never merges into `main`.
+- After each merge to `main`, merge `main` into `integration/v2.0`. Never
+  merge `integration/v2.0` into `main` before the 2.0 release.
+- 2.0 reaches `main` in one pull request, after the checklist in issue #284
+  is complete. A maintainer merges that pull request.
+- Nothing is released from `integration/v2.0`. The release rules below
+  apply without change.
+
+## Releasing (manual, a maintainer approves each release)
+
+Nothing in this repo releases, tags, or publishes on a schedule or from a bot
+trigger. Pushing a `vX.Y.Z` tag leaves the gem unpublished. v1.7.0 shipped
+because that tag push started `release.yml` with no approval gate. Keep a tag
+push from starting a publish: do not add a `schedule`, a `workflow_run`, or a
+tag-push trigger to either release workflow.
+
+A person may start a release workflow only when GitHub reports them as a
+human collaborator with maintain or admin on this repository. The workflow
+reads that from the collaborator permission API at runtime. Adding a
+maintainer is a GitHub permission change. The workflow file does not name
+anyone. Write, triage, and read cannot start a release. Bots cannot either.
+The legacy API field `permission` maps the maintain role to `write`, so the
+check uses `user.permissions.maintain`, `user.permissions.admin`, and
+`role_name` of `admin` or `maintain`.
+
+**Release policy for agents (issue #357):**
+
+1. An agent never cuts or publishes a release on its own. Release steps are:
+   push a `v*` tag (including the floating major tags `v1`, `v2`, …), merge a
+   `release/v*` pull request, run `.github/workflows/release-pr.yml` or
+   `.github/workflows/release.yml` (`gh workflow run`, the Actions UI, or
+   another workflow), run `gem push`, or create a GitHub Release.
+2. An agent may suggest a release now and then. It does steps 1 to 4 of the
+   release procedure below only after a maintainer agrees in chat to that
+   release. One yes covers one release, not later ones. Step 5 (approve the
+   `rubygems` environment) and
+   step 6 (move the floating major tag) stay with the maintainer.
+   Before step 1, the agent checks that the `rubygems` environment exists,
+   has required reviewers, and does not let administrators bypass them. If
+   not, the agent stops and tells the maintainer, because `release.yml` would
+   refuse to publish and leave the release half done.
+   An agent runs `gh` under a maintainer's account, so the actor check above
+   passes for it. The chat yes is the control for agents, not that check.
+3. For an urgent bug or a security fix, the agent asks a maintainer if the fix
+   should go out in a release now, without waiting for the next batch. It does
+   not release without that answer.
+4. Other work waits for the next batch. Label each pull request with the next
+   version label, such as `v1.8.0` (see "Labels" above).
+5. A breaking change stays a **draft** pull request while it targets
+   `main`. Label it `breaking change` and the possible major version, such as
+   `v2.0`. Better: target `integration/v2.0`, where it can merge (see "The
+   2.0 integration branch").
+
+A schedule is not a substitute: GitHub records a cron run's actor as the
+last person who edited the workflow, and that person may be a maintainer, so
+a permission check would not stop a cron. The schedule is deleted. Do not add
+it back, and do not run `gh workflow enable` to restore a Monday release.
 
 Semver: **new feature → minor bump, fix → patch.** A behavior change to the
 GitHub Action's defaults is a **major** bump: consumers pin `@v<major>`, and a
 default flip must never reach them without opting in.
 
-1. On a branch, bump `lib/mutineer/version.rb` and move the `CHANGELOG.md`
-   `## [Unreleased]` block into a dated `## [X.Y.Z] - YYYY-MM-DD` section.
-2. Merge to `main`.
-3. Tag and push — this is the whole release trigger:
+Before step 1, run the Fizzy sample check on a clean checkout of current
+`main` (pull first; issue #402): `bundle exec rake fizzy:sample`. The task
+refuses uncommitted changes. It runs this checkout on a pinned commit of
+Fizzy, a real Rails 8 app, and compares the counts with
+`rake/fizzy_sample.json`. It needs Fizzy's Ruby through rbenv or asdf and
+network access for the first clone and gem install. It writes nothing on
+GitHub, so an agent may run it. If it fails, explain each difference by the
+merged pull request that caused it, in a pull request that runs
+`bundle exec rake fizzy:record`. A difference that no merged pull request
+explains is a bug: file an issue and fix it before the release. A
+`no_verdict` count above 0 also blocks the release. That count is an
+errored mutant, a timeout, or an uncapturable mutant. `fizzy:record`
+refuses it, so it cannot be recorded. Fix the cause and merge that fix.
+Then run `bundle exec rake fizzy:sample` again on the merged `main`.
+It must pass before step 1.
+
+The release procedure. A maintainer owns every step. An agent may do steps
+1 to 4 after that maintainer agrees to this release:
+
+1. Prepare the pull request when they want a batch, from `main`:
+   ```sh
+   gh workflow run release-pr.yml --ref main
+   ```
+   `release-pr.yml` runs only for a `workflow_dispatch` started by a human
+   with maintain or admin. It bumps `lib/mutineer/version.rb`, dates the
+   CHANGELOG, and opens a PR. It does not tag or publish. It rebuilds
+   `release/vX.Y.Z` from current `main` only when `main` has moved. A run
+   that finds the branch already based on current `main` leaves that branch
+   as it is. It still dispatches `ci.yml` when
+   the push used `GITHUB_TOKEN`. That dispatch runs tests only.
+2. If the release PR's CI run is parked, approve it (see "CI on the
+   release PR" below). Then review and merge that PR. Merging leaves the gem
+   unpublished. Leave repository auto-merge off.
+3. Tag the merged commit and push the tag:
    ```sh
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
-4. `.github/workflows/release.yml` then: guards `tag == Mutineer::VERSION`, runs
-   tests, publishes to RubyGems via **Trusted Publishing** (OIDC — no API key, no
-   OTP), cuts the GitHub release from the CHANGELOG section, and force-moves the
-   floating major tag (`v1`, `v2`, …) to the release so `uses: …@v<major>`
-   consumers track the latest in that line.
+   A tag push leaves the gem unpublished. It does not start `release.yml`.
+4. Publish from that tag, with the confirm word:
+   ```sh
+   gh workflow run release.yml --ref vX.Y.Z -f confirm=publish
+   ```
+   The publish job starts only when the actor is a human with maintain or
+   admin, the event is `workflow_dispatch`, the ref is a tag, and `confirm`
+   is `publish`. It also refuses when the `rubygems` environment is missing,
+   has no required reviewers, or lets administrators bypass them (GitHub
+   turns that bypass on by default). Both checks run before the job asks for
+   environment approval.
+5. Approve the `rubygems` GitHub environment when Actions asks. That approval
+   publishes. The job then checks the tag against `Mutineer::VERSION`, runs
+   tests, pushes the gem with Trusted Publishing, and creates the GitHub
+   Release.
+6. Move the floating major tag (`v1`, `v2`, …) so `uses: …@v<major>`
+   follows the latest release in that line. Until you do, `@v<major>` users
+   stay on the previous release. The run's last step prints the command, with
+   the commit it published, in the log and in the run summary. `<commit>` is
+   `git rev-parse vX.Y.Z^{commit}`:
+   ```sh
+   git fetch origin && git tag -f v<major> <commit> && git push -f origin v<major>
+   ```
+   The job does not move it: the floating-tag ruleset (below) lets only
+   maintainers do that. For a patch on an older line (v1.2.4 after v1.3.0),
+   the run prints no command and says to leave `v1` where it is. The printed
+   command is right only until the next release in that line: do not run an
+   old one, or `v1` moves backward.
+
+If the publish job fails after `gem push`, that version is already on
+RubyGems and a new dispatch stops at `gem push`. Finish by hand from the
+tag: `gh release create vX.Y.Z --verify-tag --notes-file <notes>`, then
+step 6.
+
+While one person is the only required reviewer, that person may start the
+workflow and approve it. Once a second maintainer is a required reviewer,
+turn on the environment's **Prevent self-review** option so the approver is
+someone other than the starter. Leave that option off until then: if it is
+on while only one reviewer can approve, that reviewer cannot approve their
+own run, and the publish cannot finish. The workflow does not enforce the split.
 
 Safety nets:
-- The **tag must equal `Mutineer::VERSION`** or the release aborts.
-- **Releases are batched, not cut per merge.** `.github/workflows/release-pr.yml` runs
-  weekly (Monday 08:00 UTC) and on demand (`gh workflow run release-pr.yml`). When
-  `feat:`/`fix:` commits sit on `main` past the latest tag, it opens a release PR (bumps
-  `version.rb`, dates the CHANGELOG + adds its reference-link def). Each run rebuilds that
-  PR from the current `main`, so it always covers every change since the last tag; a
-  newer version supersedes an older open release PR, and when `main` moved the same
-  version is re-opened fresh (the old branch is deleted under a lease, never
-  force-pushed). The run never replaces a release branch that holds someone else's
-  commits, or that has a PR it did not open (it leaves that branch alone with a
-  warning), and it never closes a release PR it did not open. A merge commit counts as
-  someone else's commit: GitHub's "Update branch" button on the release PR pauses the
-  automation until that PR is merged or its branch is deleted. Review + merge it, then push the
-  `vX.Y.Z` tag. Every release moves the floating major tag (`v1` today), so Action users get it at once:
-  batch changes rather than releasing after each merge. CI runs on that auto-PR with no
-  secret: a push by the default `GITHUB_TOKEN` starts no other workflow, so after
-  pushing the release branch the job dispatches `ci.yml` on it, and those runs report
-  the required checks on the PR's head commit. With an optional `RELEASE_PR_TOKEN` PAT
-  secret, the push triggers CI itself and the dispatch is skipped. If the checks are
-  missing, run `gh workflow run ci.yml --ref release/vX.Y.Z`.
-- **The release-PR run stops (and opens nothing) in two cases.** If `VERSION` on `main`
-  differs from the latest tag, a bump is merged but not tagged: it warns you to push
-  that tag first. If the computed `vX.Y.Z` tag already exists on origin (for example
-  pushed from a branch), it fails and you resolve it by hand.
-- **GitHub disables scheduled workflows in a public repo after 60 days without
-  activity.** If no release PR appears on a Monday while unreleased `feat:`/`fix:`
-  work sits on `main`, check `gh workflow view release-pr.yml` and re-enable it with
-  `gh workflow enable release-pr.yml`.
 
-**One-time setup (required for the publish to work):** register a Trusted Publisher
-on <https://rubygems.org/gems/mutineer> → owner `davidteren`, repo `mutineer`,
-workflow `release.yml`, no environment. Without it, `release.yml`'s `gem push` fails.
+- The **tag must equal `Mutineer::VERSION`**, and it must be a stable
+  `vMAJOR.MINOR.PATCH` tag, or the job aborts before `gem push` and prints
+  no command to move the floating major tag.
+- **The publish job builds the dispatched commit.** If the tag points at a
+  different commit by the time the approval comes, the job aborts before
+  `gem push`.
+- **`release-pr.yml` opens a PR only when a maintainer runs it.** It never
+  replaces a release branch that holds someone else's commits, or that has a
+  PR it did not open (it leaves that branch alone with a warning), and it
+  never closes a release PR it did not open. A merge commit counts as someone
+  else's commit: GitHub's "Update branch" button pauses the next rebuild
+  until that PR is merged or its branch is deleted. If `VERSION` on `main`
+  differs from the latest tag, the run warns and opens nothing. If the
+  computed `vX.Y.Z` tag already exists on origin, it fails and a maintainer
+  resolves it by hand.
+- **CI on the release PR needs one approval click** while the optional
+  `RELEASE_PR_TOKEN` secret is unset (issue #234). Without the secret, the
+  job pushes and opens the PR with the default `GITHUB_TOKEN`. That push
+  starts no other workflow, so the job dispatches `ci.yml` on the release
+  branch. The dispatched run is an early signal only. Branch protection
+  counts only checks from runs tied to the PR, and the dispatched run is not
+  tied to it. GitHub does create the PR's own `pull_request` CI run, but it
+  parks that run as "action required" because a bot opened the PR. The PR
+  stays blocked until a maintainer approves that run on the release PR's
+  page, where GitHub shows the waiting workflows and an approve button.
+  `gh run list --workflow ci.yml --branch release/vX.Y.Z --event pull_request`
+  lists the parked run.
+  The required checks then report on the PR's head commit.
+  Do not merge past protection instead. If the dispatched run is missing,
+  run `gh workflow run ci.yml --ref release/vX.Y.Z`. That command runs CI
+  only. With a `RELEASE_PR_TOKEN` secret (a fine-grained PAT with Contents,
+  Pull requests and Workflows write; not a GitHub App installation token,
+  which expires after an hour), the push and the
+  PR come from that identity, CI runs without approval, and the dispatch is
+  skipped. The secret stays optional.
+
+**Settings a maintainer applies by hand.** They live in GitHub and on
+RubyGems, not in this repo. Apply them in this order. The
+workflow checks hold only for the `release.yml` stored in the tag. A dispatch
+on a tag runs that tag's copy, so a write collaborator could tag a commit
+with an edited copy that skips them. Until these settings exist, nothing
+stops that tag. Issue #354 deferred them on 2026-10-26, so they are not
+applied today. Item 1 is still needed before the next publish: `release.yml`
+refuses to publish while the `rubygems` environment is missing, has no
+required reviewers, or lets administrators bypass them.
+
+A `v*.*.*` tag on a commit whose `release.yml` still triggers on tag push
+(any commit from before this change) still starts that old workflow. This file
+cannot edit those commits. Requiring the `rubygems` environment on the
+trusted publisher makes that old `gem push` fail, because the old job omits
+`environment:`.
+
+1. Create the GitHub environment `rubygems`. Required reviewers are the
+   maintainers, not one named account. On an organization repository, use a
+   team such as `release-maintainers` whose members have maintain or admin.
+   On a personal repository, teams are unavailable, so list the individual
+   users who have maintain or admin. Adding a person later is a team or
+   reviewer change, not a workflow change. Turn off "Allow administrators to
+   bypass configured protection rules", so an admin cannot skip the approval.
+   Leave **Prevent self-review** off until at least two of those reviewers
+   exist, then turn it on. Under deployment branches and tags, choose
+   "Selected branches and tags" and allow only tags matching `v*.*.*`. An
+   unrestricted policy would let a run from a branch, with an edited
+   `release.yml`, ask for the same approval. Leave "Protected branches only"
+   unset: the publish job runs on a tag, and that policy would block it. Create this environment before any publish run. GitHub
+   otherwise creates a missing environment with no required reviewers. The
+   authorize job refuses that state, so a publish fails until the reviewers
+   exist.
+2. On <https://rubygems.org/gems/mutineer>, edit the Trusted Publisher for
+   the GitHub account that owns this repository, repo `mutineer`, workflow
+   `release.yml`. Set the GitHub Actions environment name to `rubygems`. The
+   new workflow's OIDC token carries that environment. Do this after the
+   required reviewers are saved. From then on, a workflow whose job omits
+   `environment:` cannot `gem push`, and a run of the new workflow waits for
+   a reviewer.
+3. Add a tag ruleset for `v*.*.*`. Its bypass list is the repository roles
+   Maintain and Admin, not a named user. It blocks create, update, and
+   delete, so a write collaborator cannot push or move a release tag.
+4. Add a second tag ruleset for the floating major tags (`v[0-9]` and
+   `v[0-9][0-9]`). Action users pin `@v1`, so a write collaborator who moves
+   it changes the code they run, with no release. Block create, update, and
+   delete, so nobody plants a `v2` before the first v2.0.0 release. Check
+   that the ruleset's target list shows `v1` after you save it.
+   Its bypass list is Maintain and Admin only. Do not add the GitHub Actions
+   app: any workflow a write collaborator pushes could then move the tag.
+   So the publish job does not move the tag. It prints the command, and a
+   maintainer runs it (step 6) after the gem is on RubyGems. Leave
+   auto-merge disabled (`allow_auto_merge` is false today).
 
 ## Shift-left rules (from the 2026-10 PR audit)
 
 These rules come from a postmortem of issues #252, #253, and #254 and an
 audit of every merged PR. They stop the defect patterns that reached users.
-The rule text lives in one place: `.expectation-fit/ways-of-working.yaml`.
+The text of these eleven rules lives in one place:
+`.expectation-fit/ways-of-working.yaml`.
 Reviewers who use the expectation-fit plugin apply it with `/fit-review`;
-every other reviewer, human or bot, applies the same file by hand. Score terms
-are defined in "Score-model discipline" below. Issue #282 tracks the remaining
-ordering gaps: RSpec random order and Minitest class order across selected files.
+every other reviewer, human or bot, applies the same file by hand.
+Product facts and checks that reviews taught us live beside it, in
+`.expectation-fit/decisions/`, one line each. Read the file for the area you
+change before you open a pull request. `ways-of-working.yaml` lists that
+folder as a rule source, so the plugin applies those lines too. Other
+reviewers apply those lines by hand. Add a new review rule there by
+hand first. Its README has the full policy. Score terms
+are defined in "Score-model discipline" below. In-process Minitest and RSpec runs
+share one seed (#282). Within a file, that order does not depend on the other
+files. A mutant run still orders its files by coverage (paired, then cheapest),
+and the combined clean check uses the order the tests were given.
+`--test-command` order is issue #368.
 
-The eight rules, by title: **Track every limitation** - **Cover the
+The eleven rules, by title: **Track every limitation** - **Cover the
 siblings** - **Gate on unrounded values** - **Count what you exclude** -
 **Estimate exclusion frequency** - **One seed contract** - **Assert the
-mechanism** - **Repro becomes fixture**.
+mechanism** - **Repro becomes fixture** - **Test the rule, not the
+example** - **Shell passes values, never parses them** - **Pin the
+dependency you test**. The last three come from the review rounds of
+pull requests #393 and #395 (issue #403).
 
 ## Score-model discipline (don't regress this)
 
 `score = killed / (killed + survived)`. `no_coverage`, `uncapturable`, `unplaceable`, `ran_at_load`, `ignored`,
 `skipped`, `errored` are ALL excluded from the denominator. Empty denominator → `nil`,
 never `0.0`. The exact-survivor integration oracle must stay green.
+
+A run that drops a source whole counts that source and its mutants in the report
+(`summary.unpaired_sources`, `summary.unpaired_mutants`).
+Those mutants have a place in the unrun share, except under `--fail-fast`, which leaves them out.
+
+A new status for a mutant that exists but could not run ships with a count in the report and a
+place in the unrun share (`AggregateResult#unrun_count`, the stderr warning above 10%). A new place
+where an operator declines a candidate calls `decline` (`Mutators::Base`), so it is counted in
+`summary.declined_by_operator`.
+
+## Multi-agent hand-off
+
+Adopted. Claude Code, Codex and Grok Bot share work through `STATUS.md`.
+
+- Claude Code: builds features and reviews code in this repo.
+- Codex: second-opinion reviews and doc polish.
+- Grok Bot: research and X (Twitter) work.
+
+At session start, read "Open for ..." in `STATUS.md` and take items addressed
+to you. When you leave work for another agent, add it under that agent's
+heading: one line, what to do, and where (file, branch, PR or issue).
+Remove an item when it is done. Shared facts go to MemPalace, not to one
+agent's private memory. Keep approval prompts on.

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "minitest/mock"
 require_relative "../rake/docs_contract"
 require_relative "../rake/site_docs"
 
@@ -103,17 +104,37 @@ class DocsContractTest < Minitest::Test
     assert_includes readme, "mutation score at least #{threshold}%"
   end
 
+  # A paragraph line that starts with `#` but is no heading (`#417 tracks ...`)
+  # once matched no branch, so the renderer never advanced and ran out of memory.
+  # Counted, not timed: a stuck loop renders an empty paragraph per turn, so
+  # the stub stops it after a few calls before it can allocate much.
+  def test_schema_article_renders_a_paragraph_line_that_starts_with_a_hash
+    calls = 0
+    inline = lambda do |text|
+      calls += 1
+      raise "render_schema_article is not advancing" if calls > 20
+
+      text
+    end
+    body, = DocsContract.stub(:inline, inline) do
+      DocsContract.send(:render_schema_article, "Intro text.\n#417 tracks the rest.\n")
+    end
+
+    assert_includes body, "<p>#417 tracks the rest.</p>"
+  end
+
   def test_json_schema_page_and_source_name_the_reporter_schema_version
     version = Mutineer::Reporter::SCHEMA_VERSION
     assert_equal version, DocsContract.schema_version(File.read("docs/json-schema.md"))
     assert_includes DocsContract.json_schema_html, "schema_version #{version}</span>"
   end
 
-  # The support matrix is one marked block. A missing block or a missing
+  # Readiness follows Quick start and Documentation (issue #353). The support
+  # matrix is one marked block. A missing block or a missing
   # database row fails this test.
   def test_readme_support_matrix_names_each_database
     readme = File.read("README.md")
-    assert_equal "## Is it production-ready?", readme[/^## .+$/]
+    assert_equal ["## Quick start", "## Documentation", "## Is it production-ready?"], readme.scan(/^## .+$/).first(3)
     block = readme[/<!-- contract:support-matrix -->\n(.*?)<!-- \/contract:support-matrix -->/m]
     flunk("README is missing the support-matrix contract block") unless block
     ["SQLite file", "PostgreSQL", "MySQL", "SQLite in memory", "more than one database"].each do |name|
@@ -171,6 +192,18 @@ class DocsContractTest < Minitest::Test
     assert_includes File.read("README.md"), "| Operators | #{total} (#{defaults.size} by default, #{tier2.size} opt-in) |"
     assert_includes File.read("docs/index.html"), %(<b class="odo" data-from="0">#{total}</b> types of code change)
     assert_includes File.read("docs/llms.txt"), "#{total} mutation operators"
+    index = File.read("docs/index.html")
+    assert_includes index, "<h2>#{count_word(total)} ways to break your code.</h2>"
+    assert_includes index, "#{count_word(defaults.size)} run by default. #{count_word(tier2.size)} Tier-2 operators"
+  end
+
+  # Spells a count below 100 as the landing page does: 22 -> "Twenty-two".
+  def count_word(n)
+    ones = %w[zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen
+              fifteen sixteen seventeen eighteen nineteen]
+    tens = %w[_ _ twenty thirty forty fifty sixty seventy eighty ninety]
+    word = n < 20 ? ones[n] : [tens[n / 10], (ones[n % 10] unless (n % 10).zero?)].compact.join("-")
+    word.capitalize
   end
 
   def test_json_schema_links_to_the_stability_contract

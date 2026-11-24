@@ -67,3 +67,47 @@ module ChildWait
   end
 end
 Minitest::Test.include(ChildWait)
+
+# Runs a block as Ruby runs with LANG and LC_ALL unset: Encoding.default_external
+# is US-ASCII, so a plain File.read tags non-ASCII bytes as invalid (#303).
+module AsciiLocale
+  # Yields with Encoding.default_external set to US-ASCII, then restores it.
+  def with_ascii_default_external
+    previous = Encoding.default_external
+    swap_default_external(Encoding::US_ASCII)
+    yield
+  ensure
+    swap_default_external(previous)
+  end
+
+  # Sets Encoding.default_external without the warning Ruby prints under -w.
+  def swap_default_external(encoding)
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    Encoding.default_external = encoding
+  ensure
+    $VERBOSE = verbose
+  end
+  # Private in a test, and callable as AsciiLocale.swap_default_external below.
+  module_function :swap_default_external
+end
+Minitest::Test.include(AsciiLocale)
+
+# With LANG and LC_ALL unset (containers, agent sandboxes) Ruby reads files as
+# US-ASCII, and the suite's own File.read calls fail on its UTF-8 fixtures and
+# docs. The suite reads as UTF-8 in every shell. A test that needs the ASCII
+# default asks for it with with_ascii_default_external.
+AsciiLocale.swap_default_external(Encoding::UTF_8) unless Encoding.default_external == Encoding::UTF_8
+
+# Sets environment variables for one block, then restores them.
+module EnvOverride
+  # Sets each key (nil unsets it) for the block, then restores the old values.
+  def with_env(updates)
+    prior = updates.each_key.to_h { |key| [key, ENV[key]] }
+    updates.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+    yield
+  ensure
+    prior&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+end
+Minitest::Test.include(EnvOverride)

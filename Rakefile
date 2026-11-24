@@ -2,6 +2,17 @@
 
 require "rake/testtask"
 
+# With LANG and LC_ALL unset (containers, agent sandboxes) Ruby reads files as
+# US-ASCII, and the docs and site tasks fail on this repo's UTF-8 docs (#484).
+# The tasks read UTF-8 text, so read it as UTF-8 in any shell. $VERBOSE hides
+# the warning Ruby prints under -w, as test/test_helper.rb does since #478.
+unless Encoding.default_external == Encoding::UTF_8
+  verbose = $VERBOSE
+  $VERBOSE = nil
+  Encoding.default_external = Encoding::UTF_8
+  $VERBOSE = verbose
+end
+
 # Rails-dependent daemon integration tests: they spawn a daemon under the fixture
 # app's OWN bundle, so they belong with the dogfood job, never the zero-dep suite.
 DAEMON_TESTS = %w[
@@ -11,6 +22,7 @@ DAEMON_TESTS = %w[
   test/runner_daemon_parallel_test.rb
   test/daemon_coverage_test.rb
   test/rails_dogfood_daemon_test.rb
+  test/rails_callback_restore_test.rb
   test/daemon_postgres_test.rb
   test/daemon_mysql_test.rb
 ].freeze
@@ -20,7 +32,7 @@ Rake::TestTask.new(:test) do |t|
   # Fixtures include *_test.rb files that are loaded into forked children by
   # the runner — they are not part of Mutineer's own suite. The daemon tests need
   # the Rails fixture bundle, so they run via `test:daemon` (rails-integration job).
-  t.test_files = FileList["test/**/*_test.rb"].exclude("test/fixtures/**/*", *DAEMON_TESTS)
+  t.test_files = FileList["test/**/*_test.rb", ".claude/skills/**/*_test.rb"].exclude("test/fixtures/**/*", *DAEMON_TESTS)
   t.warning = false
 end
 
@@ -78,6 +90,25 @@ namespace :site do
     abort "site:build takes no destination (argument or SITE_BUILD_DEST); it always builds into _site" if args.extras.any? || ENV["SITE_BUILD_DEST"]
     require_relative "rake/site_build"
     SiteBuild.generate!
+  end
+end
+
+namespace :fizzy do
+  desc "Run this checkout on the pinned Fizzy sample and compare counts (clone and gems cache in " \
+       "$XDG_CACHE_HOME/mutineer/fizzy-sample, or ~/.cache/mutineer/fizzy-sample when it is unset; the first run clones and installs gems, so it takes longer)"
+  task :sample do
+    require_relative "rake/fizzy_sample"
+    FizzySample.sample!
+  rescue FizzySample::Error => e
+    abort e.message
+  end
+
+  desc "Store the last fizzy:sample run's counts and survivor ids in rake/fizzy_sample.json"
+  task :record do
+    require_relative "rake/fizzy_sample"
+    FizzySample.record!
+  rescue FizzySample::Error => e
+    abort e.message
   end
 end
 

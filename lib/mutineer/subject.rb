@@ -15,10 +15,31 @@ module Mutineer
   # constant names, such as an `included` block that runs in each includer),
   # so the redefine strategy cannot load a mutant onto it. `hook_block` is true
   # for a def anywhere inside a concern's `included` or `prepended` block, which
-  # ActiveSupport runs only when a class first includes the concern, so the
-  # reload strategy cannot load a mutant onto it either (#256).
+  # ActiveSupport runs only when a class first includes the concern, so a
+  # reload of the file does not reach a class that already has it (#256).
+  # `reload_hook_call` is the `included` or `prepended` call node of such a
+  # block when reload can still place the def: the mutant file stores the
+  # mutated def just before that call, and the child loads it into each class
+  # that has the method (#297). It is nil when reload cannot place the def, even
+  # when `hook_block` is true (see docs/json-schema.md for the cases).
+  # `enclosing_subject` is the subject of the `def` whose body holds this one,
+  # or nil, so the redefine strategy can load each enclosing method too (#290).
+  # `in_superclass_block` is true for a def inside a class statement's
+  # superclass expression, such as `class X < Struct.new(:a) do ... end`. A
+  # reload keeps the live superclass, so that block does not run again (#492).
+  # `in_kept_constant` is true for a def inside the value of a constant
+  # assignment that a class statement in the same file inherits from
+  # ({Project.kept_constant_write?}), such as `BaseRow = Struct.new(:v) do ... end` with
+  # `class Row < BaseRow`. A reload keeps that constant's class, so the value
+  # does not run again (#503).
+  # `calls_define_callbacks` is true for a def that calls `define_callbacks`
+  # or `define_model_callbacks` anywhere in its body (a nested def or block
+  # too), or calls another such def of the same file by name or through
+  # `super`, through any chain of such calls ({Project.mark_callback_definers!}). A reload skips a chain the class
+  # already has, so a mutant there never reaches Rails (#504).
   Subject = Struct.new(:file, :namespace, :name, :singleton, :def_node, :lexical, :block_owner, :owner_unknown,
-                       :hook_block, keyword_init: true) do
+                       :hook_block, :reload_hook_call, :enclosing_subject, :in_superclass_block,
+                       :in_kept_constant, :calls_define_callbacks, keyword_init: true) do
     # Returns the fully-qualified subject name.
     #
     # @return [String] namespaced method name like `Billing::Invoice#total`.
@@ -38,12 +59,20 @@ module Mutineer
     # call it, so the mutant is not run. Redefine needs a named owner. Reload
     # loads the whole file again, which redefines everything except what a
     # concern's `included` or `prepended` block defines: that block does not run
-    # again in a class that already includes the concern.
+    # again in a class that already includes the concern. Reload places such a
+    # def only when discovery found its {#reload_hook_call} (#297). Reload also
+    # cannot place a def inside a superclass expression ({#in_superclass_block},
+    # #492), inside a superclass constant's kept value ({#in_kept_constant},
+    # #503), or a def that calls `define_callbacks` ({#calls_define_callbacks},
+    # #504).
     #
     # @param strategy [String] `"reload"` or `"redefine"`.
     # @return [Boolean]
     def unplaceable?(strategy)
-      strategy == "redefine" ? owner_unknown == true : hook_block == true
+      return owner_unknown == true if strategy == "redefine"
+
+      (hook_block == true && reload_hook_call.nil?) || in_superclass_block == true || in_kept_constant == true ||
+        calls_define_callbacks == true
     end
 
     # Returns the body location for the subject, if any.

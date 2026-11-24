@@ -9,6 +9,10 @@ class ConcernClassMethodsTest < Minitest::Test
     assert_equal 9, ConcernProduct.scaled(3)
   end
 
+  def test_instance_scaled
+    assert_equal 5, ConcernProduct.new.scaled(2, 3)
+  end
+
   def test_halved
     assert_equal 2, ConcernProduct.new.halved(4)
     assert_equal 3, ConcernProduct.new.halved(6)
