@@ -732,7 +732,7 @@ module Mutineer
       return unless result.mutation && file
 
       source = source_for(file)
-      source.byteslice(0, result.mutation.start_offset).count("\n") + 1
+      source.byteslice(0, result.mutation.start_offset).b.count("\n") + 1
     end
 
     # One titled list of tests in the human kill-matrix section, cut at
@@ -1156,7 +1156,7 @@ module Mutineer
       replacement = m.replacement
       replacement = replacement.dup.force_encoding(before.encoding) if replacement.ascii_only?
       mutated_block = before + replacement + after
-      start_line  = source.byteslice(0, m.start_offset).count("\n") + 1
+      start_line  = source.byteslice(0, m.start_offset).b.count("\n") + 1
       token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
       if token.length > 50
         token = token[0, 47] + "...".dup.force_encoding(token.encoding)

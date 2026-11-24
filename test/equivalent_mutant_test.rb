@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "json"
+require "fileutils"
 require "set"
 require "stringio"
 require "tmpdir"
@@ -43,10 +44,32 @@ class EquivalentMutantTest < Minitest::Test
     assert_predicate entry[:reason], :valid_encoding?
   end
 
-  # An invalid byte right after the marker is not a bare marker that silences every operator.
+  # An invalid byte in the marker part must not give a bare marker that silences every operator.
   def test_suppress_map_ignores_a_marker_cut_by_an_invalid_byte
-    src = "a + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding(Encoding::UTF_8)
-    assert_empty Mutineer::JobPlan.suppress_map(src, "x.rb")
+    ["disable-line\xFF arithmetic", "disable-line \xFF arithmetic"].each do |marker|
+      src = "a + b # mutineer:#{marker}\n".b.force_encoding(Encoding::UTF_8)
+      map = nil
+      _, err = capture_io { map = Mutineer::JobPlan.suppress_map(src, "x.rb") }
+      assert_empty map, marker
+      assert_match(/invalid byte in the disable-line marker at x\.rb:1/, err)
+    end
+  end
+
+  # #538 end to end: a UTF-8 source with an invalid byte in a comment above and
+  # beside the mutated line runs to a report.
+  def test_a_run_reports_a_source_with_an_invalid_byte_in_a_comment
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(%w[lib test].map { |d| File.join(dir, d) })
+      File.binwrite(File.join(dir, "lib/calc.rb"), "# caf\xE9\ndef add(a, b)\n  a + b # caf\xE9\nend\n")
+      File.write(File.join(dir, "test/calc_test.rb"),
+                 "require \"minitest/autorun\"\nrequire_relative \"../lib/calc\"\n" \
+                 "class CalcTest < Minitest::Test\n  def test_add = assert_equal(3, add(1, 2))\nend\n")
+      config = Mutineer::Config.new(sources: [File.join(dir, "lib/calc.rb")], tests: [File.join(dir, "test/calc_test.rb")],
+                                    cache_dir: File.join(dir, ".cache"), project_root: dir)
+      agg = nil
+      capture_io { agg, = Mutineer::Runner.execute(config) }
+      assert_operator agg.results.count(&:killed?), :>=, 1
+    end
   end
 
   def test_suppress_map_warns_on_an_unknown_operator

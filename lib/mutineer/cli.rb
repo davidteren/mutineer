@@ -1424,7 +1424,7 @@ module Mutineer
       per_operator = Hash.new(0)
       valid.each do |subject, mutation, _id|
         source = source_map[subject.file]
-        line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        line = source.byteslice(0, mutation.start_offset).b.count("\n") + 1
         per_operator[mutation.operator] += 1
         original = source.byteslice(mutation.start_offset...mutation.end_offset)
         puts "[#{mutation.operator}] #{subject.qualified_name}  " \
