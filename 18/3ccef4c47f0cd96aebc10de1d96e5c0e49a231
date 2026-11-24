@@ -1,0 +1,693 @@
+.agents/skills/author-self-check
+  s_75ad747774cc9b::t_9fbfa8f307eb15 1
+.claude/skills/author-self-check/SKILL.md
+  s_75ad747774cc9b::t_e4e404cc33802b 1-139
+.claude/skills/author-self-check/self_check.rb
+  s_75ad747774cc9b::t_b46005de3c0c69 1-116
+.claude/skills/author-self-check/self_check_test.rb
+  s_75ad747774cc9b::t_9d51ccbee99365 1-156
+.expectation-fit/decisions/README.md
+  s_75ad747774cc9b::t_04319ed961eb35 1-46
+.expectation-fit/decisions/cli-contract-and-exit-codes.md
+  s_75ad747774cc9b::t_3322714dc95cec 1-11
+.expectation-fit/decisions/coverage-and-test-selection.md
+  s_75ad747774cc9b::t_67d6e05e1fd4f3 1-20
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_75ad747774cc9b::t_c00bd544e22087 1-18
+.expectation-fit/decisions/docs-and-changelog.md
+  s_75ad747774cc9b::t_264a20491ff440 1-8
+.expectation-fit/decisions/github-action-and-ci.md
+  s_75ad747774cc9b::t_3a1f08fa094ce8 1-10
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_75ad747774cc9b::t_3842cf9dbba400 1-12
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_75ad747774cc9b::t_6c0a72f9c8594f 1-17
+.expectation-fit/decisions/pairing-of-sources-and-tests.md
+  s_75ad747774cc9b::t_62b458828c10b9 1-11
+.expectation-fit/decisions/redaction-and-security.md
+  s_75ad747774cc9b::t_ccc861b8346332 1-21
+.expectation-fit/decisions/release-and-process.md
+  s_75ad747774cc9b::t_dc3e6db1ffca5d 1-7
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_75ad747774cc9b::t_c04bb4acb0a825 1-21
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_75ad747774cc9b::t_5cbb86b0256614 1-16
+.expectation-fit/ways-of-working.yaml
+  s_75ad747774cc9b::t_e85f6fa141bb76 6-7,15-23,36-42,48-70
+.github/rulesets/main-merge-gate.json
+  s_75ad747774cc9b::t_f89ffd58d24b53 1-97
+.github/workflows/ci.yml
+  s_75ad747774cc9b::t_ad9a45450c2afd 4-6,8,10,12-14,58-79
+.github/workflows/release-pr.yml
+  s_75ad747774cc9b::t_e61fc8c61f61d7 19-28,109,158,370-372
+.grok/skills/author-self-check
+  s_75ad747774cc9b::t_8390ebdf62e8c8 1
+AGENTS.md
+  s_75ad747774cc9b::t_56cee77bde6fbe 14-17,35-43,76-86,98-99,101-112,116-119,129-160,165,168,175-195,212-240,249-266,278-281,344-363,366,370-373,422-423,425-438,441-444,452-455,460-473
+CHANGELOG.md
+  s_75ad747774cc9b::t_59e7d412f35f3f 9-1110,2929-2933
+CLAUDE.md
+  s_75ad747774cc9b::t_da227fd61887e3 3-5
+CONTRIBUTING.md
+  s_75ad747774cc9b::t_9c05614c1a8e72 3-4,6,8-81,85-89,91-94
+README.md
+  s_75ad747774cc9b::t_541553591114e3 22-66,108-109,111-113,129-130,184-189,191-192,195-196,203,209,220,223-229,236,239,242,246,254,265,267-271,273-279
+Rakefile
+  s_75ad747774cc9b::t_5a7dbbe9f0809d 5-15,25,35,96-114
+STABILITY.md
+  s_75ad747774cc9b::t_651379b652f2fd 6,16,26-30,41,49,54,56-71,89,95-98,102-103,106,112,116,123-125,132-133,140
+STATUS.md
+  s_75ad747774cc9b::t_85dd08d81b03a1 1-16
+action.yml
+  s_75ad747774cc9b::t_6d57c50797763a 18-23,121,232-256,271-345,357-412,418-423,495-497,518-520,526-527,530-544,560-564,595-597,633-637
+docs/agentic-coding.html
+  s_75ad747774cc9b::t_a1092cedd111ac 27,91,160,169
+docs/agentic-coding.md
+  s_75ad747774cc9b::t_2d6d38807d8114 57,203-207,216
+docs/assets/mutineer.css
+  s_75ad747774cc9b::t_03c106902fb612 187
+docs/ci.md
+  s_75ad747774cc9b::t_cc59b82ccfaa5b 22-56,74,78,80-84,114,120-148,151-152,174,182,192,209-218,237
+docs/cli.md
+  s_75ad747774cc9b::t_1135c21d9194a3 9,14,20,23,25,27,31,35,38-80,84-86,101-102,105,107-108,115,117,122-130,138,144-145,159-218,227-264
+docs/comparison.md
+  s_75ad747774cc9b::t_7b36451b7e0479 9,35,68-69,76,81
+docs/equivalent-skips.html
+  s_75ad747774cc9b::t_87270df955b416 7,14,22,27,53,58,81,84-85,95-121,125-126,128-171
+docs/equivalent-skips.md
+  s_75ad747774cc9b::t_4c0aa5a6e0aa73 4-9,64-67,78-150,170,172,176-231
+docs/fragments/contract.yml
+  s_75ad747774cc9b::t_210d795e6624be 15-17,26-28
+docs/getting-started.md
+  s_75ad747774cc9b::t_ce173930608cb8 21-42,65,68,78,111-113,121,166-167
+docs/index.html
+  s_75ad747774cc9b::t_24d33c61bca467 27,80,228-229,259
+docs/index.md
+  s_75ad747774cc9b::t_b312acc45143f9 71,79,87-91,94-96,104,116-117
+docs/json-schema.md
+  s_75ad747774cc9b::t_d607b222a1e79c 6-7,9,11-14,18,26-28,43,46-47,49-51,54-56,66,69,71-74,76-78,81-82,88-91,105-126,131-133,141-185,192-194,231-270,278-283,285-329,341-359,367-391,427,433-434,459,480-515
+docs/learn.html
+  s_75ad747774cc9b::t_b82ada4df05dd4 27,127
+docs/learn.md
+  s_75ad747774cc9b::t_96971df1e267ba 144-149
+docs/llms.txt
+  s_75ad747774cc9b::t_c9231aa0b9e24f 14,29,51-57
+docs/plans/2026-11-10-349-chore-measure-unrun-share-on-real-rails-app-plan.md
+  s_75ad747774cc9b::t_88fa25643587f7 1-265
+docs/plans/2026-11-10-379-feat-pair-concern-with-namespace-test-plan.md
+  s_75ad747774cc9b::t_313903ccc2ce14 1-386
+docs/plans/2026-11-10-380-feat-test-option-directory-or-glob-plan.md
+  s_75ad747774cc9b::t_95b7dd64118b83 1-352
+docs/plans/2026-11-10-381-feat-count-unpaired-sources-and-mutants-plan.md
+  s_75ad747774cc9b::t_354fbda01f5014 1-447
+docs/plans/2026-11-10-382-feat-tests-map-in-config-plan.md
+  s_75ad747774cc9b::t_08802b09b386a4 1-519
+docs/plans/2026-11-10-386-feat-default-mutants-for-bare-if-and-rescue-bodies-plan.md
+  s_75ad747774cc9b::t_12e26d107bf0e5 1-464
+docs/plans/2026-11-10-388-feat-json-errored-mutant-list-plan.md
+  s_75ad747774cc9b::t_f2035321078eef 1-439
+docs/plans/2026-11-10-389-feat-rails-full-reload-strategy-plan.md
+  s_75ad747774cc9b::t_55bc3c8e5fdba6 1-464
+docs/plans/2026-11-10-397-feat-class-body-macro-mutants-plan.md
+  s_75ad747774cc9b::t_040a3c675de2a1 1-485
+docs/plans/2026-11-10-398-feat-coverage-cache-hit-clean-check-plan.md
+  s_75ad747774cc9b::t_f4d94161439caf 1-328
+docs/plans/2026-11-10-399-docs-triage-present-to-receiver-survivor-plan.md
+  s_75ad747774cc9b::t_3ee02a043d0ea5 1-175
+docs/plans/2026-11-10-402-chore-pre-release-fizzy-sample-check-plan.md
+  s_75ad747774cc9b::t_da371a162e4ee5 1-321
+docs/plans/2026-11-10-404-fix-sqlite-run-lock-plan.md
+  s_75ad747774cc9b::t_636fc2afe6192d 1-256
+docs/plans/2026-11-21-201-refactor-coverage-map-split-plan.md
+  s_75ad747774cc9b::t_d78c02ac9ad4c0 1-406
+docs/plans/2026-11-21-492-479-fix-reload-class-bodies-plan.md
+  s_75ad747774cc9b::t_5286270eb98fc1 1-494
+docs/plans/2026-11-21-493-fix-redefine-load-macro-plan.md
+  s_75ad747774cc9b::t_a608378698c8f5 1-407
+docs/plans/2026-11-21-498-495-481-feat-report-fields-plan.md
+  s_75ad747774cc9b::t_6be260429fda37 1-327
+docs/plans/2026-11-22-355-merge-gate-ruleset.md
+  s_75ad747774cc9b::t_4b24ce3cea0554 1-106
+docs/plans/2026-11-22-416-fix-run-lock-gaps-plan.md
+  s_75ad747774cc9b::t_954b188a638d70 1-378
+docs/plans/2026-11-22-496-494-feat-coverage-capture-scope-plan.md
+  s_75ad747774cc9b::t_655fa53cfb574a 1-396
+docs/plans/2026-11-22-512-503-504-fix-reload-followups-plan.md
+  s_75ad747774cc9b::t_089005dbf094a0 1-630
+docs/plans/2026-11-22-515-516-522-fix-test-command-output-plan.md
+  s_75ad747774cc9b::t_0d02af2ed91dc8 1-415
+docs/plans/2026-11-22-517-491-feat-daemon-load-paths-plan.md
+  s_75ad747774cc9b::t_f706e0a74eba20 1-396
+docs/plans/2026-11-22-526-505-518-feat-report-fields-plan.md
+  s_75ad747774cc9b::t_10143e9e4376ba 1-381
+docs/quick-start.md
+  s_75ad747774cc9b::t_3d9bfeb1187c7c 27-28
+docs/rails-setup.md
+  s_75ad747774cc9b::t_7f56c022dd7bbe 15-19,21-24,26-28,34,40-56,58-60,67,70,72-76,141,144,164-165,169,172-184,200-218,264,300,352-353,355-356,360-382
+docs/rails.html
+  s_75ad747774cc9b::t_4694a6f2827e49 27,75,78,104-105,107-108,116-138
+docs/rails.md
+  s_75ad747774cc9b::t_cf4fd3b87b59df 25,116-117,119-120,149-150
+docs/results.md
+  s_75ad747774cc9b::t_9785c97f542d13 13,17-29,47,82-83,87-93,96-97,118,124-137,157,172,176,208,210
+docs/sample-report.html
+  s_75ad747774cc9b::t_6c953a6abd6c06 21
+gemfiles/minitest6.gemfile
+  s_75ad747774cc9b::t_5a438f90e6cbe5 10-13
+gemfiles/prism2.gemfile
+  s_75ad747774cc9b::t_0956762f85d319 1-15
+lib/mutineer.rb
+  s_75ad747774cc9b::t_8bd0b117f3c6c3 37
+lib/mutineer/changed_lines.rb
+  s_75ad747774cc9b::t_e4215dcf050aed 5,54
+lib/mutineer/child_cause.rb
+  s_75ad747774cc9b::t_ea33077cafb2e0 1-165
+lib/mutineer/child_stdout.rb
+  s_75ad747774cc9b::t_fe7440da88c568 26-33,39-42
+lib/mutineer/cli.rb
+  s_75ad747774cc9b::t_3348755830a118 22-23,36-39,50-52,54-58,62-63,66,68-74,83-89,98-100,103-106,111-113,119-122,141-143,156-164,195,201,210-213,238,267-274,280-282,288-299,313-314,319-362,508-509,511,533-537,539-547,558-559,561-563,582,593,600-616,654-655,667,672-713,793-796,804-811,813,817-953,955-966,974-977,979-982,984,986,1018-1019,1038-1040,1049,1070,1076-1079,1081-1091,1093-1094,1110,1112-1116,1120-1127,1165-1168,1170-1194,1200-1203,1205-1217,1256-1340,1382-1384,1392-1393,1396,1398-1422,1425,1434-1440,1446-1449,1453-1503
+lib/mutineer/command_redact.rb
+  s_75ad747774cc9b::t_fd309876d29c47 1-38
+lib/mutineer/concern_blocks.rb
+  s_75ad747774cc9b::t_db00c395cf9f08 3-4,20-26,54-98,127-129,131-132,136-143,156-157,163,173,177,256-270,306-321
+lib/mutineer/config.rb
+  s_75ad747774cc9b::t_e54c366db47db9 6,66-68,70-71,73-74,99-102,107-123,131,134,139-140,156,172-176,335-337,342,392-393,395,431-449,466-553
+lib/mutineer/coverage_map.rb
+  s_75ad747774cc9b::t_24ebf03c8116ea 8,11,18-25,34-37,42-50,54-58,72-110,145-146,151-153,155-158,160,167-170,177-187,195-197,230-237,340-343,346-347,349-355,357-358,362-363,367-368,370-371,375-377,380,382-386
+lib/mutineer/coverage_map/cache.rb
+  s_75ad747774cc9b::t_bd7b1f3bbab680 1-380
+lib/mutineer/coverage_map/capture.rb
+  s_75ad747774cc9b::t_7831580a99c2e9 1-260
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_75ad747774cc9b::t_5a66a86e666ef2 1-248
+lib/mutineer/coverage_map/child_scripts.rb
+  s_75ad747774cc9b::t_c5ebfd9e64bff2 1-357
+lib/mutineer/coverage_map/clean_check.rb
+  s_75ad747774cc9b::t_7149e078910e49 1-303
+lib/mutineer/coverage_map/failed_test_blame.rb
+  s_75ad747774cc9b::t_d4ad6bf84eca81 1-218
+lib/mutineer/coverage_map/recording.rb
+  s_75ad747774cc9b::t_3feba95de4ae07 1-435
+lib/mutineer/coverage_map/skeleton_digest.rb
+  s_75ad747774cc9b::t_e0066ff407d369 1-448
+lib/mutineer/daemon_backend.rb
+  s_75ad747774cc9b::t_c05fc3460ce162 10,57-58,66-72,89-90,92-93,95-96,100,102,105-108,112,179-185,187,194,198,207-212,273-276,278,280-281,285-309,314,322,327-328,332,336,340-341,343-347,351-356,360-363,365,368-378,381,388,391-395,410,412-413,428,438,440-441,453-454,468-469,512-517,519,527-568,571,576-578,584-586,591,598-603,611-612,617-618,622-624,635,638,643
+lib/mutineer/daemon_client.rb
+  s_75ad747774cc9b::t_9f808210384139 47-49,51-53,56-72,75,89,108-120,149-150,152-154,172-175,177,253,261-303,438-443,511-519,525-544,546-551,558-612,625-627
+lib/mutineer/daemon_server.rb
+  s_75ad747774cc9b::t_798b76c297bed1 10-13,35-42,49-52,55-56,58-60,108,110,178-190,219-220,231-241,248-257,265-266,335,338-339,345-350,405-406,408-410,426-430,433-436,443,445-446,450,463-469,548-562,575-577,579-581,587-589,591,599-600,604-606,611
+lib/mutineer/database_urls.rb
+  s_75ad747774cc9b::t_f045b4282cc63c 1-189
+lib/mutineer/external_backend.rb
+  s_75ad747774cc9b::t_7c24e50d8c964f 3,6-7,63-71,76-106,210-218,220,235,241,244,251-262,264-280,284-295,298-302,309-374,379,381-382,389-398,402,404-407,416-425,429,431-432,435,439-451,459,461-462,476-558,560-564,569-570,574-578,624-664,688-691
+lib/mutineer/fs_path.rb
+  s_75ad747774cc9b::t_3ff20175b3f0a2 1-125
+lib/mutineer/init.rb
+  s_75ad747774cc9b::t_ff3873a1126cde 34
+lib/mutineer/isolation.rb
+  s_75ad747774cc9b::t_bccacde93f5839 6,12-13,36-40,43-44,63-64,66,68-69,85,87-88,98,108,119,134,137,192-196,220-224,229,231-232,257-262,281-285,287,303,311,326-340,345-455,458-459,465-466,468,475-478,526,528,532,536-733
+lib/mutineer/job_plan.rb
+  s_75ad747774cc9b::t_a360f789ce18d7 44-46,53-59,74-75,97-99,101-102,104,115-127,134-137,148-149,151,154,166-167,169-182,217-218,230-242,244-302,318-332,337-339,349-351,354,356-357,362-587,600-601,645-648,653-658,663,665-666,681-691,694-695,715-779,891-1063,1068-1071,1077,1080-1084,1086,1088-1091,1093-1096,1100-1142,1148-1153,1157,1162-1174,1177-1187,1189-1193,1200-1225
+lib/mutineer/minitest_failure_report.rb
+  s_75ad747774cc9b::t_5e37a48be8384e 1-63
+lib/mutineer/minitest_integration.rb
+  s_75ad747774cc9b::t_bb116cdb0d41e8 3-5,28-37,40,81,102-103,107-111,113-116
+lib/mutineer/minitest_integration/file_order.rb
+  s_75ad747774cc9b::t_55e7ca2104d191 1-56
+lib/mutineer/minitest_integration/in_test_database_error.rb
+  s_75ad747774cc9b::t_7e73fb4258fced 4,16-22,51-54,67-100,102-104,109-115,128-129,139,142-148,154-157,159,161-170,172,177-178,185,190,211-222,224-290,295-372
+lib/mutineer/mutant_id.rb
+  s_75ad747774cc9b::t_6193a3a502ed90 113-116
+lib/mutineer/mutation.rb
+  s_75ad747774cc9b::t_f17b8556eb105e 16-21,24-25,28,30
+lib/mutineer/mutator_registry.rb
+  s_75ad747774cc9b::t_ad6f98f4a1d5a8 24,57-58,67,91-92
+lib/mutineer/mutators/collection_method.rb
+  s_75ad747774cc9b::t_d6a38009279933 11-23,38-105,107-109,117-126,130-433
+lib/mutineer/mutators/literal_mutation.rb
+  s_75ad747774cc9b::t_f263ea028755f8 23-37,43,49-65
+lib/mutineer/mutators/range_literal.rb
+  s_75ad747774cc9b::t_8a702d41cc1310 15-23,28-30,44-45,54-55,64-65,74-75,85,109-113,118,125-132,134,136-147,149-178
+lib/mutineer/mutators/rescue_body.rb
+  s_75ad747774cc9b::t_f93a8fd69c4065 1-126
+lib/mutineer/mutators/return_nil.rb
+  s_75ad747774cc9b::t_549089fe1b96d4 48-56,59-63,65-73
+lib/mutineer/output_filter.rb
+  s_75ad747774cc9b::t_3376160e16c063 1-451
+lib/mutineer/pairing.rb
+  s_75ad747774cc9b::t_4c3fdbed999144 7,10-17,24-30,51,56,59-69,74-355,380,382-387,409-415,424-476,483-515,653,655,658-661,671-676,686-691,693-695,712-731,733-737,739-742,744-782,794,808,812-813
+lib/mutineer/parser.rb
+  s_75ad747774cc9b::t_814493702b512e 4,29-41,50-88
+lib/mutineer/project.rb
+  s_75ad747774cc9b::t_5ff23b979ed8ad 20,24,30-209,387-390,393,417-418,440-443,448-460,551-553,560-561,572-573,615-617
+lib/mutineer/project_path.rb
+  s_75ad747774cc9b::t_b336bf3c4231b7 3-4,23-27,29,38-39,46-47,49,59,61
+lib/mutineer/rails_worker_db.rb
+  s_75ad747774cc9b::t_1688e1376c296a 57-59,293,308-311,326-346,350,353-356,376-389,429-435,738-740,777-786,908-1199,1472-1473,1479-1482
+lib/mutineer/reach_probe.rb
+  s_75ad747774cc9b::t_0a081fed4e8517 1-432
+lib/mutineer/redaction.rb
+  s_75ad747774cc9b::t_f189d1fbaf8ab0 8-16,21-40,48-50,52-74,78-96,99-107,111,113,115,117-126,130-157,163-332,352-355,361-363
+lib/mutineer/reload_guards.rb
+  s_75ad747774cc9b::t_d7825cff44c574 1-1180
+lib/mutineer/reporter.rb
+  s_75ad747774cc9b::t_188af74d407488 7,29-35,39-44,52-53,59-63,67-71,81-84,87-102,104-111,114-116,118-119,122-124,180-181,186,197-198,200,211-213,215-216,218-222,227,233,275-277,282-290,309-311,327-330,334-346,350-356,364-365,368-369,377-378,396-405,412,421-426,466-467,471,479-485,491,493-494,496-503,542,566,573-593,775,813-823,832-834,841-844,846-999,1005-1006,1013-1015,1055-1057,1063-1082,1084-1086,1089,1091-1138,1140,1155-1157,1160-1162,1169-1171,1174,1177-1181,1183-1186,1189-1192,1194-1267,1275-1279,1281,1301-1308,1311-1326,1340,1399-1401,1406-1408,1412-1504,1601-1650,1669,1674,1678-1682,1688-1733
+lib/mutineer/result.rb
+  s_75ad747774cc9b::t_0d2821e4073f86 13-16,30-36,44-47,61-62,74-80,85,96-98,232-233
+lib/mutineer/run_seed.rb
+  s_75ad747774cc9b::t_5917c38992876d 1-16
+lib/mutineer/runner.rb
+  s_75ad747774cc9b::t_601ba897d683d5 19,23-24,36-41,44,46,49,67-72,86-88,91-103,114-119,124-127,131-140,143-163,165-166,169-195,221-227,231,233,240,247-248,260-261,263,269-270,275-277,281-287,299,306,318-319,322-323,326-329,371-372,383-385,395-410,414,418-419,424-425,429,441-442,444-445,447,449-452,454,507,511,523-542,544-570,572-579,645-660,679-717,726-728,732,748-754
+lib/mutineer/source_bytes.rb
+  s_75ad747774cc9b::t_c59d60879f2948 1-187
+lib/mutineer/statement_lines.rb
+  s_75ad747774cc9b::t_ea9a851baa4280 30-77,81-82,84-86,88-96,99-141,143-180,184-185,187
+lib/mutineer/subject.rb
+  s_75ad747774cc9b::t_751462eea76334 27-39,41-42,63-67,72-75
+lib/mutineer/test_runners.rb
+  s_75ad747774cc9b::t_2297e19071003c 12-14
+lib/mutineer/test_runners/rspec.rb
+  s_75ad747774cc9b::t_05b27b534a45bf 4-5,7-8,19-22,24-30,46,62-67,71,73,80-93,99-105,110-130,132-164,169-170,334-335,399-417,420-421
+lib/mutineer/test_runners/rspec_seed.rb
+  s_75ad747774cc9b::t_b293238b6b73e3 1-151
+lib/mutineer/triage.rb
+  s_75ad747774cc9b::t_6feeae023465a6 8-11,35,63-64,66-71,73,77-91,109-120,133,141-154
+lib/mutineer/version.rb
+  s_75ad747774cc9b::t_20f334ccd3c847 5
+rake/docs_contract.rb
+  s_75ad747774cc9b::t_72d86fcde66cdf 18,22,24-25,28-29,36-37,49,53,55-56,59-60,383-386,530
+rake/fizzy_sample.json
+  s_75ad747774cc9b::t_9e30e9cf254223 1-57
+rake/fizzy_sample.rb
+  s_75ad747774cc9b::t_54e72fa6a8bbbe 1-393
+rake/site_docs.rb
+  s_75ad747774cc9b::t_67686090cdf424 29,50-66
+skills/mutineer/SKILL.md
+  s_75ad747774cc9b::t_f0255bf0e895eb 21,30-34,56-59,70,82
+test/action_harness_test.rb
+  s_75ad747774cc9b::t_ab7b7f0b092d7e 13-16,28,32-34,40-57,62-72,116-126
+test/baseline_test.rb
+  s_75ad747774cc9b::t_d97288a22888cb 251-254,257
+test/binary_failure_message_test.rb
+  s_75ad747774cc9b::t_33004049c3b7c7 1-207
+test/browser/site.spec.js
+  s_75ad747774cc9b::t_12e46aeb9be6bf 10,25,74,114,120-131
+test/call_superclass_reload_test.rb
+  s_75ad747774cc9b::t_c740305f9ffa73 1-497
+test/child_cause_test.rb
+  s_75ad747774cc9b::t_01a73abd13b3e9 1-192
+test/class_macro_load_test.rb
+  s_75ad747774cc9b::t_3477deedd4feea 1-456
+test/cli_daemon_test.rb
+  s_75ad747774cc9b::t_5ff560c68759f0 6-7,120-137
+test/cli_test.rb
+  s_75ad747774cc9b::t_f98aaf545a33f4 23,25-30,96-105,115-121,217,257,476-491,575-577,580-583,585-589,743-768,776-921,1127,1129-1183,1224-1301,1396-1407,1430-1473,1530-1729,1733-1739,1748-1757,1802-1804,1816,1820-1823,1825-2033,2068,2097-2274,2288-2361,2413-2590,2603-2776,2898-2936,3112-3121,3336-3822
+test/concern_blocks_test.rb
+  s_75ad747774cc9b::t_6c71844fdbd789 138-164,260-262,267
+test/config_test.rb
+  s_75ad747774cc9b::t_0c8365557c90ca 123-165,327-429,548-552,778,784-787
+test/continuation_survivor_test.rb
+  s_75ad747774cc9b::t_2bc1a85e622cce 1-173
+test/coverage_map_test.rb
+  s_75ad747774cc9b::t_f61bed6255f5f5 90-92,110,112-113,117-119,123-240,412-447,451-462,626-677,731-733,751,769-772,849-1766,1784-1785,1866-1869,1871-1874,1876-1880,1882,1884-1885,1888,1890-1899,1950-1951,1994-2027,2149,2426-2427,2432-2535,2803-2951,3053-3087,3108,3164-3267
+test/daemon_backend_contract_test.rb
+  s_75ad747774cc9b::t_41363c54ab77cf 8-10,23-48,128-132,139-159,297-402,432,455-475,535-600,663-747,922-924,930,950-982,1254-1256,1258,1265,1270-1284,1286-1344,1362-1469,1519,1527-1542
+test/daemon_client_deadline_test.rb
+  s_75ad747774cc9b::t_020c4c85347f7e 52-61
+test/daemon_client_env_test.rb
+  s_75ad747774cc9b::t_1653734c52e874 8,244-308
+test/daemon_client_test.rb
+  s_75ad747774cc9b::t_5dc207e39ede37 75-77
+test/daemon_coverage_test.rb
+  s_75ad747774cc9b::t_e72320cd597a79 8,190-219,228-257
+test/daemon_mysql_test.rb
+  s_75ad747774cc9b::t_02633261071abb 4,15-16,340-402,441,448,453,456
+test/daemon_postgres_test.rb
+  s_75ad747774cc9b::t_009ca6643ae933 4,15-16,159,232-294,332,339,344,347
+test/daemon_redaction_test.rb
+  s_75ad747774cc9b::t_d00e3fec01f453 60-122,186-187,194-213,215-218,261-266,268,274-328,337-352,360-363,402-451
+test/daemon_seed_test.rb
+  s_75ad747774cc9b::t_9021b5f19f06d4 9-11,14,33-62
+test/daemon_server_hook_def_test.rb
+  s_75ad747774cc9b::t_aa17d22a9f3678 40-53,94-131
+test/daemon_shared_databases_test.rb
+  s_75ad747774cc9b::t_434735f822225c 39-43
+test/daemon_worker_db_test.rb
+  s_75ad747774cc9b::t_b4804fe2169ba5 4,6-8,21-22,24,27-29,683-1015
+test/database_urls_test.rb
+  s_75ad747774cc9b::t_1feeb921b0988a 1-152
+test/docs_contract_test.rb
+  s_75ad747774cc9b::t_c2f857bc29474d 4,107-125,132-133,137,195-206
+test/encoding_test.rb
+  s_75ad747774cc9b::t_734ba662b239ae 1-421
+test/equivalent_mutant_test.rb
+  s_75ad747774cc9b::t_5578e97a67e740 308
+test/external_backend_test.rb
+  s_75ad747774cc9b::t_9a89b671fb56a4 4,6,59-117,127-131,138,140-144,146-175,179-261,268,271-274,279-316,438,440-532,535-537,539-659,664-679
+test/fixtures/action_harness.sh
+  s_75ad747774cc9b::t_77951fc407fab2 25-34,80-114,252-480
+test/fixtures/binary_body.rb
+  s_75ad747774cc9b::t_65676c55023f2a 1-13
+test/fixtures/binary_body_boot.rb
+  s_75ad747774cc9b::t_a20cc81d62ce75 1-9
+test/fixtures/binary_body_spec.rb
+  s_75ad747774cc9b::t_cb47800b401bb9 1-12
+test/fixtures/binary_body_test.rb
+  s_75ad747774cc9b::t_696347fbc59f84 1-17
+test/fixtures/call_superclass.rb
+  s_75ad747774cc9b::t_9d28f663010338 1-15
+test/fixtures/call_superclass_holder_eq_test.rb
+  s_75ad747774cc9b::t_57ff8c2080ade1 1-12
+test/fixtures/call_superclass_holders.rb
+  s_75ad747774cc9b::t_1c4652d1832b4a 1-9
+test/fixtures/call_superclass_shapes.rb
+  s_75ad747774cc9b::t_ab347ebbdd2cc3 1-39
+test/fixtures/call_superclass_shapes_test.rb
+  s_75ad747774cc9b::t_761f0a4c1fb5a1 1-41
+test/fixtures/call_superclass_subclass_test.rb
+  s_75ad747774cc9b::t_f11b22a91bfa2b 1-12
+test/fixtures/call_superclass_test.rb
+  s_75ad747774cc9b::t_305e2c122ff319 1-20
+test/fixtures/concern_namespace/app/models/concerns/storage/totaled.rb
+  s_75ad747774cc9b::t_469a60d15eb8d2 1-9
+test/fixtures/concern_namespace/test/models/storage/totaled_test.rb
+  s_75ad747774cc9b::t_deaa4fddb7c042 1-12
+test/fixtures/const_superclass.rb
+  s_75ad747774cc9b::t_e19f6dd3247b64 1-22
+test/fixtures/const_superclass_holders.rb
+  s_75ad747774cc9b::t_7076de9bfbe9f0 1-9
+test/fixtures/const_superclass_subclass_test.rb
+  s_75ad747774cc9b::t_ee6e71055d7422 1-19
+test/fixtures/const_superclass_test.rb
+  s_75ad747774cc9b::t_58dc83af9d8bf5 1-25
+test/fixtures/constant_reload.rb
+  s_75ad747774cc9b::t_2a0ee3946b4d00 1-10
+test/fixtures/constant_reload_test.rb
+  s_75ad747774cc9b::t_1cfa01febfcbb6 1-12
+test/fixtures/continuation_load.rb
+  s_75ad747774cc9b::t_e437f39095ba95 1-11
+test/fixtures/continuation_load_miss_test.rb
+  s_75ad747774cc9b::t_1a715b432625f9 1-11
+test/fixtures/continuation_load_test.rb
+  s_75ad747774cc9b::t_2f34c2745ccd8a 1-11
+test/fixtures/continuation_reach.rb
+  s_75ad747774cc9b::t_5b30888023eb7d 1-41
+test/fixtures/continuation_reach_miss_test.rb
+  s_75ad747774cc9b::t_8bc9a5245b6359 1-33
+test/fixtures/continuation_reach_test.rb
+  s_75ad747774cc9b::t_62bb8527be0de0 1-41
+test/fixtures/day_lookup.rb
+  s_75ad747774cc9b::t_e375f48a14cdd4 1-11
+test/fixtures/day_lookup_test.rb
+  s_75ad747774cc9b::t_ad6448bfdfc1a5 1-16
+test/fixtures/encoding/eucjp.rb
+  s_75ad747774cc9b::t_c90120a56dfe60 1-6
+test/fixtures/encoding/eucjp_test.rb
+  s_75ad747774cc9b::t_f9128c8696c4fa 1-11
+test/fixtures/in_test_db_error_anon_parallel_test.rb
+  s_75ad747774cc9b::t_5046c071216ffc 1-57
+test/fixtures/in_test_db_error_nested_parallel_test.rb
+  s_75ad747774cc9b::t_a13bbbff1b2674 1-49
+test/fixtures/in_test_db_error_parallel_test.rb
+  s_75ad747774cc9b::t_e175b8bfad6063 1-98
+test/fixtures/load_time/apply_boot.rb
+  s_75ad747774cc9b::t_0c8870390907c6 1-5
+test/fixtures/load_time/greetable_boot.rb
+  s_75ad747774cc9b::t_6beeadf6f26479 1-5
+test/fixtures/load_time/greeter_boot.rb
+  s_75ad747774cc9b::t_881509dc105788 1-5
+test/fixtures/load_time/language_eager_boot.rb
+  s_75ad747774cc9b::t_5889ef25ebb408 1-6
+test/fixtures/load_time/language_lazy_boot.rb
+  s_75ad747774cc9b::t_495346e3c6845d 1-6
+test/fixtures/load_time/lib/apply_each.rb
+  s_75ad747774cc9b::t_32966cd17b9d1f 1-17
+test/fixtures/load_time/lib/greetable.rb
+  s_75ad747774cc9b::t_56bc0d908549fb 1-9
+test/fixtures/load_time/lib/greeter.rb
+  s_75ad747774cc9b::t_96ed0b2371f690 1-10
+test/fixtures/load_time/lib/language_product.rb
+  s_75ad747774cc9b::t_5dc95f33af9171 1-11
+test/fixtures/load_time/lib/language_record.rb
+  s_75ad747774cc9b::t_1260eb5c7616c4 1-27
+test/fixtures/load_time/spec/language_product_spec.rb
+  s_75ad747774cc9b::t_92311598c37f87 1-20
+test/fixtures/load_time/test/apply_each_empty_test.rb
+  s_75ad747774cc9b::t_446fb365e70007 1-11
+test/fixtures/load_time/test/apply_each_test.rb
+  s_75ad747774cc9b::t_f5b2dff23cc88b 1-11
+test/fixtures/load_time/test/greetable_test.rb
+  s_75ad747774cc9b::t_22528e3c76604a 1-10
+test/fixtures/load_time/test/language_product_test.rb
+  s_75ad747774cc9b::t_a46c4ff02844a8 1-22
+test/fixtures/local_read_superclass.rb
+  s_75ad747774cc9b::t_bafdee8766627d 1-12
+test/fixtures/local_read_superclass_test.rb
+  s_75ad747774cc9b::t_bd3c6494be3675 1-15
+test/fixtures/local_superclass.rb
+  s_75ad747774cc9b::t_fb0503e86a32ed 1-13
+test/fixtures/local_superclass_test.rb
+  s_75ad747774cc9b::t_9f0b84cca620ed 1-19
+test/fixtures/order_dependent/ledger.rb
+  s_75ad747774cc9b::t_24ded392669c0b 1-20
+test/fixtures/order_dependent/ledger_test.rb
+  s_75ad747774cc9b::t_4363ccf2eebd5f 1-21
+test/fixtures/packs_layout/packs/billing/app/models/invoice.rb
+  s_75ad747774cc9b::t_c4be0f5d31d12e 1-8
+test/fixtures/packs_layout/packs/catalog/app/models/item.rb
+  s_75ad747774cc9b::t_38410a364b181d 1-9
+test/fixtures/packs_layout/packs/catalog/test/models/item_test.rb
+  s_75ad747774cc9b::t_fa232e15ec3a4b 1-11
+test/fixtures/path_anchor/anchor_test.rb
+  s_75ad747774cc9b::t_0eaf331d3df528 1-20
+test/fixtures/path_anchor/lib/anchor.rb
+  s_75ad747774cc9b::t_f9f50b22bd8fc7 1-20
+test/fixtures/path_anchor/lib/anchor.txt
+  s_75ad747774cc9b::t_26658ed42d7c5a 1
+test/fixtures/path_anchor/lib/sibling.rb
+  s_75ad747774cc9b::t_09d2edb7d02e5b 1-6
+test/fixtures/prompt_text.rb
+  s_75ad747774cc9b::t_5e81a66cd6b17a 1-20
+test/fixtures/prompt_text_test.rb
+  s_75ad747774cc9b::t_fcbff97c8aad99 1-18
+test/fixtures/rails_app/.gitignore
+  s_75ad747774cc9b::t_c681aa26e64b68 6
+test/fixtures/rails_app/app/models/concerns/own_stamps.rb
+  s_75ad747774cc9b::t_8a2803335b027a 1-10
+test/fixtures/rails_app/app/models/concerns/stamps.rb
+  s_75ad747774cc9b::t_1c096012c4b0fb 1-10
+test/fixtures/rails_app/app/models/concerns/trackable.rb
+  s_75ad747774cc9b::t_08e1c91e89ee51 1-25
+test/fixtures/rails_app/app/models/express_postage.rb
+  s_75ad747774cc9b::t_03059169a5612d 1-8
+test/fixtures/rails_app/app/models/free_postage.rb
+  s_75ad747774cc9b::t_165e321ad3a776 1-8
+test/fixtures/rails_app/app/models/helper_chain_note.rb
+  s_75ad747774cc9b::t_5b624ca0a0b98f 1-20
+test/fixtures/rails_app/app/models/inclusion_value.rb
+  s_75ad747774cc9b::t_06357eedf22ab6 1-8
+test/fixtures/rails_app/app/models/ledger_row.rb
+  s_75ad747774cc9b::t_650ecfdb8e25b3 1-16
+test/fixtures/rails_app/app/models/note_base.rb
+  s_75ad747774cc9b::t_1bc8556d76b3a0 1-13
+test/fixtures/rails_app/app/models/own_chain_note.rb
+  s_75ad747774cc9b::t_1f2cc553a1e44d 1-21
+test/fixtures/rails_app/app/models/parcel.rb
+  s_75ad747774cc9b::t_1941d3641dd081 1-20
+test/fixtures/rails_app/app/models/postage.rb
+  s_75ad747774cc9b::t_4d093b3154b61b 1-20
+test/fixtures/rails_app/app/models/shipment.rb
+  s_75ad747774cc9b::t_751233aba93441 1-16
+test/fixtures/rails_app/app/models/shipping_quote.rb
+  s_75ad747774cc9b::t_6b6fa0c2e1e64c 1-9
+test/fixtures/rails_app/app/models/shipping_record.rb
+  s_75ad747774cc9b::t_c835fffd455ff2 1-14
+test/fixtures/rails_app/app/models/stamped_note.rb
+  s_75ad747774cc9b::t_061ab890754345 1-13
+test/fixtures/rails_app/bin/dogfood
+  s_75ad747774cc9b::t_40ac499cbb6e44 76-129
+test/fixtures/rails_app/config/application.rb
+  s_75ad747774cc9b::t_69372378d4c5d0 15-17,20-21
+test/fixtures/rails_app/db/schema.rb
+  s_75ad747774cc9b::t_ec48a70850269f 13-19
+test/fixtures/rails_app/extra_load_path/load_path_probe.rb
+  s_75ad747774cc9b::t_24f69ab8cc2df5 1-8
+test/fixtures/rails_app/extra_tests/load_path_probe_test.rb
+  s_75ad747774cc9b::t_e790e653021440 1-16
+test/fixtures/rails_app/test/integration/shipping_quote_flow_test.rb
+  s_75ad747774cc9b::t_bc7939f5192abc 1-9
+test/fixtures/rails_app/test/models/concerns/trackable_test.rb
+  s_75ad747774cc9b::t_c7f8bb88456045 1-10
+test/fixtures/rails_app/test/models/helper_chain_note_test.rb
+  s_75ad747774cc9b::t_118e11e5639913 1-13
+test/fixtures/rails_app/test/models/inclusion_value_test.rb
+  s_75ad747774cc9b::t_f9792b3bbdc972 1-10
+test/fixtures/rails_app/test/models/ledger_row_test.rb
+  s_75ad747774cc9b::t_2c7421a53a4517 1-16
+test/fixtures/rails_app/test/models/own_chain_note_test.rb
+  s_75ad747774cc9b::t_a277ee9a061e4d 1-14
+test/fixtures/rails_app/test/models/parcel_test.rb
+  s_75ad747774cc9b::t_bde561c77ac161 1-17
+test/fixtures/rails_app/test/models/postage_test.rb
+  s_75ad747774cc9b::t_abde33734dfa66 1-17
+test/fixtures/rails_app/test/models/price_list_test.rb
+  s_75ad747774cc9b::t_8a043d854920e8 8
+test/fixtures/rails_app/test/models/shipment_test.rb
+  s_75ad747774cc9b::t_fc7729aef94564 1-18
+test/fixtures/rails_app/test/models/shipment_weak_test.rb
+  s_75ad747774cc9b::t_5d6cc202a399bd 1-20
+test/fixtures/rails_app/test/models/stamped_note_test.rb
+  s_75ad747774cc9b::t_95c177d03b32cd 1-10
+test/fixtures/range_key.rb
+  s_75ad747774cc9b::t_c3b72998eb6caf 1-9
+test/fixtures/range_key_test.rb
+  s_75ad747774cc9b::t_c745bcae5d295a 1-11
+test/fixtures/rspec/database_error_spec.rb
+  s_75ad747774cc9b::t_ceacdf1f12dd1b 1-58
+test/fixtures/shared_capture/beta_test.rb
+  s_75ad747774cc9b::t_3baea08f2761a0 11
+test/fixtures/singleton/hook_load_time.rb
+  s_75ad747774cc9b::t_f2078429f245bb 1-33
+test/fixtures/singleton/hook_load_time_test.rb
+  s_75ad747774cc9b::t_34cf61b1c5357c 1-16
+test/fixtures/source_needs_boot/lib/shop.rb
+  s_75ad747774cc9b::t_debbe5a24b6c9b 1-5
+test/fixtures/source_needs_boot/lib/shop/cart.rb
+  s_75ad747774cc9b::t_1d0d3cd53288cb 1-10
+test/fixtures/source_needs_boot/lib/shop/price.rb
+  s_75ad747774cc9b::t_9797557ab13d57 1-8
+test/fixtures/source_needs_boot/test/test_cart.rb
+  s_75ad747774cc9b::t_cf666036d69793 1-8
+test/fixtures/test_map/app/controllers/boards_controller.rb
+  s_75ad747774cc9b::t_425d15582a8392 1-11
+test/fixtures/test_map/app/controllers/concerns/authentication.rb
+  s_75ad747774cc9b::t_1b6a6e2b604d89 1-8
+test/fixtures/test_map/app/controllers/concerns/board_scoped.rb
+  s_75ad747774cc9b::t_72996863aff302 1-9
+test/fixtures/test_map/app/models/board.rb
+  s_75ad747774cc9b::t_0a134fe6df539e 1-7
+test/fixtures/test_map/test/controllers/boards_controller_test.rb
+  s_75ad747774cc9b::t_6c1f33d2598036 1-11
+test/fixtures/test_map/test/controllers/concerns/authentication_test.rb
+  s_75ad747774cc9b::t_1112a0cc8237b1 1-14
+test/fixtures/test_map/test/models/board_test.rb
+  s_75ad747774cc9b::t_3e8fc5c4675d03 1-10
+test/fizzy_sample_test.rb
+  s_75ad747774cc9b::t_f1a22b6bc31aa3 1-209
+test/html_reporter_test.rb
+  s_75ad747774cc9b::t_a2e1897ac92a4c 28,30,52-63,69-90,96-110,197-232
+test/integration_test.rb
+  s_75ad747774cc9b::t_e2459cd19daa40 70-114,184-203
+test/isolation_test.rb
+  s_75ad747774cc9b::t_dd7af4c62993cb 31-44,187-203,561,565-591
+test/json_reporter_test.rb
+  s_75ad747774cc9b::t_2810e20e433bea 13-26,43-47,55-61,85-361,363-364,372-561,565,568-577,584,595,604,622-625,629-653,659,688,738-803,889,892,922,936,949,963-965,967-969,971-974,1057,1066,1070-1113
+test/load_path_test.rb
+  s_75ad747774cc9b::t_893741b624e29e 1-268
+test/merge_gate_ruleset_test.rb
+  s_75ad747774cc9b::t_09960d741d0230 1-81
+test/mutant_id_test.rb
+  s_75ad747774cc9b::t_acf9434feb848a 35-49,104
+test/mutation_test.rb
+  s_75ad747774cc9b::t_72925d1c4e7321 31-41
+test/mutator_registry_test.rb
+  s_75ad747774cc9b::t_0bf428c81263b0 76-79,88
+test/mutators/call_to_receiver_test.rb
+  s_75ad747774cc9b::t_cf1b60436d5262 97-102
+test/mutators/collection_method_test.rb
+  s_75ad747774cc9b::t_4a9a1c6c22c0a0 47-1861
+test/mutators/literal_mutation_test.rb
+  s_75ad747774cc9b::t_032b5bcab8356c 60-113
+test/mutators/operator_assignment_test.rb
+  s_75ad747774cc9b::t_4341be137cb2a8 24-33,152
+test/mutators/range_literal_test.rb
+  s_75ad747774cc9b::t_d7ed66469b4ddc 45-54,57,59-61,67,81,84-101,113,117,121-132,152,155-263
+test/mutators/rescue_body_test.rb
+  s_75ad747774cc9b::t_8e978888c12e15 1-155
+test/mutators/return_nil_test.rb
+  s_75ad747774cc9b::t_09ed8b1e161eb4 84-129
+test/output_filter_test.rb
+  s_75ad747774cc9b::t_332044cd79fa74 1-560
+test/pairing_test.rb
+  s_75ad747774cc9b::t_c1f01b4c4cd0b1 172-246,363-386,503-1010
+test/parallel_strategy_test.rb
+  s_75ad747774cc9b::t_2d0d311587c086 85-88,109-111,118-119,124-126,130-132,137-138,145-148,151,231-270
+test/parse_error_metamorphic_test.rb
+  s_75ad747774cc9b::t_0219d9a87f6da8 1-115
+test/parser_test.rb
+  s_75ad747774cc9b::t_f85e3ef73c9b5e 4,29-80
+test/path_anchor_test.rb
+  s_75ad747774cc9b::t_d1427c16dab00d 1-286
+test/prism_errors_test.rb
+  s_75ad747774cc9b::t_a124fecc4d524d 1-113
+test/project_test.rb
+  s_75ad747774cc9b::t_a2806ce923d7ae 1576-1681
+test/rails_callback_restore_test.rb
+  s_75ad747774cc9b::t_6f29df04e97baf 1-46
+test/rails_dogfood_daemon_test.rb
+  s_75ad747774cc9b::t_3115e78a0d5d9a 6-7,168-348
+test/rails_worker_db_test.rb
+  s_75ad747774cc9b::t_7e09326bea1fdc 6,25-45,441-443,1351-1800
+test/reach_probe_test.rb
+  s_75ad747774cc9b::t_8c0ed983c79d8a 1-407
+test/redaction_test.rb
+  s_75ad747774cc9b::t_4994c41b797175 122-146,150,156-157,225-226,230-231,239-366,416-435
+test/release_workflow_test.rb
+  s_75ad747774cc9b::t_7b677ff7dba50c 514,520,538-552
+test/reload_guards_test.rb
+  s_75ad747774cc9b::t_b3a932d45cdd30 1-1665
+test/reporter_test.rb
+  s_75ad747774cc9b::t_74ba170bc92bd5 563-564,586-674,688-738,755-770
+test/rspec_integration_test.rb
+  s_75ad747774cc9b::t_feacc754c0c0fa 102,104-107
+test/run_lock_helpers.rb
+  s_75ad747774cc9b::t_049f92782d0cbc 1-114
+test/runner_daemon_parallel_test.rb
+  s_75ad747774cc9b::t_2a28cbb86226f6 62-77
+test/runner_daemon_test.rb
+  s_75ad747774cc9b::t_1b5060c32d743d 5-7,64-78,90-178
+test/runner_external_test.rb
+  s_75ad747774cc9b::t_dfa3cea22ce63f 48-65,91-162,237-317,328-372,389-407,456-472
+test/runner_test.rb
+  s_75ad747774cc9b::t_91942ab60787da 46-118,277-292,330-395,467-631,663-665,667,672-673,676,680-683,727-836,913-992,997-1009,1078-1081,1101,1145-1146,1368-1449,1521-1675,1682-1745,1765-1983,1986-2002,2013-2018
+test/seed_contract_test.rb
+  s_75ad747774cc9b::t_360ae296cdb769 1-394
+test/since_empty_run_test.rb
+  s_75ad747774cc9b::t_f2662ff611b8e9 1-395
+test/since_test_scope_test.rb
+  s_75ad747774cc9b::t_a203c77170be65 1-286
+test/singleton_redefine_test.rb
+  s_75ad747774cc9b::t_6ef9e216790861 267,274-289
+test/site_docs_test.rb
+  s_75ad747774cc9b::t_bf05f7e1456a41 98-110,121-172
+test/statement_coverage_test.rb
+  s_75ad747774cc9b::t_9de2145234a61a 69-71
+test/statement_lines_test.rb
+  s_75ad747774cc9b::t_0adef2a714a568 88-113,362-403
+test/support/rails_callback_restore_probe.rb
+  s_75ad747774cc9b::t_7c385b060ae53d 1-180
+test/test_helper.rb
+  s_75ad747774cc9b::t_9ba63b31ab416d 91-92,95-113
+test/test_runners/minitest_test.rb
+  s_75ad747774cc9b::t_5f97412d8be13c 31-33,261-267,504,511,525-535,594,600,685-757
+test/test_runners/rspec_test.rb
+  s_75ad747774cc9b::t_913229ed4b13e0 21-22,105-107,111-113,117-119,482-487,497-615
+test/triage_test.rb
+  s_75ad747774cc9b::t_0bbcc5084aabd2 102-137,203-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "183ccef4c47f0cd96aebc10de1d96e5c0e49a231",
+  "prompts": {},
+  "sessions": {
+    "s_75ad747774cc9b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d30d246a-85e6-4544-bac9-aca472700292",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
