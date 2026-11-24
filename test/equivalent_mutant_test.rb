@@ -63,6 +63,13 @@ class EquivalentMutantTest < Minitest::Test
     assert_equal Set[:comparison], map[2][:ops]
   end
 
+  # #538: a mutated span that holds a comment with an invalid byte still gives a token.
+  def test_the_token_of_a_span_with_an_invalid_byte_collapses_its_whitespace
+    src = "x = [1, # caf\xE9\n   2]\n".b.force_encoding(Encoding::UTF_8)
+    mutation = Mutineer::Mutation.new(start_offset: 4, end_offset: src.bytesize - 1, replacement: "[]", operator: :arithmetic)
+    assert_equal "[1, # caf\xE9 2]".b, Mutineer::MutantId.normalized_token(mutation, src).b
+  end
+
   # The same guard holds in a source with a magic encoding other than UTF-8.
   def test_suppress_map_handles_an_invalid_byte_in_an_euc_jp_source
     bare = "# encoding: euc-jp\na + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding("EUC-JP")
@@ -77,7 +84,7 @@ class EquivalentMutantTest < Minitest::Test
   def test_a_run_reports_a_source_with_an_invalid_byte_in_a_comment
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(%w[lib test].map { |d| File.join(dir, d) })
-      File.binwrite(File.join(dir, "lib/calc.rb"), "# caf\xE9\ndef add(a, b)\n  a + b # caf\xE9\nend\n")
+      File.binwrite(File.join(dir, "lib/calc.rb"), "# caf\xE9\ndef add(a, b)\n  a + # caf\xE9\n    b # caf\xE9\nend\n")
       File.write(File.join(dir, "test/calc_test.rb"),
                  "require \"minitest/autorun\"\nrequire_relative \"../lib/calc\"\n" \
                  "class CalcTest < Minitest::Test\n  def test_add = assert_equal(3, add(1, 2))\nend\n")

@@ -905,7 +905,8 @@ module Mutineer
     # @param patch [String] the exact byte patch.
     # @return [Boolean]
     def credential_free?(diff, patch)
-      bytes = patch.b.force_encoding(Encoding::UTF_8)
+      # The header path may be any bytes (#532); `diff` already shows it to the check.
+      bytes = patch.b.split("\n", 3).last.to_s.force_encoding(Encoding::UTF_8)
       return false if !bytes.valid_encoding? && Redaction.source_urls(ENV, []).any?
 
       [diff, bytes.scrub].all? { |text| Redaction.text(text) == text }
@@ -1157,7 +1158,7 @@ module Mutineer
       replacement = replacement.dup.force_encoding(before.encoding) if replacement.ascii_only?
       mutated_block = before + replacement + after
       start_line  = source.byteslice(0, m.start_offset).b.count("\n") + 1
-      token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
+      token       = MutantId.normalized_token(m, source)
       if token.length > 50
         token = token[0, 47] + "...".dup.force_encoding(token.encoding)
       end
