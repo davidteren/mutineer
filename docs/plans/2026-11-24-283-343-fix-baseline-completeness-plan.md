@@ -381,19 +381,19 @@ R13 needs care: with no delta the template line must add no blank line. Follow w
    ```bash
    # #343: the --baseline completeness gate is in mutineer 2.0.0 and later.
    # The json format proves it from the report (baseline.incomplete, below).
-   # The other formats cannot, so they need the gem floor. "2.0.0.a" is below
+   # The other formats cannot, so they need the gem floor. "2.0.0.A" is below
    # every 2.0.0 prerelease and above every 1.x release.
    if [ "$FORMAT" != "json" ] && [ -n "$baseline_path" ]; then
      gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
-     if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.a") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
-       echo "::error::mutineer: resolved mutineer $gem_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
+     if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.A") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
+       echo "::error::mutineer: resolved mutineer $safe_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
        exit 2
      fi
    fi
    ```
 
    Do not print `$FORMAT` or the baseline path in the message. Both are user input, and a newline in a workflow command is an injection. `$gem_ver` is already printed by the `since` floor.
-4. The `baseline` input description: add "With a format other than json, the gem must be 2.0.0 or later (the action exits 2 for an older gem)."
+4. The `baseline` input description: add "With a format other than json, the gem must be 2.0.0 or a 2.0.0 prerelease (the action exits 2 for an older gem)." As built, `$gem_ver` is escaped as `$safe_ver` before it goes into the workflow command.
 
 **Harness (`test/fixtures/action_harness.sh`).** The stub prints `1.0.0` for `--version`. Change that line to print `${STUB_VERSION:-1.0.0}` (escaped as `\${STUB_VERSION:-1.0.0}` inside the unquoted heredoc). Add cases after `case24`:
 

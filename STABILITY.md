@@ -143,9 +143,10 @@ Where it prints no warning, the item says documented only.
 - **The `--baseline` score-drop check uses the exact counts.** Documented only.
   In 1.x it compares the scores rounded to one decimal.
   In 2.0 it compares `killed / (killed + survived)` from both reports, so an exit code can change either way.
+  A stored report with no integer counts is still compared on its rounded score.
 - **The Action checks that a baseline run reports its completeness.** Documented only.
   In 2.0 a JSON report with a baseline and no boolean `baseline.incomplete` exits 2.
-  A baseline with a format other than `json` exits 2 for a gem older than 2.0.0.
+  A baseline with a format other than `json` exits 2 for a gem older than 2.0.0. A 2.0.0 prerelease passes.
 - **Parallel `--rails` by default, with the `reload` strategy.** 1.8.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.

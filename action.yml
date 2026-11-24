@@ -48,8 +48,8 @@ inputs:
       a score drop versus this baseline, or an incomplete run.
       With JSON output, a gem that omits `baseline.incomplete` is rejected
       with exit 2; upgrade the selected gem to verify the completeness gate.
-      With a format other than json, the gem must be 2.0.0 or later (the
-      action exits 2 for an older gem).
+      With a format other than json, the gem must be 2.0.0 or a 2.0.0
+      prerelease (the action exits 2 for an older gem).
     required: false
     default: ""
   baseline-epsilon:
@@ -479,10 +479,12 @@ runs:
         # --no-since or silently compare cross-denominator baseline scores.
         if [ -n "$NO_SINCE" ] || [ -n "${AUTO_SINCE:-}" ]; then
           gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          # Gem output goes into a workflow command: escape %, CR and LF.
+          safe_ver="${gem_ver//%/%25}"; safe_ver="${safe_ver//$'\r'/%0D}"; safe_ver="${safe_ver//$'\n'/%0A}"
           # Gem::Version, not sort -V: exact gem semantics (prereleases
           # included) and ruby is always present where this action runs.
           if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("1.0.0") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
-            echo "::error::mutineer: resolved mutineer $gem_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
+            echo "::error::mutineer: resolved mutineer $safe_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
             exit 2
           fi
         fi
@@ -494,8 +496,10 @@ runs:
         # A gem without `mutineer config` gets the path from the copy above (#568).
         if [ "$FORMAT" != "json" ] && [ -n "$baseline_path" ]; then
           gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          # Gem output goes into a workflow command: escape %, CR and LF.
+          safe_ver="${gem_ver//%/%25}"; safe_ver="${safe_ver//$'\r'/%0D}"; safe_ver="${safe_ver//$'\n'/%0A}"
           if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.A") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
-            echo "::error::mutineer: resolved mutineer $gem_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
+            echo "::error::mutineer: resolved mutineer $safe_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
             exit 2
           fi
         fi

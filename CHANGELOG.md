@@ -63,7 +63,8 @@ All notable changes to this project are documented here. The format is based on
   `foreign_path`, not `not_run` (#343).** A stored `file` outside the project
   root that does not exist here cannot be checked by this run, and `not_run`
   said the run skipped it. The human report adds one line: write a new
-  baseline from this checkout. The status never gates and adds to no count.
+  baseline from this checkout. The status never gates and adds to no mutant
+  count; the entry is counted with the other unverified survivors.
 - **Breaking (Action): a baseline with a format other than `json` needs gem
   2.0.0 or later (#343).** The Action checks `baseline.incomplete` only in a
   JSON report. With `format: html` or `human`, an older gem passed an

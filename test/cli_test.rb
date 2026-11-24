@@ -3183,6 +3183,7 @@ class CliTest < Minitest::Test
       assert_equal false, doc["regressed"]
       assert_empty doc["fixed_survivors"]
       assert_equal stored, doc["unverified_survivors"].map { |h| h["id"] }.sort
+      assert_equal ["error"], doc["unverified_survivors"].map { |h| h["status"] }.uniq
       assert_includes err, "so the --baseline gate fails"
     end
   end

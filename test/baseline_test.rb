@@ -685,10 +685,7 @@ class BaselineTest < Minitest::Test
   end
 
   def test_equal_ratios_with_different_counts_are_not_a_drop
-    doc = counted_doc(2, 4)
-    doc["survivors"] = Array.new(2) { |i| { "id" => "s#{i}", "file" => FILE, "operator" => "comparison" } }
-
-    refute Mutineer::Baseline.new(doc).diff(counted_run(1, 2)).score_drop, "1 of 3 equals 2 of 6"
+    refute Mutineer::Baseline.new(counted_doc(2, 4)).diff(counted_run(1, 2)).score_drop, "1 of 3 equals 2 of 6"
   end
 
   def test_a_baseline_with_no_counts_compares_the_rounded_scores

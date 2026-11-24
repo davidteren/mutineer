@@ -139,6 +139,16 @@ class ResultTest < Minitest::Test
     assert_predicate agg, :incomplete?
   end
 
+  # The share alone decides above the floor: 2 of 20 is exactly 10%, 2 of 19 is above it.
+  def test_no_verdict_share_at_the_limit_is_complete_and_above_it_is_not
+    at_limit = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(18) { Mutineer::Result.killed })
+    above = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(17) { Mutineer::Result.killed })
+    refute_predicate at_limit, :broken_share_exceeded?
+    refute_predicate at_limit, :incomplete?
+    assert_predicate above, :broken_share_exceeded?
+    assert_predicate above, :incomplete?
+  end
+
   def test_unplaceable_and_ran_at_load_are_not_no_verdict
     agg = Mutineer::AggregateResult.new([Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load,
                                          Mutineer::Result.killed])

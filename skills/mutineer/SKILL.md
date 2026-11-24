@@ -70,7 +70,7 @@ report “no score”. Check `no_coverage[]` for test gaps and `no_verdict[]` fo
 harness failures, and fix them before starting a new run. Also check `summary.unpaired_mutants` (Mutineer 1.9.0 or later). Above 0, a source with no paired test was skipped. Its mutants are not in the score or in `no_verdict[]`, so they cannot fail `--threshold`. They count in the unrun-share warning on stderr, except under `--fail-fast`. `unpaired_sources[]` names each skipped source. Add a test for each entry whose `mutants` is above 0, then run again. `--test` replaces pairing, so if you pass it, list every test file, the new ones included. Under `--since`, an entry with `mutants` 0 has no mutant on a changed line. Also look for an entry whose `mutants` is `null`. That count failed, and `summary.unpaired_mutants` leaves it out. Report that run as incomplete. Do not accept it. A positive threshold fails when nothing can be scored and something
 broke, or when more than one mutant has no verdict and they exceed 10% of those
 attempted; it does not require zero errors. Set the threshold to your target.
-`--baseline` applies the same completeness rule without a threshold. When it
+`--baseline` applies the same no-verdict completeness rule without a threshold. It does not cover a failed `unpaired_sources[].mutants` count: check that yourself, as above. When it
 exits 1, `baseline.regressed` means new survivors or a score drop, and
 `baseline.incomplete` means the run failed completeness: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. Read `no_verdict[]` and fix
 the harness, not the tests. `baseline.unverified_survivors[]` are baseline
