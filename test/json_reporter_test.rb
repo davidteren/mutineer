@@ -328,6 +328,24 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # #532: a non-UTF-8 path cannot be checked against a configured credential, so no diff_base64.
+  def test_a_non_utf8_path_gets_no_diff_base64_when_a_credential_is_set
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = "postgres://u:s3cretpw@db/app"
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
+    path = "caf\xE9.rb".b
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: path, namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { path => src }).report(out: out, err: StringIO.new, format: "json")
+    refute JSON.parse(out.string)["survivors"].first.key?("diff_base64")
+  ensure
+    saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
+  end
+
   # #532: a name with a tab is written in Git's quoted form, so git applies the patch to that file.
   def test_a_path_with_a_tab_is_quoted_in_the_patch_header
     src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
@@ -343,7 +361,7 @@ class JsonReporterTest < Minitest::Test
       patch = row["diff_base64"]&.unpack1("m") || row["diff"].b
       assert_includes patch, "--- \"a/".b
       assert_includes patch, "\\t".b
-      next if path.b != path.b.dup.force_encoding("UTF-8").b || !path.dup.force_encoding("UTF-8").valid_encoding?
+      next unless path.dup.force_encoding("UTF-8").valid_encoding?
 
       Dir.mktmpdir do |dir|
         File.binwrite(File.join(dir, path), src)

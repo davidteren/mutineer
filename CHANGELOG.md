@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format is based on
   The run now captures again instead. `--coverage-from` also rejects a negative timing.
   A failed test file with a timing far below the fastest one no longer raises `Math::DomainError` in test ordering either.
 - **A JSON entry for a source path that is not valid UTF-8 carries a `diff_base64` that applies (#532, partly).**
-  `diff` prints such a path as `\xNN`, so no patch named the real file. `diff_base64` now names it by its own bytes, and `git apply --unidiff-zero` finds it.
+  `diff` prints such a path as `\xNN`, so no patch named the real file. `diff_base64` now names it by its own bytes, and `git apply --unidiff-zero` finds it. With a credential configured, such an entry has no `diff_base64`, because the path bytes cannot be checked for it (#540).
   A file with a `working-tree-encoding` Git attribute and an invalid byte on a changed line still has no patch that applies. The same holds for such a file whose path is not valid UTF-8. Those limits stay open in #532.
 
 ## [1.10.0] - 2026-11-24

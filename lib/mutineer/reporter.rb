@@ -905,8 +905,7 @@ module Mutineer
     # @param patch [String] the exact byte patch.
     # @return [Boolean]
     def credential_free?(diff, patch)
-      # The header path may be any bytes (#532); `diff` already shows it to the check.
-      bytes = patch.b.split("\n", 3).last.to_s.force_encoding(Encoding::UTF_8)
+      bytes = patch.b.force_encoding(Encoding::UTF_8)
       return false if !bytes.valid_encoding? && Redaction.source_urls(ENV, []).any?
 
       [diff, bytes.scrub].all? { |text| Redaction.text(text) == text }
@@ -958,8 +957,7 @@ module Mutineer
       new_lines = side_lines(mutated_block, at_eof).map(&piece)
       # The exact patch names the file by its own bytes, so `git apply` finds a
       # path that is not UTF-8 (#532).
-      shown_file = piece.call(file.to_s)
-      old_path, new_path = %w[a b].map { |side| patch_path(side, shown_file, file.to_s) }
+      old_path, new_path = %w[a b].map { |side| patch_path(side, file.to_s, &piece) }
       "--- #{old_path}\n+++ #{new_path}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
@@ -968,19 +966,22 @@ module Mutineer
     # One header path of a patch. A name with a tab, newline, quote, backslash or
     # other control byte is written in Git's quoted form, because Git reads an
     # unquoted header only up to a tab and cannot parse one with a newline (#532).
+    # The escapes are made on the name's own bytes, so `piece` then shows any
+    # invalid byte as it shows it everywhere else.
     #
     # @api private
     # @param side [String] "a" or "b".
-    # @param shown [String] the file name as the patch holds it.
-    # @param raw [String] the file name as the report has it, to decide on quoting.
+    # @param raw [String] the file name as the report has it.
+    # @yieldparam text [String] a name to turn into the patch's text.
     # @return [String] the header path.
-    def patch_path(side, shown, raw)
-      return "#{side}/#{shown}" unless raw.b.match?(/[\x00-\x1f"\\\x7f]/n)
+    def patch_path(side, raw, &piece)
+      special = /[\x00-\x1f"\\\x7f]/n
+      return "#{side}/#{piece.call(raw)}" unless raw.b.match?(special)
 
-      escaped = shown.gsub(/[\x00-\x1f"\\\x7f]/n) do |c|
+      escaped = raw.b.gsub(special) do |c|
         {"\t" => "\\t", "\n" => "\\n", '"' => '\\"', "\\" => "\\\\"}.fetch(c) { format("\\%03o", c.ord) }
       end
-      "\"#{side}/#{escaped}\""
+      "\"#{side}/#{piece.call(escaped)}\""
     end
 
     # The encoding {#diff_encoding} names for a result's diff, or nil when the
