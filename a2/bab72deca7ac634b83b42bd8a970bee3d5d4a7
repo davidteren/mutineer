@@ -1,0 +1,31 @@
+lib/mutineer/mutant_id.rb
+  s_13efe4cc102d28::t_8a3048b623e9ff 126-128
+lib/mutineer/reporter.rb
+  s_75ad747774cc9b::t_0f317fa5f342ac 908-909,1161
+test/equivalent_mutant_test.rb
+  s_13efe4cc102d28::t_f4433b0459617b 66-72,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a2bab72deca7ac634b83b42bd8a970bee3d5d4a7",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_75ad747774cc9b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d30d246a-85e6-4544-bac9-aca472700292",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
