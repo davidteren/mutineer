@@ -28,6 +28,8 @@ module Mutineer
     #                     with its current `status`. Not fixed, and never gates.
     #                     Omitted ids in a partial or empty unscoped run use
     #                     `not_run`, a baseline-only label, not a Result status.
+    #                     An absent id with a stored path from another machine
+    #                     uses `foreign_path`, also baseline-only (#343).
     #                     Filled on a diff-scoped side too (#283, #286).
     #   score_drop      - the exact score fell by more than epsilon (see
     #                     #diff). nil on either side skips the check, and a
@@ -199,12 +201,11 @@ module Mutineer
         if (r = stored_match(undecided_index, h, foreign, file_key))
           unverified << h.merge("status" => r.status.to_s)
         elsif unscoped
-          if stored_match(fixed_index, h, foreign, file_key) ||
-             (!partial && aggregate.total.positive? && !outside_selection?(h, source_keys, operator_names, project_root))
-            fixed << h
-          else
-            unverified << h.merge("status" => "not_run")
-          end
+          status = if stored_match(fixed_index, h, foreign, file_key) then nil
+                   elsif partial || aggregate.total.zero? then "not_run"
+                   else absent_status(h, source_keys, operator_names, project_root)
+                   end
+          status ? unverified << h.merge("status" => status) : fixed << h
         end
       end
 
@@ -245,24 +246,29 @@ module Mutineer
       after < before - epsilon.to_s.to_r
     end
 
-    # Whether an absent stored mutant was excluded by source or operator
-    # selection. A missing project file is a removal, but a foreign path cannot
-    # prove removal in this checkout. Matched results bypass this metadata check.
+    # The status of a stored survivor that a full run with results no longer
+    # has, or nil when that absence counts as a fix. A missing project file is a
+    # removal. A stored id outside the selected sources or operators is
+    # `not_run`. A stored path outside the project that does not exist on this
+    # machine (a baseline written elsewhere) is `foreign_path`: the run cannot
+    # check it (#343). Matched results bypass this metadata check.
     #
     # @param stored [Hash] stored baseline survivor.
     # @param sources [Set<String>, nil] normalized selected source paths.
     # @param operators [Set<String>, nil] selected operator names.
     # @param project_root [String] root for stored project-relative paths.
-    # @return [Boolean] whether the stored id was outside the selected scope.
-    def outside_selection?(stored, sources, operators, project_root)
+    # @return [String, nil] `"not_run"`, `"foreign_path"`, or nil for fixed.
+    def absent_status(stored, sources, operators, project_root)
       path = stored["file"]
       key = path && ProjectPath.relative(path, ProjectPath.root_real(project_root))
+      foreign = key && File.absolute_path?(key)
       # A source file removed from this checkout is a fix whatever was selected.
-      return false if key && !File.absolute_path?(key) && !File.exist?(ProjectPath.absolute(path, project_root))
-      return true if operators && !operators.include?(stored["operator"].to_s)
-      return false unless sources
-
-      !key || !sources.include?(key)
+      return if key && !foreign && !File.exist?(ProjectPath.absolute(path, project_root))
+      return "not_run" if operators && !operators.include?(stored["operator"].to_s)
+      return unless sources
+      return if key && sources.include?(key)
+      # Outside the project and not on this machine: the run cannot check it.
+      foreign && !File.exist?(key) ? "foreign_path" : "not_run"
     end
 
     # Indexes results by the three keys a stored survivor can match on: the

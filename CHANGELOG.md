@@ -33,7 +33,7 @@ All notable changes to this project are documented here. The format is based on
   `not_run`. A source that pairing drops (no paired test) is one of those. A
   removed mutant within the selected scope, or a source file actually removed
   from the project, still counts as fixed. A foreign stored path whose
-  removal cannot be checked stays unverified (tracked in #343).
+  removal cannot be checked stays unverified (`foreign_path`, see below).
   Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
   before. If CI turns red after the upgrade and `baseline.incomplete` is
   true, read `no_verdict[]` in the JSON report: the run is incomplete, and
@@ -54,6 +54,11 @@ All notable changes to this project are documented here. The format is based on
   message, instead of treating an unknown completeness result as success.
   The report remains available. Older reports without a baseline block still
   work.
+- **An absent baseline survivor with a path from another machine is
+  `foreign_path`, not `not_run` (#343).** A stored `file` outside the project
+  root that does not exist here cannot be checked by this run, and `not_run`
+  said the run skipped it. The human report adds one line: write a new
+  baseline from this checkout. The status never gates and adds to no count.
 - The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
   now also live on `AggregateResult`. The `Reporter` names remain
   compatibility aliases, and the CLI and report use the same limits.

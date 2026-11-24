@@ -1579,6 +1579,10 @@ module Mutineer
       end
       rest = entries.size - MATRIX_LIST_LIMIT
       out.puts "  and #{rest} more (see baseline.unverified_survivors in --format json)" if rest.positive?
+      return unless entries.any? { |h| h["status"] == "foreign_path" }
+
+      out.puts "  foreign_path: the stored path is outside this project, so this run cannot check it. " \
+               "Write a new baseline from this checkout."
     end
 
     # Orders mutants in one file: by offset, then operator and replacement, so

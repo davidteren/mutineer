@@ -122,7 +122,8 @@ class BaselineTest < Minitest::Test
                         sources: [File.join(root, ".", FILE)], operators: %w[comparison], project_root: root)
 
       assert_equal %w[killed ignored removed_id removed_file removed_file_other_op], delta.fixed_survivors.map { |h| h["id"] }
-      assert_equal [%w[omitted_source not_run], %w[omitted_operator not_run], %w[foreign not_run]], unverified(delta)
+      # #343: a stored path from another machine is foreign_path, not not_run.
+      assert_equal [%w[omitted_source not_run], %w[omitted_operator not_run], %w[foreign foreign_path]], unverified(delta)
     end
   end
 
@@ -713,5 +714,105 @@ class BaselineTest < Minitest::Test
                                            baseline: Mutineer::Baseline.new(counted_doc(900, 100)).diff(run))
     assert_includes out.string, "score dropped 90.0% -> 88.9%\n"
     refute_includes out.string, hidden
+  end
+
+  # --- #343 limit 1: an absent survivor with a path from another machine ---
+
+  FOREIGN = "/home/runner/work/app/app/lib/a.rb"
+
+  def twenty_kills = Array.new(20) { Mutineer::Result.killed }
+
+  def test_an_absent_survivor_with_a_path_from_another_machine_is_foreign_path
+    Dir.mktmpdir do |root|
+      delta = Mutineer::Baseline.new(baseline_doc(%w[gone], file: FOREIGN))
+                                .diff(agg(*twenty_kills), sources: ["lib/a.rb"], operators: %w[comparison],
+                                                          project_root: root)
+
+      assert_empty delta.fixed_survivors
+      assert_equal [%w[gone foreign_path]], unverified(delta)
+      refute delta.regressed
+    end
+  end
+
+  def test_a_killed_survivor_with_a_foreign_path_is_still_fixed
+    Dir.mktmpdir do |root|
+      delta = Mutineer::Baseline.new(baseline_doc(%w[k], file: FOREIGN))
+                                .diff(agg(as_status(:killed, "k")), sources: ["lib/a.rb"], project_root: root)
+
+      assert_equal %w[k], delta.fixed_survivors.map { |h| h["id"] }
+      assert_empty delta.unverified_survivors
+    end
+  end
+
+  def test_a_selected_source_outside_the_project_counts_as_fixed
+    Dir.mktmpdir do |outside|
+      path = File.join(outside, "a.rb")
+      File.write(path, SRC)
+      Dir.mktmpdir do |root|
+        delta = Mutineer::Baseline.new(baseline_doc(%w[gone], file: path))
+                                  .diff(agg(*twenty_kills), sources: [path], project_root: root)
+
+        assert_equal %w[gone], delta.fixed_survivors.map { |h| h["id"] }
+      end
+    end
+  end
+
+  def test_an_existing_unselected_file_outside_the_project_is_not_run
+    Dir.mktmpdir do |outside|
+      path = File.join(outside, "a.rb")
+      File.write(path, SRC)
+      Dir.mktmpdir do |root|
+        delta = Mutineer::Baseline.new(baseline_doc(%w[gone], file: path))
+                                  .diff(agg(*twenty_kills), sources: ["lib/a.rb"], project_root: root)
+
+        assert_equal [%w[gone not_run]], unverified(delta)
+      end
+    end
+  end
+
+  def test_a_foreign_path_in_a_partial_or_empty_run_is_not_run
+    Dir.mktmpdir do |root|
+      base = Mutineer::Baseline.new(baseline_doc(%w[gone], file: FOREIGN))
+
+      partial = base.diff(agg(*twenty_kills), partial: true, sources: ["lib/a.rb"], project_root: root)
+      empty = base.diff(agg, sources: ["lib/a.rb"], project_root: root)
+
+      assert_equal [%w[gone not_run]], unverified(partial)
+      assert_equal [%w[gone not_run]], unverified(empty)
+    end
+  end
+
+  def test_a_foreign_path_with_an_unselected_operator_is_not_run
+    Dir.mktmpdir do |root|
+      delta = Mutineer::Baseline.new(baseline_doc(%w[gone], file: FOREIGN))
+                                .diff(agg(*twenty_kills), sources: ["lib/a.rb"], operators: %w[arithmetic],
+                                                          project_root: root)
+
+      assert_equal [%w[gone not_run]], unverified(delta)
+    end
+  end
+
+  def test_direct_callers_without_selections_keep_their_answer
+    Dir.mktmpdir do |root|
+      delta = Mutineer::Baseline.new(baseline_doc(%w[gone], file: FOREIGN)).diff(agg(*twenty_kills), project_root: root)
+
+      assert_equal %w[gone], delta.fixed_survivors.map { |h| h["id"] }
+    end
+  end
+
+  def test_human_report_explains_foreign_path
+    hint = "foreign_path: the stored path is outside this project, so this run cannot check it. " \
+           "Write a new baseline from this checkout."
+    Dir.mktmpdir do |root|
+      results = [*twenty_kills, survivor("kept")]
+      foreign = Mutineer::Baseline.new(baseline_doc(%w[kept gone1 gone2], file: FOREIGN))
+                                  .diff(agg(*results), sources: ["lib/a.rb"], project_root: root)
+      text = render(results, foreign, format: "human")
+      assert_equal 1, text.scan(hint).size, text
+
+      results = [Mutineer::Result.error, survivor("aaa")]
+      other = Mutineer::Baseline.new(baseline_doc(%w[aaa bbb])).diff(agg(*results), partial: true)
+      refute_includes render(results, other, format: "human"), hint
+    end
   end
 end
