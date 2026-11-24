@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_13efe4cc102d28::t_61d95c94fd42c8 14-16
+lib/mutineer/coverage_map/cache.rb
+  s_13efe4cc102d28::t_d678d14fc01c5f 55,60-70,111
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_13efe4cc102d28::t_32f3b9554b771e 219
+test/coverage_map_test.rb
+  s_13efe4cc102d28::t_63d3dac7747614 2088-2102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91f1c6e2582fc1c7c142aaf127714c2d1550d9b2",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
