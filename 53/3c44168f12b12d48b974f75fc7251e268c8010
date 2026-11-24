@@ -1,0 +1,19 @@
+test/yard_strict_test.rb
+  s_ca5b42f589bb5d::t_0de79d7ed8b124 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "533c44168f12b12d48b974f75fc7251e268c8010",
+  "prompts": {},
+  "sessions": {
+    "s_ca5b42f589bb5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7627e31-4a2e-4657-9410-0cfec75217c7",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
