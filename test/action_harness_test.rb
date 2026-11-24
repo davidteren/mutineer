@@ -34,7 +34,7 @@ class ActionHarnessTest < Minitest::Test
       "case13b" => 2, "case14c" => 2,
       "case20" => 1, "case21" => 1, "case22" => 1, "case23" => 2, "case24" => 0, "case25" => 1,
       "case26" => 2, "case26b" => 2, "case26c" => 2, "case26d" => 1, "case26e" => 0, "case26f" => 0,
-      "case26g" => 1 }.each do |c, code|
+      "case26g" => 1, "case26h" => 2 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -119,6 +119,7 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: case26e prerelease ran"
     assert_includes out, "OK: case26f ran without a baseline"
     assert_includes out, "OK: case26g json ran"
+    assert_includes out, "OK: case26h version escaped"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
     assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"

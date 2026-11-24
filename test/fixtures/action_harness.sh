@@ -545,3 +545,7 @@ run_step case26f FORMAT=html STUB_EXIT=0
 echo; echo "== 26g: json format, baseline, gem 1.0.0 (expects the run, no floor for json) =="
 run_step case26g BASELINE="$SCRATCH/base26.json" STUB_EXIT=1
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26g json ran" || echo "  FAIL: case26g json refused"
+
+echo; echo "== 26h: a gem version with % and a newline is escaped in the floor message =="
+run_step case26h FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=$'9%\nX'
+grep -q 'resolved mutineer 9%25%0AX, but a baseline' "$SCRATCH/case26h/stdout.txt" && echo "  OK: case26h version escaped" || echo "  FAIL: case26h version not escaped"

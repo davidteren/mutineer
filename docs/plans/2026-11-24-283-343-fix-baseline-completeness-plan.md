@@ -393,7 +393,7 @@ R13 needs care: with no delta the template line must add no blank line. Follow w
    ```
 
    Do not print `$FORMAT` or the baseline path in the message. Both are user input, and a newline in a workflow command is an injection. `$gem_ver` is already printed by the `since` floor.
-4. The `baseline` input description: add "With a format other than json, the gem must be 2.0.0 or a 2.0.0 prerelease (the action exits 2 for an older gem)." As built, `$gem_ver` is escaped as `$safe_ver` before it goes into the workflow command.
+4. The `baseline` input description: add "With a format other than json, the gem must be 2.0.0 or later (a 2.0.0 prerelease also passes; the action exits 2 for an older gem)." As built, `$gem_ver` is escaped as `$safe_ver` before it goes into the workflow command.
 
 **Harness (`test/fixtures/action_harness.sh`).** The stub prints `1.0.0` for `--version`. Change that line to print `${STUB_VERSION:-1.0.0}` (escaped as `\${STUB_VERSION:-1.0.0}` inside the unquoted heredoc). Add cases after `case24`:
 

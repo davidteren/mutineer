@@ -48,8 +48,8 @@ inputs:
       a score drop versus this baseline, or an incomplete run.
       With JSON output, a gem that omits `baseline.incomplete` is rejected
       with exit 2; upgrade the selected gem to verify the completeness gate.
-      With a format other than json, the gem must be 2.0.0 or a 2.0.0
-      prerelease (the action exits 2 for an older gem).
+      With a format other than json, the gem must be 2.0.0 or later (a
+      2.0.0 prerelease also passes; the action exits 2 for an older gem).
     required: false
     default: ""
   baseline-epsilon:
