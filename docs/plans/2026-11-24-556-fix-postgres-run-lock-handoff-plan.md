@@ -578,10 +578,12 @@ Run on the exact head commit, from the worktree.
 | Author self-check | `ruby .claude/skills/author-self-check/self_check.rb origin/main`, then the steps of `.claude/skills/author-self-check/SKILL.md` | Before the first push |
 | Pre-PR gate | `/ce-code-review`, `/fit-review`, `/cubic-loop` in local mode | On the head commit |
 
-The local PostgreSQL run uses a private server that listens on a Unix socket in a new temp folder and on no TCP port. So it cannot reach another server, and the tests cannot drop a database outside it. Save the lines below as a script in a scratch folder (not in the repository) and run it with `bash` from the worktree root. `set -e` stops the script when the server does not start. The `trap` stops the server and keeps the exit code of the tests.
+The local PostgreSQL run uses a private server that listens on a Unix socket in a new temp folder and on no TCP port. So it cannot reach another server, and the tests cannot drop a database outside it. Save the lines below as a script in a scratch folder (not in the repository) and run it with `bash` from the worktree root. `set -e` stops the script when the server does not start. The `unset` line clears the libpq variables that could point the commands at another server. The `trap` stops the server and keeps the exit code of the tests.
 
 ```sh
 set -euo pipefail
+# libpq reads these, and PGHOSTADDR or a service would win over the private socket.
+unset DATABASE_URL PGHOSTADDR PGSERVICE PGSERVICEFILE PGPORT PGPASSWORD PGHOST
 PGBIN=/Applications/Postgres.app/Contents/Versions/16/bin
 PGTMP=$(mktemp -d /tmp/m11b.XXXXXX)
 trap '"$PGBIN/pg_ctl" -D "$PGTMP/data" -m fast stop >/dev/null 2>&1 || true; rm -rf "$PGTMP"' EXIT
@@ -589,7 +591,7 @@ trap '"$PGBIN/pg_ctl" -D "$PGTMP/data" -m fast stop >/dev/null 2>&1 || true; rm 
 "$PGBIN/pg_ctl" -D "$PGTMP/data" -o "-c listen_addresses='' -c unix_socket_directories='$PGTMP'" -l "$PGTMP/pg.log" -w start
 "$PGBIN/psql" -h "$PGTMP" -U postgres -c "create database mutineer_rails_test"
 (cd test/fixtures/rails_app && BUNDLE_WITH=postgres bundle install >/dev/null)
-env -u DATABASE_URL -u PGPORT -u PGPASSWORD DB=postgres BUNDLE_WITH=postgres PGHOST="$PGTMP" PGUSER=postgres \
+env DB=postgres BUNDLE_WITH=postgres PGHOST="$PGTMP" PGUSER=postgres \
   PGDATABASE=mutineer_rails_test RAILS_ENV=test bundle exec ruby -Ilib -Itest test/daemon_postgres_test.rb
 ```
 
