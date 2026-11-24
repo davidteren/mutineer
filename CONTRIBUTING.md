@@ -10,7 +10,7 @@ You need Ruby 3.4 or later, on Linux or macOS.
 ```sh
 bundle install
 bundle exec rake test          # the zero-dependency suite, about 6 minutes
-bundle exec rake yard:strict   # documentation check, about 15 seconds
+bundle exec rake yard:strict   # documentation check, about 5 seconds, writes no files
 ```
 
 To run one test file, or one test in it:
@@ -68,6 +68,8 @@ against `main`.
 
 ## After you open the pull request
 
+- CI starts when the pull request is ready for review. A draft pull request
+  starts no CI job. Mark it ready when you want CI and a review.
 - GitHub can hold CI on a pull request from a fork until a maintainer
   approves the run. You do not need to do anything.
 - Review bots (cubic and Qodo) comment on the code. Fix a finding that is

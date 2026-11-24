@@ -16,7 +16,24 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   suggest a release. Cut it only after a maintainer agrees to that release,
   and then do only steps 1 to 4 of the release procedure in "Releasing".
 
-## Before every commit (local gate)
+## Local gate
+
+The gate has three levels. Each level proves that the work is ready for the
+next step.
+
+| Level | When | What runs |
+|---|---|---|
+| Commit | Each commit | The test files for the code you changed, and the load smoke |
+| Push | Before each push | The full gate below, once, on the commit you push |
+| Ready | Before you mark the pull request ready for review | The diff review in "PR review gate", once, on the head commit |
+
+Never push with a red suite. To run one test file at the commit level:
+
+```sh
+bundle exec ruby -Ilib -Itest test/cli_test.rb
+```
+
+The full gate, for the push level:
 
 ```sh
 bundle exec rake test                          # zero-dep suite
@@ -43,7 +60,8 @@ MUTINEER_REQUIRE_PRISM_ERRORS=1 BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle ex
 
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
-  or CI fails.
+  or CI fails. The task reads the source and writes no files. `bundle exec rake yard`
+  writes the HTML to `doc/` when you want to read it.
 - **Rails-dependent tests run via `bundle exec rake test:daemon`**, never the
   zero-dep default. The gem's own suite stays Rails-free; `test/fixtures/rails_app`
   has its OWN bundle. `rake test:daemon` runs in the rails-integration CI job.
@@ -90,11 +108,12 @@ ruleset is applied, a maintainer re-applies the JSON before the merge (see the d
 Every pull request must meet this gate on its current head, including stacks, docs-only, and "small" changes.
 Only a maintainer may waive a step, in writing on that pull request.
 
-### Before opening a new pull request
+### Before a pull request is ready for review
 
-On the exact pull request head commit:
+On the exact pull request head commit, before you mark the pull request ready
+or open it ready:
 
-1. Run "Before every commit" checks, plus website checks for site changes.
+1. Run the full gate (the push level of "Local gate"), plus website checks for site changes.
 2. Review your diff against the pull request base (`main`, `integration/v2.0`,
    or the lower pull request in a stack). Verify every claim and number against its source.
 3. Never push or open a pull request with a red suite.
@@ -104,12 +123,34 @@ On the exact pull request head commit:
    kinds review bots found most often here, such as doc sentences that hold
    only in the common case and doc copies left stale.
 
-After another commit, run the test checks again in full, and review only the
+After another commit, run the full gate again before the push, and review only the
 new commits. Review all of the pull request again when the new commits touch a
 code file the first review did not see, change more than about 50 lines of
 code, change a public contract (a CLI flag, a config key, the JSON schema, an
 exit code or an Action input), or rewrite the branch history. A full review
 again after a small fix only reviews lines that did not change.
+
+### Open as a draft, then mark it ready
+
+Each push to a ready pull request starts CI and a cubic review. So open a
+draft first, and let CI and cubic run when the pull request is ready.
+
+1. Open the pull request as a draft. `ci.yml` starts no job on a draft, and
+   cubic does not review one (`check_drafts: false` in `cubic.yaml`).
+2. Do the review rounds on your machine. `cubic review` is free there.
+3. Mark the pull request ready (`gh pr ready`) when the full gate and the diff
+   review pass on the head commit. CI starts then.
+4. After that, each push starts CI again and cancels the run for the old
+   commit. Fix the findings of one review round in one push.
+5. A draft has no CI result. GitHub shows a skipped job as passed, but that
+   job ran nothing. Merge only a pull request that is ready and has green
+   checks from a run on its head commit.
+6. For CI on a pull request that stays a draft, run
+   `gh workflow run ci.yml --ref <branch>`. A contributor in a fork marks the
+   pull request ready instead.
+
+A pull request that is opened ready is not a draft, so nothing changes for
+it. That includes the release pull request and a Dependabot pull request.
 
 ### Labels
 
@@ -160,7 +201,7 @@ issue for something a pull request found, ask what caused it:
 
 ### After the pull request is open
 
-1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
+1. Mark the pull request ready if it is a draft. Then wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
 2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
 3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code unless a maintainer accepts it in writing on the pull request (see "Fix it in the pull request, or file an issue?").
 4. After fixes, push and check the new lines again.
@@ -183,8 +224,9 @@ Post findings on the relevant code line, never in a separate summary comment.
 - `ci.yml` runs on pull requests into `integration/v2.0` and on pushes to it.
   Branch protection does not cover it, so the agent checks the gate itself.
 - An agent may merge its own pull request into `integration/v2.0` when the
-  GitHub checks are green on the head commit and every review thread has a
-  reply. An agent never merges into `main`.
+  pull request is ready (not a draft), the GitHub checks ran and are green on
+  the head commit, and every review thread has a reply. An agent never
+  merges into `main`.
 - After each merge to `main`, merge `main` into `integration/v2.0`. Never
   merge `integration/v2.0` into `main` before the 2.0 release.
 - 2.0 reaches `main` in one pull request, after the checklist in issue #284
