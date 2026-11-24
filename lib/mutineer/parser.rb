@@ -102,7 +102,7 @@ module Mutineer
     # @param offset [Integer] byte offset into `source`.
     # @return [Integer] the line number.
     def self.line_at(source, offset)
-      source.byteslice(0, offset).b.count("\n") + 1
+      source.byteslice(0, offset).force_encoding(Encoding::BINARY).count("\n") + 1
     end
   end
 end
