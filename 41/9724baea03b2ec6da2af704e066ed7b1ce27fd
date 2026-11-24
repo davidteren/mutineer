@@ -1,0 +1,21 @@
+lib/mutineer/job_plan.rb
+  s_13efe4cc102d28::t_dbbbcd75e6ca68 837
+test/equivalent_mutant_test.rb
+  s_13efe4cc102d28::t_b2e3790214e15f 63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "419724baea03b2ec6da2af704e066ed7b1ce27fd",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
