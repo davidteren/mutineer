@@ -108,9 +108,10 @@ class MergeGateRulesetTest < Minitest::Test
 
   # A push to a pull request cancels the run for its old commit. Every other run
   # (a push to main, the release dispatch) has no pull request number, so its
-  # group is its own run id and no other run can cancel it.
+  # group is its own run id and no other run can cancel it. The event name is
+  # in the group, so a run id can never equal a pull request number there.
   def test_a_new_push_cancels_only_the_run_of_the_same_pull_request
-    assert_equal "ci-${{ github.event.pull_request.number || github.run_id }}", ci.dig("concurrency", "group")
+    assert_equal "ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}", ci.dig("concurrency", "group")
     assert_equal true, ci.dig("concurrency", "cancel-in-progress")
   end
 end

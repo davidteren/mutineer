@@ -21,9 +21,10 @@ on:
 
 # A new push to a pull request cancels the run for the old commit. A run that
 # is not from a pull request (a push to main or integration/v2.0, the release
-# dispatch) gets its own group from run_id, so nothing cancels it.
+# dispatch) gets its own group from run_id, so nothing cancels it. The event
+# name keeps a run id apart from a pull request number.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 # Each job has the same `if`: a draft pull request starts no job. It is on the

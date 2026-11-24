@@ -150,16 +150,23 @@ request is ready.
 5. A draft has no CI result. GitHub shows a skipped job as passed, but that
    job ran nothing. A skipped matrix job shows one check without its matrix
    values, so its real check names stay "expected". Merge only a pull request
-   that is ready and has green checks from a run on its head commit.
+   that is ready and has green checks from a run that ran the jobs for its
+   current head. A pull request run tests GitHub's merge of the head into
+   the base. The local gate, and a run that step 6 starts by hand, test the
+   head alone.
 6. For CI on a pull request that stays a draft, or that has another base, run
    `gh workflow run ci.yml --ref <branch>`. The command works only for a
    branch in this repository. A pull request from a fork gets CI only when it
-   is ready and its base is `main` or `integration/v2.0`. When a pull request
-   from a fork must stay a draft, or has another base, the contributor asks a
-   maintainer for a CI run. The maintainer pushes that branch to this
-   repository and runs the command on it.
+   is ready and its base is `main` or `integration/v2.0`, and GitHub can hold
+   that run until a maintainer approves it. When a pull request from a fork
+   must stay a draft, or has another base, the contributor asks a maintainer
+   for a CI run. The maintainer pushes that branch to this repository and
+   runs the command on it.
 7. When a ready pull request from a branch in this repository goes back to a
-   draft, its CI run in progress is cancelled.
+   draft, its CI run in progress is cancelled. Do not use that to pause a
+   review round: unless `cubic.yaml` ignores the pull request, a change to
+   ready starts a new cubic review of the whole pull request (seen on #565),
+   not a review of the new lines only.
 
 A pull request that is opened ready is not a draft, so nothing changes for
 it. That includes the release pull request and a Dependabot pull request.
