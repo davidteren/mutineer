@@ -1,0 +1,63 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_13efe4cc102d28::t_b0d597fdd58e0b 17-18,22
+  s_13efe4cc102d28::t_4bfa0bef3b509d 23-24
+CHANGELOG.md
+  s_13efe4cc102d28::t_2efc47ed409e2e 9-18,27
+  s_13efe4cc102d28::t_a527da7f4e0bf4 19-26
+docs/json-schema.md
+  s_13efe4cc102d28::t_e40dc83be98493 154-161,163-165,211-222,230
+  s_13efe4cc102d28::t_a49cc8fe240891 71,162,195-210,231-232
+docs/plans/2026-11-24-529-543-528-533-fix-reload-class-bodies-plan.md
+  s_13efe4cc102d28::t_d317d06baaddc3 1-488,490-1303
+lib/mutineer/job_plan.rb
+  s_13efe4cc102d28::t_1f4acd705be6b7 474-475
+lib/mutineer/project.rb
+  s_13efe4cc102d28::t_daadc0ee10bc01 85,148-204,523,552,687-689,696-698,710,718-741,777
+  s_13efe4cc102d28::t_2e2283b8b6f95f 228-240,251-274,278,284,286,288-289,293,295,299,306-343,779
+lib/mutineer/result.rb
+  s_13efe4cc102d28::t_4562f9d5a6c9f9 36-39
+lib/mutineer/subject.rb
+  s_13efe4cc102d28::t_50ff472f72b206 30-32,34-37,74-75,85
+  s_13efe4cc102d28::t_ecb78c51de20ec 43-48,51,76-78,86
+test/call_superclass_reload_test.rb
+  s_13efe4cc102d28::t_e85b75b884d8f5 497-539
+test/daemon_backend_contract_test.rb
+  s_13efe4cc102d28::t_618f6a5d12fffa 574-592
+test/fixtures/or_constant.rb
+  s_13efe4cc102d28::t_a8f62312d7b77f 1-36
+test/fixtures/or_constant_test.rb
+  s_13efe4cc102d28::t_2b9638419967de 1-21
+test/project_test.rb
+  s_13efe4cc102d28::t_da22efad249978 1590,1605,1608-1609,1611,1619-1670
+  s_13efe4cc102d28::t_fd1be29c6ae1a2 1726-1777
+lib/mutineer/reload_guards.rb
+  s_13efe4cc102d28::t_7003c4f807d571 13-15,22-23,70-78,87-90,190,198,1142-1189
+test/fixtures/rails_app/app/models/quiet_note.rb
+  s_13efe4cc102d28::t_04863df9ed1525 1-14
+test/fixtures/rails_app/test/models/quiet_note_test.rb
+  s_13efe4cc102d28::t_26349f14591d92 1-14
+test/rails_callback_restore_test.rb
+  s_13efe4cc102d28::t_e1238fc8129041 45-60
+test/rails_dogfood_daemon_test.rb
+  s_13efe4cc102d28::t_7865ee18f4771d 259-274
+test/reload_guards_test.rb
+  s_13efe4cc102d28::t_fdeaf0e1eb322f 263-335
+test/support/rails_callback_restore_probe.rb
+  s_13efe4cc102d28::t_a1a58b3bd5eafd 10,52-75,147-218,273-274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1472eb653b7ad528fd66016c5021ee5ec32c7e7e",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
