@@ -24,6 +24,15 @@ All notable changes to this project are documented here. The format is based on
   After the upgrade, `killed` can fall and `survived` can rise for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
   The gem corpus has 26 skip calls in 47,030 files, 2 with a literal condition. Fizzy has 8, 1 with `only:`. No method of Fizzy or Mutineer gets the new mark.
   Still open: a subclass in the same file that adds the callback again before the skip, and a skip made through `send` (#578).
+- **Reload keeps the class of every constant that a literal class builder sets, such as `Point = Struct.new(:x) do ... end` (#528).**
+  `--strategy reload` and `--daemon` built a new class on each mutant load. A subclass or an instance in another file kept the old class, so a mutant in the block survived falsely, and a test that compared classes failed for every mutant.
+  Now the reload keeps the class that the constant already has, for `Struct.new`, `Data.define` and `Class.new` with literal arguments.
+  A block with no parameter, made of method definitions, constant assignments that read nothing of the class, `attr_reader`, `attr_writer`, `attr_accessor`, visibility calls and nested `class` or `module` statements, runs again on that class, so its methods get real verdicts. This includes the methods that 1.10.0 marked `unplaceable` for a superclass constant (#503).
+  A block with any other statement, such as `alias_method`, `include` or `delegate`, does not run again, and its methods are `unplaceable` under reload (#576). `--strategy redefine` runs them. To get verdicts under reload, move that statement into a `class Point` statement after the assignment.
+  A constant that the file assigns twice is not kept.
+  After the upgrade, `survived`, `killed` and `unplaceable` can each rise or fall for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
+  1,256 such constants are in 47,030 Ruby files of 744 gems. 432 of their 518 blocks run again.
+  Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575).
 
 ## [1.10.0] - 2026-11-24
 

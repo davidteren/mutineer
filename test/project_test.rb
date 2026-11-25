@@ -1587,37 +1587,42 @@ class ProjectTest < Minitest::Test
       refute by_name[:outer].unplaceable?("reload")
       refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
       refute by_name[:built].unplaceable?("reload")
-      refute by_name[:built].not_reloaded, "no class statement names Y"
+      refute by_name[:built].not_reloaded, "the block runs again"
     end
   end
 
-  # #503: reload keeps the value of a constant that a class statement in the
-  # same file names as its superclass, so a def inside that value cannot be
-  # placed under reload. Redefine still places it.
-  def test_a_def_in_a_kept_superclass_constant_is_unplaceable_under_reload_only
+  # #503, #528: reload keeps the class of every literal builder constant. A
+  # block it can run again runs again on that class, so its defs are
+  # placeable. A block with a statement it cannot run again is kept and not
+  # run, so each def in it is unplaceable under reload (R9). Redefine places
+  # both.
+  def test_a_def_in_a_kept_block_is_unplaceable_under_reload_only_when_the_block_does_not_run_again
     src = "BaseRow = Struct.new(:v) do\n  def in_block?; end\nend\n" \
           "class Row < BaseRow\n  def three?; end\nend\n" \
           "module Ledger\n  Ledger::Entry = Data.define(:c) do\n    def path_block; end\n  end\n" \
           "  Other = Struct.new(:o) do\n    def other; end\n  end\nend\n" \
+          "Aliased = Struct.new(:a) do\n  alias_method :b, :a\n  def aliased; end\nend\n" \
           "class Ledger::Credit < Ledger::Entry\nend\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      assert by_name[:in_block?].not_reloaded
-      assert by_name[:in_block?].unplaceable?("reload")
-      refute by_name[:in_block?].unplaceable?("redefine")
-      assert by_name[:path_block].not_reloaded, "a path write matches a path superclass spelled the same"
-      refute by_name[:three?].not_reloaded
-      refute by_name[:three?].unplaceable?("reload")
-      refute by_name[:other].not_reloaded, "no class statement names Other"
+      %i[in_block? path_block other three?].each do |name|
+        refute by_name[name].not_reloaded, name
+        refute by_name[name].unplaceable?("reload"), name
+      end
+      assert by_name[:aliased].not_reloaded
+      assert by_name[:aliased].unplaceable?("reload")
+      refute by_name[:aliased].unplaceable?("redefine")
     end
-    # Discovery keeps the same writes as the reload text: a path write does not
-    # match a bare superclass, and a builder method's value is not kept.
+    # A path write is kept and reopened with no class statement for it, and a
+    # builder method's value is not a literal builder, so it is built again.
     src = "Other::Base = Struct.new(:v) do\n  def path_write; end\nend\nclass User < Base\nend\n" \
-          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n"
+          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n" \
+          "Twice = Struct.new(:v) do\n  alias_method :b, :v\n  def twice; end\nend\nTwice = 1\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
       refute by_name[:path_write].not_reloaded
       refute by_name[:built].not_reloaded
+      refute by_name[:twice].not_reloaded, "a name the file writes twice is not kept (R22)"
     end
   end
 
@@ -1775,10 +1780,11 @@ class ProjectTest < Minitest::Test
     end
   end
 
-  def test_superclass_constant_names_reads_each_constant_superclass
-    program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
-                                            "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \
-                                            "class J < ::K\nend\n").value
-    assert_equal Set[:B, "D::E", :I, :K, "::K"], Mutineer::Project.superclass_constant_names(program)
+  # #528, R22: the last names of the constants the file writes more than
+  # once, with any kind of write, a path write or a multiple-assignment target.
+  def test_repeated_constant_names_counts_every_kind_of_write
+    program = Mutineer::Parser.parse_string("A = 1\nA = 2\nB = 1\nB ||= 2\nC = 1\nX::C = 2\nD = 1\nE, D = 1, 2\n" \
+                                            "F = 1\nclass F; end\nmodule G; end\nG = 1\nH += 1\n").value
+    assert_equal Set[:A, :B, :C, :D], Mutineer::Project.repeated_constant_names(program)
   end
 end

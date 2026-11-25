@@ -30,13 +30,15 @@ module Mutineer
   #                  listed in docs/json-schema.md). A method inside the block
   #                  of a class statement's superclass call is one too
   #                  (`class X < Struct.new(:a) do ... end`, #492), and so
-  #                  is a method inside the value of a superclass constant
-  #                  the same file assigns (`BaseRow = Struct.new(:v) do
-  #                  ... end` with `class Row < BaseRow`, #503), and so is
-  #                  a method a second load does not define again (the value
-  #                  of a constant `||=`, or code under `unless defined?(X)`
-  #                  that defines `X`, #529), and so is a method that calls
-  #                  `define_callbacks` (#504).
+  #                  is a method inside the block of a kept class builder
+  #                  constant that reload does not run again (`Point =
+  #                  Struct.new(:x) do ... end` with an `alias_method` in the
+  #                  block, #528), and so is a method a second load does not
+  #                  define again (the value of a constant `||=`, or code
+  #                  under `unless defined?(X)` that defines `X`, #529), and
+  #                  so is a method that calls `define_callbacks` (#504), or
+  #                  that makes or feeds a `skip_callback` the file runs while
+  #                  it loads (#543).
   #                  Excluded from the denominator and, unlike uncapturable,
   #                  from the no-verdict gate: nothing is broken.
   #                  `--test-command` runs these mutants.

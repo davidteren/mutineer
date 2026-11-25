@@ -51,9 +51,12 @@ class RailsCallbackRestoreTest < Minitest::Test
     # before #543 (#578).
     skips = result.fetch("conditional_skips")
     assert_equal({ "QuietConcern" => 1, "QuietChild" => 1, "QuietLambda" => 1, "QuietOwn" => 2,
-                   "ChildNote" => 1, "GrandNote" => 1, "ProbeChild" => 1 }, skips.fetch("before"))
+                   "ChildNote" => 1, "GrandNote" => 1, "ProbeChild" => 1, "BuiltNote" => 1 }, skips.fetch("before"))
     assert_equal({ "QuietConcern" => 1, "QuietChild" => 1, "QuietLambda" => 1, "QuietOwn" => 2,
-                   "ChildNote" => 2, "GrandNote" => 1, "ProbeChild" => 1 }, skips.fetch("after"))
+                   "ChildNote" => 2, "GrandNote" => 1, "ProbeChild" => 1, "BuiltNote" => 1 }, skips.fetch("after"))
+    # #528, cover the siblings: a builder block that calls `define_callbacks`
+    # and `set_callback` does not run again, so the kept class keeps one callback.
+    assert skips.fetch("built_kept"), "reload keeps BuiltNote's class"
     quiet = { "QuietConcern" => %w[quiet? stamp], "QuietChild" => %w[quiet? stamp], "QuietLambda" => %w[quiet? stamp] }
     assert_equal quiet, skips.fetch("logs_before")
     assert_equal quiet, skips.fetch("logs_after")

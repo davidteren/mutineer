@@ -272,6 +272,21 @@ class RailsDogfoodDaemonTest < Minitest::Test
     assert_equal aggregate.total, aggregate.survived_count, "every urgent? mutant must run and survive"
   end
 
+  # #528: GridPoint is `Struct.new(:x) do ... end` with no class statement for
+  # it, and PinnedGridPoint inherits from it in another file that boot loads.
+  # The daemon built a new GridPoint for each mutant, so the subclass kept the
+  # old class and every `origin?` mutant was a false survivor. Reload now keeps
+  # the class and runs the block again on it.
+  def test_the_daemon_reaches_a_builder_constant_through_a_subclass
+    config = config_for(1, model: "grid_point")
+    aggregate = nil
+    _out, err = capture_subprocess_io { aggregate, = Mutineer::Runner.execute(config) }
+
+    assert_equal 0, aggregate.errored_count, err
+    assert_operator aggregate.killed_count, :>, 0
+    assert_in_delta 100.0, aggregate.mutation_score
+  end
+
   # #504: HelperChainNote's body defines its chain through `note_callbacks`.
   # The reload guard skips a chain the class already has, so a mutant in the
   # helper (such as `true` to `false` for `skip_after_callbacks_if_terminated`)

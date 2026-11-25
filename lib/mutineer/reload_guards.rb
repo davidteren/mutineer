@@ -141,15 +141,16 @@ module Mutineer
       yield
     end
 
-    # The value a reloaded constant assignment keeps (#503).
+    # The value a reloaded constant assignment keeps (#503, #528).
     #
-    # `BaseRow = Struct.new(:v)` builds a new class each time Ruby runs it, so
-    # a class statement in the same file that inherits from `BaseRow` raised
-    # "superclass mismatch" on a second load. The reload text wraps such a
-    # value in a call to this method ({JobPlan.keep_live_superclasses}). When
-    # `scope` already has a class `name`, this returns it, so every class,
-    # subclass and instance keeps pointing at one class. Otherwise it runs the
-    # block, as the original text would.
+    # `Point = Struct.new(:x)` builds a new class each time Ruby runs it, so a
+    # class statement in the same file that inherits from `Point` raised
+    # "superclass mismatch" on a second load, and a subclass or an instance in
+    # another file kept the old class. The reload text wraps such a value in a
+    # call to this method ({JobPlan.keep_live_superclasses}). When `scope`
+    # already has a class `name`, this returns it, so every class, subclass
+    # and instance keeps pointing at one class. Otherwise it runs the block, as
+    # the original text would.
     #
     # @param scope [Module, nil] the module the constant is assigned in; nil
     #   at the top level.
@@ -163,6 +164,31 @@ module Mutineer
         return value if value.is_a?(Class)
       end
       yield
+    end
+
+    # The class a reloaded builder constant keeps, with its builder block run
+    # again on it (#528).
+    #
+    # The reload text turns `Point = Struct.new(:x) do ... end` into a call to
+    # this method when the block is safe to run again
+    # ({Project.rerunnable_block?}): `builder` is the builder call, and the
+    # block stays where it was, so line numbers do not move. It takes the class
+    # from {kept_constant}, runs the block on it with `class_exec`, and returns
+    # it, so the mutated methods land on the class that other files hold.
+    # `Struct.new`, `Data.define` and `Class.new` also run their block on the
+    # new class after they build it, so with no live class this gives what the
+    # original text gives.
+    #
+    # @param scope [Module, nil] the module the constant is assigned in; nil
+    #   at the top level.
+    # @param name [Symbol] the constant name.
+    # @param builder [Proc] builds the class, as the original text would.
+    # @yield the builder block, run on the class.
+    # @return [Class]
+    def self.reopened_constant(scope, name, builder, &body)
+      klass = kept_constant(scope, name, &builder)
+      klass.class_exec(&body)
+      klass
     end
 
     # True while a mutant file loads.

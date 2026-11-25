@@ -29,12 +29,14 @@ module Mutineer
   # reload keeps the live superclass, so that block does not run again (#492).
   # `not_reloaded` is true for a def that a second load of its file does not
   # define again, so reload cannot place a mutant in it. It is set for a def
-  # inside the value of a constant assignment whose class reload keeps
-  # ({Project.kept_constant_write?}), such as `BaseRow = Struct.new(:v) do ... end` with
-  # `class Row < BaseRow` (#503); for a def inside the value of a constant
-  # `||=` write; and for a def inside the statements of `unless defined?(X)`
-  # or `if !defined?(X)` that write or open `X` ({Project.guarded_definition?}).
-  # The first load set the constant, so the second load skips that code (#529).
+  # inside the block of a literal class builder constant whose class reload
+  # keeps ({Project.kept_constant_write?}) and whose block it does not run again
+  # ({Project.reopened_write?}), such as `Point = Struct.new(:x) do ... end`
+  # with an `alias_method` in the block (#503, #528); for a def inside the
+  # value of a constant `||=` write; and for a def inside the statements of
+  # `unless defined?(X)` or `if !defined?(X)` that write or open `X`
+  # ({Project.guarded_definition?}). The first load set the constant, so the
+  # second load skips that code (#529).
   # `calls_define_callbacks` is true for a def that calls `define_callbacks`
   # or `define_model_callbacks` anywhere in its body (a nested def or block
   # too), or calls another such def of the same file by name or through
@@ -72,8 +74,8 @@ module Mutineer
     # def only when discovery found its {#reload_hook_call} (#297). Reload also
     # cannot place a def inside a superclass expression ({#in_superclass_block},
     # #492), a def that a second load does not define again ({#not_reloaded}:
-    # a superclass constant's kept value, #503, or a `||=` value or a
-    # `defined?` guard, #529), a def that calls `define_callbacks`
+    # a kept builder block that does not run again, #528, or a `||=` value or
+    # a `defined?` guard, #529), a def that calls `define_callbacks`
     # ({#calls_define_callbacks}, #504), or a def that feeds a skip the file runs
     # while it loads ({#makes_load_time_skip}, #543).
     #

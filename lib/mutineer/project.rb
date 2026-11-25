@@ -17,7 +17,7 @@ module Mutineer
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), superclass_constant_names(result.value))
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), repeated_constant_names(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
         exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
@@ -27,37 +27,32 @@ module Mutineer
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
 
-    # Each class statement's superclass that is a constant, inside any
-    # parentheses: the name for a bare constant (`:BaseRow` for
-    # `class Row < BaseRow` and for `class Row < ::BaseRow`), and the text as
-    # written for a path (`"Billing::BaseRow"`, `"::BaseRow"`). Reload keeps the value of a constant assignment
-    # that {kept_constant_write?} matches to one of these, and discovery marks
-    # a def inside that value (#503). Both read the names here, so discovery
-    # marks at least every value the reload text keeps
-    # ({JobPlan.keep_live_superclasses}).
+    # The last names of the constants the file writes more than once, with
+    # any kind of write ({CONSTANT_WRITES} or a multiple-assignment target).
+    # Reload does not keep such a constant (#528): a kept first write would get
+    # the value of the last write, which changes what a line between the two
+    # sees. Discovery ({SubjectVisitor}) and the reload text
+    # ({JobPlan.keep_live_superclasses}) both read the names here, so they keep
+    # the same writes.
     #
     # @param program [Prism::ProgramNode] the parsed file.
-    # @return [Set<Symbol, String>]
-    def self.superclass_constant_names(program)
-      names = Set.new
+    # @return [Set<Symbol>]
+    def self.repeated_constant_names(program)
+      counts = Hash.new(0)
       nodes = [program]
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
-        next unless node.is_a?(Prism::ClassNode)
+        next if node.is_a?(Prism::ClassNode) || node.is_a?(Prism::ModuleNode)
 
-        superclass = node.superclass
-        # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
-        superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
-        names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) ||
-                                    (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
-        names << superclass.slice if superclass.is_a?(Prism::ConstantPathNode)
+        name = defined_constant_name(node)
+        counts[name] += 1 if name
       end
-      names
+      counts.select { |_name, count| count > 1 }.keys.to_set
     end
 
     # Whether `node` is one pair of parentheses around one statement. Discovery
-    # ({superclass_constant_names}) and the reload text ({JobPlan.kept_target})
-    # both look through such parentheses with this one test, so they agree.
+    # ({guarded_definition?}) and the reload text ({JobPlan.kept_target}) look
+    # through such parentheses with this one test.
     #
     # @param node [Prism::Node, nil]
     # @return [Boolean]
@@ -65,37 +60,108 @@ module Mutineer
       node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
     end
 
-    # Whether reload keeps the value of this constant write (#503). It fails
-    # closed: a write it does not keep leaves the file as written, which errors
-    # visibly with "superclass mismatch" when it builds a new class (#527).
-    # All three must hold:
+    # Whether reload keeps the class of this constant write (#503, #528). It
+    # fails closed: a write it does not keep keeps its text, and the file
+    # builds the class again on each load (#575). All three must hold:
     #
-    # - The write names a superclass of the file: a bare write (`BaseRow = ...`)
-    #   matches a bare superclass (`< BaseRow` or `< ::BaseRow`), and a path
-    #   write matches a path superclass spelled the same (`Billing::Base = ...`
-    #   with `< Billing::Base`). So `Base = ...` beside
-    #   `class User < ActiveRecord::Base` is not kept.
-    # - A path write's parent is a constant path or `self`, so the scope the
-    #   guard reads runs no code a second time.
+    # - The write is a plain `=` of a bare name (`Point = ...`) or of a path
+    #   (`Billing::Point = ...`) whose parent is absent (`::Point`), a constant
+    #   path or `self`, so the scope the guard reads runs no code a second time.
+    # - The file writes that name only once (`repeated`): a kept first write
+    #   would get the value of the last one.
     # - The value is a {kept_builder?} call, which reads nothing the file can
-    #   build again. A builder method of the file (`BaseRow = build_base`) would
+    #   build again. A builder method of the file (`Point = build_point`) would
     #   keep a class its mutant never reaches, a silent false survivor.
     #
-    # {JobPlan.kept_constant_splice} and discovery both ask here, so discovery
-    # marks every def inside a kept value {Subject#not_reloaded}.
+    # No class statement has to name the constant: a subclass, an instance or a
+    # constant in another file keeps the class too. {JobPlan.kept_constant_splice}
+    # and discovery both ask here and {reopened_write?}, so discovery marks
+    # every def in a kept value that does not run again {Subject#not_reloaded}.
     #
     # @param node [Prism::Node]
-    # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
+    # @param repeated [Set<Symbol>] {repeated_constant_names} of the file.
     # @return [Boolean]
-    def self.kept_constant_write?(node, names)
+    def self.kept_constant_write?(node, repeated)
       if node.is_a?(Prism::ConstantWriteNode)
-        return false unless names.include?(node.name)
+        return false if repeated.include?(node.name)
       elsif node.is_a?(Prism::ConstantPathWriteNode)
-        return false unless names.include?(node.target.slice) && constant_scope?(node.target.parent)
+        return false if repeated.include?(node.target.name) || !constant_scope?(node.target.parent)
       else
         return false
       end
       kept_builder?(node.value)
+    end
+
+    # Whether reload keeps this constant's class and runs its builder block
+    # again on it (#528): a {kept_constant_write?} whose value has a block that
+    # {rerunnable_block?} accepts. Discovery and {JobPlan.kept_constant_splice}
+    # both ask here.
+    #
+    # @param node [Prism::Node]
+    # @param repeated [Set<Symbol>] {repeated_constant_names} of the file.
+    # @return [Boolean]
+    def self.reopened_write?(node, repeated)
+      kept_constant_write?(node, repeated) && !node.value.block.nil? && rerunnable_block?(node.value.block)
+    end
+
+    # The calls a builder block may make, beside its defs, and still run again
+    # on the class it built: each sets the same thing on a second run.
+    RERUN_SAFE_CALLS = %i[attr_reader attr_writer attr_accessor private public protected
+                          private_class_method public_class_method].freeze
+
+    # Whether a builder block can run a second time on the class it built and
+    # give the same class (#528). It has no parameter of any kind (`|k|`, `_1`
+    # or `it` would be the class, and `k.instance_method(:x)` reads its earlier
+    # state), and its body passes {rerunnable_body?}.
+    #
+    # @param block [Prism::BlockNode]
+    # @return [Boolean]
+    def self.rerunnable_block?(block)
+      block.parameters.nil? && rerunnable_body?(block.body)
+    end
+
+    # Whether each statement of a builder block's body is safe to run again on
+    # the same class: a def; a {RERUN_SAFE_CALLS} call with no receiver, no
+    # block, and def or literal arguments; a constant write whose value is a
+    # {kept_builder?} or is {class_state_free?}; or a `class`, `module` or
+    # `class << self` statement whose own body passes the same test. Anything
+    # else can read the earlier state of the class (`alias_method`, `include`,
+    # whose `included` hook Ruby runs again, `ORIG = instance_method(:x)`), so
+    # it makes the answer false, as does a body with `rescue` or `ensure`.
+    #
+    # @param body [Prism::Node, nil]
+    # @return [Boolean]
+    def self.rerunnable_body?(body)
+      return true if body.nil?
+      return false unless body.is_a?(Prism::StatementsNode)
+
+      body.body.all? do |statement|
+        case statement
+        when Prism::DefNode then true
+        when Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode then rerunnable_body?(statement.body)
+        when Prism::ConstantWriteNode, Prism::ConstantPathWriteNode
+          kept_builder?(statement.value) || class_state_free?(statement.value)
+        when Prism::CallNode
+          statement.receiver.nil? && statement.block.nil? && RERUN_SAFE_CALLS.include?(statement.name) &&
+            (statement.arguments&.arguments || []).all? do |argument|
+              argument.is_a?(Prism::DefNode) || literal_argument?(argument)
+            end
+        else false
+        end
+      end
+    end
+
+    # Whether a value reads nothing of the class a builder block runs on: it
+    # has no `self` and no call without a receiver, outside a def. So
+    # `KEYS = OPTIONS.map(&:key).freeze` is free, and `ZERO = new(0)` is not.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.class_state_free?(node)
+      return true if node.is_a?(Prism::DefNode)
+      return false if node.is_a?(Prism::SelfNode) || (node.is_a?(Prism::CallNode) && node.receiver.nil?)
+
+      node.compact_child_nodes.all? { |child| class_state_free?(child) }
     end
 
     # The class builders a kept value may call, by receiver name.
@@ -518,13 +584,14 @@ module Mutineer
       # @param file [String] source file path being visited.
       # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
       #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
-      # @param kept_names [Set<Symbol, String>] the file's superclass constants (see
-      #   {Project.superclass_constant_names}); a def in the value of a constant
-      #   write that {Project.kept_constant_write?} matches is {Subject#not_reloaded}.
-      def initialize(file, plain_calls = Set.new, kept_names = Set.new)
+      # @param repeated [Set<Symbol>] the constants the file writes more than
+      #   once (see {Project.repeated_constant_names}); a def in a kept value that
+      #   does not run again ({Project.kept_constant_write?} and not
+      #   {Project.reopened_write?}) is {Subject#not_reloaded}.
+      def initialize(file, plain_calls = Set.new, repeated = Set.new)
         @file = file
         @plain_calls = plain_calls
-        @kept_names = kept_names
+        @repeated = repeated
         @namespace_stack = []
         @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
@@ -682,11 +749,11 @@ module Mutineer
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
       # `=`, `||=` and `&&=` store the class, so each names it; `+=` stores what `+`
-      # returns, so its builder is left unnamed. A plain `=` of a name a class
-      # statement in the file inherits from marks each def in its value
-      # {Subject#not_reloaded}, because reload keeps that value (#503). So does a
-      # constant `||=`: the first load set the constant, so a second load skips
-      # the value (#529).
+      # returns, so its builder is left unnamed. A literal builder constant that
+      # reload keeps without running its block again marks each def in its value
+      # {Subject#not_reloaded} (#503, #528); one whose block runs again
+      # ({Project.reopened_write?}) does not. So does a constant `||=`: the first
+      # load set the constant, so a second load skips the value (#529).
       #
       # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode, Prism::ConstantOrWriteNode,
       #   Prism::ConstantAndWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode]
@@ -695,7 +762,9 @@ module Mutineer
       def visit_constant_write_node(node)
         saved_kept = @not_reloaded
         @not_reloaded = true if node.is_a?(Prism::ConstantOrWriteNode) || node.is_a?(Prism::ConstantPathOrWriteNode)
-        @not_reloaded = true if Project.kept_constant_write?(node, @kept_names)
+        if Project.kept_constant_write?(node, @repeated) && !Project.reopened_write?(node, @repeated)
+          @not_reloaded = true
+        end
         call = assigned_value(node.value)
         return super unless builds_class?(call)
 

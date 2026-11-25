@@ -565,10 +565,12 @@ class DaemonBackendContractTest < Minitest::Test
     assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
   end
 
-  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  # #503, #528: the payload keeps a builder constant the file assigns, and runs
+  # its block again on the live class, as in process.
   def test_the_payload_keeps_a_superclass_constant_the_file_assigns
     code = payload_code("const_superclass.rb", "Row#three?")
-    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :BaseRow, " \
+                          "-> { Struct.new(:v) }) do"
   end
 
   # #529: the daemon reloads like the in-process child, so a def in the value

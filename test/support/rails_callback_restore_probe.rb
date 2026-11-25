@@ -11,6 +11,7 @@ require "abstract_controller"
 require "tmpdir"
 require "mutineer/reload_guards"
 require "mutineer/concern_blocks"
+require "mutineer/job_plan"
 
 # A class ActiveSupport can hang a :save callback chain on.
 class CallbackHost
@@ -182,6 +183,14 @@ module RailsCallbackRestoreProbe
       skip_before_action :check, only: :index
       def index = nil
     end
+
+    # #528: a block that calls `define_callbacks` and `set_callback` does not
+    # run again, so reload keeps the class and its one callback.
+    BuiltNote = Class.new do
+      include ActiveSupport::Callbacks
+      define_callbacks :save
+      set_callback(:save, :before) { nil }
+    end
   RUBY
 
   # The number of `unless` conditions on each class's callback, and the
@@ -199,12 +208,17 @@ module RailsCallbackRestoreProbe
           [name, entry.instance_variable_get(:@unless).size]
         end
         check = ProbeChild.__callbacks[:process_action].find { |callback| callback.filter == :check }
-        saves.merge("ProbeChild" => check.instance_variable_get(:@unless).size)
+        saves.merge("ProbeChild" => check.instance_variable_get(:@unless).size,
+                    "BuiltNote" => BuiltNote.__callbacks[:save].to_a.size)
       end
       logs = -> { %w[QuietConcern QuietChild QuietLambda].to_h { |name| [name, Object.const_get(name).new.save.map(&:to_s)] } }
       before = counts.call
       logs_before = logs.call
-      Mutineer::ConcernBlocks.load_mutant(file, file)
+      built = BuiltNote
+      # The child loads the reload text, which keeps BuiltNote (#528).
+      mutant = File.join(dir, "quiet_mutant.rb")
+      File.write(mutant, Mutineer::JobPlan.keep_live_superclasses(CONDITIONAL_SKIP_FILE))
+      Mutineer::ConcernBlocks.load_mutant(file, mutant)
       raised = begin
         Mutineer::ReloadGuards.during_load(file) { QuietChild.skip_callback(:save, :before, :not_defined, if: :quiet?) }
         false
@@ -212,7 +226,7 @@ module RailsCallbackRestoreProbe
         true
       end
       { "before" => before, "after" => counts.call, "logs_before" => logs_before, "logs_after" => logs.call,
-        "typo_raises" => raised }
+        "typo_raises" => raised, "built_kept" => BuiltNote.equal?(built) }
     end
   end
 

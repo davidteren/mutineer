@@ -234,15 +234,15 @@ class CallSuperclassReloadTest < Minitest::Test
 
   # #503: AE3, AE5. The file assigns the constant its class inherits from.
   # Reload keeps that constant's class and scores the class body like
-  # redefine. A method in the kept value's block is unplaceable under reload.
+  # redefine. #528, AE8: the kept value's block runs again on the live class,
+  # so its method gets a real verdict too.
   def test_reload_scores_a_class_whose_superclass_constant_the_file_assigns
     rows = const_run("const_superclass_test.rb")
     assert_equal ["killed"], rows["reload"]["Row#three?"].uniq
     assert_equal ["survived"], rows["reload"]["Row#weak?"].uniq
     assert_equal ["killed"], rows["reload"]["Ledger::Credit#zero?"].uniq
-    assert_equal ["unplaceable"], rows["reload"]["BaseRow#in_block?"].uniq
-    assert_equal ["killed"], rows["redefine"]["BaseRow#in_block?"].uniq
-    assert_equal rows["redefine"].except("BaseRow#in_block?"), rows["reload"].except("BaseRow#in_block?")
+    assert_equal ["killed"], rows["reload"]["BaseRow#in_block?"].uniq
+    assert_equal rows["redefine"], rows["reload"]
   end
 
   # #503: AE4. A subclass and an instance in another file keep the same
@@ -252,7 +252,7 @@ class CallSuperclassReloadTest < Minitest::Test
     rows = const_run("const_superclass_subclass_test.rb")
     assert_equal ["killed"], rows["reload"]["Row#three?"].uniq
     assert_equal ["survived"], rows["reload"]["Ledger::Credit#zero?"].uniq
-    assert_equal rows["redefine"].except("BaseRow#in_block?"), rows["reload"].except("BaseRow#in_block?")
+    assert_equal rows["redefine"], rows["reload"]
   end
 
   def test_the_rewrite_keeps_a_superclass_constant_the_file_assigns
@@ -271,30 +271,66 @@ class CallSuperclassReloadTest < Minitest::Test
     # A local write in the value is not a builder call, so it is left as written.
     code = "Base = (b = Struct.new(:v))\nclass Row < Base\nend\nb\n"
     assert_same code, Mutineer::JobPlan.keep_live_superclasses(code)
+    # #528: a builder block that can run again keeps its place, after the call.
     code = "Base = Struct.new(:v, \"w\", 1, keyword_init: true) do\n  def x = 1\nend\nclass Row < Base\nend\n"
-    assert_includes Mutineer::JobPlan.keep_live_superclasses(code), "Base = ::Mutineer::ReloadGuards.kept_constant("
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(code),
+                    "Base = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :Base, " \
+                    "-> { Struct.new(:v, \"w\", 1, keyword_init: true) }) do\n  def x = 1\nend\n"
   end
 
-  # #503: AE8. These come back as the same String: no class statement names
-  # the constant, the value is a constant or a variable read, the write is
-  # `||=` (#529) or a multiple assignment (#527), or the names differ in path.
+  # #528: no class statement has to name a literal builder constant. Each text
+  # gives the expected rewrite, parses, and keeps its line count.
+  def test_the_rewrite_keeps_every_literal_builder_constant
+    {
+      "Point = Struct.new(:x) { def a = 1 }\n" =>
+        "Point = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :Point, -> { Struct.new(:x) }) " \
+        "{ def a = 1 }\n",
+      "Billing::Base = Class.new do\n  def a = 1\nend\n" =>
+        "Billing::Base = ::Mutineer::ReloadGuards.reopened_constant(Billing, :Base, -> { Class.new }) do\n",
+      "Point = Struct.new(\n  :x,\n  :y\n) do\n  def a = 1\nend\n" =>
+        "Point = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :Point, -> { Struct.new(\n  :x,\n  :y\n) }) do\n",
+      "X = Struct.new(:x) \\\n  do\n  def a = 1\nend\n" =>
+        "X = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :X, -> { Struct.new(:x) \\\n  }) do\n",
+      "Other = Struct.new(:v)\nclass Row < BaseRow\nend\n" =>
+        "Other = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :Other) { Struct.new(:v) }\n",
+      "Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n" =>
+        "Base = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :Base) { Struct.new(:v) }\n",
+      "Other::Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n" =>
+        "Other::Base = ::Mutineer::ReloadGuards.kept_constant(Other, :Base) { Struct.new(:v) }\n",
+      "Other::Base = Struct.new(:v)\nclass User < Base\nend\n" =>
+        "Other::Base = ::Mutineer::ReloadGuards.kept_constant(Other, :Base) { Struct.new(:v) }\n",
+      # The builder with an argument that is not a literal keeps its text (#575).
+      "Fields = Struct.new(:v)\nBaseRow = Class.new(Fields)\nclass Row < BaseRow\nend\n" =>
+        "Fields = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :Fields) { Struct.new(:v) }\n" \
+        "BaseRow = Class.new(Fields)\n"
+    }.each do |code, expected|
+      rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+      assert_includes rewritten, expected, code
+      refute Mutineer::Parser.invalid?(rewritten), rewritten
+      assert_equal code.lines.size, rewritten.lines.size, rewritten
+    end
+  end
+
+  # #503: AE8. These come back as the same String: the value is a constant or
+  # a variable read, the write is `||=` (#529) or a multiple assignment (#527),
+  # or the file writes the name twice (#528, AE17).
   def test_the_rewrite_leaves_other_constant_writes_alone
-    ["Other = Struct.new(:v)\nclass Row < BaseRow\nend\n",
-     "BaseRow = Parent\nclass Row < BaseRow\nend\n",
+    ["BaseRow = Parent\nclass Row < BaseRow\nend\n",
      "BaseRow = Parent::Kid\nclass Row < BaseRow\nend\n",
      "BaseRow ||= Struct.new(:v)\nclass Row < BaseRow\nend\n",
      "base = Struct.new(:v)\nBaseRow = base\nclass Row < BaseRow\nend\n",
      "A, BaseRow = 1, Struct.new(:v)\nclass Row < BaseRow\nend\n",
-     # A bare write does not match a path superclass, nor a path spelled otherwise.
-     "Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n",
-     "Other::Base = Struct.new(:v)\nclass User < ActiveRecord::Base\nend\n",
-     # Review of #541: a path write does not match a bare superclass.
-     "Other::Base = Struct.new(:v)\nclass User < Base\nend\n",
+     # #528, AE17: a name the file writes twice is not kept, by any kind of write.
+     "Cell = Struct.new(:x)\nFirst = Cell\nCell = Struct.new(:y)\n",
+     "Cell = Struct.new(:x)\nCell ||= 1\n",
+     "Cell = Struct.new(:x)\nA::Cell = 1\n",
+     "Cell = Struct.new(:x)\nA, Cell = 1, 2\n",
+     # AE14, R16: no call superclass and no literal builder constant.
+     "class A < B\nend\nX = 1\nY = build\n",
      # Fail closed: only a Struct.new, Data.define or Class.new with literal
      # arguments is kept. A builder method of the file, or an argument that can
      # name a class the file builds again, would keep a stale class.
      "BaseRow = build_base\nclass Row < BaseRow\nend\n",
-     "Fields = Struct.new(:v)\nBaseRow = Class.new(Fields)\nclass Row < BaseRow\nend\n",
      "BaseRow = Struct.new(*FIELDS)\nclass Row < BaseRow\nend\n",
      "BaseRow = Struct.new(:v, &BLOCK)\nclass Row < BaseRow\nend\n",
      "BaseRow = Factory.new(:v)\nclass Row < BaseRow\nend\n",
@@ -304,13 +340,19 @@ class CallSuperclassReloadTest < Minitest::Test
     end
   end
 
-  # The walk does not enter a kept value, so a class inside it is not wrapped
-  # again: two splices in one range would not parse.
+  # The walk does not enter a kept value that does not run again, so a class
+  # inside it is not wrapped again: two splices in one range would not parse.
+  # A reopened block runs again, so the walk wraps a class inside it (#528).
   def test_a_class_inside_a_kept_constant_is_not_wrapped
-    code = "Base = Class.new do\n  class Inner < Struct.new(:b); end\nend\nclass Row < Base\nend\n"
+    code = "Base = Class.new do\n  alias_method :b, :a\n  class Inner < Struct.new(:b); end\nend\nclass Row < Base\nend\n"
     rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
     assert_equal 1, rewritten.scan("::Mutineer::ReloadGuards.").size
     assert_includes rewritten, "kept_constant"
+    refute Mutineer::Parser.invalid?(rewritten)
+    code = "Base = Class.new do\n  class Inner < Struct.new(:b); end\nend\nclass Row < Base\nend\n"
+    rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+    assert_equal 1, rewritten.scan("reopened_constant").size
+    assert_equal 1, rewritten.scan("kept_superclass").size
     refute Mutineer::Parser.invalid?(rewritten)
   end
 
@@ -327,7 +369,8 @@ class CallSuperclassReloadTest < Minitest::Test
       script = "require 'mutineer/reload_guards'\nload #{original.inspect}\nbase = BaseRow; entry = Ledger::Entry\n" \
                "load #{mutant.inspect}\n" \
                "raise 'BaseRow' unless BaseRow.equal?(base) && Row.superclass.equal?(BaseRow)\n" \
-               "raise 'Entry' unless Ledger::Entry.equal?(entry) && Ledger::Credit.superclass.equal?(entry)"
+               "raise 'Entry' unless Ledger::Entry.equal?(entry) && Ledger::Credit.superclass.equal?(entry)\n" \
+               "raise 'block' unless BaseRow.instance_method(:in_block?).source_location.first == #{mutant.inspect}"
       _out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script)
       assert status.success?, err
     end
@@ -356,9 +399,9 @@ class CallSuperclassReloadTest < Minitest::Test
               "class K < (base = Struct.new(:a) { def k2; end })\nend\n",
               "class K < base = Struct.new(:a) { def k3; end }\nend\n",
               "class K < (a = b = Data.define(:a) { def k4; end })\nend\n",
-              "BaseRow = Struct.new(:v) do\n  def k5; end\nend\nclass Row < BaseRow\nend\n",
-              "Base = Data.define(:v) do\n  def k6; end\nend\nclass Row < Base\nend\n",
-              "module M\n  M::Base = Class.new do\n    def k7; end\n  end\nend\nclass Row < M::Base\nend\n"]
+              "BaseRow = Struct.new(:v) do\n  alias_method :b, :v\n  def k5; end\nend\nclass Row < BaseRow\nend\n",
+              "Base = Data.define(:v) do\n  alias_method :b, :v\n  def k6; end\nend\nclass Row < Base\nend\n",
+              "module M\n  M::Base = Class.new do\n    alias_method :b, :a\n    def k7; end\n  end\nend\nclass Row < M::Base\nend\n"]
     checked = []
     Dir.mktmpdir do |dir|
       texts.each_with_index do |code, index|
@@ -535,6 +578,148 @@ class CallSuperclassReloadTest < Minitest::Test
       assert_equal %w[BlockedCell#three? GuardedCell#two? NegatedCell#five? OrCell#one? StatedCell#four?],
                    doc["unplaceable"].map { |entry| entry["subject"] }.uniq.sort
     end
+  end
+
+
+  # #528: each builder block text and whether reload may run it again on the
+  # live class (`Project.rerunnable_block?`). The second value of a true row
+  # is the method the load-twice test checks.
+  RERUNNABLE_BLOCKS = {
+    "" => [true, nil],
+    "def a; end" => [true, "K.instance_method(:a)"],
+    "private\n  def a; end" => [true, "K.instance_method(:a)"],
+    "private def a = 1" => [true, "K.instance_method(:a)"],
+    "attr_reader :b" => [true, nil],
+    "attr_writer :b" => [true, nil],
+    "attr_accessor :b" => [true, nil],
+    "public" => [true, nil],
+    "protected" => [true, nil],
+    "private_class_method :new" => [true, nil],
+    "public_class_method :new" => [true, nil],
+    "ZERO = 1" => [true, nil],
+    "KEYS = OPTIONS.filter_map(&:key).freeze" => [true, nil],
+    "Inner = Struct.new(:b) do\n    alias_method :c, :b\n  end" => [true, nil],
+    "class Z\n    def z; end\n  end" => [true, "Z.instance_method(:z)"],
+    "module self::Calc\n    def self.p = 1\n  end" => [true, "K::Calc.method(:p)"],
+    "class << self\n    def s; end\n  end" => [true, "K.method(:s)"],
+    "include Comparable" => [false],
+    "extend Forwardable" => [false],
+    "alias_method :b, :a" => [false],
+    "alias b a" => [false],
+    "undef a" => [false],
+    "remove_method :a" => [false],
+    "define_method(:a) { }" => [false],
+    "delegate :a, to: :b" => [false],
+    "[1].each { }" => [false],
+    "attr_reader(*names)" => [false],
+    "helper" => [false],
+    "self.x = 1" => [false],
+    "ORIG = instance_method(:a)" => [false],
+    "ZERO = new(0)" => [false],
+    "ME = self" => [false],
+    "class Z\n    alias_method :b, :a\n  end" => [false],
+    "class << self\n    alias_method :b, :a\n  end" => [false],
+    "def a; end\nrescue StandardError\n  nil" => [false]
+  }.freeze
+
+  # A block parameter is the class, and reading it can read its earlier state.
+  PARAMETER_BLOCKS = ["do |k|\n  ORIG = k.instance_method(:a)\n  def a = 1\nend\n",
+                      "do\n  ORIG = _1.instance_method(:a)\n  def a = 1\nend\n",
+                      "do\n  ORIG = it.instance_method(:a)\n  def a = 1\nend\n"].freeze
+
+  # #528, R10, test the rule: the answer of `Project.rerunnable_block?` for
+  # each statement kind, so a block that reads the class's earlier state
+  # never runs again.
+  def test_rerunnable_block_accepts_only_statements_that_are_safe_to_run_again
+    RERUNNABLE_BLOCKS.each do |body, (expected, _check)|
+      block = builder_block("K = Struct.new(:a) do\n  #{body}\nend\n")
+      assert_equal expected, Mutineer::Project.rerunnable_block?(block), body
+    end
+    PARAMETER_BLOCKS.each do |text|
+      refute Mutineer::Project.rerunnable_block?(builder_block("K = Struct.new(:a) #{text}")), text
+    end
+  end
+
+  # #528, R10, the load-twice rule: for each block the rule accepts, a second
+  # load of the rewritten text keeps the same class, and each def of the block
+  # comes from the second file. So the block really runs again on the live class.
+  def test_every_rerunnable_block_loads_twice_onto_the_same_class
+    texts = RERUNNABLE_BLOCKS.select { |_body, (expected, _check)| expected }.map do |body, (_expected, check)|
+      ["K = Struct.new(:a) do\n  #{body}\nend\n", check ? ["K", check] : ["K"]]
+    end
+    texts << [File.read(File.join(ROOT, "builder_constant.rb")), ["BuilderPoint", "BuilderPoint.instance_method(:one?)"]]
+    texts.each do |code, (constant, check)|
+      rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+      assert_includes rewritten, "reopened_constant", code
+      Dir.mktmpdir do |dir|
+        original = File.join(dir, "original.rb")
+        mutant = File.join(dir, "rewritten.rb")
+        File.write(original, code)
+        File.write(mutant, rewritten)
+        script = "require 'mutineer/reload_guards'\nOPTIONS = []\nload #{original.inspect}\nfirst = #{constant}\n" \
+                 "load #{mutant.inspect}\nraise 'a new class' unless first.equal?(#{constant})\n"
+        script += "raise 'not run again' unless #{check}.source_location.first == #{mutant.inspect}\n" if check
+        _out, err, status = Open3.capture3(RbConfig.ruby, "-W0", "-I#{LIB}", "-e", script)
+        assert status.success?, "#{code}: #{err}"
+      end
+    end
+  end
+
+  # The block of the one builder call in `code`.
+  def builder_block(code)
+    program = Mutineer::Parser.parse_string(code).value
+    program.statements.body.first.value.block
+  end
+
+  # #528: reopened_constant runs the block on the live class, or on the class
+  # the builder makes when the scope has none.
+  def test_reopened_constant_runs_the_block_on_the_live_class_or_on_a_new_one
+    scope = Module.new
+    live = Struct.new(:x)
+    scope.const_set(:Kept, live)
+    result = Mutineer::ReloadGuards.reopened_constant(scope, :Kept, -> { Struct.new(:y) }) { def tag = :reopened }
+    assert_same live, result
+    assert_equal :reopened, live.new(1).tag
+    fresh = Mutineer::ReloadGuards.reopened_constant(scope, :Missing, -> { Struct.new(:y) }) { def tag = :fresh }
+    refute_same live, fresh
+    assert_equal %i[y], fresh.members
+    assert_equal :fresh, fresh.new(1).tag
+  end
+
+  def builder_run(test)
+    %w[reload redefine].to_h do |strategy|
+      [strategy, run_strategy(strategy, sources: %w[builder_constant.rb builder_constant_holders.rb], test: test)]
+    end
+  end
+
+  # #528: AE6. A subclass and an instance in another file reach the mutant,
+  # because reload keeps the class and runs its block again.
+  def test_reload_reaches_a_builder_constant_through_another_file
+    rows = builder_run("builder_constant_subclass_test.rb")
+    assert_equal ["killed"], rows["reload"]["BuilderPoint#one?"].uniq
+    assert_equal ["survived"], rows["reload"]["BuilderPoint#weak?"].uniq
+    assert_equal rows["redefine"], rows["reload"]
+  end
+
+  # #528: AE7. The instance another file holds is still a BuilderPoint, so a
+  # test that compares classes does not fail for every mutant.
+  def test_reload_keeps_the_class_of_a_builder_constant
+    rows = builder_run("builder_constant_identity_test.rb")
+    assert_equal ["survived"], rows["reload"]["BuilderPoint#one?"].uniq
+    assert_equal ["survived"], rows["reload"]["BuilderPoint#weak?"].uniq
+    assert_equal rows["redefine"], rows["reload"]
+  end
+
+  # #528: AE9. A block that renames and wraps a method would make it call
+  # itself on a second run, so reload keeps the class, does not run the block,
+  # and marks its methods unplaceable. Redefine places them.
+  def test_reload_marks_a_block_it_cannot_run_again_unplaceable
+    reload = run_strategy("reload", sources: %w[builder_alias_block.rb], test: "builder_alias_block_test.rb")
+    assert_equal ["unplaceable"], reload.fetch("AliasPoint#x").uniq
+    assert_equal ["unplaceable"], reload.fetch("AliasPoint#weak?").uniq
+    redefine = run_strategy("redefine", sources: %w[builder_alias_block.rb], test: "builder_alias_block_test.rb")
+    assert_includes redefine.fetch("AliasPoint#x"), "killed"
+    assert_includes redefine.fetch("AliasPoint#weak?"), "survived"
   end
 
 end
