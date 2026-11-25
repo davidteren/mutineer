@@ -1780,6 +1780,41 @@ class ProjectTest < Minitest::Test
     end
   end
 
+  # #533: a constant whose value holds only data names the same data on each
+  # load, so a superclass that reads it is not stale.
+  def test_data_literal_accepts_only_values_that_hold_no_class
+    data = ["1", ":a", "\"s\"", "nil", "true", "1.5", "%i[a b]", "[1, [2, :c]]", "{ a: 1, \"b\" => [2] }",
+            "%i[a b].freeze", "{ k: 1 }.freeze", "[]"]
+    other = ["Foo", "build", "Struct.new(:a)", "x.freeze", "[Foo]", "{ a: Foo }", "\"\#{x}\"", "[1].map(&:to_s)",
+             "%i[a].freeze(1)", "{ **opts }"]
+    (data.map { |text| [text, true] } + other.map { |text| [text, false] }).each do |text, expected|
+      value = Mutineer::Parser.parse_string("X = #{text}\n").value.statements.body.first.value
+      assert_equal expected, Mutineer::Project.data_literal?(value), text
+    end
+  end
+
+  # #533: the names a load of the file can build again: its defs, and the
+  # constants it writes with a value that is neither data nor kept by reload.
+  def test_rebuilt_names_reads_defs_and_constants_reload_does_not_keep
+    program = Mutineer::Parser.parse_string(<<~RUBY).value
+      def self.build_base = 1
+      class Row
+        def total = 1
+      end
+      DATA_ONLY = %i[a].freeze
+      Kept = Struct.new(:v)
+      Called = build_base
+      A, Multi = 1, 2
+      Billing::Path = make
+      Or ||= Struct.new(:v)
+      Twice = Struct.new(:v)
+      Twice = Struct.new(:w)
+    RUBY
+    defs, constants = Mutineer::Project.rebuilt_names(program)
+    assert_equal Set[:build_base, :total], defs
+    assert_equal Set[:Called, :A, :Multi, :Path, :Or, :Twice], constants
+  end
+
   # #528, R22: the last names of the constants the file writes more than
   # once, with any kind of write, a path write or a multiple-assignment target.
   def test_repeated_constant_names_counts_every_kind_of_write

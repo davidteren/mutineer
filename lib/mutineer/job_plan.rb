@@ -445,10 +445,11 @@ module Mutineer
     def self.keep_live_superclasses(code)
       program = Parser.parse_string(code).value
       repeated = Project.repeated_constant_names(program)
+      rebuilt = Project.rebuilt_names(program)
       splices = []
       queue = [program]
       while (node = queue.shift)
-        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
+        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass, rebuilt))
           splices << wrap_splice(target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name)
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
@@ -521,9 +522,11 @@ module Mutineer
     # names the same class on each load. A bare variable read is left alone
     # too: an earlier line set it, that line runs again, and a kept parent
     # would differ from what the variable then holds, a silent false verdict
-    # (#512). Both hold inside any number of parentheses (`(base)`). A read
-    # deeper in the expression (`Class.new(base)`) is still wrapped (#533).
-    # A plain local write (`base = v`, or `(base = v)` alone in
+    # (#512). Both hold inside any number of parentheses (`(base)`). A
+    # superclass that can name a class the file builds again is left alone
+    # too ({reads_rebuilt?}, #533), so the file errors visibly with
+    # "superclass mismatch" when that class is new (#527), instead of keeping
+    # a stale parent. A plain local write (`base = v`, or `(base = v)` alone in
     # parentheses, or a chain `a = b = v`) gives the target of its value, so
     # the write stays outside the block and still sets the local (#512).
     # Any other superclass that sets a local is left alone, because the block
@@ -531,20 +534,58 @@ module Mutineer
     # wrapped whole.
     #
     # @param node [Prism::Node, nil] a class statement's superclass.
+    # @param rebuilt [Array(Set<Symbol>, Set<Symbol>)] {Project.rebuilt_names} of the file.
     # @return [Prism::Node, nil]
-    def self.kept_target(node)
+    def self.kept_target(node, rebuilt)
       return nil if node.nil?
 
       inner = node
       inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
       return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
       return nil if outer_block_parameter?(node)
+      return nil if reads_rebuilt?(node, rebuilt)
 
       write = plain_local_write(node)
-      return kept_target(write.value) if write
+      return kept_target(write.value, rebuilt) if write
 
       writes_local?(node) ? nil : node
     end
+
+    # Whether a superclass expression can name a class that a load of the file
+    # builds again (#533), outside any def in it (a def's body runs later):
+    #
+    # - a read of a local variable set outside the expression (a block's own
+    #   parameter does not count), or any use of an instance, class or global
+    #   variable, a write too, because `$base ||= Object` reads it with no
+    #   read node;
+    # - a read of a constant in the second Set of `rebuilt`;
+    # - a call of a method named in the first Set of `rebuilt`, with any
+    #   receiver, which fails closed. The `Struct.new`, `Data.define` or
+    #   `Class.new` call itself does not count, so `class Point < Struct.new(:x)`
+    #   beside a `def self.new` is still wrapped.
+    #
+    # @param node [Prism::Node]
+    # @param rebuilt [Array(Set<Symbol>, Set<Symbol>)] {Project.rebuilt_names} of the file.
+    # @param level [Integer] the blocks and lambdas between `node` and the superclass.
+    # @return [Boolean]
+    def self.reads_rebuilt?(node, rebuilt, level = 0)
+      return false if node.is_a?(Prism::DefNode)
+      return node.depth >= level if node.is_a?(Prism::LocalVariableReadNode)
+      return true if OUTER_VARIABLES.any? { |type| node.is_a?(type) }
+
+      defs, constants = rebuilt
+      return true if (node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)) && constants.include?(node.name)
+      return true if node.is_a?(Prism::CallNode) && defs.include?(node.name) && !Project.builder_call?(node)
+
+      inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
+      node.compact_child_nodes.any? { |child| reads_rebuilt?(child, rebuilt, inner) }
+    end
+
+    # The Prism nodes that read or write an instance, class or global
+    # variable, in every form. {reads_rebuilt?} counts each of them.
+    OUTER_VARIABLES = %w[InstanceVariable ClassVariable GlobalVariable].flat_map do |kind|
+      %w[Read Write OrWrite AndWrite OperatorWrite Target].map { |form| Prism.const_get(:"#{kind}#{form}Node") }
+    end.freeze
 
     # The local write `node` is, alone or as the one statement of one pair of
     # parentheses, or nil.
@@ -573,10 +614,10 @@ module Mutineer
     end
 
     # The superclass nodes {kept_target} leaves as written: a constant, and a
-    # read of a variable an earlier statement set (#512).
-    LEFT_AS_WRITTEN = [Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
-                       Prism::InstanceVariableReadNode, Prism::ClassVariableReadNode,
-                       Prism::GlobalVariableReadNode].freeze
+    # read of a variable an earlier statement set (#512). The variable reads
+    # come from {OUTER_VARIABLES}, so the two lists cannot differ.
+    LEFT_AS_WRITTEN = ([Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode] +
+                       OUTER_VARIABLES.select { |type| type.name.end_with?("ReadNode") }).freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only

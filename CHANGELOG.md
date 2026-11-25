@@ -33,6 +33,13 @@ All notable changes to this project are documented here. The format is based on
   After the upgrade, `survived`, `killed` and `unplaceable` can each rise or fall for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
   1,256 such constants are in 47,030 Ruby files of 744 gems. 432 of their 518 blocks run again.
   Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575).
+- **Reload leaves a superclass as written when it can name a stale class (#533).**
+  A superclass call that reads a variable, a constant that the same file builds again, or a method that the same file defines, such as `class Row < Class.new(base)` or `class Point < point_base`, kept the old parent while the file built a new class. A mutant in that class survived falsely.
+  Such a superclass now keeps its text. When the call builds a new class, every mutant of the file scores `error` with "superclass mismatch" (#527). An errored mutant is in `no_verdict`, so a `--threshold` gate that passed on false survivors can now fail.
+  What to do: run that file with `--strategy redefine`, or assign the class to a constant with a literal builder (`Fields = Struct.new(:v)`), which reload keeps (#528).
+  A constant that holds only literals, such as `FIELDS = %i[a b].freeze`, does not count. A local variable does count, also when it holds only literals. A method call counts by name, with any receiver.
+  The rule matches 0 of 2,064 call superclasses in 47,030 Ruby files of 744 gems.
+  Still open: a superclass that reaches a rebuilt class through another file or a registry (#574).
 
 ## [1.10.0] - 2026-11-24
 

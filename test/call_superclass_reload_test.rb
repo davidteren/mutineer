@@ -722,4 +722,82 @@ class CallSuperclassReloadTest < Minitest::Test
     assert_includes redefine.fetch("AliasPoint#weak?"), "survived"
   end
 
+
+  # #533, R11, test the rule: a superclass that can name a class the file
+  # builds again keeps its text (the same String comes back); any other call
+  # superclass is wrapped as before.
+  STALE_SUPERCLASSES = {
+    "base = Struct.new(:v)\nclass Q < Class.new(base)\nend\n" => :as_written,
+    "base = Struct.new(:v)\nclass Q < base.itself\nend\n" => :as_written,
+    "class Q < Class.new(@base)\nend\n" => :as_written,
+    "class Q < Class.new($base)\nend\n" => :as_written,
+    "class Q < Class.new($base ||= Object)\nend\n" => :as_written,
+    "class Q < Class.new(@base = make)\nend\n" => :as_written,
+    "class Q < Class.new(@@base)\nend\n" => :as_written,
+    "base = Struct.new(:v)\nclass Q < Class.new { base }\nend\n" => :as_written,
+    "fields = %i[x]\nclass Q < Struct.new(*fields)\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < build_base\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < (b = build_base)\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < Factory.build_base\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < Class.new(build_base)\nend\n" => :as_written,
+    "Fields = Struct.new(*NAMES)\nclass Q < Class.new(Fields)\nend\n" => :as_written,
+    "Fields = build_fields\nclass Q < DelegateClass(Fields)\nend\n" => :as_written,
+    "A, Fields = 1, Struct.new(:v)\nclass Q < Class.new(Fields)\nend\n" => :as_written,
+    "Fields ||= Struct.new(:v)\nclass Q < Class.new(Fields)\nend\n" => :as_written,
+    "Billing::Fields = make\nclass Q < Class.new(Billing::Fields)\nend\n" => :as_written,
+    "class Q < Struct.new(:a)\nend\n" => :wrapped,
+    "class Q < DelegateClass(IO)\nend\n" => :wrapped,
+    "FIELDS = %i[a b].freeze\nclass Q < Struct.new(*FIELDS)\nend\n" => :wrapped,
+    "OPTS = { keyword_init: true }\nclass Q < Struct.new(:a, **OPTS)\nend\n" => :wrapped,
+    "class Q < Struct.new(:a) { |k| k }\nend\n" => :wrapped,
+    "class Q < Struct.new(:a) do\n  def x = @a\nend\nend\n" => :wrapped,
+    "class Q < Struct.new(:a)\n  def self.new(*) = super\nend\n" => :wrapped,
+    "Fields = Struct.new(:v)\nclass Q < Class.new(Fields)\nend\n" => :wrapped,
+    "class Fields; end\nclass Q < Class.new(Fields)\nend\n" => :wrapped
+  }.freeze
+
+  def test_a_superclass_that_can_name_a_rebuilt_class_keeps_its_text
+    STALE_SUPERCLASSES.each do |code, expected|
+      rewritten = Mutineer::JobPlan.keep_live_superclasses(code)
+      if expected == :as_written
+        refute_includes rewritten, "kept_superclass", code
+      else
+        assert_includes rewritten, "kept_superclass", code
+        refute Mutineer::Parser.invalid?(rewritten), rewritten
+      end
+    end
+    # A file with no call superclass and no literal builder constant is the same String.
+    STALE_SUPERCLASSES.each_key do |code|
+      next unless code.start_with?("base = ", "fields = ", "def ", "class Q < Class.new(@", "class Q < Class.new($")
+
+      assert_same code, Mutineer::JobPlan.keep_live_superclasses(code), code
+    end
+  end
+
+  # #533: AE11. A superclass that reads a local, a method of the file, or a
+  # constant the file builds again, keeps its text, so a reload errors visibly
+  # with "superclass mismatch" instead of keeping a stale parent.
+  def test_reload_errors_on_a_superclass_that_can_name_a_rebuilt_class
+    %w[stale_superclass_local stale_superclass_method stale_superclass_constant].each do |name|
+      doc = run_report("reload", sources: ["#{name}.rb"], test: "#{name}_test.rb")
+      assert_equal ["error"], doc["rows"].values.flatten.uniq, name
+      assert(doc["details"].all? { |detail| detail.include?("superclass mismatch") }, doc["details"].inspect)
+    end
+  end
+
+  # #533: AE13, its first example. Reload keeps LiteralFields (#528), so
+  # LiteralRow keeps the right parent, and the rows equal the redefine rows.
+  def test_reload_scores_a_superclass_that_reads_a_kept_builder_constant
+    %w[stale_superclass_literal_test.rb stale_superclass_literal_identity_test.rb].each do |test|
+      rows = %w[reload redefine].to_h do |strategy|
+        [strategy, run_strategy(strategy, sources: %w[stale_superclass_literal.rb], test: test)]
+      end
+      assert_equal rows["redefine"], rows["reload"], test
+    end
+    rows = run_strategy("reload", sources: %w[stale_superclass_literal.rb], test: "stale_superclass_literal_test.rb")
+    assert_equal ["killed"], rows["LiteralFields#total"].uniq
+    assert_equal ["killed"], rows["LiteralRow#three?"].uniq
+    assert_equal ["survived"], rows["LiteralRow#weak?"].uniq
+  end
+
 end

@@ -176,14 +176,69 @@ module Mutineer
     # @param node [Prism::Node]
     # @return [Boolean]
     def self.kept_builder?(node)
-      return false unless node.is_a?(Prism::CallNode)
+      return false unless builder_call?(node)
       return false unless node.block.nil? || node.block.is_a?(Prism::BlockNode)
+
+      (node.arguments&.arguments || []).all? { |argument| literal_argument?(argument) }
+    end
+
+    # Whether `node` calls `Struct.new`, `Data.define` or `Class.new` (also
+    # `::Struct.new`), with any arguments.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.builder_call?(node)
+      return false unless node.is_a?(Prism::CallNode)
 
       receiver = node.receiver
       root = receiver.is_a?(Prism::ConstantReadNode) || (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil?)
-      return false unless root && KEPT_BUILDERS[receiver.name] == node.name
+      root && KEPT_BUILDERS[receiver.name] == node.name
+    end
 
-      (node.arguments&.arguments || []).all? { |argument| literal_argument?(argument) }
+    # Whether a value holds data and no class: a {literal_argument?}, an array
+    # of data literals, a hash whose keys and values are data literals, or one
+    # of those with `.freeze`. A constant with such a value names the same data
+    # on each load, so a superclass that reads it is not stale (#533): the
+    # `i18n` gem has `class Tag < Struct.new(*SUBTAGS)` with `SUBTAGS = %i[...].freeze`.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.data_literal?(node)
+      return true if literal_argument?(node)
+      return node.elements.all? { |element| data_literal?(element) } if node.is_a?(Prism::ArrayNode)
+      if node.is_a?(Prism::HashNode)
+        return node.elements.all? { |pair| pair.is_a?(Prism::AssocNode) && data_literal?(pair.key) && data_literal?(pair.value) }
+      end
+
+      node.is_a?(Prism::CallNode) && node.name == :freeze && node.arguments.nil? && node.block.nil? &&
+        !node.receiver.nil? && data_literal?(node.receiver)
+    end
+
+    # What a load of the file can build again (#533): the names of the file's
+    # defs, and the last names of the constants it writes with a value that is
+    # neither a {data_literal?} nor kept by reload ({kept_constant_write?}). A
+    # multiple-assignment target always counts. {JobPlan.reads_rebuilt?} leaves
+    # a superclass that reads one of them as written.
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Array(Set<Symbol>, Set<Symbol>)] the def names and the constant names.
+    def self.rebuilt_names(program)
+      repeated = repeated_constant_names(program)
+      defs = Set.new
+      constants = Set.new
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        if node.is_a?(Prism::DefNode)
+          defs << node.name
+        elsif node.is_a?(Prism::ConstantTargetNode) || node.is_a?(Prism::ConstantPathTargetNode)
+          constants << node.name
+        elsif CONSTANT_WRITES.any? { |type| node.is_a?(type) } && !data_literal?(node.value) &&
+              !kept_constant_write?(node, repeated)
+          constants << defined_constant_name(node)
+        end
+      end
+      [defs, constants]
     end
 
     # The literal nodes {kept_builder?} accepts as an argument.
