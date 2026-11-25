@@ -66,7 +66,8 @@ module Mutineer
     RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
     # Start of the daemon's warning for a test file whose coverage capture
     # failed. CoverageMap::Capture#fail_test writes it. The stderr drain adds
-    # the load note to the first such line (#517).
+    # the load note to the first such line (#517). The line carries the
+    # error without --verbose since #537.
     COVERAGE_SKIPPED = "[mutineer] coverage skipped for "
     # Published guide to the load_path setting, for an installed gem's users.
     LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#extra-load-paths"
@@ -608,7 +609,9 @@ module Mutineer
     # the app, which cannot see the dropped variables; the drain runs here,
     # which can. Later warnings stay as they are, so one note does not repeat
     # on every line of a suite that cannot load its helper. A piece holds
-    # more than one line when a password form spans a newline.
+    # more than one line when a password form spans a newline. The warning
+    # names the error without --verbose since #537, so the note shows in the
+    # first run.
     #
     # @api private
     # @param text [String] redacted daemon stderr, without its last newline.

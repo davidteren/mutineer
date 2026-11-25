@@ -567,14 +567,44 @@ class CoverageMapTest < Minitest::Test
     assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
   end
 
-  def test_build_via_fork_suppresses_error_without_verbose
+  # #537: without --verbose the warning names the error in one line, with
+  # no backtrace frame. With --verbose it adds the frame.
+  def test_build_via_fork_names_the_error_without_verbose
     ensure_coverage_running
-    rt = raising_test
-    map = fork_map(rt, verbose: false)
+    missing = File.join(Dir.mktmpdir, "missing_test.rb")
+    File.write(missing, %(require "nope_537"\n))
+    [false, true].each do |verbose|
+      map = fork_map(missing, verbose: verbose)
+      _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
+      line = err.lines.grep(/coverage skipped for/).first.to_s
+      assert_includes line, "fork capture failed: LoadError: cannot load such file -- nope_537"
+      verbose ? assert_includes(line, " @ ") : refute_includes(line, " @ ")
+      refute_includes line, "re-run with --verbose"
+      assert_includes map.failed_test_files.map { |f| File.basename(f) }, "missing_test.rb"
+    end
+  end
+
+  # #537: the line holds only the first line of a multi-line message.
+  def test_build_via_fork_shows_the_first_message_line_without_verbose
+    ensure_coverage_running
+    multi = File.join(Dir.mktmpdir, "multi_test.rb")
+    File.write(multi, %(raise "first\\nsecond"\n))
+    map = fork_map(multi, verbose: false)
     _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
-    assert_match(/re-run with --verbose/, err)
-    refute_match(/boom from child/, err)
-    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "raising_test.rb"
+    line = err.lines.grep(/coverage skipped for/).first.to_s.chomp
+    assert line.end_with?("fork capture failed: RuntimeError: first"), line
+    refute_includes err, "second"
+  end
+
+  # #537: a child that dies without a result says how, without --verbose.
+  def test_build_via_fork_names_a_child_exit_without_verbose
+    ensure_coverage_running
+    dies = File.join(Dir.mktmpdir, "dies_test.rb")
+    File.write(dies, "exit!(3)\n")
+    map = fork_map(dies, verbose: false)
+    _, err = capture_subprocess_io { map.build_via_fork(after_fork: nil) }
+    assert_includes err, "fork capture failed: child wrote no result (exit status 3)"
+    assert_includes map.failed_test_files.map { |f| File.basename(f) }, "dies_test.rb"
   end
 
   # --- #9: uncapturable taint rule (errored capture vs genuine gap) --------

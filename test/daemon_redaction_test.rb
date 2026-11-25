@@ -300,7 +300,7 @@ class DaemonRedactionTest < Minitest::Test
   end
 
   def test_drain_leaves_other_capture_and_child_lines_alone
-    generic = capture_warning("fork capture produced no result (re-run with --verbose for the error)")
+    generic = capture_warning("fork capture produced no result") + capture_warning("fork capture failed: RuntimeError: boom")
     child = "[daemon-child] LoadError: cannot load such file -- x\n"
     missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
 

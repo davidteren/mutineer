@@ -17,6 +17,14 @@ All notable changes to this project are documented here. The format is based on
   An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
   When the clean run cannot load a file, the smoke error now names the file and the likely cause first: a wrapper that unset `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
 
+### Changed
+
+- **A failed coverage capture names its error without `--verbose` (#537).**
+  In-process `--rails` or `--boot`, and `--daemon`, print `coverage skipped for <file>: fork capture failed: <Class>: <first message line>`.
+  Before, the line said only `fork capture produced no result (re-run with --verbose for the error)`.
+  Under `--daemon`, the load note for a dropped `RUBYOPT` or `RUBYLIB` now shows in the first run.
+  `--verbose` adds the full message and the first backtrace frame. Verdicts and the coverage cache do not change.
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

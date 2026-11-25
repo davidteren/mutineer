@@ -192,7 +192,7 @@ class DaemonCoverageTest < Minitest::Test
   # shows the real error. The tool-side drain then adds the load note, because
   # the daemon cannot see the RUBYLIB it dropped. No load path finds
   # test_helper here, so every capture fails the way a dropped -Itest does.
-  def test_verbose_capture_warning_shows_the_error_and_the_load_note
+  def test_capture_warning_shows_the_error_and_the_load_note_with_and_without_verbose
     [true, false].each do |verbose|
       Dir.mktmpdir("mutineer-daemon-517") do |dir|
         boot = boot_config("order_test.rb").merge(load_paths: [], cache_dir: dir, verbose: verbose)
@@ -206,14 +206,11 @@ class DaemonCoverageTest < Minitest::Test
           end
         end
         line = errio.string.lines.grep(/coverage skipped for test\/models\/order_test\.rb/).first.to_s
-        if verbose
-          assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
-          # RUBYOPT is the caller's; it may also hold a -I, so the note may name both.
-          assert_match(/\(the daemon does not pass (RUBYOPT or )?RUBYLIB to the app;/, line)
-        else
-          assert_includes line, "fork capture produced no result (re-run with --verbose for the error)"
-          refute_includes line, "does not pass"
-        end
+        # #537: the error and the note show in both modes; the frame only with --verbose.
+        assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
+        # RUBYOPT is the caller's; it may also hold a -I, so the note may name both.
+        assert_match(/\(the daemon does not pass (RUBYOPT or )?RUBYLIB to the app;/, line)
+        verbose ? assert_includes(line, " @ ") : refute_includes(line, " @ ")
       end
     end
   end
