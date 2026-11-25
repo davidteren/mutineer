@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_13efe4cc102d28::t_f523a40abc2b69 20-27
+docs/rails-setup.md
+  s_13efe4cc102d28::t_774c9056abaf3b 144
+lib/mutineer/coverage_map.rb
+  s_13efe4cc102d28::t_651ff1faf0f481 16
+lib/mutineer/coverage_map/capture.rb
+  s_13efe4cc102d28::t_996490418aabcb 80-81,91,135-144
+lib/mutineer/daemon_client.rb
+  s_13efe4cc102d28::t_50900dc748f22d 69-70,612-614
+test/coverage_map_test.rb
+  s_13efe4cc102d28::t_c082815550ec52 570-572,574-592,594-607
+test/daemon_coverage_test.rb
+  s_13efe4cc102d28::t_31b73307b2c72d 195,209-213
+test/daemon_redaction_test.rb
+  s_13efe4cc102d28::t_9bbae0b8ca51cc 303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb418655eef7411db355057137baf27d6e987dab",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
