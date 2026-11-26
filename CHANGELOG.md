@@ -31,7 +31,7 @@ All notable changes to this project are documented here. The format is based on
   A block with any other statement, such as `alias_method`, `include` or `delegate`, does not run again, and its methods are `unplaceable` under reload (#576). `--strategy redefine` runs them.
   A constant is not kept when the file assigns it twice, or changes it again in a way that is not safe to repeat: a `class Point` statement with such a statement, or a call on `Point` other than `new` or `[]`, such as `Point.freeze`. Reload then builds that class again on each load, as before.
   After the upgrade, `survived`, `killed` and `unplaceable` can each rise or fall for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
-  1,256 such constants are in 47,030 Ruby files of 744 gems. 432 of their 518 blocks run again.
+  1,196 such constants are kept in 47,030 Ruby files of 744 gems, and 417 of their 491 blocks run again. The same files change 55 other such constants again, so reload does not keep those.
   Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575); a change that another file makes to a kept class (#585).
 - **Reload leaves a superclass as written when it can name a stale class (#533).**
   A superclass call that reads a variable, a constant that the same file builds again, or a method that the same file defines, such as `class Row < Class.new(base)` or `class Point < point_base`, kept the old parent while the file built a new class. A mutant in that class survived falsely.

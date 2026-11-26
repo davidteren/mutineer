@@ -201,7 +201,7 @@ nothing of the class (no `self` and no call without a receiver); or a `class`, `
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 432 of 518 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 417 of 491 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in
