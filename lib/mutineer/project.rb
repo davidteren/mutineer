@@ -401,7 +401,8 @@ module Mutineer
     # {CALLBACK_SKIPPERS} method (any receiver), or such a def of the file by
     # name or through `super`, when the file calls one of those defs outside
     # every def ({load_time_call?}); and every def of the file whose name a
-    # load-time skip call has in its arguments ({load_time_skip_arguments}).
+    # load-time skip call has in its arguments ({load_time_skip_arguments}),
+    # including a skip call inside such a load-time skipper def.
     # During a reload {ReloadGuards::CallbackReskipping} drops a conditional
     # skip that the first load already applied, so a mutant in such a def would
     # never reach Rails. A file that runs no such skip at load marks none, so a
@@ -426,6 +427,12 @@ module Mutineer
       helpers = skippers.map(&:name)
       suppliers = load_time_skip_arguments(program, CALLBACK_SKIPPERS + helpers)
       loaded = load_time_call?(program, helpers)
+      # A skipper def the file calls at load runs its own skip calls at load too.
+      if loaded
+        skippers.each do |skipper|
+          skipper.compact_child_nodes.each { |child| load_time_skip_arguments(child, CALLBACK_SKIPPERS + helpers, suppliers) }
+        end
+      end
       subjects.each do |subject|
         subject.makes_load_time_skip = true if (loaded && skippers.include?(subject.def_node)) ||
                                                suppliers.include?(subject.name)
@@ -491,6 +498,8 @@ module Mutineer
     # that runs when the file loads (outside every def), such as
     # `quiet_condition` in `skip_callback :save, :before, :stamp, if: quiet_condition`.
     # A block or a lambda in the arguments runs later, so it is not entered.
+    # A call counts by name with any receiver, which fails closed:
+    # `if: Proc.new { ... }` also marks a def of the file named `new`.
     #
     # @param node [Prism::Node]
     # @param names [Array<Symbol>] the skip calls and the file's skip defs.

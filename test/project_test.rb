@@ -1740,18 +1740,22 @@ class ProjectTest < Minitest::Test
         def self.allow(**options) = skip_before_action(:check, **options)
         def self.helper_only = 1
         def self.inner = (def self.deep = quieten)
+        def self.hush = skip_callback(:save, :before, :stamp, if: hush_condition)
+        def self.hush_condition = :quiet?
         def stamp_filter = :stamp
         def quiet_condition = :quiet?
         def quiet? = true
 
         quieten
+        hush
         skip_callback :save, :before, stamp_filter, if: quiet_condition
         skip_callback :save, :after, :stamp, if: -> { quiet? }
       end
     RUBY
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.qualified_name, s] }
-      %w[Note.quieten Note.louder Note.allow Note.inner Note.deep Note#stamp_filter Note#quiet_condition].each do |name|
+      %w[Note.quieten Note.louder Note.allow Note.inner Note.deep Note.hush Note.hush_condition Note#stamp_filter
+         Note#quiet_condition].each do |name|
         assert by_name.fetch(name).makes_load_time_skip, name
         assert by_name.fetch(name).unplaceable?("reload"), name
         refute by_name.fetch(name).unplaceable?("redefine"), name
