@@ -1,0 +1,55 @@
+.expectation-fit/decisions/daemon-and-worker-databases.md
+  s_d1e28437164ffb::t_0e485c670d3f9e 19
+.expectation-fit/decisions/mutators-and-equivalent-skips.md
+  s_d1e28437164ffb::t_b72c71c6a613dc 18
+CHANGELOG.md
+  s_d1e28437164ffb::t_986ac5b62b9c2b 105-128
+docs/json-schema.md
+  s_d1e28437164ffb::t_1f846f25d92093 117-119
+docs/plans/2026-11-24-556-fix-postgres-run-lock-handoff-plan.md
+  s_d1e28437164ffb::t_8ffe4fc97ce19a 1-626
+lib/mutineer/cli.rb
+  s_d1e28437164ffb::t_5f1adbe38e69d7 1432
+lib/mutineer/coverage_map.rb
+  s_d1e28437164ffb::t_3f988df7a495ac 253-254,269
+lib/mutineer/coverage_map/cache.rb
+  s_d1e28437164ffb::t_3a21391be6ae16 55,60-69,110
+lib/mutineer/coverage_map/capture_reuse.rb
+  s_d1e28437164ffb::t_6445b2c85a2324 219
+lib/mutineer/job_plan.rb
+  s_d1e28437164ffb::t_7b02d640688d63 130,621,819-830,841,1171
+lib/mutineer/mutant_id.rb
+  s_d1e28437164ffb::t_bf669e0347cbcd 126-128
+lib/mutineer/parser.rb
+  s_d1e28437164ffb::t_7965e95c15b773 97-106
+lib/mutineer/rails_worker_db.rb
+  s_d1e28437164ffb::t_99b91c9350899c 994-997,1016-1019,1021-1026,1181-1182,1343-1347,1555,1562-1563
+lib/mutineer/reporter.rb
+  s_d1e28437164ffb::t_26875292b10c6b 754,954,986-989,994-1014,1208-1209
+test/coverage_map_test.rb
+  s_d1e28437164ffb::t_60f0baa29e17c9 773-774,2090-2111
+test/daemon_postgres_test.rb
+  s_d1e28437164ffb::t_3d994ecab56ac8 190-231
+test/equivalent_mutant_test.rb
+  s_d1e28437164ffb::t_79a2e873630ff9 5,38-105
+test/json_reporter_test.rb
+  s_d1e28437164ffb::t_12c9636b9e6226 304-306,318-373
+test/rails_worker_db_test.rb
+  s_d1e28437164ffb::t_02e118231c3ece 813-868,1581-1704,1794-1831
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c74a3a5daddefb44c43ab0affad668b65b4bd04",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
