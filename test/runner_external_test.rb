@@ -503,8 +503,8 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
       assert_includes err, "[mutineer] --test-command skips these load_path entries: #{missing} " \
                            "(load_path in .mutineer.yml). Each must be a directory with no \"#{File::PATH_SEPARATOR}\" " \
-                           "in its path. Mutineer 2.0 exits 2 here; pass -I inside the test command for a path " \
-                           "RUBYLIB cannot hold."
+                           "in its path: fix a mistyped path, and pass -I inside the test command for a path " \
+                           "RUBYLIB cannot hold. Mutineer 2.0 exits 2 here."
       rubylib_entries(log).each do |entries|
         assert(entries.any? { |e| e.end_with?("/support") }, entries.inspect)
         refute(entries.any? { |e| e.include?("no/such") }, entries.inspect)

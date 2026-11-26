@@ -811,7 +811,8 @@ module Mutineer
         unless skipped.empty?
           warn "[mutineer] --test-command skips these load_path entries: #{skipped.join(', ')} " \
                "(#{config.origin(:extra_load_paths)}). Each must be a directory with no \"#{File::PATH_SEPARATOR}\" " \
-               "in its path. Mutineer 2.0 exits 2 here; pass -I inside the test command for a path RUBYLIB cannot hold."
+               "in its path: fix a mistyped path, and pass -I inside the test command for a path RUBYLIB cannot hold. " \
+               "Mutineer 2.0 exits 2 here."
         end
         return
       end
