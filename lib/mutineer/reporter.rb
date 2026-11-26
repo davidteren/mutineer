@@ -26,12 +26,16 @@ module Mutineer
     BROKEN_FLOOR = AggregateResult::BROKEN_FLOOR
 
     # Share of the mutants a run tried to score that may go unrun (unplaceable,
-    # skipped invalid, or unpaired) before stderr warns. A warning only: it
+    # skipped invalid, ran at load, or unpaired) before stderr warns. A warning only: it
     # never changes the exit code. {BROKEN_FLOOR} also applies, so one unrun
     # mutant never warns. `--fail-fast` leaves unpaired mutants out of this share.
     # Measured on Fizzy at f220e4832 (#349): unplaceable plus skipped invalid were
     # 0.12% with the default operators and at most 2.8% with all 21, so 10% stays.
     # With its unpaired mutants the share was 15.2%. That warning is correct.
+    # ran_at_load joined the share in 2.0 (#286). Measured share: 0 of 280 on
+    # the self-dogfood run (2026-11-24, c5100143), 0 of 63 on the Fizzy sample
+    # (2026-11-24, mutineer d770a991, with the block rule of #493), and 4 of
+    # 1,071 on a full Fizzy run (2026-11-09, before #493). So 10% stays.
     UNRUN_SHARE_LIMIT = 0.10
 
     # The unrun-share hint for mutants in sources with no paired test.
@@ -168,9 +172,10 @@ module Mutineer
                "#{(AggregateResult::BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
     end
 
-    # Warns when the unrun mutants (unplaceable plus skipped invalid) are more
-    # than {UNRUN_SHARE_LIMIT} of the mutants the run tried to score, and more
-    # than {BROKEN_FLOOR}. Every format, with or without --threshold; the exit
+    # Warns when the unrun mutants (unplaceable, skipped invalid and ran at
+    # load, plus unpaired unless `--fail-fast`) are more than
+    # {UNRUN_SHARE_LIMIT} of the mutants the run tried to score, and more than
+    # {BROKEN_FLOOR}. Every format, with or without --threshold; the exit
     # code does not change.
     #
     # @api private
@@ -185,13 +190,22 @@ module Mutineer
       parts = []
       parts << "#{@agg.unplaceable_count} unplaceable" if @agg.unplaceable_count.positive?
       parts << "#{@agg.skipped_invalid_count} skipped (invalid)" if @agg.skipped_invalid_count.positive?
+      ran = @agg.ran_at_load_count
+      parts << "#{ran} ran at load of which #{@agg.ran_at_load_tested_count} survived their tests" if ran.positive?
       parts << "#{unpaired_mutant_count} in sources with no paired test" if include_unpaired
       pct = (unrun * 100.0 / tried).round(1)
-      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score were not run " \
+      # A tested ran_at_load mutant did run, so "were not run" alone would be false (#286).
+      lead = ran.positive? ? "were not run or were classed as ran at load" : "were not run"
+      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score #{lead} " \
                  "(#{parts.join(', ')}; #{pct}%, limit #{(UNRUN_SHARE_LIMIT * 100).round}%). " \
                  "The score leaves them out. This warning does not change the exit code."
       if @agg.unplaceable_count.positive?
         message << " See unplaceable[] in --format json; --test-command runs them."
+      end
+      if ran.positive?
+        message << " A ran_at_load mutant is on code that ran while the app or its class loaded, so this run " \
+                   "cannot judge it. See ran_at_load[] in --format json: tested is true for one that survived " \
+                   "its tests. --test-command verifies them."
       end
       if @agg.skipped_invalid_count.positive?
         message << " A mutant skipped (invalid) did not re-parse after mutation. If its source file " \

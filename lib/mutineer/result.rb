@@ -52,7 +52,8 @@ module Mutineer
   #                  (JobPlan.load_verdict, JobPlan.stored_block_verdict), so
   #                  the mutant may hide a test gap (#286). It is false when
   #                  no test was selected, so the mutant never ran
-  #                  (JobPlan.coverage_selection).
+  #                  (JobPlan.coverage_selection). Counted in the unrun
+  #                  share.
   #   ignored      - a known-equivalent mutant the user suppressed, via an
   #                  inline `# mutineer:disable-line` comment or a
   #                  `.mutineer.yml` `ignore:` id. A pre-fork classification
@@ -254,12 +255,15 @@ module Mutineer
     def timeout_count         = count(:timeout)
     # @return [Integer] ignored count.
     def ignored_count         = count(:ignored)
-    # Mutants that exist but did not run: unplaceable plus skipped invalid.
-    # Neither is in the score. The reporter adds unpaired mutants to the
-    # unrun share unless `--fail-fast` is set. `unrun_count` excludes them.
+    # Mutants that exist and have no verdict in a run that is not broken:
+    # unplaceable, skipped invalid and ran at load. None is in the score. A
+    # ran_at_load mutant can have run its tests (`tested_at_load`), so the
+    # name is wider than "not run" (#286). The reporter adds unpaired mutants
+    # to the unrun share unless `--fail-fast` is set. `unrun_count` excludes
+    # them.
     #
-    # @return [Integer] unplaceable plus skipped-invalid count.
-    def unrun_count           = unplaceable_count + skipped_invalid_count
+    # @return [Integer] unplaceable plus skipped-invalid plus ran-at-load count.
+    def unrun_count           = unplaceable_count + skipped_invalid_count + ran_at_load_count
 
     # Every generated, classified mutation. NOT the score denominator.
     #

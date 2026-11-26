@@ -114,8 +114,9 @@ class ResultTest < Minitest::Test
 
   def test_unrun_count
     agg = Mutineer::AggregateResult.new([Mutineer::Result.killed, Mutineer::Result.killed, Mutineer::Result.unplaceable,
-                                         Mutineer::Result.skipped, Mutineer::Result.skipped])
-    assert_equal 3, agg.unrun_count
+                                         Mutineer::Result.skipped, Mutineer::Result.skipped,
+                                         Mutineer::Result.ran_at_load])
+    assert_equal 4, agg.unrun_count
   end
 
   def test_incomplete_when_nothing_scored_and_one_mutant_errored
