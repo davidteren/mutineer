@@ -21,7 +21,8 @@ All notable changes to this project are documented here. The format is based on
   count and mark the `ran_at_load` mutants that survived their tests first: a
   survivor on a line that ran at load, and a survivor in a block whose call
   ran at load (#493). Such a mutant can hide a test gap. The human and HTML
-  reports show the count. The score and the exit code do not change.
+  reports show the count, and the Action step summary adds a line when it is
+  above 0. The score and the exit code do not change.
   Schema `2.0`.
 
 ### Changed
