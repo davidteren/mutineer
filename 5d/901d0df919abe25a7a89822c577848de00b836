@@ -1,0 +1,37 @@
+.expectation-fit/decisions/scoring-and-verdicts.md
+  s_d1e28437164ffb::t_ce93daba5aeff5 17
+CHANGELOG.md
+  s_d1e28437164ffb::t_b1aa1c468b6369 29-33
+docs/agentic-coding.html
+  s_d1e28437164ffb::t_460bacf72649d7 91
+docs/agentic-coding.md
+  s_d1e28437164ffb::t_330aeb19ef3273 57
+docs/json-schema.md
+  s_d1e28437164ffb::t_b372029bf7942e 82-83,85
+lib/mutineer/reporter.rb
+  s_d1e28437164ffb::t_da9ff07fca0a79 29,35-38,175-178,193-194,197-199,205-209
+lib/mutineer/result.rb
+  s_d1e28437164ffb::t_a1641d9dc77a7b 55-56,258-263,265-266
+skills/mutineer/SKILL.md
+  s_d1e28437164ffb::t_ee9117357af304 70
+test/reporter_test.rb
+  s_d1e28437164ffb::t_5a2fc9e66d2501 664-714
+test/result_test.rb
+  s_d1e28437164ffb::t_100e892faaf0af 117-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d901d0df919abe25a7a89822c577848de00b836",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
