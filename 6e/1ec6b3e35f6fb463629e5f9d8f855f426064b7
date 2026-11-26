@@ -1,0 +1,46 @@
+test/runner_test.rb
+  s_d1e28437164ffb::t_9bcfd47f50c385 631
+  s_d1e28437164ffb::t_31dc9af3f62fa1 579-580
+CHANGELOG.md
+  s_d1e28437164ffb::t_beae063aaddf11 20-25
+docs/agentic-coding.html
+  s_d1e28437164ffb::t_2109e6eae15b37 91
+docs/agentic-coding.md
+  s_d1e28437164ffb::t_9641807e8908b5 57
+docs/json-schema.md
+  s_d1e28437164ffb::t_5374fb94398950 37,84,94,249-256
+docs/rails-setup.md
+  s_d1e28437164ffb::t_1af4bae1093281 68
+docs/sample-report.html
+  s_d1e28437164ffb::t_80ede4167bab8b 56
+lib/mutineer/job_plan.rb
+  s_d1e28437164ffb::t_f28cad055bf818 766-767,780,784-786,798
+lib/mutineer/reporter.rb
+  s_d1e28437164ffb::t_940332d984598f 304-306,370-371,494-495,868,871,877,1312-1314
+lib/mutineer/result.rb
+  s_d1e28437164ffb::t_92fbc7ffcb1683 50-55,91-95,105,107,183-184,247-248,298-300
+skills/mutineer/SKILL.md
+  s_d1e28437164ffb::t_2046c6e1a5fdd3 70
+test/json_reporter_test.rb
+  s_d1e28437164ffb::t_cc1914c2481cc6 544-581
+test/reporter_test.rb
+  s_d1e28437164ffb::t_4ea78c396fe3ae 449-482
+test/result_test.rb
+  s_d1e28437164ffb::t_8d152b39293ae2 4,159-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e1ec6b3e35f6fb463629e5f9d8f855f426064b7",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
