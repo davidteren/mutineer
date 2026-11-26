@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_3b0f31822ad327 18
+docs/cli.md
+  s_2919199eb867b0::t_d7e91ef3b13eea 117
+docs/rails-setup.md
+  s_2919199eb867b0::t_ede45eeef77510 327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d60b502869acfcbdf1f9ef19759eb2f314890ce",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
