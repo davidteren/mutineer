@@ -197,7 +197,7 @@ the class again on each load (#575):
   receiver; a call of `eval`,
   `instance_eval`, `class_eval` or `module_eval` with an argument, with or without a receiver; a `send`,
   `public_send` or `__send__` whose literal method name is one of those, or whose method name is computed
-  (with a receiver, or with none outside every method); or a `class << expr` statement with an unsafe body
+  (anywhere, since it may run `eval`); or a `class << expr` statement with an unsafe body
   whose expression is not a constant or `self`. A kept class would get that change a
   second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
   last part. A change that another file makes, or one made through `method(:alias_method).call`, is not seen
@@ -214,7 +214,7 @@ nothing of the class (no `self`, no call without a receiver, and no instance or 
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 333 of 360 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 305 of 332 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in

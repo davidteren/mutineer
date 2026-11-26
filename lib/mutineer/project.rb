@@ -87,8 +87,8 @@ module Mutineer
     # each name of the path. Names match by their last part. A file that makes
     # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
     # writes, as does a file with a {STRING_EVALS} call with arguments, a
-    # `send` with a computed name (with a receiver, or {load_time_computed_send?}),
-    # or a `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
+    # `send` with a computed name (anywhere, since it may run `eval`), or a
+    # `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
     # before #528. A change made in another file, or through a call outside
     # that list (`method(:alias_method).call`), is not seen (#585).
     #
@@ -122,26 +122,14 @@ module Mutineer
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
           sent = sent_name(node)
-          indirect = true if (node.receiver && (sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent))) ||
+          # A computed name may be `eval`, which any object has, so it counts
+          # with or without a receiver, in a def too.
+          indirect = true if sent.nil? || (node.receiver && INDIRECT_RESHAPE_CALLS.include?(sent)) ||
                              (STRING_EVALS.include?(sent) && node.arguments)
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
-      indirect || load_time_computed_send?(program) ? names | written : names
-    end
-
-    # Whether the file makes a `send` with a computed method name and no
-    # receiver outside every def, on the top-level object, where it may run
-    # `eval`. In a def it runs on that def's `self`, which the other rules of
-    # {reshaped_constant_names} cover.
-    #
-    # @param node [Prism::Node]
-    # @return [Boolean]
-    def self.load_time_computed_send?(node)
-      return false if node.is_a?(Prism::DefNode)
-      return true if node.is_a?(Prism::CallNode) && node.receiver.nil? && SEND_CALLS.include?(node.name) && sent_name(node).nil?
-
-      node.compact_child_nodes.any? { |child| load_time_computed_send?(child) }
+      indirect ? names | written : names
     end
 
     # The calls whose string argument can name and change any class, with or
