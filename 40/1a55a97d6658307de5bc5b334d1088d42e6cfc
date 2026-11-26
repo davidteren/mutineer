@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_70d3a1bfdba765 32,35-36
+docs/json-schema.md
+  s_2919199eb867b0::t_c39fb796c8aaae 194-201,203-204,217
+lib/mutineer/project.rb
+  s_2919199eb867b0::t_ce0f3dfee331ec 71-72,74,90-91,93,125,130-144
+test/project_test.rb
+  s_2919199eb867b0::t_72066ba02a970f 1876-1877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "401a55a97d6658307de5bc5b334d1088d42e6cfc",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
