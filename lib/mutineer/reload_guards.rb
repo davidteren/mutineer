@@ -1191,7 +1191,9 @@ module Mutineer
       return args if fresh.size == filters.size
       return nil if fresh.empty?
 
-      kinded ? [kind, *fresh] : fresh
+      # The kind stays explicit: a first filter named `:after` would be read
+      # as the kind if the default `:before` were left implicit.
+      [kind, *fresh]
     end
 
     # Whether `target`'s callback of this kind and filter is the same object

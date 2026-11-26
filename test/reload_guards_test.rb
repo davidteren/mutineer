@@ -277,6 +277,8 @@ class ReloadGuardsTest < Minitest::Test
       assert_equal %i[before other], guards.fresh_conditional_skips(klass, :save, %i[before check other]),
                    "other is a new entry, so Rails gets it"
       assert_nil guards.fresh_conditional_skips(klass, :save, %i[after check])
+      # With no kind, a left filter named :after must not land in the kind slot.
+      assert_equal %i[before other], guards.fresh_conditional_skips(klass, :save, %i[check other])
       args = %i[before]
       assert_same args, guards.fresh_conditional_skips(klass, :save, args), "no filter"
       args = []
