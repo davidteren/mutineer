@@ -86,8 +86,9 @@ module Mutineer
     # so that `x` calls itself. Such a statement on a path (`class X::Q`) counts
     # each name of the path. Names match by their last part. A file that makes
     # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
-    # writes, as does a file with `eval` or with a `class << expr` statement
-    # whose body is unsafe. Such a constant is built again on each load, as
+    # writes, as does a file with a {STRING_EVALS} call with arguments, a
+    # `send` with a computed name (with or without a receiver), or a
+    # `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
     # before #528. A change made in another file, or through a call outside
     # that list (`include`, `prepend`, `extend`, `method(:alias_method).call`),
     # is not seen (#585).
@@ -122,14 +123,17 @@ module Mutineer
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
           sent = sent_name(node)
-          # `eval`'s string may name any class, with or without a receiver. A
-          # call without a receiver runs on `self`, which the body rule covers.
-          indirect = true if sent == :eval || (node.receiver && (sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent)))
+          indirect = true if sent.nil? || (node.receiver && INDIRECT_RESHAPE_CALLS.include?(sent)) ||
+                             (STRING_EVALS.include?(sent) && node.arguments)
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
       indirect ? names | written : names
     end
+
+    # The calls whose string argument can name and change any class, with or
+    # without a receiver (`instance_eval("Point.alias_method ...")`).
+    STRING_EVALS = %i[eval instance_eval class_eval module_eval].freeze
 
     # The calls that run a method named by their first argument.
     SEND_CALLS = %i[send public_send __send__].freeze
