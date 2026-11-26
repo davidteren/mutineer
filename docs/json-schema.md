@@ -207,10 +207,12 @@ the class again on each load (#575):
 
 When the builder has a block, reload runs that block again on the kept class, so a mutant of a method in it
 gets a real verdict. It does that only when the block is safe to run twice: it has no block parameter
-(`|k|`, `_1` or `it`), and each statement is a method definition; `attr_reader`, `attr_writer`,
+(`|k|`, `_1` or `it`), and each statement is a method definition other than a hook Ruby calls while a
+class body runs (`method_added`, `inherited`, `included` and similar); `attr_reader`, `attr_writer`,
 `attr_accessor`, `private`, `public`, `protected`, `private_class_method` or `public_class_method` with
 literal or method-definition arguments; a constant assignment whose value is such a builder or reads
-nothing of the class (no `self`, no call without a receiver, and no instance or class variable); or a `class`, `module` or `class << self`
+nothing of the class (no `self`, no call without a receiver, no instance or class variable, and no `new` or class
+builder call, so a second run gives the same value); or a `class`, `module` or `class << self`
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`

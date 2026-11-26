@@ -1855,6 +1855,7 @@ class ProjectTest < Minitest::Test
     "def p?(v) = v.is_a?(P)\n" => true,
     "class Q\n  alias_method :b, :a\nend\n" => false,
     "class Row < P\nend\n" => false,
+    "class Row < (P)\nend\n" => false,
     "class Row < Class.new(P)\nend\n" => false,
     "ORIGIN = P::ZERO\n" => false,
     "A::ORIGIN = A::P.new(0)\n" => false,

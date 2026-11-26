@@ -106,7 +106,15 @@ module Mutineer
         case node
         when Prism::ClassNode, Prism::ModuleNode
           allowed << node.constant_path
-          allowed << node.superclass if node.is_a?(Prism::ClassNode)
+          if node.is_a?(Prism::ClassNode)
+            superclass = node.superclass
+            allowed << superclass
+            # `class Row < (Base)` names Base as a superclass too.
+            while sole_statement_parentheses?(superclass)
+              superclass = superclass.body.body.first
+              allowed << superclass
+            end
+          end
           path_names(node.constant_path).each { |name| names << name } unless rerunnable_body?(node.body)
         when Prism::SingletonClassNode
           allowed << node.expression
@@ -262,10 +270,10 @@ module Mutineer
 
       body.body.all? do |statement|
         case statement
-        when Prism::DefNode then true
+        when Prism::DefNode then !HOOK_DEFS.include?(statement.name)
         when Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode then rerunnable_body?(statement.body)
         when Prism::ConstantWriteNode, Prism::ConstantPathWriteNode
-          kept_builder?(statement.value) || class_state_free?(statement.value)
+          kept_builder?(statement.value) || (class_state_free?(statement.value) && !makes_object?(statement.value))
         when Prism::CallNode
           statement.receiver.nil? && statement.block.nil? && RERUN_SAFE_CALLS.include?(statement.name) &&
             (statement.arguments&.arguments || []).all? do |argument|
@@ -274,6 +282,27 @@ module Mutineer
         else false
         end
       end
+    end
+
+    # The hook methods Ruby calls while a class body runs. A second run of a
+    # block that defines one would call it for defs that a fresh class ran
+    # before the hook existed, so such a block does not run again.
+    HOOK_DEFS = %i[method_added method_removed method_undefined singleton_method_added
+                   singleton_method_removed singleton_method_undefined inherited included extended
+                   prepended const_added].freeze
+
+    # Whether a value calls `new` or a class builder outside a def, so a
+    # second run would give a different object (`Inner = Class.new(Error)`),
+    # and a class statement of the block that inherits from it would raise
+    # "superclass mismatch".
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.makes_object?(node)
+      return false if node.is_a?(Prism::DefNode)
+      return true if node.is_a?(Prism::CallNode) && (node.name == :new || builder_call?(node))
+
+      node.compact_child_nodes.any? { |child| makes_object?(child) }
     end
 
     # Whether a value reads nothing of the class a builder block runs on: it

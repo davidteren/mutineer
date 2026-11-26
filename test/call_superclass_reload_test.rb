@@ -619,6 +619,9 @@ class CallSuperclassReloadTest < Minitest::Test
     "ME = self" => [false],
     "REGISTRY = (@registry = [])" => [false],
     "COUNT = @@count" => [false],
+    "Inner = Class.new(StandardError)\n  class Sub < Inner; end" => [false],
+    "ERR = StandardError.new" => [false],
+    "def x = 1\n  def self.method_added(name) = nil" => [false],
     "class Z\n    alias_method :b, :a\n  end" => [false],
     "class << self\n    alias_method :b, :a\n  end" => [false],
     "def a; end\nrescue StandardError\n  nil" => [false]
