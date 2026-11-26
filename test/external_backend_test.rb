@@ -455,7 +455,8 @@ class ExternalBackendTest < Minitest::Test
       {
         ["-e", 'require "nope_x"'] => "nope_x",
         [File.join(dir, "outer.rb")] => "nope_inner",
-        [File.join(dir, "mt_test.rb")] => "nope_minitest"
+        [File.join(dir, "mt_test.rb")] => "nope_minitest",
+        ["-e", 'require "my dir/nope_space"'] => "my dir/nope_space"
       }.each do |args, name|
         out, _status = Open3.capture2e(RUBY, *args)
         assert_equal "cannot load such file -- #{name}", out[Backend::MISSING_FILE], out
@@ -495,6 +496,21 @@ class ExternalBackendTest < Minitest::Test
       [ok, odd].each { |d| FileUtils.mkdir_p(d) }
       File.write(file, "")
       assert_equal [ok], Backend.usable_load_dirs([file, ok, File.join(dir, "missing"), odd])
+    end
+  end
+
+  # #535: an entry that cannot be resolved (an unknown ~user) is skipped like
+  # a missing directory, so a --test-command run does not exit 2 before 2.0.
+  def test_split_load_dirs_skips_an_entry_that_does_not_resolve
+    Dir.mktmpdir("mutineer-dirs") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "support"))
+      config = Mutineer::Config.new(project_root: dir,
+                                    extra_load_paths: ["support", "~nosuchuser_mutineer_535/lib", "missing"])
+      usable, skipped = Backend.split_load_dirs(config)
+      assert_equal [File.join(File.realpath(dir), "support")], usable
+      assert_equal "~nosuchuser_mutineer_535/lib", skipped[0]
+      assert_equal 2, skipped.size
+      assert skipped[1].end_with?("/missing"), skipped.inspect
     end
   end
 

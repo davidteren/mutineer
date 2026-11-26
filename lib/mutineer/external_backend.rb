@@ -8,6 +8,7 @@ require_relative "child_cause"
 require_relative "result"
 require_relative "rails_run_env"
 require_relative "redaction"
+require_relative "project_path"
 
 module Mutineer
   # Raised when the smoke check (the unmutated suite) is not green, so the run
@@ -78,7 +79,9 @@ module Mutineer
     # Ruby's message for a `require` that found no file, with the file's name.
     # It matches the uncaught form (`cannot load such file -- x (LoadError)`)
     # and the Minitest and RSpec forms (`LoadError: cannot load such file -- x`).
-    MISSING_FILE = /cannot load such file -- \S+/
+    # The name runs to `(LoadError)` or the line end, so a path with a space
+    # stays whole.
+    MISSING_FILE = /cannot load such file -- .+?(?= \(LoadError\)|$)/
     # The seed line Minitest prints before every run ("Run options:"), or that
     # minitest-reporters prints ("Started with run options", or "# Running tests with run options"
     # for its DefaultReporter). Captures the seed.
@@ -198,6 +201,29 @@ module Mutineer
     # @return [Array<String>] the usable ones, in the same order.
     def self.usable_load_dirs(dirs)
       dirs.select { |dir| File.directory?(dir) && !dir.include?(File::PATH_SEPARATOR) }
+    end
+
+    # Splits the run's `load_path` entries into the directories {child_env}
+    # puts in +RUBYLIB+ and the entries it skips. An entry that cannot be
+    # resolved, such as `~nosuchuser/lib`, is skipped too: 1.10.0 ran such a
+    # `--test-command` run, so it must not exit 2 before 2.0 (#535, #581).
+    #
+    # @api private
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array(Array<String>, Array<String>)] `[usable, skipped]`, each in
+    #   the written order; a skipped entry is absolute when it resolved.
+    def self.split_load_dirs(config)
+      usable = []
+      skipped = []
+      config.extra_load_paths.each do |entry|
+        dir = begin
+          ProjectPath.absolute(entry, config.project_root)
+        rescue ArgumentError
+          nil
+        end
+        dir && usable_load_dirs([dir]).any? ? usable << dir : skipped << (dir || entry)
+      end
+      [usable, skipped]
     end
 
     # True when the key must be unset in the child (bundler/gem/version-manager).

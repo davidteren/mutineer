@@ -806,8 +806,7 @@ module Mutineer
         exit 2
       end
       if config.test_command
-        dirs = JobPlan.extra_load_dirs(config)
-        skipped = dirs - ExternalBackend.usable_load_dirs(dirs)
+        _usable, skipped = ExternalBackend.split_load_dirs(config)
         unless skipped.empty?
           warn "[mutineer] --test-command skips these load_path entries: #{skipped.join(', ')} " \
                "(#{config.origin(:extra_load_paths)}). Each must be a directory with no \"#{File::PATH_SEPARATOR}\" " \

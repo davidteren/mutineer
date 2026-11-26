@@ -381,7 +381,7 @@ module Mutineer
         # a fast suite; the ceiling bounds a hung mutant (infinite loop) so a
         # handful cannot stall a serial run for ~45min on a slow suite.
         # #535: the usable `load_path` directories reach the command in RUBYLIB.
-        extra_load_dirs = ExternalBackend.usable_load_dirs(JobPlan.extra_load_dirs(config))
+        extra_load_dirs, = ExternalBackend.split_load_dirs(config)
         smoke_elapsed, check_summary, random_order, clean_summaries = ExternalBackend.smoke_check!(
           config.test_command, abs_tests,
           extra_load_dirs: extra_load_dirs,
