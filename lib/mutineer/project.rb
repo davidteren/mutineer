@@ -128,17 +128,23 @@ module Mutineer
 
     # The method a call runs: its own name, or the literal symbol or string
     # it passes to `send`, `public_send` or `__send__`
-    # (`k.send(:alias_method, ...)`). A computed name gives nil, which may be
-    # any method, so the caller fails closed.
+    # (`k.send(:alias_method, ...)`). A computed name, or a `send` of a
+    # `send`, gives nil, which may be any method, so the caller fails closed.
     #
     # @param call [Prism::CallNode]
     # @return [Symbol, nil]
     def self.sent_name(call)
-      return call.name unless %i[send public_send __send__].include?(call.name)
+      return call.name unless SEND_CALLS.include?(call.name)
 
       first = call.arguments&.arguments&.first
-      first.unescaped.to_sym if first.is_a?(Prism::SymbolNode) || first.is_a?(Prism::StringNode)
+      return nil unless first.is_a?(Prism::SymbolNode) || first.is_a?(Prism::StringNode)
+
+      name = first.unescaped.to_sym
+      SEND_CALLS.include?(name) ? nil : name
     end
+
+    # The calls that run a method named by their first argument.
+    SEND_CALLS = %i[send public_send __send__].freeze
 
     # @param path [Prism::Node] a class or module statement's constant path.
     # @return [Array<Symbol>] each constant name on it (`A::B` gives `A` and `B`).
