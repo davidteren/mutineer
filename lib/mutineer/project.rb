@@ -50,9 +50,10 @@ module Mutineer
 
     # The last names of the constants reload must not keep (#528): the names
     # the file writes more than once ({repeated_constant_names}), and the
-    # names it changes again at load ({reshaped_constant_names}). Discovery
+    # names it can change again ({reshaped_constant_names}). Discovery
     # ({SubjectVisitor}), {rebuilt_names} and the reload text
-    # ({JobPlan.keep_live_superclasses}) all read this one Set.
+    # ({JobPlan.keep_live_superclasses}) all read this Set from the original
+    # text, so a mutant cannot change which constants are kept.
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
@@ -61,34 +62,48 @@ module Mutineer
     end
 
     # The calls on a constant that leave its class as it is, so a file may
-    # make them at load and still have the constant kept.
+    # make them and still have the constant kept.
     RESHAPE_SAFE_CALLS = %i[new []].freeze
 
-    # The last names of the constants that the file can change in a way that
-    # is not safe to run again on a kept class (#528): a
-    # `class X`, `module X` or `class << X` statement whose body fails
-    # {rerunnable_body?} (`alias_method :raw_x, :x` would wrap the wrapper of
-    # the first load, so `x` calls itself), and a call on `X` other than
-    # {RESHAPE_SAFE_CALLS} (`X.freeze`, `X.class_eval`, `X.include(M)`),
-    # also inside a def, which the file may call at load. Names match by their
-    # last part, which fails closed: such a constant is built again on each
-    # load, as before #528. A change made in another file is not seen (#585).
+    # The last names of the constants that the file may change in a way that
+    # is not safe to run again on a kept class (#528). It fails closed: a
+    # constant is in the Set when the file names it anywhere other than as
+    # the receiver of a {RESHAPE_SAFE_CALLS} call (`X.new`), the parent of a
+    # path (`X::ORIGIN`), the target of a path write, an argument of a class builder (`Class.new(X)`), a
+    # superclass (`class Row < X`), or a `class X`, `module X` or `class << X`
+    # statement whose body passes {rerunnable_body?}. So `X.freeze`,
+    # `X.class_eval`, `Alias = X` and `[X].each` count, also inside a def,
+    # which the file may call at load, as does such a statement with
+    # `alias_method :raw_x, :x`, which would wrap the wrapper of the first load
+    # so that `x` calls itself. Names match by their last part. Such a constant
+    # is built again on each load, as before #528. A change made in another
+    # file is not seen (#585).
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
     def self.reshaped_constant_names(program)
       names = Set.new
+      allowed = Set.new.compare_by_identity
       nodes = [program]
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
         case node
         when Prism::ClassNode, Prism::ModuleNode
+          allowed << node.constant_path
+          allowed << node.superclass if node.is_a?(Prism::ClassNode)
           names << node.constant_path.name unless rerunnable_body?(node.body)
         when Prism::SingletonClassNode
+          allowed << node.expression
           names << node.expression.name if constant_reference?(node.expression) && !rerunnable_body?(node.body)
+        when Prism::ConstantPathNode
+          allowed << node.parent
+        when Prism::ConstantPathWriteNode
+          allowed << node.target # a path node, not a read
         when Prism::CallNode
-          names << node.receiver.name if constant_reference?(node.receiver) && !RESHAPE_SAFE_CALLS.include?(node.name)
+          allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
+          allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
         end
+        names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
       names
     end
@@ -271,9 +286,9 @@ module Mutineer
     # a superclass that reads one of them as written.
     #
     # @param program [Prism::ProgramNode] the parsed file.
+    # @param unkept [Set<Symbol>] {unkept_constant_names} of the file.
     # @return [Array(Set<Symbol>, Set<Symbol>)] the def names and the constant names.
-    def self.rebuilt_names(program)
-      unkept = unkept_constant_names(program)
+    def self.rebuilt_names(program, unkept = unkept_constant_names(program))
       defs = Set.new
       constants = Set.new
       nodes = [program]

@@ -153,7 +153,7 @@ again with a value reload does not keep, or calls a method that the same file de
 the `Struct.new`, `Data.define` or `Class.new` call itself does not count), such as
 `class Row < Class.new(base)` or `class Point < point_base` (#533). A constant whose value holds only data,
 such as `FIELDS = %i[a b].freeze`, does not count; a local variable counts even when it holds only
-literals. When that call builds a new class, every mutant of the file scores `error` with
+literals. When that call builds a new class, every mutant of the file that loads scores `error` with
 `superclass mismatch` (#527), instead of keeping a stale parent and giving false survivors. Run that file
 with `--strategy redefine`, or assign the class to a constant with a literal builder
 (`Fields = Struct.new(:v)`), which reload keeps. A superclass that reaches a rebuilt class through another
@@ -186,11 +186,15 @@ the class again on each load (#575):
   no parent (`::Point = ...`), or a parent that is a constant path or `self`;
 - the file assigns that name only once, with any kind of assignment. A kept first assignment would get the
   value of the last one;
-- the file does not change that class again in a way that is not safe to repeat: a `class Point`, `module Point`
-  or `class << Point` statement whose body has a statement outside the safe list below, or a call on `Point`
-  other than `new` or `[]`, such as `Point.freeze` or `Point.class_eval`, anywhere in the file. A kept class
-  would get that change a second time: an `alias_method` chain would make the method call itself, a false
-  kill. Names match by their last part. A change that another file makes is not seen (#585).
+- the file names it nowhere else than in `Point.new`, `Point[...]`, `Point::NAME`, a class builder argument
+  (`Class.new(Point)`), a superclass (`class Row < Point`), or a `class Point`, `module Point` or
+  `class << Point` statement whose body passes the safe list below, anywhere in the file, defs included.
+  Any other use could change the class in a way that is not safe to repeat (`Point.freeze`,
+  `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` statement). A kept class would get
+  that change a second time: an `alias_method` chain would make the method call itself, a false kill. Names
+  match by their last part. A change that another file makes is not seen (#585). When a class statement of
+  the same file inherits from a constant that this rule does not keep, every mutant of the file that loads
+  scores `error` with `superclass mismatch` (#527, #575).
 
 When the builder has a block, reload runs that block again on the kept class, so a mutant of a method in it
 gets a real verdict. It does that only when the block is safe to run twice: it has no block parameter
@@ -201,7 +205,7 @@ nothing of the class (no `self` and no call without a receiver); or a `class`, `
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 417 of 491 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 399 of 472 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in

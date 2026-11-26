@@ -1771,6 +1771,8 @@ class ProjectTest < Minitest::Test
       module Authentication
         def self.allow(**options) = skip_before_action(:check, **options)
         def self.setup = allow(only: :index)
+        def self.hush = skip_callback(:save, :before, :stamp, if: gate)
+        def self.gate = :quiet?
       end
     RUBY
     with_source(src) do |path|
@@ -1847,15 +1849,40 @@ class ProjectTest < Minitest::Test
     "ORIGIN = P.new(0)\n" => false,
     "ORIGIN = P[0]\n" => false,
     "def self.seal = P.freeze\n" => true,
-    "class Q\n  alias_method :b, :a\nend\n" => false
+    "Alias = P\nAlias.class_eval { alias_method :raw_x, :x }\n" => true,
+    "[P].each { |k| k.class_eval { alias_method :raw_x, :x } }\n" => true,
+    "def self.patch(k) = k.alias_method(:raw_x, :x)\npatch(P)\n" => true,
+    "def p?(v) = v.is_a?(P)\n" => true,
+    "class Q\n  alias_method :b, :a\nend\n" => false,
+    "class Row < P\nend\n" => false,
+    "class Row < Class.new(P)\nend\n" => false,
+    "ORIGIN = P::ZERO\n" => false,
+    "A::ORIGIN = A::P.new(0)\n" => false
   }.freeze
 
-  def test_unkept_constant_names_holds_a_constant_the_file_changes_at_load
+  def test_unkept_constant_names_holds_a_constant_the_file_may_change
     RESHAPED.each do |text, unkept|
-      program = Mutineer::Parser.parse_string("P = Struct.new(:x)\n#{text}").value
-      assert_equal unkept, Mutineer::Project.unkept_constant_names(program).include?(:P), text
-      write = program.statements.body.first
-      assert_equal !unkept, Mutineer::Project.kept_constant_write?(write, Mutineer::Project.unkept_constant_names(program)), text
+      ["P = Struct.new(:x)\n", "A::P = Struct.new(:x)\n"].each do |write_text|
+        program = Mutineer::Parser.parse_string(write_text + text).value
+        names = Mutineer::Project.unkept_constant_names(program)
+        assert_equal unkept, names.include?(:P), write_text + text
+        assert_equal !unkept, Mutineer::Project.kept_constant_write?(program.statements.body.first, names), write_text + text
+      end
+    end
+  end
+
+  # #528, P1 of the pre-PR review: the reload text reads the kept constants
+  # from the original text. A mutant that removes the only `Point.members`
+  # call inside a def must not make the reload keep a class whose block does
+  # not run again: the mutated def would never load, a false survivor.
+  def test_the_reload_text_keeps_the_constants_the_original_text_keeps
+    source = "Point = Struct.new(:x) do\n  alias_method :raw_x, :x\n  def self.fields\n    Point.members\n  end\nend\n"
+    mutated = source.sub("Point.members", "nil")
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(mutated), "kept_constant"
+    assert_equal mutated, Mutineer::JobPlan.reload_code(mutated, nil, nil, source).first
+    with_source(source) do |path|
+      subject = Mutineer::Project.discover([path]).find { |s| s.qualified_name == "Point.fields" }
+      refute subject.unplaceable?("reload")
     end
   end
 end

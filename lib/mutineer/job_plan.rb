@@ -381,7 +381,9 @@ module Mutineer
       else
         code = ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
       end
-      [keep_live_superclasses(code), hook_def]
+      # The names come from the original text: a mutant inside a def can
+      # change a call there, and discovery read the original text.
+      [keep_live_superclasses(code, Project.unkept_constant_names(Parser.parse_string(source).value)), hook_def]
     end
 
     # A new empty file for {ReloadGuards.callback_growth_log} (#479). The
@@ -441,11 +443,13 @@ module Mutineer
     # back unchanged.
     #
     # @param code [String] the reload text.
+    # @param unkept [Set<Symbol>, nil] {Project.unkept_constant_names} of the
+    #   original text, as discovery reads it; nil reads them from `code`.
     # @return [String]
-    def self.keep_live_superclasses(code)
+    def self.keep_live_superclasses(code, unkept = nil)
       program = Parser.parse_string(code).value
-      unkept = Project.unkept_constant_names(program)
-      rebuilt = Project.rebuilt_names(program)
+      unkept ||= Project.unkept_constant_names(program)
+      rebuilt = Project.rebuilt_names(program, unkept)
       splices = []
       queue = [program]
       while (node = queue.shift)
