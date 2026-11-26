@@ -192,7 +192,7 @@ cover that source, plus any test file that was added or edited. The map matches 
 edit, an added or removed source line, a load-time method, a change to which test pairs with a source, a
 `--require` file, or another project file the tests load still recaptures every test (#421).
 
-The cache key holds the sources, the tests, the boot file, the `--require` files, the project's Ruby files
+The cache key holds, among other inputs, the sources, the tests, the boot file, the `--require` files, the project's Ruby files
 that the tests load, and the Ruby files under each `load_path` directory. It also holds the test seed: the
 Minitest seed, or for RSpec the pinned seed, `SPEC_OPTS`, and the project's `.rspec` and `.rspec-local` files.
 A data file that a test reads, such as a YAML or JSON file, is not part of the key, in a `load_path` directory

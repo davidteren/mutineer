@@ -615,10 +615,12 @@ module Mutineer
         else                      "exited #{code}"
         end
       detail = output.empty? ? "" : "\n--- last output ---\n#{tail(output)}"
-      hint = ruby_version_mismatch_hint(output) || missing_file_hint(output, extra_load_dirs, load_note)
+      # The generic hint stays: the missing file can be a rescued LoadError, not the cause.
+      hint = ruby_version_mismatch_hint(output) ||
+             [missing_file_hint(output, extra_load_dirs, load_note), generic_env_hint].compact.join("; ")
       raise SmokeCheckError,
             "the test command #{reason} against the UNMUTATED source — " \
-            "#{hint || generic_env_hint}.#{detail}"
+            "#{hint}.#{detail}"
     end
 
     # Generic smoke-failure framing when no Ruby-version mismatch is detected.
@@ -635,7 +637,8 @@ module Mutineer
     # name is found when its line is above the last 40 lines. It names the
     # likely cause: a `load_path` directory that did not reach the command's
     # Ruby, or a load variable the user set, which the command does not get.
-    # It never prints a variable's value or a directory.
+    # It never prints a variable's value or a `load_path` directory; the
+    # quoted error line can hold a path.
     #
     # @api private
     # @param output [String] captured child stdout+stderr.

@@ -324,7 +324,7 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Parallelism | Runs serially by default and forces `--jobs` to 1; a wrapper can reset `PARALLEL_WORKERS` to re-enable Rails test workers. |
 | Strategy | Supports only `reload`. Rejects `--strategy redefine`. |
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
-| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file and the likely cause: a wrapper that unset `RUBYLIB`, or a load variable that Mutineer did not pass. |
+| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file. With a `load_path`, or a load variable of yours, it also names the likely cause: a wrapper that unset `RUBYLIB`, or a load variable that Mutineer did not pass. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
 | Subprocess result | Verdict |

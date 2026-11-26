@@ -565,14 +565,15 @@ class RunnerExternalTest < Minitest::Test
       assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
                              "--test-command does not pass RUBYLIB to the command; if the missing file is in a " \
                              "directory set there, add that directory to load_path: in .mutineer.yml, or pass " \
-                             "-I DIR (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}."
+                             "-I DIR (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}; " \
+                             "the unmutated suite is not green"
       refute_includes err, "test/support"
-      refute_includes err, "the unmutated suite is not green"
 
       _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
                                    "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
       assert_equal 1, status.exitstatus, err
-      assert_includes err, "UNMUTATED source — the suite could not load a file (cannot load such file -- nope_535).\n"
+      assert_includes err, "UNMUTATED source — the suite could not load a file (cannot load such file -- nope_535); " \
+                           "the unmutated suite is not green"
     end
   end
 
@@ -618,7 +619,7 @@ class RunnerExternalTest < Minitest::Test
       assert_includes first, "the suite could not load a file (cannot load such file -- probe_helper); " \
                              "if it is in a load_path directory: Mutineer passes those directories to the command " \
                              "in RUBYLIB, and a wrapper that unsets RUBYLIB, or a Ruby that the command starts in a " \
-                             "container, does not get them (pass -I inside the test command there)."
+                             "container, does not get them (pass -I inside the test command there); the unmutated suite is not green"
     end
   end
 
