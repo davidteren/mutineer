@@ -1,0 +1,19 @@
+action.yml
+  s_d1e28437164ffb::t_5ad2283ed4197a 572
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc402bf6b831936ff1242cac78b0ad0b1d8f0d64",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
