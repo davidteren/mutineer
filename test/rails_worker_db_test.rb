@@ -810,6 +810,25 @@ class RailsWorkerDbTest < Minitest::Test
     assert Mutineer::RailsWorkerDb.try_mysql_lock(LockMysql.new(box, :fifth), base, shared: false)
   end
 
+  # The copy fails, then RELEASE_LOCK raises in the cleanup as on a lost session.
+  # The first error must win and the session must still close (#571).
+  def test_provision_mysql_closes_a_lost_session_and_reports_the_first_error
+    db = Mutineer::RailsWorkerDb
+    conn = LostSessionMysql.new
+    error = nil
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test" }) do
+      db.stub(:open_mysql_connection, conn) do
+        db.stub(:disconnect_app!, nil) do
+          error = assert_raises(RuntimeError) { db.provision_mysql(1) }
+        end
+      end
+    end
+    assert_equal "could not provision app_test-mutineer-0 from app_test: the copy failed", error.message
+    assert conn.closed?
+    assert(conn.queries.any? { |sql| sql.include?("RELEASE_LOCK") }, "the cleanup never tried to release the locks")
+    assert_empty db.instance_variable_get(:@mysql_held_locks)
+  end
+
   def test_a_fork_child_forgets_mysql_lock_names_without_releasing_them
     conn = Object.new
     Mutineer::RailsWorkerDb.instance_variable_set(:@lock_connection, conn)
@@ -1594,6 +1613,44 @@ class RailsWorkerDbTest < Minitest::Test
         HashRows.new([{ "version" => @version }])
       elsif sql.include?("GET_LOCK")
         HashRows.new([{ "got" => "0" }])
+      else
+        HashRows.new([])
+      end
+    end
+
+    def escape(value)
+      value.to_s.gsub("'", "''")
+    end
+
+    def close
+      @closed = true
+    end
+
+    def closed?
+      @closed
+    end
+  end
+
+  # Grants every GET_LOCK, fails the worker database copy, and raises on
+  # RELEASE_LOCK the way a lost MySQL session does. Records each query and whether it was closed.
+  class LostSessionMysql
+    attr_reader :queries
+
+    def initialize
+      @closed = false
+      @queries = []
+    end
+
+    def query(sql)
+      @queries << sql
+      if sql.include?("VERSION()")
+        HashRows.new([{ "version" => "8.0.36" }])
+      elsif sql.include?("GET_LOCK")
+        HashRows.new([{ "got" => "1" }])
+      elsif sql.include?("RELEASE_LOCK")
+        raise "Lost connection to MySQL server during query"
+      elsif sql.match?(/information_schema|DROP DATABASE|CREATE DATABASE/)
+        raise "the copy failed"
       else
         HashRows.new([])
       end

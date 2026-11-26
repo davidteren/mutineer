@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format is based on
 - **A JSON entry for a source path that is not valid UTF-8 carries a `diff_base64` that applies (#532, partly).**
   `diff` prints such a path as `\xNN`, so no patch named the real file. `diff_base64` now names it by its own bytes, and `git apply --unidiff-zero` finds it. With a credential configured, such an entry has no `diff_base64`, because the path bytes cannot be checked for it (#540).
   A file with a `working-tree-encoding` Git attribute and an invalid byte on a changed line still has no patch that applies. The same holds for such a file whose path is not valid UTF-8. Those limits stay open in #532.
+- **MySQL worker database setup now reports the first error and closes the session when the session is lost during the copy (#571).**
+  The cleanup released the lock names with no guard, so a release that raised skipped the close and replaced the first error.
 
 ## [1.10.0] - 2026-11-24
 
