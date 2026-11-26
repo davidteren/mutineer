@@ -732,7 +732,7 @@ module Mutineer
       return unless result.mutation && file
 
       source = source_for(file)
-      source.byteslice(0, result.mutation.start_offset).count("\n") + 1
+      Parser.line_at(source, result.mutation.start_offset)
     end
 
     # One titled list of tests in the human kill-matrix section, cut at
@@ -923,7 +923,7 @@ module Mutineer
 
     # The same patch as {#unified_diff}, with each side line in the file's own
     # bytes (#518), so `git apply` accepts it for any source encoding. The
-    # path keeps the UTF-8 text `diff` shows (#532).
+    # path is in its own bytes too (#532).
     #
     # @api private
     # @param result [Mutineer::Result] the mutant result.
@@ -955,11 +955,33 @@ module Mutineer
       at_eof = source.byteindex("\n", m.end_offset).nil?
       old_lines = side_lines(original_block, at_eof).map(&piece)
       new_lines = side_lines(mutated_block, at_eof).map(&piece)
-      # The path stays the text `diff` shows, so only the side lines differ (#532).
-      shown_file = piece.call(utf8_text(file))
-      "--- a/#{shown_file}\n+++ b/#{shown_file}\n" \
+      # The exact patch names the file by its own bytes, so `git apply` finds a
+      # path that is not UTF-8 (#532).
+      old_path, new_path = %w[a b].map { |side| patch_path(side, file.to_s, &piece) }
+      "--- #{old_path}\n+++ #{new_path}\n" \
         "@@ -#{hunk_range(start_line, old_lines)} +#{hunk_range(start_line, new_lines)} @@\n" \
         "#{diff_body("-", old_lines)}#{diff_body("+", new_lines)}"
+    end
+
+    # One header path of a patch. A name with a tab, newline, quote, backslash or
+    # other control byte is written in Git's quoted form, because Git reads an
+    # unquoted header only up to a tab and cannot parse one with a newline (#532).
+    # The escapes are made on the name's own bytes, so `piece` then shows any
+    # invalid byte as it shows it everywhere else.
+    #
+    # @api private
+    # @param side [String] "a" or "b".
+    # @param raw [String] the file name as the report has it.
+    # @yieldparam text [String] a name to turn into the patch's text.
+    # @return [String] the header path.
+    def patch_path(side, raw, &piece)
+      special = /[\x00-\x1f"\\\x7f]/n
+      return "#{side}/#{piece.call(raw)}" unless raw.b.match?(special)
+
+      escaped = raw.b.gsub(special) do |c|
+        {"\t" => "\\t", "\n" => "\\n", '"' => '\\"', "\\" => "\\\\"}.fetch(c) { format("\\%03o", c.ord) }
+      end
+      "\"#{side}/#{piece.call(escaped)}\""
     end
 
     # The encoding {#diff_encoding} names for a result's diff, or nil when the
@@ -1155,8 +1177,8 @@ module Mutineer
       replacement = m.replacement
       replacement = replacement.dup.force_encoding(before.encoding) if replacement.ascii_only?
       mutated_block = before + replacement + after
-      start_line  = source.byteslice(0, m.start_offset).count("\n") + 1
-      token       = source.byteslice(m.start_offset...m.end_offset).gsub(/\s+/, " ").strip
+      start_line  = Parser.line_at(source, m.start_offset)
+      token       = MutantId.normalized_token(m, source)
       if token.length > 50
         token = token[0, 47] + "...".dup.force_encoding(token.encoding)
       end

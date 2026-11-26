@@ -251,7 +251,8 @@ module Mutineer
     # (`log2(seconds - fastest + 1)`), so files of close cost keep their path
     # order when a rebuild measures them again. Taking off the fastest
     # captured file's time removes the startup cost every standalone capture
-    # pays; a failed capture is timed again on each run, so it does not count.
+    # pays; a failed capture is timed again on each run, so it does not count,
+    # and its own cost below that floor counts as the floor.
     # A run that stops at the first failure then reaches a fast killing test
     # before a slow file uses up the timeout.
     #
@@ -266,7 +267,7 @@ module Mutineer
       base = @timings.except(*@failed_test_files).values.min || 0
       tests.sort_by do |t|
         cost = @timings[t]
-        [paired.include?(t) ? 0 : 1, cost ? Math.log2(cost - base + 1).floor : Float::INFINITY, t]
+        [paired.include?(t) ? 0 : 1, cost ? Math.log2([cost - base, 0].max + 1).floor : Float::INFINITY, t]
       end
     end
 
