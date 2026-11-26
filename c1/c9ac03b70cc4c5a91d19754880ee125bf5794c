@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_744e8787fed4e4 26
+STABILITY.md
+  s_2919199eb867b0::t_c0b92f92677637 146
+docs/cli.md
+  s_2919199eb867b0::t_98770c868f45e0 117
+docs/rails-setup.md
+  s_2919199eb867b0::t_d4fd6059df6c93 203,327
+lib/mutineer/daemon_client.rb
+  s_2919199eb867b0::t_696b569c00c336 302
+test/daemon_backend_contract_test.rb
+  s_2919199eb867b0::t_d67c544ec03954 672,681,690
+test/daemon_client_env_test.rb
+  s_2919199eb867b0::t_0e6a6457c712ad 255-256,267,285,289,295-300,304-305,308,312,332
+test/daemon_coverage_test.rb
+  s_2919199eb867b0::t_b9e1bfb2c2e3e2 212
+test/daemon_redaction_test.rb
+  s_2919199eb867b0::t_4fdee11e27c9e5 296,325
+test/runner_daemon_test.rb
+  s_2919199eb867b0::t_32853ea0a87118 144
+test/runner_external_test.rb
+  s_2919199eb867b0::t_e0b2f1eff5ac42 566,606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c1c9ac03b70cc4c5a91d19754880ee125bf5794c",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
