@@ -569,7 +569,7 @@ runs:
                else empty end),
               (if (.summary.ran_at_load_tested // 0) > 0 then
                  "",
-                 ("Ran at load after tests: \(.summary.ran_at_load_tested) mutant(s) survived their tests before a load rule moved them to `ran_at_load`. They are not in the score, and each can hide a test gap. The JSON report marks them `tested: true` under `ran_at_load`. To get a verdict, run the method again with `--test-command` and `--only Class#method`, without `rails: true`, `--rails` or `--boot`: the test command boots the app itself.")
+                 ("Ran at load after tests: \(.summary.ran_at_load_tested) mutant(s) survived their tests before a load rule moved them to `ran_at_load`. They are not in the score, and each can hide a test gap. The JSON report marks them `tested: true` under `ran_at_load`. To get a verdict, run the method again with `--test-command` and `--only Class#method`, with no boot file (no `rails: true` input, no `--rails` or `--boot`, and no `rails:` or `boot:` key in `.mutineer.yml` for that run): the test command boots the app itself.")
                else empty end),
               (if (.summary.unpaired_sources // 0) > 0 then
                  "",
