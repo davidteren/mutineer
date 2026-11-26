@@ -193,6 +193,10 @@ class ClassMacroLoadTest < Minitest::Test
   LANGUAGE_STALE = (LANGUAGE_BLOCK_MUTANTS + LANGUAGE_STATEMENT_MUTANTS).to_h { |key| [key, "ran_at_load"] }
                                                                        .merge(LANGUAGE_INITIALIZE).freeze
 
+  # #286: the ran_at_load mutants of LANGUAGE_STALE that survived their tests
+  # first. No test is selected for `limits[:language] = 35`, so it never ran.
+  LANGUAGE_TESTED = (LANGUAGE_BLOCK_MUTANTS + [LANGUAGE_STATEMENT_MUTANTS.first]).sort.freeze
+
   # The caller loads after the mutant, so the tests run the mutated copies.
   LANGUAGE_FRESH = (LANGUAGE_BLOCK_MUTANTS + LANGUAGE_STATEMENT_MUTANTS).to_h { |key| [key, "killed"] }
                                                                        .merge(LANGUAGE_INITIALIZE).freeze
@@ -214,7 +218,13 @@ class ClassMacroLoadTest < Minitest::Test
           mutation = result.mutation
           text = File.read(result.subject.file)
           snippet = text.byteslice(mutation.start_offset, mutation.end_offset - mutation.start_offset)
-          ["\#{mutation.operator} \#{snippet}", result.status.to_s, result.kills&.killed_by]
+          # R13 (#286): a ran_at_load result is tested exactly when it has a run
+          # time. If a later change gives a run time to a result that never ran,
+          # change this check, not the field.
+          if result.ran_at_load? && result.tested_at_load? != !result.seconds.nil?
+            raise "tested_at_load and seconds disagree: \#{mutation.operator} \#{snippet}"
+          end
+          ["\#{mutation.operator} \#{snippet}", result.status.to_s, result.kills&.killed_by, result.tested_at_load?]
         end
         $stdout.puts JSON.generate("rows" => rows, "score" => agg.mutation_score)
       RUBY
@@ -224,27 +234,32 @@ class ClassMacroLoadTest < Minitest::Test
       rows = doc["rows"]
       assert_equal rows.size, rows.map(&:first).uniq.size, "two mutants share a name"
       [rows.to_h { |key, verdict, _killed_by| [key, verdict] }, doc["score"],
-       rows.to_h { |key, _verdict, killed_by| [key, killed_by] }]
+       rows.to_h { |key, _verdict, killed_by| [key, killed_by] },
+       rows.select { |row| row[3] }.map(&:first).sort]
     end
   end
 
   # AE1, the reported case: both files are sources, so redefine loads
   # LanguageProduct in the parent, before any mutant. Lazy boot does not help.
   def test_a_block_that_the_caller_stored_before_the_mutant_is_ran_at_load
-    rows, score = run_rows(sources: LANGUAGE_SOURCES, tests: [LANGUAGE_TEST], boot: "language_lazy_boot.rb",
-                           strategy: "redefine", operators: LANGUAGE_OPERATORS)
+    rows, score, _killed_by, tested = run_rows(sources: LANGUAGE_SOURCES, tests: [LANGUAGE_TEST],
+                                               boot: "language_lazy_boot.rb", strategy: "redefine",
+                                               operators: LANGUAGE_OPERATORS)
     assert_equal LANGUAGE_STALE, rows
     assert_in_delta 90.0, score, 0.001
+    assert_equal LANGUAGE_TESTED, tested # AE3 (#286)
   end
 
   # AE2: the caller loads at boot, as under Rails eager load. Reload runs the
   # macro's file again. It does not run the caller's class body again.
   def test_eager_load_gives_the_same_verdicts_under_both_strategies
     %w[reload redefine].each do |strategy|
-      rows, score = run_rows(sources: ["lib/language_record.rb"], tests: [LANGUAGE_TEST],
-                             boot: "language_eager_boot.rb", strategy: strategy, operators: LANGUAGE_OPERATORS)
+      rows, score, _killed_by, tested = run_rows(sources: ["lib/language_record.rb"], tests: [LANGUAGE_TEST],
+                                                 boot: "language_eager_boot.rb", strategy: strategy,
+                                                 operators: LANGUAGE_OPERATORS)
       assert_equal LANGUAGE_STALE, rows, strategy
       assert_in_delta 90.0, score, 0.001, strategy
+      assert_equal LANGUAGE_TESTED, tested, strategy
     end
   end
 
@@ -280,19 +295,21 @@ class ClassMacroLoadTest < Minitest::Test
     assert_in_delta 90.0, score, 0.001
   end
 
-  # A limit of the rule (#286): boot calls apply([]) and so does the test. The
+  # A limit of the rule (#588): boot calls apply([]) and so does the test. The
   # each line is covered and its block never runs. No test ran the mutant, so
   # it is ran_at_load. On 1.9.0 it was survived, which named the missing test.
   def test_a_block_that_no_test_runs_is_ran_at_load
     %w[reload redefine].each do |strategy|
-      rows, score = run_rows(sources: ["lib/apply_each.rb"], tests: ["test/apply_each_empty_test.rb"],
-                             boot: "apply_boot.rb", strategy: strategy, operators: %w[literal_mutation])
+      rows, score, _killed_by, tested = run_rows(sources: ["lib/apply_each.rb"],
+                                                 tests: ["test/apply_each_empty_test.rb"], boot: "apply_boot.rb",
+                                                 strategy: strategy, operators: %w[literal_mutation])
       assert_equal({ "literal_mutation \"original\"" => "ran_at_load" }, rows, strategy)
       assert_nil score, strategy
+      assert_equal ["literal_mutation \"original\""], tested, strategy # AE4 (#286)
     end
   end
 
-  # A limit of the rule (#286): the test stores a new copy of the block and
+  # A limit of the rule (#588): the test stores a new copy of the block and
   # takes one branch. The mutant in that branch runs and is killed. The mutant
   # in the other branch does not run, so it is ran_at_load, not survived.
   def test_a_branch_of_a_stored_block_that_no_test_takes_is_ran_at_load
@@ -319,10 +336,12 @@ class ClassMacroLoadTest < Minitest::Test
       RUBY
     ) do |root|
       %w[reload redefine].each do |strategy|
-        rows, = run_rows(sources: ["lib/flagged.rb"], tests: ["test/flagged_test.rb"], boot: "boot.rb",
-                         strategy: strategy, operators: %w[literal_mutation], root: root)
+        rows, _score, _killed_by, tested = run_rows(sources: ["lib/flagged.rb"], tests: ["test/flagged_test.rb"],
+                                                    boot: "boot.rb", strategy: strategy,
+                                                    operators: %w[literal_mutation], root: root)
         assert_equal({ "literal_mutation \"yes\"" => "killed", "literal_mutation \"no\"" => "ran_at_load" },
                      rows, strategy)
+        assert_equal ["literal_mutation \"no\""], tested, strategy # #286
       end
     end
   end
@@ -407,26 +426,32 @@ class ClassMacroLoadTest < Minitest::Test
         File.write(payload["reach_path"], "1") if fires && payload["reach_path"]
         "survived"
       end
+      tested = []
       rows = jobs.to_h do |job|
         result = Mutineer::DaemonBackend.send(:job_result, job, 0, client, 0, config, map, [], source_map)
         mutation = result.mutation
         snippet = text.byteslice(mutation.start_offset, mutation.end_offset - mutation.start_offset)
+        tested << "#{mutation.operator} #{snippet}" if result.tested_at_load?
         ["#{mutation.operator} #{snippet}", result.status.to_s]
       end
-      [rows.slice(*macro), probed]
+      [rows.slice(*macro), probed, (tested & macro).sort]
     end
 
     # The probe fired: a test ran the mutated block, so the mutant counts.
-    rows, probed = run.call(load_lines: calls, fires: true)
+    rows, probed, tested = run.call(load_lines: calls, fires: true)
     assert_equal block.call("survived").merge(statements.call("ran_at_load")), rows
+    # #286: the two statement mutants survived their tests, then load_verdict moved them.
+    assert_equal LANGUAGE_STATEMENT_MUTANTS.sort, tested
     # Only the five block mutants carry the probe. A mutant outside a block
     # on a load line is ran_at_load from load_verdict, as before.
     assert_equal 5, probed.size
     assert(probed.all? { |code| code.include?("mutineer_r") })
 
     # The probe did not fire: the tests ran a copy that the load stored.
-    rows, = run.call(load_lines: calls, fires: false)
+    rows, _probed, tested = run.call(load_lines: calls, fires: false)
     assert_equal block.call("ran_at_load").merge(statements.call("ran_at_load")), rows
+    # #286: the map covers every line and the client answers survived, so each one is tested.
+    assert_equal macro.sort, tested
 
     # No call ran at load: no mutant carries the probe, and each one counts.
     rows, probed = run.call(load_lines: [], fires: false)

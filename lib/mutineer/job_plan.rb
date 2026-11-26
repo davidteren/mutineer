@@ -675,7 +675,8 @@ module Mutineer
     # Only the lines of the statement that holds the mutant count
     # ({StatementLines}), and only inside the method body. So code that runs
     # only sometimes (`x if c`, a ternary branch) never counts: its line can
-    # count at load without it. The `def` line never counts: Ruby counts it
+    # count at load without it (a false survivor when the tests check only
+    # the loaded value, #589). The `def` line never counts: Ruby counts it
     # when the method is defined.
     #
     # A `define_method` or `define_singleton_method` call stores its block.

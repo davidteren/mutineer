@@ -243,8 +243,8 @@ A one-line or endless `def` keeps its body on the `def` line, which counts when 
 count at load is used instead. A block on that `def` line is not classified from the line (#389).
 A `define_method` or `define_singleton_method` whose line ran at load counts too, including the block that call
 stores (#435). `each` with an empty array can count the line without running
-its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#286).
-Code that runs only sometimes, such as the body of `x if c`, does not.
+its block. When that `each` shares the line with `define_method`, the call can still be `ran_at_load` (#588).
+Code that runs only sometimes, such as the body of `x if c`, does not (#589).
 
 Each `ran_at_load[]` entry also has `tested` (boolean, new in schema `2.0`, #286). It is `true` when the run scored
 the mutant `survived` with its tests and a load rule then moved it: the line rule above, or the block rule of #493
@@ -265,11 +265,12 @@ score is `null`. `--threshold` passes a `null` score when no mutant broke. The r
 
 - A mutated expression in such a block that no test reaches, on a line that tests cover, is `ran_at_load`. In
   1.9.0 it was `survived`, unless its own line ran at load. The cases are a block that no test runs, a branch in the
-  block that no test takes, and the right side of `&&` or `||` that no test reaches (#286).
+  block that no test takes, and the right side of `&&` or `||` that no test reaches. Each such mutant has
+  `tested: true` (#588).
 - A mutant whose expression raises or throws in each test that reaches it is `ran_at_load` when the code rescues or
-  catches it and the tests pass (#286).
+  catches it and the tests pass. Each such mutant has `tested: true` (#588).
 - A test can run a new copy of the block and check the result of the old copy. The probe counts, so that mutant
-  stays `survived`, and it can be a false survivor (#286, #389).
+  stays `survived`, and it can be a false survivor (#589, #389).
 - The probe writes its file with `IO.sysopen`. A test that replaces it, or replaces the file system (FakeFS), stops the
   probe. The probe ignores any error from that write, so the test sees no change. A survivor that this test ran is then
   `ran_at_load` (#507).
