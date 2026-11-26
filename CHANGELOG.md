@@ -35,9 +35,9 @@ All notable changes to this project are documented here. The format is based on
   Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575); a change that another file makes to a kept class (#585).
 - **Reload leaves a superclass as written when it can name a stale class (#533).**
   A superclass call that reads a variable, a constant that the same file builds again, or a method that the same file defines, such as `class Row < Class.new(base)` or `class Point < point_base`, kept the old parent while the file built a new class. A mutant in that class survived falsely.
-  Such a superclass now keeps its text. When the call builds a new class, every mutant of the file scores `error` with "superclass mismatch" (#527). An errored mutant is in `no_verdict`, so a `--threshold` gate that passed on false survivors can now fail.
+  Such a superclass now keeps its text. When the call builds a new class, every mutant of the file that loads scores `error` with "superclass mismatch" (#527). An errored mutant is in `no_verdict`, so a `--threshold` gate that passed on false survivors can now fail.
   What to do: run that file with `--strategy redefine`, or assign the class to a constant with a literal builder (`Fields = Struct.new(:v)`), which reload keeps (#528).
-  A constant that holds only literals, such as `FIELDS = %i[a b].freeze`, does not count. A local variable does count, also when it holds only literals. A method call counts by name, with any receiver.
+  A constant that holds only literals, such as `FIELDS = %i[a b].freeze`, does not count. A local variable does count, also when it holds only literals. A method call counts by name, with any receiver, except the `Struct.new`, `Data.define` or `Class.new` call itself.
   The rule matches 0 of 2,064 call superclasses in 47,030 Ruby files of 744 gems.
   Still open: a superclass that reaches a rebuilt class through another file or a registry (#574).
 

@@ -147,9 +147,10 @@ superclass with no method in its block reloads as usual. So does a plain local w
 `class Q < (base = Struct.new(:a))`: the local is set to the live superclass (#512). A superclass that
 sets a local in another way (`||=`, multiple assignment, a write deeper in the expression), or that is a
 bare variable read such as `class Q < base`, keeps its text and still errors on reload when it builds a new
-class (#527). A superclass call also keeps its text when it reads a local variable set outside it, uses an
-instance, class or global variable, reads a constant that the same file builds again with a value reload
-does not keep, or calls a method that the same file defines (with any receiver), such as
+class (#527). A superclass call also keeps its text when it reads a local variable (other than a parameter of
+a block inside it), uses an instance, class or global variable, reads a constant that the same file builds
+again with a value reload does not keep, or calls a method that the same file defines (with any receiver;
+the `Struct.new`, `Data.define` or `Class.new` call itself does not count), such as
 `class Row < Class.new(base)` or `class Point < point_base` (#533). A constant whose value holds only data,
 such as `FIELDS = %i[a b].freeze`, does not count; a local variable counts even when it holds only
 literals. When that call builds a new class, every mutant of the file scores `error` with

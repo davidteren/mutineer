@@ -554,8 +554,9 @@ module Mutineer
     # Whether a superclass expression can name a class that a load of the file
     # builds again (#533), outside any def in it (a def's body runs later):
     #
-    # - a read of a local variable set outside the expression (a block's own
-    #   parameter does not count), or any use of an instance, class or global
+    # - a read of a local variable that is not a parameter of a block in the
+    #   expression (one set earlier in the expression counts too, which fails
+    #   closed), or any use of an instance, class or global
     #   variable, a write too, because `$base ||= Object` reads it with no
     #   read node;
     # - a read of a constant in the second Set of `rebuilt`;
