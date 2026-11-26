@@ -1,0 +1,52 @@
+test/rails_callback_restore_test.rb
+  s_2919199eb867b0::t_76ac67158f2374 60
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_2919199eb867b0::t_cf28d026822508 14,16
+  s_13efe4cc102d28::t_770c5aa20074e0 17
+test/call_superclass_reload_test.rb
+  s_2919199eb867b0::t_bac8de6f9f1f55 794
+  s_2919199eb867b0::t_ebd085406936be 694-722,790-793
+lib/mutineer/project.rb
+  s_2919199eb867b0::t_edbe9782fb2c1d 91-95,152-155,158-161,166
+  s_2919199eb867b0::t_54d62f7db27aa0 172
+  s_13efe4cc102d28::t_908d9c7113cf70 265-268
+docs/json-schema.md
+  s_2919199eb867b0::t_5e1edaa625e3ce 170
+  s_2919199eb867b0::t_d50f95b2d7dfe3 222
+  s_2919199eb867b0::t_adc4fa3b8707f6 154-155,161,168,201-202,205-207
+test/support/rails_callback_restore_probe.rb
+  s_2919199eb867b0::t_8325b6af161da8 218,230-231
+lib/mutineer/job_plan.rb
+  s_2919199eb867b0::t_ee17e5c92e41ca 568-570,585-590
+test/project_test.rb
+  s_2919199eb867b0::t_3f354096fcb0ef 1880-1883
+  s_2919199eb867b0::t_46dba2a8bc4e0d 1884
+lib/mutineer/reload_guards.rb
+  s_2919199eb867b0::t_07f13b9da9b753 182-190,196,199-200,202-237,263,272
+CHANGELOG.md
+  s_2919199eb867b0::t_c865a51e2f04c9 35-37,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9e319c3d8d3f216ee558c20fa8e1a17b8957874",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
