@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **MySQL worker database setup now reports the first error and closes the session when the session is lost during the copy (#571).**
+  The cleanup released the lock names with no guard, so a release that raised skipped the close and replaced the first error.
+
 ## [1.10.0] - 2026-11-24
 
 ### Added
