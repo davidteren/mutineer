@@ -86,9 +86,11 @@ module Mutineer
     # so that `x` calls itself. Such a statement on a path (`class X::Q`) counts
     # each name of the path. Names match by their last part. A file that makes
     # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
-    # writes. Such a constant is built again on each load, as before #528. A
-    # change made in another file, or through a call outside that list, is not
-    # seen (#585).
+    # writes, as does a file with `eval` or with a `class << expr` statement
+    # whose body is unsafe. Such a constant is built again on each load, as
+    # before #528. A change made in another file, or through a call outside
+    # that list (`include`, `prepend`, `extend`, `method(:alias_method).call`),
+    # is not seen (#585).
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
@@ -108,7 +110,10 @@ module Mutineer
           path_names(node.constant_path).each { |name| names << name } unless rerunnable_body?(node.body)
         when Prism::SingletonClassNode
           allowed << node.expression
-          names << node.expression.name if constant_reference?(node.expression) && !rerunnable_body?(node.body)
+          unless rerunnable_body?(node.body) || node.expression.is_a?(Prism::SelfNode)
+            # `class << ORIGIN.class` reaches a class without its name.
+            constant_reference?(node.expression) ? names.merge(path_names(node.expression)) : indirect = true
+          end
         when Prism::ConstantPathNode
           allowed << node.parent
         when Prism::ConstantPathWriteNode
@@ -120,11 +125,15 @@ module Mutineer
             sent = sent_name(node)
             indirect = true if sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent)
           end
+          indirect = true if node.name == :eval # its string may name any class
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
       indirect ? names | written : names
     end
+
+    # The calls that run a method named by their first argument.
+    SEND_CALLS = %i[send public_send __send__].freeze
 
     # The method a call runs: its own name, or the literal symbol or string
     # it passes to `send`, `public_send` or `__send__`
@@ -143,8 +152,6 @@ module Mutineer
       SEND_CALLS.include?(name) ? nil : name
     end
 
-    # The calls that run a method named by their first argument.
-    SEND_CALLS = %i[send public_send __send__].freeze
 
     # @param path [Prism::Node] a class or module statement's constant path.
     # @return [Array<Symbol>] each constant name on it (`A::B` gives `A` and `B`).
