@@ -284,6 +284,11 @@ class RailsDogfoodDaemonTest < Minitest::Test
 
     assert_equal 0, aggregate.errored_count, err
     assert_operator aggregate.killed_count, :>, 0
+    # The mechanism: no mutant is unplaceable, so the score covers every one.
+    # The daemon records no killing test, and the only test reaches `origin?`
+    # through the subclass.
+    assert_equal 0, aggregate.unplaceable_count
+    assert_equal aggregate.total, aggregate.killed_count
     assert_in_delta 100.0, aggregate.mutation_score
   end
 
