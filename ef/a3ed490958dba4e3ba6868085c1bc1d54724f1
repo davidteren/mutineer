@@ -1,0 +1,61 @@
+lib/mutineer/reload_guards.rb
+  s_13efe4cc102d28::t_0c3ac9d71c4fe7 301-302
+  s_2919199eb867b0::t_07f13b9da9b753 182-192,198,201-202,204-225,229-300,326-327,330,337
+  s_2919199eb867b0::t_7d5231e3138ac5 338
+docs/json-schema.md
+  s_2919199eb867b0::t_d50f95b2d7dfe3 224
+  s_2919199eb867b0::t_ab4efec17e92cf 215-216
+  s_2919199eb867b0::t_5e1edaa625e3ce 170
+  s_2919199eb867b0::t_adc4fa3b8707f6 154-155,161,168,201-202,205-209
+test/support/rails_callback_restore_probe.rb
+  s_2919199eb867b0::t_8325b6af161da8 218,230-231
+test/project_test.rb
+  s_2919199eb867b0::t_46dba2a8bc4e0d 1884
+  s_2919199eb867b0::t_7b25e90fccf2c1 1885
+  s_2919199eb867b0::t_3f354096fcb0ef 1880-1883
+test/rails_callback_restore_test.rb
+  s_2919199eb867b0::t_76ac67158f2374 60
+CHANGELOG.md
+  s_2919199eb867b0::t_1b412360a5c4b7 30
+  s_2919199eb867b0::t_c865a51e2f04c9 35-37,39
+lib/mutineer/project.rb
+  s_2919199eb867b0::t_7841ab1c13634e 285
+  s_2919199eb867b0::t_172267fb46ad0e 284
+  s_13efe4cc102d28::t_908d9c7113cf70 267-270,286-287,300-305
+  s_2919199eb867b0::t_54d62f7db27aa0 174
+  s_2919199eb867b0::t_550d88e376f4ef 167-168
+  s_2919199eb867b0::t_edbe9782fb2c1d 91-95,152-155,158-161,166
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_13efe4cc102d28::t_770c5aa20074e0 17
+  s_2919199eb867b0::t_cf28d026822508 14,16
+test/call_superclass_reload_test.rb
+  s_2919199eb867b0::t_ebd085406936be 696-754,822-825
+  s_2919199eb867b0::t_bac8de6f9f1f55 826
+  s_2919199eb867b0::t_feaf139f0278c9 590-591
+lib/mutineer/job_plan.rb
+  s_2919199eb867b0::t_ee17e5c92e41ca 568-570,585-590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "efa3ed490958dba4e3ba6868085c1bc1d54724f1",
+  "prompts": {},
+  "sessions": {
+    "s_13efe4cc102d28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2be993cc-11ce-4d11-b15a-f1768b29c55e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    },
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
