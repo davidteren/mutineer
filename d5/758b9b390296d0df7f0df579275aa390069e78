@@ -1,0 +1,19 @@
+.expectation-fit/decisions/json-schema-and-baseline.md
+  s_d1e28437164ffb::t_855e64c09cdfa1 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5758b9b390296d0df7f0df579275aa390069e78",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
