@@ -1,0 +1,29 @@
+action.yml
+  s_d1e28437164ffb::t_848650946cd85f 572
+docs/agentic-coding.html
+  s_d1e28437164ffb::t_c7dfe817a23562 91
+docs/agentic-coding.md
+  s_d1e28437164ffb::t_ddb7a3aed6d414 57
+docs/json-schema.md
+  s_d1e28437164ffb::t_2cd568c814330c 254-256
+docs/rails-setup.md
+  s_d1e28437164ffb::t_f02cb68019b7a4 68
+skills/mutineer/SKILL.md
+  s_d1e28437164ffb::t_a9502557509aec 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "89a2dbd96068eaee1c051508c677634c621ba546",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
