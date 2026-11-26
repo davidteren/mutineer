@@ -116,11 +116,23 @@ module Mutineer
         when Prism::CallNode
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
-          indirect = true if node.receiver && INDIRECT_RESHAPE_CALLS.include?(node.name)
+          indirect = true if node.receiver && INDIRECT_RESHAPE_CALLS.include?(sent_name(node))
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
       indirect ? names | written : names
+    end
+
+    # The method a call runs: its own name, or the literal symbol it passes
+    # to `send`, `public_send` or `__send__` (`k.send(:alias_method, ...)`).
+    #
+    # @param call [Prism::CallNode]
+    # @return [Symbol]
+    def self.sent_name(call)
+      first = call.arguments&.arguments&.first
+      return call.name unless %i[send public_send __send__].include?(call.name) && first.is_a?(Prism::SymbolNode)
+
+      first.unescaped.to_sym
     end
 
     # @param path [Prism::Node] a class or module statement's constant path.

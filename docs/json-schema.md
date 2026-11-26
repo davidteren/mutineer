@@ -192,7 +192,7 @@ the class again on each load (#575):
   Any other use could change the class in a way that is not safe to repeat (`Point.freeze`,
   `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` or `class Point::Inner`
   statement). A file that calls `alias_method`, `class_eval`, `class_exec`, `module_eval`, `module_exec`,
-  `instance_eval`, `instance_exec`, `define_method` or `const_get` on any receiver keeps none of its
+  `instance_eval`, `instance_exec`, `define_method` or `const_get` on any receiver, also through `send`, keeps none of its
   constants, because such a call can reach the class without its name. A kept class would get that change a
   second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
   last part. A change that another file makes, and an `include` or `prepend` on another receiver, are not
@@ -205,7 +205,7 @@ gets a real verdict. It does that only when the block is safe to run twice: it h
 (`|k|`, `_1` or `it`), and each statement is a method definition; `attr_reader`, `attr_writer`,
 `attr_accessor`, `private`, `public`, `protected`, `private_class_method` or `public_class_method` with
 literal or method-definition arguments; a constant assignment whose value is such a builder or reads
-nothing of the class (no `self` and no call without a receiver); or a `class`, `module` or `class << self`
+nothing of the class (no `self`, no call without a receiver, and no instance or class variable); or a `class`, `module` or `class << self`
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`

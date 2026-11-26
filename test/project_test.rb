@@ -1861,7 +1861,9 @@ class ProjectTest < Minitest::Test
     "class P::Q\n  alias_method :b, :a\nend\n" => true,
     "class P::Q\n  def b = 1\nend\n" => false,
     "ORIGIN = P.new(0)\nORIGIN.class.class_eval { alias_method :raw_x, :x }\n" => true,
-    "KLASS = Object.const_get(:P)\n" => true
+    "KLASS = Object.const_get(:P)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(:alias_method, :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false
   }.freeze
 
   def test_unkept_constant_names_holds_a_constant_the_file_may_change
