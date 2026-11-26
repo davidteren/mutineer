@@ -1857,7 +1857,11 @@ class ProjectTest < Minitest::Test
     "class Row < P\nend\n" => false,
     "class Row < Class.new(P)\nend\n" => false,
     "ORIGIN = P::ZERO\n" => false,
-    "A::ORIGIN = A::P.new(0)\n" => false
+    "A::ORIGIN = A::P.new(0)\n" => false,
+    "class P::Q\n  alias_method :b, :a\nend\n" => true,
+    "class P::Q\n  def b = 1\nend\n" => false,
+    "ORIGIN = P.new(0)\nORIGIN.class.class_eval { alias_method :raw_x, :x }\n" => true,
+    "KLASS = Object.const_get(:P)\n" => true
   }.freeze
 
   def test_unkept_constant_names_holds_a_constant_the_file_may_change

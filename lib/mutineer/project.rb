@@ -65,6 +65,14 @@ module Mutineer
     # make them and still have the constant kept.
     RESHAPE_SAFE_CALLS = %i[new []].freeze
 
+    # The calls that can wrap or reopen a class reached without its name
+    # (`ORIGIN.class.class_eval { alias_method ... }`). A file that makes one
+    # with a receiver keeps none of its constants ({reshaped_constant_names}).
+    # `include` and `prepend` are left out: they are common on a hook's
+    # `base`, and would drop 81 more of 1,257 corpus constants (#585).
+    INDIRECT_RESHAPE_CALLS = %i[alias_method class_eval class_exec module_eval module_exec instance_eval
+                                instance_exec define_method const_get].freeze
+
     # The last names of the constants that the file may change in a way that
     # is not safe to run again on a kept class (#528). It fails closed: a
     # constant is in the Set when the file names it anywhere other than as
@@ -75,23 +83,29 @@ module Mutineer
     # `X.class_eval`, `Alias = X` and `[X].each` count, also inside a def,
     # which the file may call at load, as does such a statement with
     # `alias_method :raw_x, :x`, which would wrap the wrapper of the first load
-    # so that `x` calls itself. Names match by their last part. Such a constant
-    # is built again on each load, as before #528. A change made in another
-    # file is not seen (#585).
+    # so that `x` calls itself. Such a statement on a path (`class X::Q`) counts
+    # each name of the path. Names match by their last part. A file that makes
+    # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
+    # writes. Such a constant is built again on each load, as before #528. A
+    # change made in another file, or through a call outside that list, is not
+    # seen (#585).
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
     def self.reshaped_constant_names(program)
       names = Set.new
+      written = Set.new
+      indirect = false
       allowed = Set.new.compare_by_identity
       nodes = [program]
       while (node = nodes.pop)
         nodes.concat(node.compact_child_nodes)
+        written << defined_constant_name(node) if defined_constant_name(node)
         case node
         when Prism::ClassNode, Prism::ModuleNode
           allowed << node.constant_path
           allowed << node.superclass if node.is_a?(Prism::ClassNode)
-          names << node.constant_path.name unless rerunnable_body?(node.body)
+          path_names(node.constant_path).each { |name| names << name } unless rerunnable_body?(node.body)
         when Prism::SingletonClassNode
           allowed << node.expression
           names << node.expression.name if constant_reference?(node.expression) && !rerunnable_body?(node.body)
@@ -102,8 +116,20 @@ module Mutineer
         when Prism::CallNode
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
+          indirect = true if node.receiver && INDIRECT_RESHAPE_CALLS.include?(node.name)
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
+      end
+      indirect ? names | written : names
+    end
+
+    # @param path [Prism::Node] a class or module statement's constant path.
+    # @return [Array<Symbol>] each constant name on it (`A::B` gives `A` and `B`).
+    def self.path_names(path)
+      names = []
+      while constant_reference?(path)
+        names << path.name
+        path = path.is_a?(Prism::ConstantPathNode) ? path.parent : nil
       end
       names
     end
@@ -217,14 +243,17 @@ module Mutineer
     end
 
     # Whether a value reads nothing of the class a builder block runs on: it
-    # has no `self` and no call without a receiver, outside a def. So
-    # `KEYS = OPTIONS.map(&:key).freeze` is free, and `ZERO = new(0)` is not.
+    # has no `self`, no call without a receiver, and no instance or class
+    # variable, outside a def. So `KEYS = OPTIONS.map(&:key).freeze` is free,
+    # and `ZERO = new(0)` and `REGISTRY = (@registry = [])` are not: a second
+    # run would reset state that other files filled.
     #
     # @param node [Prism::Node]
     # @return [Boolean]
     def self.class_state_free?(node)
       return true if node.is_a?(Prism::DefNode)
       return false if node.is_a?(Prism::SelfNode) || (node.is_a?(Prism::CallNode) && node.receiver.nil?)
+      return false if node.class.name.match?(/\APrism::(Instance|Class)Variable/)
 
       node.compact_child_nodes.all? { |child| class_state_free?(child) }
     end

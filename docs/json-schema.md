@@ -190,9 +190,13 @@ the class again on each load (#575):
   (`Class.new(Point)`), a superclass (`class Row < Point`), or a `class Point`, `module Point` or
   `class << Point` statement whose body passes the safe list below, anywhere in the file, defs included.
   Any other use could change the class in a way that is not safe to repeat (`Point.freeze`,
-  `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` statement). A kept class would get
-  that change a second time: an `alias_method` chain would make the method call itself, a false kill. Names
-  match by their last part. A change that another file makes is not seen (#585). When a class statement of
+  `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` or `class Point::Inner`
+  statement). A file that calls `alias_method`, `class_eval`, `class_exec`, `module_eval`, `module_exec`,
+  `instance_eval`, `instance_exec`, `define_method` or `const_get` on any receiver keeps none of its
+  constants, because such a call can reach the class without its name. A kept class would get that change a
+  second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
+  last part. A change that another file makes, and an `include` or `prepend` on another receiver, are not
+  seen (#585). When a class statement of
   the same file inherits from a constant that this rule does not keep, every mutant of the file that loads
   scores `error` with `superclass mismatch` (#527, #575).
 
@@ -205,7 +209,7 @@ nothing of the class (no `self` and no call without a receiver); or a `class`, `
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 399 of 472 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 384 of 457 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in

@@ -617,6 +617,8 @@ class CallSuperclassReloadTest < Minitest::Test
     "ORIG = instance_method(:a)" => [false],
     "ZERO = new(0)" => [false],
     "ME = self" => [false],
+    "REGISTRY = (@registry = [])" => [false],
+    "COUNT = @@count" => [false],
     "class Z\n    alias_method :b, :a\n  end" => [false],
     "class << self\n    alias_method :b, :a\n  end" => [false],
     "def a; end\nrescue StandardError\n  nil" => [false]
