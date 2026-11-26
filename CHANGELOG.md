@@ -19,6 +19,17 @@ All notable changes to this project are documented here. The format is based on
 - **A JSON entry for a source path that is not valid UTF-8 carries a `diff_base64` that applies (#532, partly).**
   `diff` prints such a path as `\xNN`, so no patch named the real file. `diff_base64` now names it by its own bytes, and `git apply --unidiff-zero` finds it. With a credential configured, such an entry has no `diff_base64`, because the path bytes cannot be checked for it (#540).
   A file with a `working-tree-encoding` Git attribute and an invalid byte on a changed line still has no patch that applies. The same holds for such a file whose path is not valid UTF-8. Those limits stay open in #532.
+- **The PostgreSQL run lock is never free while a run moves it from exclusive to shared (#556).**
+  A `--rails --daemon` run on PostgreSQL takes the exclusive run lock, copies its worker databases, and then shares the lock.
+  Before this fix it released the exclusive lock first and asked for the shared lock second.
+  For that moment no session held the lock.
+  A second run on the same test database could take it there and copy its own worker databases over the first run's. Both runs could then score mutants against the same databases, with no message.
+  The run now takes the shared lock on the same session before it releases the exclusive one.
+  A second run that asks in that moment now stops with `another Mutineer run is using <base>`.
+  A run on its own does not change.
+  MySQL keeps a guard lock across that step, so it did not have this window.
+  On SQLite a probe found no free moment on macOS and Linux, but the kernel does not promise one. Other systems are not checked (#416).
+  The other run lock limits are unchanged (#416).
 - **MySQL worker database setup now reports the first error and closes the session when the session is lost during the copy (#571).**
   The cleanup released the lock names with no guard, so a release that raised skipped the close and replaced the first error.
 
