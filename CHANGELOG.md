@@ -29,6 +29,11 @@ All notable changes to this project are documented here. The format is based on
   `docs/cli.md` lists the key inputs and says that a data file a test reads, such as a YAML or JSON file, is not part of the key, in any directory.
   After an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once to capture every test again. No behaviour change.
 
+### Fixed
+
+- **MySQL worker database setup now reports the first error and closes the session when the session is lost during the copy (#571).**
+  The cleanup released the lock names with no guard, so a release that raised skipped the close and replaced the first error.
+
 ## [1.10.0] - 2026-11-24
 
 ### Added
