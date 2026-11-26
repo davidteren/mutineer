@@ -233,7 +233,7 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (default: 0 = off) |
 | `--since REF` | Mutate only lines changed since git `REF`, such as `origin/main` |
 | `--[no-]since-paired-tests` | With `--since`, run only the tests paired with the sources that have a mutant on a changed line (in-process and `--daemon`; off by default). Not with `--test`, `--test-command`, `--baseline`, or `--coverage-from` on an in-process `--rails` or `--boot` run |
-| `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior JSON report from a full run |
+| `--baseline FILE` | Exit 1 for new survivors, score drops on full runs, or an incomplete run, against a prior JSON report from a full run |
 | `--rails` | Boot `config/environment` once; serial without `--daemon` |
 | `--boot FILE` | Require this file once before the sources. An app entry point, or a gem's `lib/<name>.rb`. `require:` files load after this file |
 | `--[no-]daemon` | Enable or disable daemon; isolated worker databases, Minitest only |
@@ -246,8 +246,8 @@ Full flags, defaults, and `.mutineer.yml` keys: [CLI reference](https://github.c
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
 | `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 

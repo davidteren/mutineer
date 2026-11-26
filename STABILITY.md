@@ -13,7 +13,7 @@ The latest published version is on [RubyGems](https://rubygems.org/gems/mutineer
 | Commands | `run`, `init`, `triage`, `migrate` | the command and its meaning |
 | CLI flags | the flags in `mutineer --help` | the flag and its meaning |
 | Exit codes | `0`, `1`, and `2` | which result uses which code |
-| JSON schema | `schema_version` `1.11` (1.8.2 reports `1.9`; 1.9.0 reports `1.10`; 1.10.0 reports `1.11`) | existing keys and their meaning |
+| JSON schema | `schema_version` `2.0` (1.8.2 reports `1.9`; 1.9.0 reports `1.10`; 1.10.0 reports `1.11`) | existing keys and their meaning |
 | Mutant ids | `summary.id_format` `2` | the same id for the same mutant |
 | Config keys | the `.mutineer.yml` keys below | the key and what a value means |
 | Action inputs | the `action.yml` inputs below | the input and its meaning |
@@ -32,13 +32,20 @@ The JSON rules are in [docs/json-schema.md](docs/json-schema.md).
 The JSON `schema_version` is not the gem version.
 Each number moves on its own.
 
+The unreleased report uses JSON schema `2.0` because `baseline.fixed_survivors`
+now excludes undecided survivors. Consumers must support the new schema major;
+saved full-run `1.x` reports remain valid baseline inputs. Reports written with
+`--since` remain invalid as baselines and exit 2. The `integration/v2.0`
+branch already holds some of the planned gem `2.0` changes below; no 1.x
+release has them. Published gem `1.7.0` reports schema `1.8`.
+
 ### Exit codes
 
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
 | `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
@@ -130,6 +137,16 @@ Where it prints no warning, the item says documented only.
   No run warns about this bump.
   The schema page already says a breaking change bumps the major version.
   1.8.2 reports `schema_version` `1.9`; 1.9.0 adds `killed[]` and dry-run JSON as `1.10`; 1.10.0 adds report keys as `1.11`.
+- **`--baseline` fails an incomplete run.** Documented only.
+  In 1.x a `--baseline` run with no `--threshold` exits 0 when most mutants errored.
+  In 2.0 it exits 1.
+- **The `--baseline` score-drop check uses the exact counts.** Documented only.
+  In 1.x it compares the scores rounded to one decimal.
+  In 2.0 it compares `killed / (killed + survived)` from both reports, so an exit code can change either way.
+  A stored report with no integer counts is still compared on its rounded score.
+- **The Action checks that a baseline run reports its completeness.** Documented only.
+  In 2.0 a JSON report with a baseline and no boolean `baseline.incomplete` exits 2.
+  A baseline with a format other than `json` exits 2 for a gem older than 2.0.0. A 2.0.0 prerelease passes.
 - **Parallel `--rails` by default, with the `reload` strategy.** 1.8.0 warns.
   Today `--rails` without `--daemon` is serial and uses `redefine`.
   A Minitest `--rails` run with no `daemon` value prints a notice.

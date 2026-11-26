@@ -6,6 +6,90 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The HTML report shows the baseline comparison (#343).** With
+  `--baseline`, `--format html` adds a "Baseline comparison" section with
+  the same lines as the human report, including the verdict. A run could exit
+  1 on a regression before with no word about it in the HTML file. Without
+  `--baseline` the HTML report does not change.
+- **`baseline.incomplete` and `baseline.unverified_survivors[]` in the JSON
+  report (#283).** `incomplete` says the run fails the completeness rule;
+  each `unverified_survivors[]` entry is a baseline survivor this run did not
+  decide, with its current `status`. Schema `2.0`.
+
+### Changed
+
+- **Breaking: `--baseline` fails an incomplete run, and a survivor without a
+  verdict is not fixed (#283).** A run where nothing could be scored and
+  something broke, or where more than one mutant has no verdict and they
+  exceed 10% of those attempted, now sets the new `baseline.incomplete`, and
+  `--baseline` exits 1 without `--threshold`. A baseline survivor counts as
+  fixed only when this run killed it, ignored it, or no longer has it. Other
+  baseline survivors go into the new `baseline.unverified_survivors[]` with
+  their status. The human report names them and the Action summary counts
+  them. A run that produces no results reports no stored survivors as fixed.
+  Under `--only` or `--fail-fast`, known kills and ignores still count as
+  fixes; absent, untested survivors are listed as unverified with status
+  `not_run`. An empty unscoped run uses the same label. This label belongs
+  only to baseline entries; it does not add a mutant status or change counts
+  or gates.
+  Selecting fewer source files or operators also lists omitted survivors as
+  `not_run`. A source that pairing drops (no paired test) is one of those. A
+  removed mutant within the selected scope, or a source file actually removed
+  from the project, still counts as fixed. A foreign stored path whose
+  removal cannot be checked stays unverified (`foreign_path`, see below).
+  Under a diff-scoped (`--since`) side, `fixed_survivors` stays empty, as
+  before. If CI turns red after the upgrade and `baseline.incomplete` is
+  true, read `no_verdict[]` in the JSON report: the run is incomplete, and
+  the tests did not get weaker. If `baseline.regressed` is true, a new
+  survivor or a score drop failed the job. If the
+  same mutants time out on every run, a retry does not help: raise
+  `--timeout` or ignore those mutants.
+- **Breaking: the JSON report uses schema `2.0` (#283).**
+  `baseline.fixed_survivors` no longer includes a survivor whose current
+  result is undecided. Consumers that require schema `1.x` must support the
+  new major and read `baseline.unverified_survivors` for those entries.
+  Existing full-run `1.x` reports remain valid baseline inputs; `--since`
+  reports remain invalid baselines (exit 2). Mutant ids and the gem version
+  do not change.
+- **Breaking (Action): the Action rejects a JSON baseline report without a
+  boolean `baseline.incomplete` (#283).** A gem selected through `version` or
+  `use-bundler` that omits this field now gives exit 2 with an upgrade
+  message, instead of treating an unknown completeness result as success.
+  The report remains available. Older reports without a baseline block still
+  work.
+- **An absent baseline survivor with a path from another machine is
+  `foreign_path`, not `not_run` (#343).** A stored `file` outside the project
+  root that does not exist here cannot be checked by this run, and `not_run`
+  said the run skipped it. The human report adds one line: write a new
+  baseline from this checkout. The status never gates and adds to no mutant
+  count; the entry is counted with the other unverified survivors.
+- **Breaking (Action): a baseline with a format other than `json` needs gem
+  2.0.0 or later (#343).** The Action checks `baseline.incomplete` only in a
+  JSON report. With `format: html` or `human`, an older gem passed an
+  incomplete baseline run with no warning. The Action now exits 2 before the
+  run for a gem older than 2.0.0 (a 2.0.0 prerelease passes). Upgrade the
+  Gemfile pin or the `version` input, or set `format: json`.
+- The Ruby API score-gate constants `BROKEN_SHARE_LIMIT` and `BROKEN_FLOOR`
+  now also live on `AggregateResult`. The `Reporter` names remain
+  compatibility aliases, and the CLI and report use the same limits.
+
+### Fixed
+
+- **Breaking: the `--baseline` score-drop check uses the exact counts
+  (#343).** It compared the scores rounded to one decimal. Now it compares
+  `killed / (killed + survived)` from the counts of both reports, as
+  `--threshold` does. An exit code can change in both directions: 9990 of
+  10000 killed then 9980 of 9990 is a drop (both round to 99.9%, and it
+  exited 0 before), and 90.07% to 90.05% with `--baseline-epsilon 0.05` is
+  not (the rounded 90.1% to 90.0% exited 1 before). The human report and the
+  Action summary say when the rounded scores hide the drop. A stored report
+  with no integer counts is still compared on its rounded score (#567).
+- **A baseline survivor that is now `ran_at_load` is not listed as fixed
+  (#286).** 1.7.0 listed it as fixed. It is now in
+  `baseline.unverified_survivors[]`.
+
 ## [1.10.0] - 2026-11-24
 
 ### Added

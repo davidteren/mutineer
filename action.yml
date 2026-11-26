@@ -1,7 +1,7 @@
 name: Mutineer Ruby
 description: >-
-  Mutation-test your Ruby suite in CI; fail the build on new surviving mutants
-  or a mutation-score drop versus a baseline.
+  Mutation-test your Ruby suite in CI; fail the build on new surviving mutants,
+  a mutation-score drop, or an incomplete run versus a baseline.
 author: David Teren
 branding:
   icon: git-merge
@@ -45,7 +45,11 @@ inputs:
   baseline:
     description: >-
       Path to a prior `--format json` report. Fail (exit 1) on NEW survivors or
-      a score drop versus this baseline.
+      a score drop versus this baseline, or an incomplete run.
+      With JSON output, a gem that omits `baseline.incomplete` is rejected
+      with exit 2; upgrade the selected gem to verify the completeness gate.
+      With a format other than json, the gem must be 2.0.0 or later (a
+      2.0.0 prerelease also passes; the action exits 2 for an older gem).
     required: false
     default: ""
   baseline-epsilon:
@@ -354,7 +358,9 @@ runs:
         # against the failed report and the gate can pass. Stop first.
         # The CLI uses the last --baseline it sees, then .mutineer.yml.
         # extra-args is appended after the input, so its flag wins.
-        if [ -n "$OUTPUT" ]; then
+        # A non-JSON format also needs the path for the gem floor below (#343).
+        baseline_path=""
+        if [ -n "$OUTPUT" ] || [ "$FORMAT" != "json" ]; then
           # #394: ask the installed CLI. The baseline input goes first, so a
           # --baseline in extra-args wins, as in the run below.
           baseline_args=()
@@ -473,10 +479,27 @@ runs:
         # --no-since or silently compare cross-denominator baseline scores.
         if [ -n "$NO_SINCE" ] || [ -n "${AUTO_SINCE:-}" ]; then
           gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          # Gem output goes into a workflow command: escape %, CR and LF.
+          safe_ver="${gem_ver//%/%25}"; safe_ver="${safe_ver//$'\r'/%0D}"; safe_ver="${safe_ver//$'\n'/%0A}"
           # Gem::Version, not sort -V: exact gem semantics (prereleases
           # included) and ruby is always present where this action runs.
           if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("1.0.0") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
-            echo "::error::mutineer: resolved mutineer $gem_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
+            echo "::error::mutineer: resolved mutineer $safe_ver, but the action's PR scoping (auto since / since: none) needs >= 1.0.0; upgrade the Gemfile pin, or pass an explicit 'since:' ref."
+            exit 2
+          fi
+        fi
+
+        # #343: the --baseline completeness gate is in mutineer 2.0.0 and later.
+        # The json format proves it from the report (baseline.incomplete, below).
+        # The other formats cannot, so they need the gem floor. "2.0.0.A" is below
+        # (the upper-case A sorts first) every 2.0.0 prerelease and above every 1.x release.
+        # A gem without `mutineer config` gets the path from the copy above (#568).
+        if [ "$FORMAT" != "json" ] && [ -n "$baseline_path" ]; then
+          gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+          # Gem output goes into a workflow command: escape %, CR and LF.
+          safe_ver="${gem_ver//%/%25}"; safe_ver="${safe_ver//$'\r'/%0D}"; safe_ver="${safe_ver//$'\n'/%0A}"
+          if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.A") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
+            echo "::error::mutineer: resolved mutineer $safe_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
             exit 2
           fi
         fi
@@ -486,6 +509,17 @@ runs:
         "${runner[@]}" "${args[@]}"
         code=$?
         set -e
+        # Older gems can pass a broken baseline run without reporting whether
+        # it was complete. Do not interpret the missing field as success.
+        # Ruby is present even on self-hosted runners without jq.
+        if [ "$FORMAT" = "json" ] && report_ok && ruby -rjson -e '
+          doc = JSON.parse(File.read(ARGV[0]))
+          baseline = doc["baseline"]
+          exit(baseline.is_a?(Hash) && ![true, false].include?(baseline["incomplete"]) ? 0 : 1)
+        ' "$TMP_REPORT"; then
+          echo "::error::mutineer: this gem did not report a boolean baseline.incomplete, so the action cannot verify the baseline completeness gate. Upgrade the Gemfile pin or the version input. The report is preserved."
+          code=2
+        fi
         # Deliver the caller's requested output file only from a written report,
         # and keep an auto-routed report visible in the log. cp/cat must not
         # abort under `set -e`: a copy failure would drop $code and skip the
@@ -546,10 +580,24 @@ runs:
                  "", ("Baseline: \(.baseline.new_survivors | length) new survivor(s)"
                       + (if (.baseline.score_comparable != false) then
                            "; score \(.baseline.score_before // "N/A" | oneline) -> \(.baseline.score_after // "N/A" | oneline)"
+                           + (if .baseline.score_dropped == true and .baseline.score_before == .baseline.score_after then
+                                " (less than the rounding shows; the check uses the exact counts)"
+                              else "" end)
                          else
                            "; score-drop check skipped (\(.baseline.score_after // "N/A" | oneline) now vs \(.baseline.score_before // "N/A" | oneline) baseline: the two scores do not share a comparable denominator)"
                          end)
-                      + (if .baseline.regressed then ": REGRESSED." else "." end))
+                      + (if ((.baseline.unverified_survivors // []) | length) > 0 then
+                           "; \((.baseline.unverified_survivors // []) | length) unverified survivor(s) (see baseline.unverified_survivors in the report)"
+                         else "" end)
+                       + (if (.baseline.incomplete | type) != "boolean" then
+                            "; completeness unavailable (upgrade the gem)"
+                          else "" end)
+                      + (if .baseline.regressed then
+                           (if (.baseline.incomplete // false) then "; incomplete run (read no_verdict[] first)" else "" end) + ": REGRESSED."
+                         elif (.baseline.incomplete // false) then
+                           (if .summary.score == null then ": INCOMPLETE (nothing could be scored; see no_verdict[])."
+                            else ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[])." end)
+                         else "." end))
                else empty end),
               (if ((.summary.scoped // false) and .summary.total == 0) then
                  "", "No mutants were in scope for this diff (docs- or test-only changes), so the gate is vacuous for this PR; a full scan (e.g. the baseline refresh on main) is the backstop."

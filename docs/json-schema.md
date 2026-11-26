@@ -7,7 +7,8 @@ inputs and results, JSON output is byte-identical, except as noted at the end of
 paragraph. Results can still vary if
 the tests or environment change. `survivors[]` sorts by
 `(file, line, operator)`; `killed[]`, `no_coverage[]`, `uncapturable[]`, `ignored[]` and `baseline.new_survivors`
-add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`;
+add `id`, as does `matrix.mutants`; `baseline.fixed_survivors` sorts by `(file, line, operator)`; `baseline.unverified_survivors` by
+`(file, line, operator, id)`;
 `no_verdict[]` by `(file, line, id, status, details)`; `per_source[]` by `file`;
 `unpaired_sources[]` by `file`; `unmutated_subjects[]` by `(file, line, subject)`. Two exceptions:
 `details` of an errored mutant can quote run-specific text (see `no_verdict[]`), and the
@@ -15,15 +16,24 @@ wall-clock values `timing` and each entry's `seconds` change from run to run (sc
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.11"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"2.0"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
 - **Breaking changes** (renaming/removing a key, changing a value's type or meaning) bump the **major**
   version (`1.x` → `2.0`).
 
-A consumer should accept any `1.x` document and read only the keys it knows.
-Compare versions as two integers, major then minor, not as decimals: `1.10` comes after `1.9`.
+A consumer should accept documents from each schema major that it supports and read only the keys it knows.
+
+Schema `2.0` narrows `baseline.fixed_survivors`: a survivor without a verdict
+is now listed in `baseline.unverified_survivors` instead. Consumers that accept
+only schema `1.x` must support this new major before reading a current report.
+Other existing keys keep their meaning. A saved full-run `1.x` report remains
+valid as an input to `--baseline`; reports written with `--since` remain
+invalid baselines and exit 2. This change does not alter mutant ids.
+`baseline.unverified_survivors[].status` adds the value `foreign_path`.
+`baseline.score_dropped` now compares the exact scores from the counts of
+both reports, so it can differ from a comparison of the rounded scores.
 
 Compare `schema_version` as two integers, major then minor, so `1.10` follows `1.9`.
 
@@ -40,7 +50,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.11",
+  "schema_version": "2.0",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "killed":       [ /* mutants a test caught; ids for joining runs (#361) and the diff (#498) */ ],
@@ -442,25 +452,27 @@ The delta versus the prior `--format json` report, matched by `id`. A baseline w
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `regressed` | bool | True if there are new survivors OR a score drop. **Drives exit 1.** |
+| `regressed` | bool | True if there are new survivors OR a score drop. **Drives exit 1.** An incomplete run also exits 1; read `incomplete`. |
+| `incomplete` | bool | True when the run fails the completeness rule: nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted. It is the no-verdict rule only: a run that is partial by design (`--fail-fast`, `--only`) is not incomplete for that reason. **Drives exit 1** under `--baseline`, without `--threshold`. New in schema `2.0`. |
 | `score_before` | float \| null | Baseline score. |
 | `score_after` | float \| null | This run's score. |
-| `score_dropped` | bool | True if `score_after < score_before - epsilon`. |
+| `score_dropped` | bool | True when the exact score fell by more than epsilon. The exact score is `killed / (killed + survived)` from the counts of both reports. `score_before` and `score_after` are rounded to one decimal, so `score_dropped` can be true when they are equal. A stored report with no integer `summary.killed` and `summary.survived` is compared on its rounded `summary.score`. |
 | `score_comparable` | bool | True when the two scores share a denominator (neither side was diff-scoped, both non-null). False means the score-drop check was skipped — do not render the scores as a comparison. Additive key. |
 | `new_survivors[]` | array | Survivors present now but absent in the baseline: `{ subject, file, line, operator, token, id }`. |
-| `fixed_survivors[]` | array | Baseline survivors no longer present: `{ subject, file, line, operator, id }`. Empty under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. |
+| `fixed_survivors[]` | array | Baseline survivors that this run killed or ignored, or that it no longer has within the selected source/operator scope: `{ subject, file, line, operator, id }`. A source file actually removed from this project counts as removed; an existing file omitted from the selected sources does not. A known matching kill or ignore counts as fixed even if the stored file/operator metadata differs. Under `--only` or `--fail-fast`, only known kills and ignores count; absent ids were not verified. Empty when this run has no results, or under a diff-scoped side: an out-of-scope survivor was never re-tested, so absence does not mean fixed. Changed in `2.0`: a baseline survivor without a decision this run is no longer listed here (see `unverified_survivors`). |
+| `unverified_survivors[]` | array | Baseline survivors whose result this run is not `killed`, `survived` or `ignored` (for example `error`, `timeout`, `ran_at_load` or `no_coverage`): `{ subject, file, line, operator, id, status }`. `status` is the current result status: one of `error`, `timeout`, `uncapturable`, `ran_at_load`, `no_coverage`, `unplaceable` or `skipped`. A stored id omitted by `--only`, `--fail-fast`, source selection, operator selection, or an empty unscoped run uses `not_run`. An absent stored id whose `file` is outside the project root and does not exist on this machine (a baseline written in another checkout) uses `foreign_path`: this run cannot check it, so write a new baseline from this checkout (#343; the limit is tracked in #567). Only a stored path outside the project root gets it, which the current CLI writes only for a source outside the root. `not_run` and `foreign_path` are baseline-only labels, not mutant Result statuses; they add nothing to aggregate counts or the completeness gate. These survivors are not fixed and do not set `regressed`. Current undecided results are included under a diff-scoped side too; omitted ids under `--since` remain absent from the list. New in schema `2.0`. |
 
 ## Exit codes
 
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
 | `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 
-Under a positive `--threshold`, a run is gated on being complete as well as on its score. Mutants with no
+Under a positive `--threshold`, or under `--baseline`, a run is gated on being complete as well as on its score. Mutants with no
 verdict are excluded from the score's denominator, so a broken harness inflates the score instead of
 lowering it. Past 10% of attempted mutants — and never for a single one, however small the run — the
 score is treated as covering too little of the run to gate on. The floor applies only when there *is* a
@@ -475,19 +487,19 @@ from the exit code alone. Tell them apart from the JSON: compare the exact score
 threshold. When `summary.killed + summary.survived > 0`, check
 `summary.killed * 100 >= threshold * (summary.killed + summary.survived)`, with decimal or rational
 arithmetic for a fractional threshold (`summary.score` is rounded, and the gate does not use it). Compare
-`summary.no_verdict / summary.attempted` against 10%, and check `baseline.regressed`. A run that failed only on
+`summary.no_verdict / summary.attempted` against 10% (or read `baseline.incomplete`), and check `baseline.regressed`. A run that failed only on
 completeness is the one worth retrying rather than blaming on the tests.
 
 ## Dry-run JSON (`--dry-run --format json`)
 
-Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it. It has no `callback_growth`.
+Additive (schema `1.10`, #362). The dry-run document reports schema `2.0`; it gained no key in `1.11` or `2.0`. It has no `callback_growth`.
 `mutineer run … --dry-run --format json` prints a candidate list
 instead of the human breakdown. `--output` writes that document the same way a completed run's
 report does. `--format html` under `--dry-run` stays human and warns that the format is unused.
 
 ```jsonc
 {
-  "schema_version": "1.11",
+  "schema_version": "2.0",
   "summary": {
     "id_format": 2,
     "total": 0,

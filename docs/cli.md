@@ -13,7 +13,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--since REF` / `--no-since` | Mutate lines changed since git `REF` | Off |
 | `--[no-]since-paired-tests` | With `--since`, an in-process or `--daemon` run uses only the tests paired with the sources that have a mutant on a changed line. Every source still loads. `--test`, `--test-command`, `--baseline`, `--coverage-from` on an in-process `--rails` or `--boot` run, and `--dry-run` keep the full test list. See [Tests of the changed sources](#tests-of-the-changed-sources) | Off |
 | `--threshold FLOAT` | Exit 1 below this score (0 to 100); see the README [options table](https://github.com/davidteren/mutineer#options) for every exit-1 case | `0` (off) |
-| `--baseline FILE` | Exit 1 for new survivors, or score drops on full runs, against a prior `--format json` report from a full run | None |
+| `--baseline FILE` | Exit 1 for new survivors, score drops on full runs, or an incomplete run, against a prior `--format json` report from a full run | None |
 | `--baseline-epsilon FLOAT` | Allowed baseline score drop (CLI only) | `0` |
 | `--jobs N` | Parallel workers | One per CPU; `1` under `--rails` without `--daemon`, `--test-command`, or `--fail-fast` |
 | `--rails` | Boot `config/environment` once; reconnect Active Record per fork | Off |
@@ -26,7 +26,7 @@ Source of truth: `lib/mutineer/cli.rb` parses options; `lib/mutineer/config.rb` 
 | `--cache-dir DIR` | Coverage cache directory | `.mutineer` |
 | `--load-path DIR`, `-I DIR` | Put `DIR` on `$LOAD_PATH` before the boot file, the sources and the tests; repeat for more. Replaces `load_path:` in `.mutineer.yml` (unlike `ruby -I`, which adds). See the `load_path` key | None |
 | `--coverage-from FILE` | Reuse previous `coverage.json` (CLI only) | None |
-| `--format human\|json\|html` | Report format (CLI only) | `human` |
+| `--format human\|json\|html` | Report format (CLI only). With `--baseline`, the HTML report shows the baseline comparison | `human` |
 | `--output FILE` | Report file | stdout |
 | `--dry-run` | List mutants without testing. With `--format json`, print them with their ids | Off |
 | `--[no-]fail-fast` | Stop at first survivor | Off |

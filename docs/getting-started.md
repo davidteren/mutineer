@@ -166,7 +166,7 @@ Use matching sources, tests, and operators in CI.
 Add `.github/workflows/mutineer.yml` from the [CI guide: Rails workflow](ci.md#rails-workflow).
 For PostgreSQL, add the database service, `DATABASE_URL` and the `bin/rails db:prepare` step from [Rails with PostgreSQL](ci.md#rails-with-postgresql).
 
-On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors fail.
+On `pull_request`, the Action tests changed lines. With `baseline:` set, only new survivors or an incomplete run fail.
 
 Changed-lines runs miss weakened tests for unchanged code.
 For any PR that changes tests, including one that also changes source, scan fully with `since: none`

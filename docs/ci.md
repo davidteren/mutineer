@@ -5,7 +5,7 @@ Use changed lines for faster CI checks and a saved baseline to catch regressions
 | Check | Behaviour |
 |-------|-----------|
 | Changed code | `--since REF` mutates lines changed since a Git ref. The GitHub Action defaults to the PR base. |
-| Baseline | `--baseline FILE` compares a saved JSON report and fails on new survivors. A full run (`--no-since` or `since: none`) also fails on a score drop. |
+| Baseline | `--baseline FILE` compares a saved JSON report and fails on new survivors or an incomplete run. A full run (`--no-since` or `since: none`) also fails on a score drop. |
 
 ## Changed code only
 
@@ -60,7 +60,7 @@ Leave `only:` and `baseline:` unset in `.mutineer.yml` when you create or refres
 Use the gate’s sources, test files and operators.
 
 ```sh
-mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors or a score drop
+mutineer run app/ --no-since --no-fail-fast --baseline .mutineer/baseline.json   # exit 1 on NEW survivors, a score drop, or an incomplete run
 ```
 
 `--baseline` reports new survivors by [mutant id](https://github.com/davidteren/mutineer/blob/main/docs/results.md#mutant-ids). It checks score drops only on full runs; a `--since` run skips that check.
@@ -192,7 +192,7 @@ From [`action.yml`](https://github.com/davidteren/mutineer/blob/main/action.yml)
 | `test` | `""` | Test files or directories. Empty pairs by convention and applies any `tests:` map in `.mutineer.yml` with Mutineer 1.9.0 or later. A directory also needs mutineer 1.9.0 or later |
 | `since` | `""` | Git ref; PR base on `pull_request`; `none` scans all |
 | `threshold` | `""` | Fail below this score |
-| `baseline` | `""` | Saved `--format json` report |
+| `baseline` | `""` | Saved `--format json` report. With a `format` other than `json`, the gem must be 2.0.0 or later (a 2.0.0 prerelease also passes); the action exits 2 for an older gem |
 | `baseline-epsilon` | `""` | Allowed score drop; CLI default 0 |
 | `operators` | `""` | Comma-separated operators; empty uses Tier-1 (default set) |
 | `framework` | `""` | `minitest` or `rspec`; empty auto-detects |

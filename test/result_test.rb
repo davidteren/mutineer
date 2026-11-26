@@ -116,4 +116,43 @@ class ResultTest < Minitest::Test
                                          Mutineer::Result.skipped, Mutineer::Result.skipped])
     assert_equal 3, agg.unrun_count
   end
+
+  def test_incomplete_when_nothing_scored_and_one_mutant_errored
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.error])
+    assert_predicate agg, :broken_nil_score?
+    assert_predicate agg, :incomplete?
+  end
+
+  # One error among 50 kills has a score: the nil-score rule must not fire (#283).
+  def test_not_incomplete_with_one_error_among_scored_mutants
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.error] + Array.new(50) { Mutineer::Result.killed })
+    refute_predicate agg, :broken_nil_score?
+    refute_predicate agg, :broken_share_exceeded?
+    refute_predicate agg, :incomplete?
+  end
+
+  def test_incomplete_when_the_no_verdict_share_exceeds_the_limit
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.error, Mutineer::Result.error,
+                                         Mutineer::Result.killed, Mutineer::Result.killed])
+    assert_equal 4, agg.attempted_count
+    assert_equal 2, agg.no_verdict_count
+    assert_predicate agg, :incomplete?
+  end
+
+  # The share alone decides above the floor: 2 of 20 is exactly 10%, 2 of 19 is above it.
+  def test_no_verdict_share_at_the_limit_is_complete_and_above_it_is_not
+    at_limit = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(18) { Mutineer::Result.killed })
+    above = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(17) { Mutineer::Result.killed })
+    refute_predicate at_limit, :broken_share_exceeded?
+    refute_predicate at_limit, :incomplete?
+    assert_predicate above, :broken_share_exceeded?
+    assert_predicate above, :incomplete?
+  end
+
+  def test_unplaceable_and_ran_at_load_are_not_no_verdict
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load,
+                                         Mutineer::Result.killed])
+    assert_equal 0, agg.no_verdict_count
+    refute_predicate agg, :incomplete?
+  end
 end

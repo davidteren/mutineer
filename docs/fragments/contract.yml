@@ -17,12 +17,13 @@ exit_code_action: >-
   a usage error, including a missing --boot or require: file.
 exit_codes:
   - code: "0"
-    meaning: Score ≥ threshold (or no gate) **and** no baseline regression.
+    meaning: Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate.
   - code: "1"
     meaning: >-
       Score below `--threshold`, OR nothing could be scored and something
       broke, or more than one mutant produced no verdict and they exceed 10%
-      of those attempted, OR a `--baseline` regression, OR a runtime error,
+      of those attempted (under `--threshold` or `--baseline`), OR a
+      `--baseline` regression, OR a runtime error,
       including a boot, source or `require:` file that raises while loading
       (except an in-process `--since` run with no mutant on a changed line,
       which checks that those files exist but does not load them).

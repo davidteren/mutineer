@@ -71,7 +71,7 @@ mutineer run --dry-run lib/discount.rb
 | `--test PATH` | Test file, directory, or quoted glob (repeatable) |
 | `--threshold FLOAT` | Exit 1 when the score is below FLOAT, or when the run is incomplete (default: 0 = off) |
 | `--since REF` | Only mutate lines changed since git `REF` |
-| `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run |
+| `--baseline FILE` | Exit 1 on new survivors / score drop versus a prior JSON run, or on an incomplete run (score drop is skipped under `--since`, whose score has a different denominator) |
 | `--format human\|json\|html` | Report format (default: human) |
 | `--output FILE` | Write the report to FILE instead of stdout |
 | `--jobs N` | Parallel worker count; forced to 1 by `--test-command`, `--fail-fast`, or `--rails` without `--daemon` |
@@ -100,8 +100,8 @@ command and keep `--order rand` out of `SPEC_OPTS`. Otherwise an order-dependent
 <!-- contract:exit-codes -->
 | Code | Meaning |
 |------|---------|
-| `0` | Score ≥ threshold (or no gate) **and** no baseline regression. |
-| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted, OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
+| `0` | Score ≥ threshold (or no gate) **and** no baseline regression, **and** no incomplete run under an active `--threshold` or `--baseline` gate. |
+| `1` | Score below `--threshold`, OR nothing could be scored and something broke, or more than one mutant produced no verdict and they exceed 10% of those attempted (under `--threshold` or `--baseline`), OR a `--baseline` regression, OR a runtime error, including a boot, source or `require:` file that raises while loading (except an in-process `--since` run with no mutant on a changed line, which checks that those files exist but does not load them). |
 | `2` | Usage / invalid-flag error, including a mistyped flag, a bad path (such as a missing `--boot` or `require:` file), or an unreadable baseline. |
 <!-- /contract:exit-codes -->
 

@@ -12,16 +12,22 @@ ruby -ryaml -e 'puts YAML.load_file("'"$ROOT"'/action.yml").dig("runs","steps",1
 
 # Fixture: newline token, comma+colon in a path (escaping checks).
 cat > "$SCRATCH/report.json" <<'JSON'
-{"schema_version":"1.2","summary":{"total":10,"killed":6,"survived":2,"no_coverage":1,"uncapturable":0,"skipped_invalid":0,"errored":0,"timeout":0,"ignored":1,"attempted":8,"no_verdict":0,"score":75.0,"scoped":false},"survivors":[{"subject":"Calc#add","file":"lib/we,ird:name.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+","diff":"d"},{"subject":"Calc#sub","file":"lib/calc.rb","line":20,"operator":"comparison","id":"fff000111222","token":"<\n100%","diff":"d"}],"baseline":{"regressed":true,"score_before":80.0,"score_after":75.0,"score_dropped":true,"score_comparable":true,"new_survivors":[{"subject":"Calc#add","file":"lib/calc.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+"}],"fixed_survivors":[]}}
+{"schema_version":"2.0","summary":{"total":10,"killed":6,"survived":2,"no_coverage":1,"uncapturable":0,"skipped_invalid":0,"errored":0,"timeout":0,"ignored":1,"attempted":8,"no_verdict":0,"score":75.0,"scoped":false},"survivors":[{"subject":"Calc#add","file":"lib/we,ird:name.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+","diff":"d"},{"subject":"Calc#sub","file":"lib/calc.rb","line":20,"operator":"comparison","id":"fff000111222","token":"<\n100%","diff":"d"}],"baseline":{"regressed":true,"incomplete":false,"score_before":80.0,"score_after":75.0,"score_dropped":true,"score_comparable":true,"new_survivors":[{"subject":"Calc#add","file":"lib/calc.rb","line":12,"operator":"arithmetic","id":"abc123def456","token":"+"}],"fixed_survivors":[]}}
 JSON
 sed 's/"scoped":false/"scoped":true/; s/"score_comparable":true/"score_comparable":false/' "$SCRATCH/report.json" > "$SCRATCH/report-scoped.json"
 sed 's/"scoped":false/"scoped":false,"id_format":2,"legacy_id_matches":{"ignore":2,"baseline":3}/' "$SCRATCH/report.json" > "$SCRATCH/report-legacy.json"
+# #283: an incomplete run with one unverified baseline survivor and no regression.
+jq '.baseline.regressed = false | .baseline.incomplete = true | .baseline.unverified_survivors = [{subject: "Calc#mul", file: "lib/calc.rb", line: 30, operator: "arithmetic", id: "aaa111bbb222", status: "error"}]' "$SCRATCH/report.json" > "$SCRATCH/report-incomplete.json"
+jq '.baseline.incomplete = true' "$SCRATCH/report.json" > "$SCRATCH/report-regressed-incomplete.json"
+jq '.summary.score = null | .baseline.regressed = false | .baseline.incomplete = true' "$SCRATCH/report.json" > "$SCRATCH/report-nil-incomplete.json"
+jq '.schema_version = "1.8" | del(.baseline.incomplete) | .baseline.regressed = false' "$SCRATCH/report.json" > "$SCRATCH/report-old-baseline.json"
+jq 'del(.baseline)' "$SCRATCH/report-old-baseline.json" > "$SCRATCH/report-old-no-baseline.json"
 
 mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
-if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+if [ "\${1:-}" = "--version" ]; then echo "\${STUB_VERSION:-1.0.0}"; exit 0; fi
 # The action asks \`mutineer config KEY\` for resolved settings (#394).
 # STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
 # release without the command. Any other value: print that value.
@@ -478,3 +484,72 @@ ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "~/mcache"}.to_yaml)
 HOME="$fake_home" run_step t19e STUB_EXIT=0 OUTPUT="$fake_home/mcache/pr.json"
 [ -s "$fake_home/mcache/pr.json" ] && echo "  OK: home-relative cache dir created" || echo "  FAIL: home-relative cache dir not created"
 rm -rf "$fake_home" .mutineer.yml
+
+echo; echo "== 20: incomplete baseline run (expects the INCOMPLETE baseline line) =="
+run_step case20 STUB_REPORT="$SCRATCH/report-incomplete.json"
+echo "  case20 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case20/summary.md")"
+
+echo; echo "== 21: regressed and incomplete baseline run (expects both on the baseline line) =="
+run_step case21 STUB_REPORT="$SCRATCH/report-regressed-incomplete.json"
+echo "  case21 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case21/summary.md")"
+
+echo; echo "== 22: incomplete baseline run with no score (expects the nothing-scored line) =="
+run_step case22 STUB_REPORT="$SCRATCH/report-nil-incomplete.json"
+echo "  case22 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case22/summary.md")"
+
+echo; echo "== 23: old gem omitted baseline completeness (expects exit 2, report preserved) =="
+run_step case23 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-baseline.json" OUTPUT="$SCRATCH/case23/out.json"
+grep -q 'baseline.incomplete' "$SCRATCH/case23/stdout.txt" && echo "  OK: old baseline report needs an upgrade" || echo "  FAIL: missing completeness silently accepted"
+cmp -s "$SCRATCH/report-old-baseline.json" "$SCRATCH/case23/out.json" && echo "  OK: old baseline report delivered" || echo "  FAIL: old report changed or lost"
+echo "  case23 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case23/summary.md")"
+
+echo; echo "== 24: old gem report without a baseline (expects exit 0) =="
+run_step case24 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-no-baseline.json"
+
+echo; echo "== 25: a score drop hidden by rounding (#343) =="
+jq '.baseline.score_before = 99.9 | .baseline.score_after = 99.9 | .baseline.new_survivors = []' "$SCRATCH/report.json" > "$SCRATCH/report-hidden-drop.json"
+run_step case25 STUB_REPORT="$SCRATCH/report-hidden-drop.json"
+echo "  case25 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case25/summary.md")"
+echo "  case1 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case1/summary.md")"
+
+# #343: a baseline with a non-JSON format cannot prove completeness from the
+# report, so the action needs gem 2.0.0 or later (a 2.0.0 prerelease passes).
+cp "$SCRATCH/report.json" "$SCRATCH/base26.json"
+echo; echo "== 26: html format, baseline input, gem 1.0.0 (expects exit 2 before the run) =="
+run_step case26 FORMAT=html BASELINE="$SCRATCH/base26.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26 ran an old gem" || echo "  OK: case26 old gem refused before running"
+grep -q 'needs >= 2.0.0' "$SCRATCH/case26/stdout.txt" && echo "  OK: case26 names 2.0.0" || echo "  FAIL: case26 floor message missing"
+
+echo; echo "== 26b: human format, baseline from .mutineer.yml, gem 1.0.0 (expects exit 2) =="
+ruby -ryaml -e 'File.write(".mutineer.yml", {"baseline" => ARGV[0]}.to_yaml)' -- "$SCRATCH/base26.json"
+run_step case26b FORMAT=human
+rm -f .mutineer.yml
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26b ran an old gem" || echo "  OK: case26b old gem refused before running"
+
+echo; echo "== 26c: html format, baseline in extra-args, gem 1.0.0 (expects exit 2) =="
+run_step case26c FORMAT=html EXTRA_ARGS="--baseline=$SCRATCH/base26.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26c ran an old gem" || echo "  OK: case26c old gem refused before running"
+
+echo; echo "== 26d: html format, baseline, gem 2.0.0 (expects the run, exit 1) =="
+run_step case26d FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=2.0.0 STUB_EXIT=1
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26d gem 2.0.0 ran" || echo "  FAIL: case26d gem 2.0.0 refused"
+
+echo; echo "== 26e: html format, baseline, gem 2.0.0.rc1 (expects the run, exit 0) =="
+run_step case26e FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=2.0.0.rc1 STUB_EXIT=0
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26e prerelease ran" || echo "  FAIL: case26e prerelease refused"
+
+echo; echo "== 26f: html format, no baseline, gem 1.0.0 (expects the run, no floor) =="
+run_step case26f FORMAT=html STUB_EXIT=0
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26f ran without a baseline" || echo "  FAIL: case26f refused without a baseline"
+
+echo; echo "== 26g: json format, baseline, gem 1.0.0 (expects the run, no floor for json) =="
+run_step case26g BASELINE="$SCRATCH/base26.json" STUB_EXIT=1
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26g json ran" || echo "  FAIL: case26g json refused"
+
+echo; echo "== 26h: a gem version with % and a newline is escaped in the floor message =="
+run_step case26h FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=$'9%\nX'
+grep -q 'resolved mutineer 9%25%0AX, but a baseline' "$SCRATCH/case26h/stdout.txt" && echo "  OK: case26h version escaped" || echo "  FAIL: case26h version not escaped"
+
+echo; echo "== 26i: the since floor escapes a gem version with % and a newline too =="
+run_step case26i SINCE=none STUB_VERSION=$'0%\nX'
+grep -q 'resolved mutineer 0%25%0AX, but the action' "$SCRATCH/case26i/stdout.txt" && echo "  OK: case26i version escaped" || echo "  FAIL: case26i version not escaped"

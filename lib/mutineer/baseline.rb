@@ -16,18 +16,36 @@ module Mutineer
     # The verdict of diffing a current run against the baseline.
     #   new_survivors   - current Result objects whose id is absent from
     #                     the baseline (the regressions to name).
-    #   fixed_survivors - baseline survivor hashes absent from the current run
-    #                     (informational, never gates). Empty when either side
-    #                     is diff-scoped: an out-of-scope baseline survivor was
-    #                     never re-tested, so absence does not mean fixed.
-    #   score_drop      - current score < baseline score - epsilon. nil on
-    #                     either side skips the check, and a diff-scoped run
-    #                     (`scoped: true`) never sets it (see #diff).
+    #   fixed_survivors - baseline survivor hashes that this run killed or
+    #                     ignored, or that it no longer has (informational, never
+    #                     gates). Empty when this run has no results, or either
+    #                     side is diff-scoped: an out-of-scope baseline survivor
+    #                     was never re-tested, so absence does not mean fixed.
+    #                     A partial run counts only known kills and ignores.
+    #   unverified_survivors - baseline survivor hashes whose current result is
+    #                     undecided (not killed, survived or ignored: an error,
+    #                     a timeout, ran_at_load, no_coverage and so on), each
+    #                     with its current `status`. Not fixed, and never gates.
+    #                     Omitted ids in a partial or empty unscoped run use
+    #                     `not_run`, a baseline-only label, not a Result status.
+    #                     An absent id with a stored path from another machine
+    #                     uses `foreign_path`, also baseline-only (#343), in a
+    #                     full run with results, given sources and a selected
+    #                     operator. With `sources: nil` it counts as fixed.
+    #                     Filled on a diff-scoped side too (#283, #286).
+    #   score_drop      - the exact score fell by more than epsilon (see
+    #                     #diff). nil on either side skips the check, and a
+    #                     diff-scoped run (`scoped: true`) never sets it.
+    #                     score_before and score_after are rounded, so a drop
+    #                     can show with equal values.
     #   score_comparable - the two scores share a denominator (neither side was
     #                     diff-scoped and both are non-nil), so a consumer may
     #                     render them side by side. False means the score-drop
     #                     check was skipped, not that it passed.
     #   regressed       - any new survivors OR a score drop.
+    #   incomplete      - the run fails the completeness rule
+    #                     (AggregateResult#incomplete?, #78). The CLI fails a
+    #                     `--baseline` run on it as well as on `regressed`.
     #   legacy_matches  - current survivors found in an old-format baseline
     #                     (no `summary.id_format`) only through their old-format
     #                     id (#126). Non-zero means the baseline should be
@@ -35,11 +53,17 @@ module Mutineer
     #                     baseline.
     Delta = Data.define(:new_survivors, :fixed_survivors,
                         :score_before, :score_after, :score_drop, :score_comparable, :regressed,
-                        :legacy_matches) do
+                        :legacy_matches, :unverified_survivors, :incomplete) do
       # @param legacy_matches [Integer] survivors matched only through an old-format id.
+      # @param unverified_survivors [Array<Hash>] stored survivors this run did not decide.
+      # @param incomplete [Boolean] the run fails the completeness rule.
       # @return [void]
-      def initialize(legacy_matches: 0, **) = super
+      def initialize(legacy_matches: 0, unverified_survivors: [], incomplete: false, **) = super
     end
+
+    # The statuses that decide a mutant. Any other current result for a stored
+    # survivor leaves it unverified, not fixed.
+    DECIDED = %i[killed survived ignored].freeze
 
     # Load a prior --format json run. Raises ConfigError (NOT exit: a data class
     # must never kill the host) on a missing/unreadable file, unparseable JSON,
@@ -82,6 +106,9 @@ module Mutineer
     def initialize(doc)
       @survivors = doc["survivors"] || []
       @score = doc.dig("summary", "score")
+      # The exact counts behind the rounded score (#343).
+      @killed = doc.dig("summary", "killed")
+      @survived = doc.dig("summary", "survived")
       # Strict literal true only: a malformed value (say the STRING "false" in a
       # hand-edited baseline) must not silently disable the score-drop gate.
       @scoped = doc.dig("summary", "scoped") == true
@@ -90,8 +117,23 @@ module Mutineer
     end
 
     # Diff a current AggregateResult against this baseline by survivor id.
-    # `epsilon` tolerates float jitter on the score (default 0.0 = any drop
-    # gates).
+    # `epsilon` tolerates a score drop of that many percentage points (default
+    # 0.0 = any drop gates). The drop is measured on the exact score,
+    # `killed / (killed + survived)` from the counts of both reports, not on the
+    # rounded `summary.score` (#343).
+    #
+    # A stored survivor is fixed only when this run killed it, ignored it, or no
+    # longer has it. When its current result is undecided (an error, a timeout,
+    # ran_at_load, no_coverage, ...) the run says nothing about it, so it goes
+    # to Delta#unverified_survivors instead. Delta#incomplete carries the
+    # completeness rule, so a broken run that errors every stored survivor
+    # fails `--baseline` rather than reading as a fix (#283). An empty run
+    # cannot verify a fix, so it reports no fixed survivors.
+    # `partial: true` marks a run that can omit mutants (`--only`, `--fail-fast`):
+    # known kills and ignores still count as fixes, but absent ids do not.
+    # Those absent ids are unverified with the baseline-only `not_run` label.
+    # With source/operator selections, an absent id outside the selection is
+    # also `not_run`. A deleted project file still counts as a genuine fix.
     #
     # `scoped: true` marks the current run as diff-scoped (`--since`): its score
     # is computed over only the changed-line mutants, a different denominator
@@ -114,15 +156,21 @@ module Mutineer
     # @param aggregate [Mutineer::AggregateResult] current results.
     # @param epsilon [Float] score-drop tolerance.
     # @param scoped [Boolean] current run was diff-scoped (`--since`).
+    # @param partial [Boolean] current run can omit mutants (`--only`, `--fail-fast`).
+    # @param sources [Array<String>, nil] selected source paths; nil keeps full-source semantics.
+    # @param operators [Array<String>, nil] selected operator names; nil keeps all-operator semantics.
     # @param id_map [Hash{String => String}] current new id => old-format id.
     # @param project_root [String] root that survivor `file` paths resolve against.
     # @return [Mutineer::Baseline::Delta] delta summary.
-    def diff(aggregate, epsilon: 0.0, scoped: false, id_map: {}, project_root: Dir.pwd)
+    def diff(aggregate, epsilon: 0.0, scoped: false, partial: false, sources: nil, operators: nil,
+             id_map: {}, project_root: Dir.pwd)
       current = aggregate.surviving_mutants
       baseline_ids = @survivors.map { |h| h["id"] }.to_set
       # A new-format baseline never matches on old ids.
       legacy = @id_format.nil? ? id_map : {}
       file_key = ->(path) { path && ProjectPath.relative(path, project_root) }
+      source_keys = sources&.map { |path| file_key.call(path) }&.to_set
+      operator_names = operators&.map(&:to_s)&.to_set
       # [old id, file] for each stored survivor: an old id alone is ambiguous.
       baseline_pairs = @survivors.map { |h| [h["id"], file_key.call(h["file"])] }.to_set
       # Old ids stored with a file from another machine: matched on the id alone.
@@ -141,19 +189,27 @@ module Mutineer
           new_survivors << r
         end
       end
-      current_ids = current.map(&:id).to_set
-      current_pairs = current.select { |r| legacy[r.id] }.map { |r| legacy_pair.call(r) }.to_set
-      current_legacy_ids = current.filter_map { |r| legacy[r.id] }.to_set
+      survivor_index = match_index(current, legacy, file_key)
+      undecided_index = match_index(aggregate.results.reject { |r| DECIDED.include?(r.status) }, legacy, file_key)
+      fixed_index = match_index(aggregate.results.select { |r| r.killed? || r.ignored? }, legacy, file_key)
       # Under a diff-scoped side an out-of-scope baseline survivor was never
       # re-tested, so reporting it "fixed" would be false: empty is honest.
-      fixed = if scoped || @scoped
-                []
-              else
-                @survivors.reject do |h|
-                  current_ids.include?(h["id"]) || current_pairs.include?([h["id"], file_key.call(h["file"])]) ||
-                    (foreign.include?(h) && current_legacy_ids.include?(h["id"]))
-                end
-              end
+      unscoped = !scoped && !@scoped
+      fixed = []
+      unverified = []
+      @survivors.each do |h|
+        next if stored_match(survivor_index, h, foreign, file_key)
+
+        if (r = stored_match(undecided_index, h, foreign, file_key))
+          unverified << h.merge("status" => r.status.to_s)
+        elsif unscoped
+          status = if stored_match(fixed_index, h, foreign, file_key) then nil
+                   elsif partial || aggregate.total.zero? then "not_run"
+                   else absent_status(h, source_keys, operator_names, project_root)
+                   end
+          status ? unverified << h.merge("status" => status) : fixed << h
+        end
+      end
 
       current_score = aggregate.mutation_score
       # nil-score discipline (mirrors Reporter#exit_code): a score absent on
@@ -161,16 +217,94 @@ module Mutineer
       # survivor check. Same when EITHER side is diff-scoped (the current run
       # via `scoped:`, or the stored baseline via its `summary.scoped` marker):
       # the denominators differ, so the scores are not comparable.
-      comparable = !scoped && !@scoped && !@score.nil? && !current_score.nil?
-      score_drop = comparable && current_score < @score - epsilon
+      comparable = unscoped && !@score.nil? && !current_score.nil?
+      score_drop = comparable && score_dropped?(aggregate, epsilon)
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
                 score_before: @score, score_after: current_score,
                 score_drop: score_drop, score_comparable: comparable,
-                regressed: !new_survivors.empty? || score_drop, legacy_matches: legacy_matches)
+                regressed: !new_survivors.empty? || score_drop, legacy_matches: legacy_matches,
+                unverified_survivors: unverified, incomplete: aggregate.incomplete?)
     end
 
     private
+
+    # Whether the score fell by more than `epsilon` percentage points. Uses the
+    # exact counts of both reports, like AggregateResult#meets_threshold?, so a
+    # drop hidden by rounding gates and a drop inside epsilon does not (#343).
+    # A stored report with no integer counts (hand-made) compares the rounded
+    # scores, as before (#567).
+    #
+    # @param aggregate [Mutineer::AggregateResult] current results; its score is non-nil.
+    # @param epsilon [Numeric] score-drop tolerance in percentage points.
+    # @return [Boolean]
+    def score_dropped?(aggregate, epsilon)
+      counts = [@killed, @survived]
+      exact = counts.all? { |n| n.is_a?(Integer) && !n.negative? } && counts.sum.positive?
+      return aggregate.mutation_score < @score - epsilon unless exact
+
+      before = Rational(@killed * 100, @killed + @survived)
+      after = Rational(aggregate.killed_count * 100, aggregate.covered_count)
+      after < before - epsilon.to_s.to_r
+    end
+
+    # The status of a stored survivor that a full run with results no longer
+    # has, or nil when that absence counts as a fix. A missing project file is a
+    # removal. A stored id outside the selected sources or operators is
+    # `not_run`. A stored path outside the project that does not exist on this
+    # machine (a baseline written elsewhere) is `foreign_path`: the run cannot
+    # check it (#343). Matched results bypass this metadata check.
+    #
+    # @param stored [Hash] stored baseline survivor.
+    # @param sources [Set<String>, nil] normalized selected source paths.
+    # @param operators [Set<String>, nil] selected operator names.
+    # @param project_root [String] root for stored project-relative paths.
+    # @return [String, nil] `"not_run"`, `"foreign_path"`, or nil for fixed.
+    def absent_status(stored, sources, operators, project_root)
+      path = stored["file"]
+      key = path && ProjectPath.relative(path, ProjectPath.root_real(project_root))
+      foreign = key && File.absolute_path?(key)
+      # A source file removed from this checkout is a fix whatever was selected.
+      return if key && !foreign && !File.exist?(ProjectPath.absolute(path, project_root))
+      return "not_run" if operators && !operators.include?(stored["operator"].to_s)
+      return unless sources
+      return if key && sources.include?(key)
+      # Outside the project and not on this machine: the run cannot check it.
+      foreign && !File.exist?(key) ? "foreign_path" : "not_run"
+    end
+
+    # Indexes results by the three keys a stored survivor can match on: the
+    # current id, the `[old id, file]` pair, and the old id alone (for a stored
+    # file from another machine). The first result for a key wins.
+    #
+    # @param results [Array<Mutineer::Result>] the current results to index.
+    # @param legacy [Hash{String => String}] current new id => old-format id.
+    # @param file_key [Proc] normalizes a path against the project root.
+    # @return [Hash{Symbol => Hash}] `{ id:, pair:, old_id: }` lookups.
+    def match_index(results, legacy, file_key)
+      index = { id: {}, pair: {}, old_id: {} }
+      results.each do |r|
+        index[:id][r.id] ||= r unless r.id.nil?
+        old = legacy[r.id]
+        next unless old
+
+        index[:pair][[old, file_key.call(r.subject&.file)]] ||= r
+        index[:old_id][old] ||= r
+      end
+      index
+    end
+
+    # The current result a stored survivor matches in an index, or nil.
+    #
+    # @param index [Hash{Symbol => Hash}] from {#match_index}.
+    # @param stored [Hash] a stored survivor.
+    # @param foreign [Set<Hash>] stored survivors whose file is from another machine.
+    # @param file_key [Proc] normalizes a path against the project root.
+    # @return [Mutineer::Result, nil]
+    def stored_match(index, stored, foreign, file_key)
+      index[:id][stored["id"]] || index[:pair][[stored["id"], file_key.call(stored["file"])]] ||
+        (index[:old_id][stored["id"]] if foreign.include?(stored))
+    end
 
     # True when a stored survivor's `file` is absolute and still absolute after
     # normalizing against the project root, so it lies outside this checkout.

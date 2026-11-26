@@ -50,7 +50,7 @@ This comparison covers Mutant 0.17.1, checked on 26 October 2026. See [Mutant's 
 |---|---|
 | Cost | MIT, free for every use; mutant charges private or commercial apps |
 | Dependencies | No runtime gems |
-| GitHub Action | Tests changed pull-request lines; with `baseline:` set, fails on new survivors. A full scan (`since: none`) also fails on score drops |
+| GitHub Action | Tests changed pull-request lines; with `baseline:` set, fails on new survivors or an incomplete run. A full scan (`since: none`) also fails on score drops |
 | Rails isolation | With `--daemon` (Minitest), each parallel worker gets its own test database, including MySQL 8 |
 | Ruby | Requires 3.4+; older apps use serial `--test-command` |
 | RSpec | No `--daemon`; Rails runs are serial |

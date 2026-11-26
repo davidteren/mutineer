@@ -361,7 +361,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
-    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 2.0 = baseline completeness, fixed_survivors corrected; 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]

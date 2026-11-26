@@ -31,7 +31,10 @@ class ActionHarnessTest < Minitest::Test
       "case13" => 2, "case14" => 2, "case14b" => 2, "case15" => 1,
       "case16" => 2, "case17" => 2, "case17b" => 2, "case18" => 0, "case18b" => 2, "case18c" => 0,
       "case18d" => 0, "case18i" => 0, "case18e" => 0, "case18f" => 0, "case18g" => 0, "case18h" => 0,
-      "case13b" => 2, "case14c" => 2 }.each do |c, code|
+      "case13b" => 2, "case14c" => 2,
+      "case20" => 1, "case21" => 1, "case22" => 1, "case23" => 2, "case24" => 0, "case25" => 1,
+      "case26" => 2, "case26b" => 2, "case26c" => 2, "case26d" => 1, "case26e" => 0, "case26f" => 0,
+      "case26g" => 1, "case26h" => 2, "case26i" => 2 }.each do |c, code|
       assert_includes out, "#{c}: exit=#{code}", "#{c} exit code drifted:\n#{out}"
     end
     assert_includes out, "OK: abbreviation rejected"
@@ -93,6 +96,31 @@ class ActionHarnessTest < Minitest::Test
     assert_includes out, "OK: escaped-path baseline kept"
     assert_includes out, "OK: escaped path rejected before running"
     assert_includes out, "a%25b%0Ac.json"
+    incomplete = out[/case20 baseline line: .*/].to_s
+    assert_includes incomplete, "; 1 unverified survivor(s) (see baseline.unverified_survivors in the report)",
+                    "unverified count missing:\n#{out}"
+    assert_includes out[/case21 baseline line: .*/].to_s, "; incomplete run (read no_verdict[] first): REGRESSED.", "regressed+incomplete drifted"
+    assert_includes incomplete, ": INCOMPLETE (too many mutants produced no verdict; see no_verdict[]).",
+                    "incomplete marker missing"
+    assert_includes out[/case22 baseline line: .*/].to_s, ": INCOMPLETE (nothing could be scored; see no_verdict[]).",
+                    "nil-score incomplete marker missing"
+    assert_includes out, "OK: old baseline report needs an upgrade"
+    assert_includes out, "OK: old baseline report delivered"
+    assert_includes out[/case23 baseline line: .*/].to_s, "completeness unavailable (upgrade the gem)",
+                    "an old report must not imply that completeness passed"
+    refute_includes out[/case3 baseline line: .*/].to_s, "unverified", "no empty unverified count should appear"
+    hidden = "(less than the rounding shows; the check uses the exact counts)"
+    assert_includes out[/case25 baseline line: .*/].to_s, "; score 99.9 -> 99.9 #{hidden}", "hidden drop not explained"
+    refute_includes out[/case1 baseline line: .*/].to_s, hidden, "a visible drop needs no note"
+    assert_includes out[/case1 baseline line: .*/].to_s, "; score 80.0 -> 75.0", "case1 baseline line missing"
+    %w[case26 case26b case26c].each { |c| assert_includes out, "OK: #{c} old gem refused before running" }
+    assert_includes out, "OK: case26 names 2.0.0"
+    assert_includes out, "OK: case26d gem 2.0.0 ran"
+    assert_includes out, "OK: case26e prerelease ran"
+    assert_includes out, "OK: case26f ran without a baseline"
+    assert_includes out, "OK: case26g json ran"
+    assert_includes out, "OK: case26h version escaped"
+    assert_includes out, "OK: case26i version escaped"
     assert_includes out, "Old ignore entries matched: 2.", "old-format ignore count missing"
     assert_includes out, "Baseline survivors matched only by an old id: 3.", "old-format baseline count missing"
     assert_includes out, "::error file=lib/we%2Cird%3Aname.rb", "property escaping regressed"
