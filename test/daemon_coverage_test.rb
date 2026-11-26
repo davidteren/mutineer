@@ -209,7 +209,7 @@ class DaemonCoverageTest < Minitest::Test
         # #537: the error and the note show in both modes; the frame only with --verbose.
         assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
         # RUBYOPT is the caller's; it may also hold a -I, so the note may name both.
-        assert_match(/\(the daemon does not pass (RUBYOPT or )?RUBYLIB to the app;/, line)
+        assert_match(/\(the daemon does not pass your (RUBYOPT or )?RUBYLIB to the app;/, line)
         verbose ? assert_includes(line, " @ ") : refute_includes(line, " @ ")
       end
     end

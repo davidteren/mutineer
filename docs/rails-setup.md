@@ -200,7 +200,7 @@ When a run stops with `another Mutineer run is using <base>`, wait for the other
 #### Extra load paths
 
 Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
-This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. In Mutineer 1.11.0 and later, `--test-command` gets the directories in `RUBYLIB` ([#535](https://github.com/davidteren/mutineer/issues/535)).
+This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. In Mutineer 1.11.0 and later, `--test-command` gets the directories in `RUBYLIB` ([#535](https://github.com/davidteren/mutineer/issues/535)). It skips an entry that is not a directory, or that has the path separator in its path, with a warning; 2.0 exits 2 there ([#581](https://github.com/davidteren/mutineer/issues/581)).
 Use it for a test helper outside the test folder, such as `test/support`:
 
 ```yaml
@@ -324,7 +324,7 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Parallelism | Runs serially by default and forces `--jobs` to 1; a wrapper can reset `PARALLEL_WORKERS` to re-enable Rails test workers. |
 | Strategy | Supports only `reload`. Rejects `--strategy redefine`. |
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
-| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file. With a `load_path`, or a load variable of yours, it also names the likely cause: a wrapper that unset `RUBYLIB`, or a load variable that Mutineer did not pass. |
+| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file. With a `load_path`, or a load variable of yours, it also names the likely cause: a wrapper that unset `RUBYLIB`, a Ruby that the command starts in a container, or a load variable that Mutineer did not pass. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
 | Subprocess result | Verdict |

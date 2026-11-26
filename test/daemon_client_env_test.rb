@@ -252,8 +252,8 @@ class DaemonClientEnvTest < Minitest::Test
              "BUNDLER_ORIG_RUBYLIB" => nil) do
       noted = hint.(cause)
       assert noted.start_with?(cause)
-      assert_includes noted, "does not pass RUBYOPT to the app"
-      assert_equal "#{cause} (the daemon does not pass RUBYOPT to the app; if the missing file is in a directory " \
+      assert_includes noted, "does not pass your RUBYOPT to the app"
+      assert_equal "#{cause} (the daemon does not pass your RUBYOPT to the app; if the missing file is in a directory " \
                    "set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
                    "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})", noted
       assert Mutineer::DaemonClient::LOAD_PATH_GUIDE.end_with?("/docs/rails-setup.md#extra-load-paths")
@@ -264,7 +264,7 @@ class DaemonClientEnvTest < Minitest::Test
 
     %w[Itest -wItest].each do |opt|
       with_env("RUBYOPT" => opt, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYLIB" => nil) do
-        assert_includes hint.(cause), "does not pass RUBYOPT to the app", opt
+        assert_includes hint.(cause), "does not pass your RUBYOPT to the app", opt
       end
     end
 
@@ -282,29 +282,34 @@ class DaemonClientEnvTest < Minitest::Test
 
     with_env("RUBYOPT" => "-rbundler/setup", "BUNDLER_ORIG_RUBYOPT" => "-Itest", "RUBYLIB" => "lib",
              "BUNDLER_ORIG_RUBYLIB" => nil) do
-      assert_includes hint.(cause), "does not pass RUBYOPT or RUBYLIB to the app"
+      assert_includes hint.(cause), "does not pass your RUBYOPT or RUBYLIB to the app"
     end
 
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
-      assert_includes hint.(cause), "does not pass RUBYLIB to the app"
+      assert_includes hint.(cause), "does not pass your RUBYLIB to the app"
     end
 
     # Under `bundle exec`, the user's RUBYLIB is the saved one.
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "/bundler/lib",
              "BUNDLER_ORIG_RUBYLIB" => "test/support") do
-      assert_includes hint.(cause), "does not pass RUBYLIB to the app"
+      assert_includes hint.(cause), "does not pass your RUBYLIB to the app"
+    end
+    # A RUBYLIB that only Bundler set is not the user's: no note.
+    with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "/bundler/lib",
+             "BUNDLER_ORIG_RUBYLIB" => Mutineer::DaemonClient::BUNDLER_UNSET) do
+      assert_equal cause, hint.(cause)
     end
   end
 
-  # #535: the note is one text for the daemon and for --test-command. Its
-  # default is the inside of the 1.10.0 note, byte for byte.
+  # #535: the note is one text for the daemon and for --test-command. It
+  # names the user's variables and the mutineer -I flag.
   def test_load_env_note_is_the_shared_note_text
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
-      assert_equal "the daemon does not pass RUBYLIB to the app; if the missing file is in a directory set there, " \
+      assert_equal "the daemon does not pass your RUBYLIB to the app; if the missing file is in a directory set there, " \
                    "add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
                    "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}", Mutineer::DaemonClient.load_env_note
       assert Mutineer::DaemonClient.load_env_note(who: "--test-command", to: "the command")
-                                   .start_with?("--test-command does not pass RUBYLIB to the command; ")
+                                   .start_with?("--test-command does not pass your RUBYLIB to the command; ")
     end
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYLIB" => nil) do
       assert_nil Mutineer::DaemonClient.load_env_note
@@ -324,7 +329,7 @@ class DaemonClientEnvTest < Minitest::Test
         end
       end
     end
-    assert_includes client.last_cause, "does not pass RUBYOPT to the app"
+    assert_includes client.last_cause, "does not pass your RUBYOPT to the app"
   end
 
   private

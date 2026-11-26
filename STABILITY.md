@@ -143,7 +143,7 @@ Where it prints no warning, the item says documented only.
   With `--threshold`, that run can also exit 1.
   In 2.0 a provisioning failure exits 3.
 - **A `load_path` entry that `--test-command` cannot use fails the run.** 1.11.0 warns.
-  Today the run skips an entry that is not a directory, or that has the path separator in its path, and continues.
+  From 1.11.0, the run skips an entry that is not a directory, or that has the path separator in its path, and continues.
   In 2.0 it exits 2 (#581).
 
 ## Release rhythm

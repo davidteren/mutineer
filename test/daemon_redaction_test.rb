@@ -293,7 +293,7 @@ class DaemonRedactionTest < Minitest::Test
     first, second = out.lines
 
     assert first.start_with?(missing.chomp), first
-    assert_includes first, "(the daemon does not pass RUBYOPT or RUBYLIB to the app;"
+    assert_includes first, "(the daemon does not pass your RUBYOPT or RUBYLIB to the app;"
     assert_equal missing, second, "one note for each daemon: a later warning has no note"
     refute_includes out, "test/support", "the note names the variable, never its value"
     refute_includes out, "secret/opt"
@@ -322,7 +322,7 @@ class DaemonRedactionTest < Minitest::Test
       first, second = noted.split("\n")
 
       assert_equal "app line", first
-      assert_includes second, "does not pass RUBYLIB to the app"
+      assert_includes second, "does not pass your RUBYLIB to the app"
     end
   end
 

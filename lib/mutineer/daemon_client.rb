@@ -299,7 +299,7 @@ module Mutineer
       end
       return nil if names.empty?
 
-      "#{who} does not pass #{names.join(' or ')} to #{to}; if the missing file is in a " \
+      "#{who} does not pass your #{names.join(' or ')} to #{to}; if the missing file is in a " \
         "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
         "see #{LOAD_PATH_GUIDE}"
     end

@@ -563,7 +563,7 @@ class RunnerExternalTest < Minitest::Test
       assert_equal 1, status.exitstatus, err
       first = err.split("--- last output ---").first
       assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
-                             "--test-command does not pass RUBYLIB to the command; if the missing file is in a " \
+                             "--test-command does not pass your RUBYLIB to the command; if the missing file is in a " \
                              "directory set there, add that directory to load_path: in .mutineer.yml, or pass " \
                              "-I DIR to mutineer (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}; " \
                              "the unmutated suite is not green"
@@ -603,7 +603,7 @@ class RunnerExternalTest < Minitest::Test
       first, tail = err.split("--- last output ---")
       refute_includes tail, "cannot load such file", "the LoadError line must be above the tail"
       assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
-                             "--test-command does not pass RUBYLIB to the command;"
+                             "--test-command does not pass your RUBYLIB to the command;"
     end
   end
 

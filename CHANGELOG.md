@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format is based on
   In-process `--rails` or `--boot`, and `--daemon`, print `coverage skipped for <file>: fork capture failed: <Class>: <first message line>`.
   Before, the line said only `fork capture produced no result (re-run with --verbose for the error)`.
   Under `--daemon`, the load note for a dropped `RUBYOPT` or `RUBYLIB` now shows in the first run.
+  The note now says `does not pass your RUBYLIB` (or `RUBYOPT`) and `pass -I DIR to mutineer`, so it is not read as the `-I` of a test command.
   A capture child that exits with no result says `child wrote no result (exit status N)`.
   `--verbose` adds the full message and the first backtrace frame. Verdicts and the coverage cache do not change.
 - **The docs now say what the coverage cache key holds (#548).**
