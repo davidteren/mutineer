@@ -165,7 +165,7 @@ explained below.
 |---|---|---|
 | in the block of a class statement's superclass call, such as `class X < Struct.new(:a) do ... end` (#492) | Reload keeps the live superclass, so that block does not run again (#576). | `--strategy redefine`, `--test-command` |
 | in the value of a constant set with `\|\|=`, or in code under `unless defined?(X)` or `if !defined?(X)` that defines `X` (#529) | The first load set the constant, so a second load skips the code. Other guards are not marked (#573). | `--strategy redefine`, `--test-command` |
-| in the block of `X = Struct.new(...) do`, `Data.define(...) do` or `Class.new do` with literal arguments, when the block has a statement that reload does not run twice (#528) | Reload keeps the class. It runs the block again only when the block has no parameter and each statement is a method definition, a constant assignment that reads nothing of the class, `attr_reader`, `attr_writer`, `attr_accessor`, a visibility call, or a `class`, `module` or `class << self` statement with such a body. One other statement, such as `alias_method`, `include` or `delegate`, keeps the whole block from running again (#576). | `--strategy redefine`, `--test-command`. Or move that statement out of the block, into a `class X` statement after it. |
+| in the block of `X = Struct.new(...) do`, `Data.define(...) do` or `Class.new do` with literal arguments, when the block has a statement that reload does not run twice (#528) | Reload keeps the class. It runs the block again only when the block has no parameter and each statement is a method definition, a constant assignment that reads nothing of the class, `attr_reader`, `attr_writer`, `attr_accessor`, a visibility call, or a `class`, `module` or `class << self` statement with such a body. One other statement, such as `alias_method`, `include` or `delegate`, keeps the whole block from running again (#576). | `--strategy redefine`, `--test-command` |
 | a method that calls `skip_callback` or a `skip_*_action`, or that gives such a call its filter or condition, in a file that runs such a skip while it loads (#543) | The reload drops a conditional skip that the first load already applied, so the mutated call would not reach Rails (#578). | `--strategy redefine`, `--test-command` |
 | a method that calls `define_callbacks` or `define_model_callbacks` (#504) | Reload skips a chain the class already has, with the options the call gives. | `--strategy redefine`, `--test-command` |
 | some methods in a concern's `included` or `prepended` block (#256, #297) | The block runs only when a class first includes the concern. See the list below. | `--test-command` |
@@ -184,7 +184,12 @@ the class again on each load (#575):
 - the assignment is a plain `=` of a bare name (`Point = ...`) or of a path (`Billing::Point = ...`) with
   no parent (`::Point = ...`), or a parent that is a constant path or `self`;
 - the file assigns that name only once, with any kind of assignment. A kept first assignment would get the
-  value of the last one.
+  value of the last one;
+- the file does not change that class again in a way that is not safe to repeat: a `class Point`, `module Point`
+  or `class << Point` statement whose body has a statement outside the safe list below, or a call on `Point`
+  other than `new` or `[]`, such as `Point.freeze` or `Point.class_eval`, anywhere in the file. A kept class
+  would get that change a second time: an `alias_method` chain would make the method call itself, a false
+  kill. Names match by their last part. A change that another file makes is not seen (#585).
 
 When the builder has a block, reload runs that block again on the kept class, so a mutant of a method in it
 gets a real verdict. It does that only when the block is safe to run twice: it has no block parameter
@@ -195,9 +200,8 @@ nothing of the class (no `self` and no call without a receiver); or a `class`, `
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 432 of 518 such blocks run again. To get verdicts under reload, move
-that statement out of the block, into a `class Point` statement after the assignment.
-`--strategy redefine` runs these methods.
+under reload (#576). In 744 gems, 432 of 518 such blocks run again. `--strategy redefine` runs these
+methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in
 its body (with any receiver), or that calls such a method of the same file by name (with any receiver) or

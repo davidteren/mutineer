@@ -28,11 +28,11 @@ All notable changes to this project are documented here. The format is based on
   `--strategy reload` and `--daemon` built a new class on each mutant load. A subclass or an instance in another file kept the old class, so a mutant in the block survived falsely, and a test that compared classes failed for every mutant.
   Now the reload keeps the class that the constant already has, for `Struct.new`, `Data.define` and `Class.new` with literal arguments.
   A block with no parameter, made of method definitions, constant assignments that read nothing of the class, `attr_reader`, `attr_writer`, `attr_accessor`, visibility calls and nested `class` or `module` statements, runs again on that class, so its methods get real verdicts. This includes the methods that 1.10.0 marked `unplaceable` for a superclass constant (#503).
-  A block with any other statement, such as `alias_method`, `include` or `delegate`, does not run again, and its methods are `unplaceable` under reload (#576). `--strategy redefine` runs them. To get verdicts under reload, move that statement into a `class Point` statement after the assignment.
-  A constant that the file assigns twice is not kept.
+  A block with any other statement, such as `alias_method`, `include` or `delegate`, does not run again, and its methods are `unplaceable` under reload (#576). `--strategy redefine` runs them.
+  A constant is not kept when the file assigns it twice, or changes it again in a way that is not safe to repeat: a `class Point` statement with such a statement, or a call on `Point` other than `new` or `[]`, such as `Point.freeze`. Reload then builds that class again on each load, as before.
   After the upgrade, `survived`, `killed` and `unplaceable` can each rise or fall for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
   1,256 such constants are in 47,030 Ruby files of 744 gems. 432 of their 518 blocks run again.
-  Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575).
+  Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575); a change that another file makes to a kept class (#585).
 - **Reload leaves a superclass as written when it can name a stale class (#533).**
   A superclass call that reads a variable, a constant that the same file builds again, or a method that the same file defines, such as `class Row < Class.new(base)` or `class Point < point_base`, kept the old parent while the file built a new class. A mutant in that class survived falsely.
   Such a superclass now keeps its text. When the call builds a new class, every mutant of the file scores `error` with "superclass mismatch" (#527). An errored mutant is in `no_verdict`, so a `--threshold` gate that passed on false survivors can now fail.

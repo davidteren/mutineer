@@ -17,7 +17,7 @@ module Mutineer
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), repeated_constant_names(result.value))
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), unkept_constant_names(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
         exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
@@ -31,9 +31,7 @@ module Mutineer
     # any kind of write ({CONSTANT_WRITES} or a multiple-assignment target).
     # Reload does not keep such a constant (#528): a kept first write would get
     # the value of the last write, which changes what a line between the two
-    # sees. Discovery ({SubjectVisitor}) and the reload text
-    # ({JobPlan.keep_live_superclasses}) both read the names here, so they keep
-    # the same writes.
+    # sees. Part of {unkept_constant_names}.
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
@@ -48,6 +46,57 @@ module Mutineer
         counts[name] += 1 if name
       end
       counts.select { |_name, count| count > 1 }.keys.to_set
+    end
+
+    # The last names of the constants reload must not keep (#528): the names
+    # the file writes more than once ({repeated_constant_names}), and the
+    # names it changes again at load ({reshaped_constant_names}). Discovery
+    # ({SubjectVisitor}), {rebuilt_names} and the reload text
+    # ({JobPlan.keep_live_superclasses}) all read this one Set.
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Symbol>]
+    def self.unkept_constant_names(program)
+      repeated_constant_names(program) | reshaped_constant_names(program)
+    end
+
+    # The calls on a constant that leave its class as it is, so a file may
+    # make them at load and still have the constant kept.
+    RESHAPE_SAFE_CALLS = %i[new []].freeze
+
+    # The last names of the constants that the file can change in a way that
+    # is not safe to run again on a kept class (#528): a
+    # `class X`, `module X` or `class << X` statement whose body fails
+    # {rerunnable_body?} (`alias_method :raw_x, :x` would wrap the wrapper of
+    # the first load, so `x` calls itself), and a call on `X` other than
+    # {RESHAPE_SAFE_CALLS} (`X.freeze`, `X.class_eval`, `X.include(M)`),
+    # also inside a def, which the file may call at load. Names match by their
+    # last part, which fails closed: such a constant is built again on each
+    # load, as before #528. A change made in another file is not seen (#585).
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Symbol>]
+    def self.reshaped_constant_names(program)
+      names = Set.new
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        case node
+        when Prism::ClassNode, Prism::ModuleNode
+          names << node.constant_path.name unless rerunnable_body?(node.body)
+        when Prism::SingletonClassNode
+          names << node.expression.name if constant_reference?(node.expression) && !rerunnable_body?(node.body)
+        when Prism::CallNode
+          names << node.receiver.name if constant_reference?(node.receiver) && !RESHAPE_SAFE_CALLS.include?(node.name)
+        end
+      end
+      names
+    end
+
+    # @param node [Prism::Node, nil]
+    # @return [Boolean] whether `node` reads a constant (`X` or `A::X`).
+    def self.constant_reference?(node)
+      node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)
     end
 
     # Whether `node` is one pair of parentheses around one statement. Discovery
@@ -67,8 +116,9 @@ module Mutineer
     # - The write is a plain `=` of a bare name (`Point = ...`) or of a path
     #   (`Billing::Point = ...`) whose parent is absent (`::Point`), a constant
     #   path or `self`, so the scope the guard reads runs no code a second time.
-    # - The file writes that name only once (`repeated`): a kept first write
-    #   would get the value of the last one.
+    # - The name is not in `unkept` ({unkept_constant_names}): the file writes
+    #   it only once (a kept first write would get the value of the last one),
+    #   and changes it at load only in ways that are safe to run again.
     # - The value is a {kept_builder?} call, which reads nothing the file can
     #   build again. A builder method of the file (`Point = build_point`) would
     #   keep a class its mutant never reaches, a silent false survivor.
@@ -79,13 +129,13 @@ module Mutineer
     # every def in a kept value that does not run again {Subject#not_reloaded}.
     #
     # @param node [Prism::Node]
-    # @param repeated [Set<Symbol>] {repeated_constant_names} of the file.
+    # @param unkept [Set<Symbol>] {unkept_constant_names} of the file.
     # @return [Boolean]
-    def self.kept_constant_write?(node, repeated)
+    def self.kept_constant_write?(node, unkept)
       if node.is_a?(Prism::ConstantWriteNode)
-        return false if repeated.include?(node.name)
+        return false if unkept.include?(node.name)
       elsif node.is_a?(Prism::ConstantPathWriteNode)
-        return false if repeated.include?(node.target.name) || !constant_scope?(node.target.parent)
+        return false if unkept.include?(node.target.name) || !constant_scope?(node.target.parent)
       else
         return false
       end
@@ -98,10 +148,10 @@ module Mutineer
     # both ask here.
     #
     # @param node [Prism::Node]
-    # @param repeated [Set<Symbol>] {repeated_constant_names} of the file.
+    # @param unkept [Set<Symbol>] {unkept_constant_names} of the file.
     # @return [Boolean]
-    def self.reopened_write?(node, repeated)
-      kept_constant_write?(node, repeated) && !node.value.block.nil? && rerunnable_block?(node.value.block)
+    def self.reopened_write?(node, unkept)
+      kept_constant_write?(node, unkept) && !node.value.block.nil? && rerunnable_block?(node.value.block)
     end
 
     # The calls a builder block may make, beside its defs, and still run again
@@ -223,7 +273,7 @@ module Mutineer
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Array(Set<Symbol>, Set<Symbol>)] the def names and the constant names.
     def self.rebuilt_names(program)
-      repeated = repeated_constant_names(program)
+      unkept = unkept_constant_names(program)
       defs = Set.new
       constants = Set.new
       nodes = [program]
@@ -234,7 +284,7 @@ module Mutineer
         elsif node.is_a?(Prism::ConstantTargetNode) || node.is_a?(Prism::ConstantPathTargetNode)
           constants << node.name
         elsif CONSTANT_WRITES.any? { |type| node.is_a?(type) } && !data_literal?(node.value) &&
-              !kept_constant_write?(node, repeated)
+              !kept_constant_write?(node, unkept)
           constants << defined_constant_name(node)
         end
       end
@@ -639,14 +689,14 @@ module Mutineer
       # @param file [String] source file path being visited.
       # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
       #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
-      # @param repeated [Set<Symbol>] the constants the file writes more than
-      #   once (see {Project.repeated_constant_names}); a def in a kept value that
+      # @param unkept [Set<Symbol>] the constants reload does not keep
+      #   (see {Project.unkept_constant_names}); a def in a kept value that
       #   does not run again ({Project.kept_constant_write?} and not
       #   {Project.reopened_write?}) is {Subject#not_reloaded}.
-      def initialize(file, plain_calls = Set.new, repeated = Set.new)
+      def initialize(file, plain_calls = Set.new, unkept = Set.new)
         @file = file
         @plain_calls = plain_calls
-        @repeated = repeated
+        @unkept = unkept
         @namespace_stack = []
         @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
@@ -817,7 +867,7 @@ module Mutineer
       def visit_constant_write_node(node)
         saved_kept = @not_reloaded
         @not_reloaded = true if node.is_a?(Prism::ConstantOrWriteNode) || node.is_a?(Prism::ConstantPathOrWriteNode)
-        if Project.kept_constant_write?(node, @repeated) && !Project.reopened_write?(node, @repeated)
+        if Project.kept_constant_write?(node, @unkept) && !Project.reopened_write?(node, @unkept)
           @not_reloaded = true
         end
         call = assigned_value(node.value)

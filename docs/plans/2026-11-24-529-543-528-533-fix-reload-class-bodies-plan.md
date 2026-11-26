@@ -1259,6 +1259,7 @@ All runs on 2026-11-24, Ruby 3.4.9, the prototype patch on `c5100143`.
 - Prism 2 (`BUNDLE_GEMFILE=gemfiles/prism2.gemfile`), `test/project_test.rb` and `test/call_superclass_reload_test.rb`, second form: the same 6 failures and 1 error as under Prism 1. The full Prism 2 suite was not run.
 - `bundle exec rake yard:strict` was not run: the prototype has no comments.
 - Not in the prototype: the rename to `not_reloaded` and `makes_load_time_skip` (the patch keeps `in_kept_constant` and `calls_skip_callback`), every test, every doc.
+- After the build, a review found that the advice "move that statement into a `class Point` statement after the assignment" in the drafts above makes the probe P7 false kill: that statement also runs again on a kept class. The build does not keep a constant that the file changes in such a way (`Project.unkept_constant_names`), and the shipped docs drop that advice. A change in another file is #585.
 
 ## Review record
 

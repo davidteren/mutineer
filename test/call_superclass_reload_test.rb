@@ -722,6 +722,19 @@ class CallSuperclassReloadTest < Minitest::Test
     assert_includes redefine.fetch("AliasPoint#weak?"), "survived"
   end
 
+  # #528, P1 of the self-check: a `class ReopenedPoint` statement after the
+  # assignment wraps the accessor. A kept class would run that wrap a second
+  # time, so `x` would call itself and every mutant would be killed falsely.
+  # Reload builds the class again instead, and agrees with redefine.
+  def test_reload_does_not_keep_a_builder_constant_a_class_statement_wraps
+    rows = %w[redefine reload].to_h do |strategy|
+      [strategy, run_strategy(strategy, sources: %w[builder_reopened_alias.rb], test: "builder_reopened_alias_test.rb")]
+    end
+    assert_includes rows["reload"].fetch("ReopenedPoint#x"), "killed"
+    assert_equal ["survived"], rows["reload"].fetch("ReopenedPoint#weak?").uniq
+    assert_equal rows["redefine"], rows["reload"]
+  end
+
 
   # #533, R11, test the rule: a superclass that can name a class the file
   # builds again keeps its text (the same String comes back); any other call

@@ -444,7 +444,7 @@ module Mutineer
     # @return [String]
     def self.keep_live_superclasses(code)
       program = Parser.parse_string(code).value
-      repeated = Project.repeated_constant_names(program)
+      unkept = Project.unkept_constant_names(program)
       rebuilt = Project.rebuilt_names(program)
       splices = []
       queue = [program]
@@ -454,11 +454,11 @@ module Mutineer
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
-        elsif (splice = kept_constant_splice(node, repeated))
+        elsif (splice = kept_constant_splice(node, unkept))
           splices << splice
           # A reopened block runs again on the live class, so the walk goes on
           # inside it. Any other kept value does not run again.
-          queue << node.value.block if Project.reopened_write?(node, repeated)
+          queue << node.value.block if Project.reopened_write?(node, unkept)
         else
           queue.concat(node.compact_child_nodes)
         end
@@ -497,18 +497,18 @@ module Mutineer
     # skips its value, so discovery marks each def there `unplaceable` (#529).
     #
     # @param node [Prism::Node]
-    # @param repeated [Set<Symbol>] {Project.repeated_constant_names} of the file.
+    # @param unkept [Set<Symbol>] {Project.unkept_constant_names} of the file.
     # @return [Array(Integer, Integer, String, String), nil] a splice, as
     #   {wrap_splice} gives, or nil for any other node.
-    def self.kept_constant_splice(node, repeated)
-      return nil unless Project.kept_constant_write?(node, repeated)
+    def self.kept_constant_splice(node, unkept)
+      return nil unless Project.kept_constant_write?(node, unkept)
 
       scope, name = if node.is_a?(Prism::ConstantPathWriteNode)
                       [superclass_scope(node.target), node.target.name]
                     else
                       ["::Module.nesting.first", node.name]
                     end
-      return wrap_splice(node.value, "kept_constant", scope, name) unless Project.reopened_write?(node, repeated)
+      return wrap_splice(node.value, "kept_constant", scope, name) unless Project.reopened_write?(node, unkept)
 
       # The text from the builder call to its block, trailing space and any
       # `\` line continuation included, goes between the lambda's braces.

@@ -1822,4 +1822,36 @@ class ProjectTest < Minitest::Test
                                             "F = 1\nclass F; end\nmodule G; end\nG = 1\nH += 1\n").value
     assert_equal Set[:A, :B, :C, :D], Mutineer::Project.repeated_constant_names(program)
   end
+
+  # #528, P1 and P2 of the self-check, test the rule: a constant the file
+  # changes at load in a way that is not safe to run again on a kept class is
+  # not kept. A class statement with a safe body, `new` and `[]` are safe.
+  RESHAPED = {
+    "class P\n  alias_method :raw_x, :x\nend\n" => true,
+    "class P\n  undef_method :to_a\nend\n" => true,
+    "class P\n  remove_method :to_a\nend\n" => true,
+    "class P\n  include Comparable\nend\n" => true,
+    "module A\n  class P\n    alias b a\n  end\nend\n" => true,
+    "module P\n  extend self\nend\n" => true,
+    "class << P\n  alias_method :b, :a\nend\n" => true,
+    "P.freeze\n" => true,
+    "P.class_eval { def y = 1 }\n" => true,
+    "A::P.send(:remove_method, :to_a)\n" => true,
+    "P.include(Comparable)\n" => true,
+    "class P\n  def y = 1\n  attr_reader :z\nend\n" => false,
+    "class << P\n  def s = 1\nend\n" => false,
+    "ORIGIN = P.new(0)\n" => false,
+    "ORIGIN = P[0]\n" => false,
+    "def self.seal = P.freeze\n" => true,
+    "class Q\n  alias_method :b, :a\nend\n" => false
+  }.freeze
+
+  def test_unkept_constant_names_holds_a_constant_the_file_changes_at_load
+    RESHAPED.each do |text, unkept|
+      program = Mutineer::Parser.parse_string("P = Struct.new(:x)\n#{text}").value
+      assert_equal unkept, Mutineer::Project.unkept_constant_names(program).include?(:P), text
+      write = program.statements.body.first
+      assert_equal !unkept, Mutineer::Project.kept_constant_write?(write, Mutineer::Project.unkept_constant_names(program)), text
+    end
+  end
 end
