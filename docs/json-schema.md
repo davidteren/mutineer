@@ -191,12 +191,17 @@ the class again on each load (#575):
   `class << Point` statement whose body passes the safe list below, anywhere in the file, defs included.
   Any other use could change the class in a way that is not safe to repeat (`Point.freeze`,
   `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` or `class Point::Inner`
-  statement). A file that calls `alias_method`, `class_eval`, `class_exec`, `module_eval`, `module_exec`,
-  `instance_eval`, `instance_exec`, `define_method` or `const_get` with a receiver, also through `send`, `public_send` or `__send__` (or a `send` with a computed method name), or that calls `eval`, `instance_eval`, `class_eval` or `module_eval` with an argument (with or without a receiver, also through `send`), or `send` with a computed method name, or that has a `class << expr`
-  statement with an unsafe body whose expression is not a constant or `self`, keeps none of its constants, because such code can reach the class without its name. A kept class would get that change a
+  statement). A file keeps none of its constants, because such code can reach the class without its name, when it
+  has any of these: a call of `alias_method`, `class_eval`, `class_exec`, `module_eval`, `module_exec`,
+  `instance_eval`, `instance_exec`, `define_method`, `const_get`, `include`, `prepend` or `extend` with a
+  receiver; a call of `eval`,
+  `instance_eval`, `class_eval` or `module_eval` with an argument, with or without a receiver; a `send`,
+  `public_send` or `__send__` whose literal method name is one of those, or whose method name is computed
+  (with a receiver, or with none outside every method); or a `class << expr` statement with an unsafe body
+  whose expression is not a constant or `self`. A kept class would get that change a
   second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
-  last part. A change that another file makes, and an `include`, `prepend` or `extend` on another receiver, are not
-  seen (#585). When a class statement of
+  last part. A change that another file makes, or one made through `method(:alias_method).call`, is not seen
+  (#585). When a class statement of
   the same file inherits from a constant that this rule does not keep, every mutant of the file that loads
   scores `error` with `superclass mismatch` (#527, #575).
 
@@ -209,7 +214,7 @@ nothing of the class (no `self`, no call without a receiver, and no instance or 
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 310 of 337 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 333 of 360 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in

@@ -68,10 +68,10 @@ module Mutineer
     # The calls that can wrap or reopen a class reached without its name
     # (`ORIGIN.class.class_eval { alias_method ... }`). A file that makes one
     # with a receiver keeps none of its constants ({reshaped_constant_names}).
-    # `include` and `prepend` are left out: they are common on a hook's
-    # `base`, and would drop 77 more of 1,257 corpus constants (#585).
+    # `include`, `prepend` and `extend` count, because Ruby runs a module's
+    # hook again on each call, and a hook can wrap a method.
     INDIRECT_RESHAPE_CALLS = %i[alias_method class_eval class_exec module_eval module_exec instance_eval
-                                instance_exec define_method const_get].freeze
+                                instance_exec define_method const_get include prepend extend].freeze
 
     # The last names of the constants that the file may change in a way that
     # is not safe to run again on a kept class (#528). It fails closed: a
@@ -87,11 +87,10 @@ module Mutineer
     # each name of the path. Names match by their last part. A file that makes
     # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
     # writes, as does a file with a {STRING_EVALS} call with arguments, a
-    # `send` with a computed name (with or without a receiver), or a
-    # `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
+    # `send` with a computed name (with a receiver, or {load_time_computed_send?}),
+    # or a `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
     # before #528. A change made in another file, or through a call outside
-    # that list (`include`, `prepend`, `extend`, `method(:alias_method).call`),
-    # is not seen (#585).
+    # that list (`method(:alias_method).call`), is not seen (#585).
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
@@ -123,12 +122,26 @@ module Mutineer
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
           sent = sent_name(node)
-          indirect = true if sent.nil? || (node.receiver && INDIRECT_RESHAPE_CALLS.include?(sent)) ||
+          indirect = true if (node.receiver && (sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent))) ||
                              (STRING_EVALS.include?(sent) && node.arguments)
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
-      indirect ? names | written : names
+      indirect || load_time_computed_send?(program) ? names | written : names
+    end
+
+    # Whether the file makes a `send` with a computed method name and no
+    # receiver outside every def, on the top-level object, where it may run
+    # `eval`. In a def it runs on that def's `self`, which the other rules of
+    # {reshaped_constant_names} cover.
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.load_time_computed_send?(node)
+      return false if node.is_a?(Prism::DefNode)
+      return true if node.is_a?(Prism::CallNode) && node.receiver.nil? && SEND_CALLS.include?(node.name) && sent_name(node).nil?
+
+      node.compact_child_nodes.any? { |child| load_time_computed_send?(child) }
     end
 
     # The calls whose string argument can name and change any class, with or

@@ -1873,6 +1873,8 @@ class ProjectTest < Minitest::Test
     "instance_eval(\"1\")\n" => true,
     "m = :eval\n__send__(m, \"1\")\n" => true,
     "send(:send, :eval, \"1\")\n" => true,
+    "class Row < P\n  def attrs = members.map { |m| public_send(m) }\nend\n" => false,
+    "ORIGIN = P.new(0)\nORIGIN.class.include(Comparable)\n" => true,
     "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false
   }.freeze
 
