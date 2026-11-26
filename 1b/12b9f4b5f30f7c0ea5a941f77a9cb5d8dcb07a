@@ -1,0 +1,29 @@
+.expectation-fit/decisions/reload-and-redefine-strategies.md
+  s_2919199eb867b0::t_846e183c479eff 16
+CHANGELOG.md
+  s_2919199eb867b0::t_10ff627bdfca8e 32,35-36
+docs/json-schema.md
+  s_2919199eb867b0::t_d3dfe9be2d282e 193-199,212
+lib/mutineer/project.rb
+  s_2919199eb867b0::t_64ac16beb9218a 68-75,86-91,97-98,103,108,119,123-133,246-249,256
+test/call_superclass_reload_test.rb
+  s_2919199eb867b0::t_8277c1c339b3aa 620-621
+test/project_test.rb
+  s_2919199eb867b0::t_060f80f36910e3 1860-1864
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b12b9f4b5f30f7c0ea5a941f77a9cb5d8dcb07a",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
