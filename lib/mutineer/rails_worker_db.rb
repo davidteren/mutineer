@@ -991,8 +991,10 @@ module Mutineer
     end
 
     # Drop and recreate slots `0...count` from the booted test database.
-    # Holds the exclusive advisory lock only for the copy, then a shared lock
-    # for the rest of this process so a second run cannot drop those databases.
+    # Holds the exclusive advisory lock for the copy. Then takes the shared
+    # lock on the same session and only after that releases the exclusive one.
+    # The lock is never free in between, so a second run cannot drop those
+    # databases (#556). The shared lock stays for the rest of this process.
     #
     # @param count [Integer]
     # @return [void]
@@ -1011,17 +1013,21 @@ module Mutineer
           name = postgres_worker_database(base, slot)
           recreate_from_template(conn, name, base)
         end
-      rescue StandardError => e
+        # Share first, then release. The locks one session holds do not
+        # conflict, and the unlock frees only the exclusive lock (#556).
+        raise "another Mutineer run is using #{base}" unless try_lock(conn, base, shared: true)
+
         unlock(conn, base)
+      rescue StandardError => e
+        begin
+          unlock(conn, base)
+        rescue StandardError
+          nil # A lost session holds no lock. Close it and report the first error.
+        end
         conn.close
         raise provision_wrapped?(e) ? e : provision_failure(base, base, e.message)
       end
 
-      unlock(conn, base)
-      unless try_lock(conn, base, shared: true)
-        conn.close
-        raise "another Mutineer run is using #{base}"
-      end
       @lock_connection = conn
       warn "[mutineer] provisioned #{count} postgres worker database(s) from #{base}"
     end
@@ -1172,7 +1178,8 @@ module Mutineer
       conn.exec_params(sql, [k1, k2]).getvalue(0, 0) == "t"
     end
 
-    # Release one advisory lock this session holds for `base`.
+    # Release the exclusive advisory lock this session holds for `base`.
+    # A shared lock that the same session holds stays.
     #
     # @param conn [PG::Connection]
     # @param base [String]
@@ -1333,7 +1340,11 @@ module Mutineer
         end
         raise "another Mutineer run is using #{base}" unless downgrade_mysql_lock_to_shared(conn, base)
       rescue StandardError => e
-        release_held_mysql_locks(conn)
+        begin
+          release_held_mysql_locks(conn)
+        rescue StandardError
+          nil # A lost session holds no GET_LOCK name. Close it and report the first error (#571).
+        end
         conn.close
         raise e if provision_wrapped?(e)
 
@@ -1541,13 +1552,15 @@ module Mutineer
     end
 
     # Release the GET_LOCK names this session took for the current run.
+    # Clears the list even when a release raises, so a lost session leaves no stale names (#571).
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @return [void]
     def self.release_held_mysql_locks(conn)
       Array(@mysql_held_locks).each { |name| mysql_release_lock(conn, name) }
-      @mysql_held_locks = []
       nil
+    ensure
+      @mysql_held_locks = []
     end
 
     # One GET_LOCK name per worker daemon. The digest keeps each name inside 64
