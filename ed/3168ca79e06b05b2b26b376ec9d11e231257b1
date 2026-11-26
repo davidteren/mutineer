@@ -1,0 +1,35 @@
+action.yml
+  s_d1e28437164ffb::t_5cb0f1fadf2407 570-573
+docs/agentic-coding.html
+  s_d1e28437164ffb::t_e414a83088f063 91
+docs/agentic-coding.md
+  s_d1e28437164ffb::t_642bd50a035063 57
+docs/ci.md
+  s_d1e28437164ffb::t_a5606174eedbe9 114
+docs/json-schema.md
+  s_d1e28437164ffb::t_389773f16a264e 253-258
+docs/plans/2026-11-24-286-feat-ran-at-load-tested-count-plan.md
+  s_d1e28437164ffb::t_0588fb407c489d 296
+docs/rails-setup.md
+  s_d1e28437164ffb::t_cb628725c22603 68
+skills/mutineer/SKILL.md
+  s_d1e28437164ffb::t_09b3abc18b89c7 70
+test/fixtures/action_harness.sh
+  s_d1e28437164ffb::t_3728b9a7ba02b0 96-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed3168ca79e06b05b2b26b376ec9d11e231257b1",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
