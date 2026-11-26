@@ -293,6 +293,7 @@ The run takes the recommended option. Each row names the other option.
      - `mutant_with_diff_json`: the keyword and the line of KTD3. Add `@param tested [Boolean] also add tested (#286), for ran_at_load.`
      - `json_report`, the `ran_at_load:` list: call `mutant_with_diff_json(r, tested: true)`. Keep the `sort_by`.
      - `summary_html`: add `"ran_at_load (tested)" => @agg.ran_at_load_tested_count` right after `"ran_at_load"`.
+     - Built as `  tested:     %-6d` instead of `  after tests: %-6d`, so the number lines up with the other rows (PR #322, Decision D8).
      - `summary(out, ...)` (the human report): right after the `Ran at load:` row, add one more `format` row, printed at 0 too: `format("  after tests: %-6d  (of those: survived their tests before the load rule moved them, so each can hide a test gap; tested: true in --format json)", @agg.ran_at_load_tested_count)`. The label is 13 characters wide, as `Ran at load: ` is.
      - The comment of `attempted_count` says "Mutants that were actually run". Add one clause: a `ran_at_load` mutant that survived its tests also ran, and it is not counted here, because its result is not trusted.
   5. `docs/json-schema.md`:

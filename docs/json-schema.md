@@ -250,9 +250,12 @@ Each `ran_at_load[]` entry also has `tested` (boolean, new in schema `2.0`, #286
 the mutant `survived` with its tests and a load rule then moved it: the line rule above, or the block rule of #493
 below. Such a mutant can be a missing test or a kill that this run cannot see. It is `false` when no test was
 selected for the line, so the mutant never ran. `summary.ran_at_load_tested` counts the `true` entries. To get a
-verdict, run the load again with the mutant in place: `--test-command` for the file, or with `--only Class#method`
-for one method; `--strategy reload` with no boot file, when the class body of the mutated file made the call;
-`--daemon` with eager load off, when another class made the call.
+verdict, run the load again with the mutant in place. `--test-command` does that for every case: for the file, or
+with `--only Class#method` for one method. It cannot be combined with `--rails` or `--boot`: the test command boots
+the app itself. Two coverage-guided runs can kill such a mutant: `--strategy reload` with no boot file, when the
+class body of the mutated file made the call, and `--daemon` with eager load off, when another class made the call
+after the mutant loaded. A mutant that survives there is still `ran_at_load`, so only `--test-command` confirms a
+survivor.
 
 After 1.9.0, an in-process or `--daemon` run also gives this status to a survivor in another block or lambda literal
 (#493). Two conditions apply: the call that holds the block ran at load, and the mutated expression did not return
