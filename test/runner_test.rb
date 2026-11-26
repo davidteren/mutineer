@@ -576,6 +576,8 @@ class RunnerTest < Minitest::Test
       moved = candidate && probed && !reached && status == :survived
       assert_equal (moved ? :ran_at_load : status), after.status,
                    "candidate=#{candidate} probed=#{probed} reached=#{reached} #{status}"
+      # #286: a moved survivor is marked as one that survived its tests.
+      assert_equal moved, after.tested_at_load?, "candidate=#{candidate} probed=#{probed} reached=#{reached} #{status}"
     end
     %i[killed error timeout no_coverage ran_at_load].each do |status|
       result = Mutineer::Result.new(status: status)
@@ -626,6 +628,7 @@ class RunnerTest < Minitest::Test
       result = Mutineer::JobPlan.selection_verdict(:run, result, reached: reached)
       result = Mutineer::JobPlan.stored_block_verdict(result, candidate: candidate, probed: true, reached: reached)
       assert_equal :ran_at_load, result.status, "reached=#{reached}"
+      assert_predicate result, :tested_at_load?, "reached=#{reached}"
     end
   end
 

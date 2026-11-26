@@ -26,12 +26,16 @@ module Mutineer
     BROKEN_FLOOR = AggregateResult::BROKEN_FLOOR
 
     # Share of the mutants a run tried to score that may go unrun (unplaceable,
-    # skipped invalid, or unpaired) before stderr warns. A warning only: it
+    # skipped invalid, ran at load, or unpaired) before stderr warns. A warning only: it
     # never changes the exit code. {BROKEN_FLOOR} also applies, so one unrun
     # mutant never warns. `--fail-fast` leaves unpaired mutants out of this share.
     # Measured on Fizzy at f220e4832 (#349): unplaceable plus skipped invalid were
     # 0.12% with the default operators and at most 2.8% with all 21, so 10% stays.
     # With its unpaired mutants the share was 15.2%. That warning is correct.
+    # ran_at_load joined the share in 2.0 (#286). Measured share: 0 of 280 on
+    # the self-dogfood run (2026-11-24, c5100143), 0 of 63 on the Fizzy sample
+    # (2026-11-24, mutineer d770a991, with the block rule of #493), and 4 of
+    # 1,071 on a full Fizzy run (2026-11-09, before #493). So 10% stays.
     UNRUN_SHARE_LIMIT = 0.10
 
     # The unrun-share hint for mutants in sources with no paired test.
@@ -168,9 +172,10 @@ module Mutineer
                "#{(AggregateResult::BROKEN_SHARE_LIMIT * 100).round}% of those attempted (no_verdict[] in --format json)."
     end
 
-    # Warns when the unrun mutants (unplaceable plus skipped invalid) are more
-    # than {UNRUN_SHARE_LIMIT} of the mutants the run tried to score, and more
-    # than {BROKEN_FLOOR}. Every format, with or without --threshold; the exit
+    # Warns when the unrun mutants (unplaceable, skipped invalid and ran at
+    # load, plus unpaired unless `--fail-fast`) are more than
+    # {UNRUN_SHARE_LIMIT} of the mutants the run tried to score, and more than
+    # {BROKEN_FLOOR}. Every format, with or without --threshold; the exit
     # code does not change.
     #
     # @api private
@@ -185,13 +190,22 @@ module Mutineer
       parts = []
       parts << "#{@agg.unplaceable_count} unplaceable" if @agg.unplaceable_count.positive?
       parts << "#{@agg.skipped_invalid_count} skipped (invalid)" if @agg.skipped_invalid_count.positive?
+      ran = @agg.ran_at_load_count
+      parts << "#{ran} ran at load of which #{@agg.ran_at_load_tested_count} survived their tests" if ran.positive?
       parts << "#{unpaired_mutant_count} in sources with no paired test" if include_unpaired
       pct = (unrun * 100.0 / tried).round(1)
-      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score were not run " \
+      # A tested ran_at_load mutant did run, so "were not run" alone would be false (#286).
+      lead = ran.positive? ? "were not run or were classed as ran at load" : "were not run"
+      message = +"[mutineer] #{unrun} of the #{tried} mutants mutineer tried to score #{lead} " \
                  "(#{parts.join(', ')}; #{pct}%, limit #{(UNRUN_SHARE_LIMIT * 100).round}%). " \
                  "The score leaves them out. This warning does not change the exit code."
       if @agg.unplaceable_count.positive?
         message << " See unplaceable[] in --format json; --test-command runs them."
+      end
+      if ran.positive?
+        message << " A ran_at_load mutant is on a line that ran while the app or its class loaded, or in a " \
+                   "block whose call did, so this run cannot judge it. See ran_at_load[] in --format json: tested is true for one that survived " \
+                   "its tests. --test-command verifies them."
       end
       if @agg.skipped_invalid_count.positive?
         message << " A mutant skipped (invalid) did not re-parse after mutation. If its source file " \
@@ -301,6 +315,9 @@ module Mutineer
           uncapturable: @agg.uncapturable_count,
           unplaceable: @agg.unplaceable_count,
           ran_at_load: @agg.ran_at_load_count,
+          # Additive (2.0, #286): the ran_at_load mutants that survived their tests
+          # before a load rule moved them. Each can hide a test gap.
+          ran_at_load_tested: @agg.ran_at_load_tested_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
@@ -364,7 +381,8 @@ module Mutineer
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
         # Additive (1.11, #498): the diff, as on unplaceable.
-        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r) }
+        # Additive (2.0, #286): `tested`, true for one that survived its tests first.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r, tested: true) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -487,7 +505,8 @@ module Mutineer
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
-        "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
+        "ran_at_load" => @agg.ran_at_load_count, "ran_at_load (tested)" => @agg.ran_at_load_tested_count,
+        "ignored" => @agg.ignored_count,
         "dropped" => dropped_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
@@ -860,14 +879,16 @@ module Mutineer
     # @api private
     # @param result [Mutineer::Result] the mutant result.
     # @param seconds [Boolean] also add `seconds` (#495), for `killed`.
+    # @param tested [Boolean] also add `tested` (#286), for `ran_at_load`.
     # @return [Hash] {#mutant_json} with `diff`; `diff` is nil when the result
     #   has no subject or mutation.
-    def mutant_with_diff_json(result, seconds: false)
+    def mutant_with_diff_json(result, seconds: false, tested: false)
       row = mutant_json(result)
       copies = row.delete(:copies)
       row[:diff] = unified_diff(result)
       attach_diff(row, result)
       row[:seconds] = result.seconds&.round(3) if seconds
+      row[:tested] = result.tested_at_load? if tested
       row[:copies] = copies if copies
       row
     end
@@ -1302,6 +1323,9 @@ module Mutineer
       # Not a verdict: the line ran before the mutant was applied (#187).
       out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
                       "verify with --test-command)", @agg.ran_at_load_count)
+      # The part of those that survived their tests first: each can hide a test gap (#286).
+      out.puts format("  tested:     %-6d  (of those: survived their tests before the load rule moved them, so each " \
+                      "can hide a test gap; tested: true in --format json)", @agg.ran_at_load_tested_count)
       # Not mutants: candidates an operator chose not to mutate (#291).
       out.puts format("Declined:     %-6d  (candidates an operator did not mutate; --dry-run shows the count " \
                       "per operator%s)", declined.values.sum, scoped ? "; not narrowed by --since" : "")

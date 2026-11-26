@@ -93,6 +93,14 @@ grep -q 'copies `bbbbbbbbbbbb`' "$SCRATCH/case1b/summary.md" && echo "  OK: drop
 grep -q 'Copies: bbbbbbbbbbbb' "$SCRATCH/case1b/stdout.txt" && echo "  OK: dropped copy id on the annotation" || echo "  FAIL: copy id missing from the annotation"
 grep -q 'Dropped:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained a dropped line" || echo "  OK: old report has no dropped line"
 
+echo; echo "== 1b2: ran_at_load mutants that survived their tests (#286) =="
+cat > "$SCRATCH/report-ran-at-load.json" <<'JSON'
+{"schema_version":"2.0","summary":{"total":3,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"ran_at_load":2,"ran_at_load_tested":2},"survivors":[]}
+JSON
+run_step case1b2 STUB_REPORT="$SCRATCH/report-ran-at-load.json" STUB_EXIT=0
+grep -q 'Ran at load after tests: 2 mutant(s) survived their tests' "$SCRATCH/case1b2/summary.md" && echo "  OK: ran_at_load tested summary line" || echo "  FAIL: ran_at_load tested summary line"
+grep -q 'Ran at load after tests:' "$SCRATCH/case1/summary.md" && echo "  FAIL: report without the key gained a ran_at_load line" || echo "  OK: no ran_at_load line without the key"
+
 echo; echo "== 1c: unpaired sources (#481) =="
 cat > "$SCRATCH/report-unpaired.json" <<'JSON'
 {"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":3,"unpaired_mutants":12},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":5},{"file":"lib/c.rb","mutants":3}]}

@@ -17,9 +17,22 @@ All notable changes to this project are documented here. The format is based on
   report (#283).** `incomplete` says the run fails the completeness rule;
   each `unverified_survivors[]` entry is a baseline survivor this run did not
   decide, with its current `status`. Schema `2.0`.
+- **`summary.ran_at_load_tested` and `ran_at_load[].tested` (#286).** They
+  count and mark the `ran_at_load` mutants that survived their tests first: a
+  survivor on a line that ran at load, and a survivor in a block whose call
+  ran at load (#493). Such a mutant can hide a test gap. The human and HTML
+  reports show the count, and the Action step summary adds a line when it is
+  above 0. The score and the exit code do not change.
+  Schema `2.0`.
 
 ### Changed
 
+- **`ran_at_load` mutants count in the unrun share (#286).** When
+  `unplaceable`, skipped, `ran_at_load` and unpaired mutants together are
+  more than 1 and more than 10% of the mutants the run tried to score, stderr
+  warns, and names how many `ran_at_load` mutants survived their tests.
+  `--fail-fast` leaves unpaired mutants out of that sum, as before. The exit
+  code does not change.
 - **Breaking: `--baseline` fails an incomplete run, and a survivor without a
   verdict is not fixed (#283).** A run where nothing could be scored and
   something broke, or where more than one mutant has no verdict and they

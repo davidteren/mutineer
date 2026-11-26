@@ -446,6 +446,40 @@ class ReporterTest < Minitest::Test
     assert_includes s, "Mutation score: 50.0%"
   end
 
+  # #286: the human report has a tested row under Ran at load, at 0 too.
+  def test_human_report_counts_ran_at_load_that_survived_their_tests
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new)
+    assert_match(/^  tested:     1 +\(of those: survived their tests before the load rule moved them/, out.string)
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, Mutineer::Result.ran_at_load]).report(out: out, err: StringIO.new)
+    assert_match(/^  tested:     0 /, out.string)
+  end
+
+  def test_html_counts_tested_ran_at_load
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new, format: "html")
+    assert_includes out.string, "<span><strong>1</strong> ran_at_load (tested)</span>"
+  end
+
+  # #286 (R7): the mark changes no score, attempted count, no_verdict count or exit code.
+  def test_tested_ran_at_load_changes_no_score_or_exit_code
+    [true, false].each do |tested|
+      results = [Mutineer::Result.killed, Mutineer::Result.survived] +
+                Array.new(3) { Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: tested) }
+      rep = reporter(results)
+      assert_equal 50.0, aggregate(results).mutation_score, "tested=#{tested}"
+      assert_equal 0, rep.exit_code(threshold: 50.0), "tested=#{tested}"
+      assert_equal 1, rep.exit_code(threshold: 51.0), "tested=#{tested}"
+      # The JSON summary writes these two counts as they are.
+      assert_equal [2, 0], [aggregate(results).attempted_count, aggregate(results).no_verdict_count],
+                   "tested=#{tested}"
+    end
+  end
+
   def test_na_score_warns_on_stderr
     out = StringIO.new
     err = StringIO.new
@@ -625,6 +659,59 @@ class ReporterTest < Minitest::Test
 
   def test_unrun_warning_keeps_the_exit_code
     assert_equal 0, reporter(killed_and_unplaceable(2, 3)).exit_code(threshold: 80.0)
+  end
+
+  # #286: ran_at_load mutants join the unrun share, and the warning names how
+  # many of them survived their tests.
+  def ran_at_load_rows(count, tested: 0)
+    Array.new(count) { |i| Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: i < tested) }
+  end
+
+  def test_unrun_warning_names_ran_at_load_and_the_tested_part
+    err = unrun_err(Array.new(2) { Mutineer::Result.killed } + ran_at_load_rows(3, tested: 2))
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run or were classed as ran at load"
+    assert_includes err, "(3 ran at load of which 2 survived their tests; 60.0%, limit 10%)"
+    assert_includes err, "does not change the exit code"
+    assert_includes err, "ran_at_load[]"
+    # The block rule (#493) moves mutants whose own line did not run at load.
+    assert_includes err, "on a line that ran while the app or its class loaded, or in a block whose call did"
+    refute_includes err, "unplaceable"
+  end
+
+  def test_unrun_warning_lists_ran_at_load_after_unplaceable
+    err = unrun_err(killed_and_unplaceable(2, 1) + ran_at_load_rows(2))
+    assert_includes err, "(1 unplaceable, 2 ran at load of which 0 survived their tests; 60.0%"
+  end
+
+  # AE7: the rule is "more than 10%" and "more than 1".
+  def test_ran_at_load_share_uses_the_same_limits
+    assert_empty unrun_err(Array.new(18) { Mutineer::Result.killed } + ran_at_load_rows(2))
+    assert_includes unrun_err(Array.new(17) { Mutineer::Result.killed } + ran_at_load_rows(2)), "2 of the 19 mutants"
+    assert_empty unrun_err([Mutineer::Result.killed] + ran_at_load_rows(1))
+  end
+
+  # R11: the warning prints on JSON and under --threshold, and keeps the exit code.
+  def test_ran_at_load_warning_keeps_the_exit_code
+    results = Array.new(2) { Mutineer::Result.killed } + ran_at_load_rows(3, tested: 2)
+    assert_includes unrun_err(results, format: "json", threshold: 80.0), "classed as ran at load"
+    assert_equal 0, reporter(results).exit_code(threshold: 80.0)
+  end
+
+  # KTD7: with no ran_at_load mutant the lead stays "were not run".
+  def test_unrun_lead_without_ran_at_load_is_unchanged
+    err = unrun_err(killed_and_unplaceable(2, 3))
+    assert_includes err, "were not run ("
+    refute_includes err, "classed as"
+  end
+
+  def test_ran_at_load_and_unpaired_share_the_warning
+    results = Array.new(2) { Mutineer::Result.killed } + ran_at_load_rows(2)
+    _text, err = unpaired_report(results, { "lib/a.rb" => 2 })
+    assert_includes err, "4 of the 6 mutants"
+    assert_includes err, "(2 ran at load of which 0 survived their tests, 2 in sources with no paired test; 66.7%"
+    _text, err = unpaired_report(results, { "lib/a.rb" => 2 }, fail_fast: true)
+    assert_includes err, "(2 ran at load of which 0 survived their tests; 50.0%"
+    refute_includes err, "no paired test"
   end
 
   def test_human_summary_has_an_unpaired_line

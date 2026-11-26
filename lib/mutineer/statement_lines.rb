@@ -127,7 +127,7 @@ module Mutineer
     # call's strict lines, or the line it shares with other code when strict
     # mode drops every line. Empty when `offset` is not in such a call, or when
     # that call runs only sometimes. A line here ran only if the caller recorded
-    # it; an empty `each` on the same line can count without this call (#286).
+    # it; an empty `each` on the same line can count without this call (#588).
     #
     # @param def_node [Prism::DefNode] the method that holds the position.
     # @param source [String] the source text of the file.

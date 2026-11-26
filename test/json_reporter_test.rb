@@ -540,6 +540,44 @@ class JsonReporterTest < Minitest::Test
     assert doc["no_verdict"].first["diff"].start_with?("--- a/#{FILE}\n")
   end
 
+  # #286: a ran_at_load mutant that survived its tests is counted and marked,
+  # so a reader can see survivors that ran_at_load hides.
+  def test_ran_at_load_entries_say_which_survived_their_tests
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true, subject: subject,
+                                            id: "aaa111", mutation: mutation_at(">=", ">", :comparison))
+    plain = Mutineer::Result.ran_at_load.with(subject: subject, id: "bbb222",
+                                              mutation: mutation_at("100", "0", :literal_mutation))
+    doc = render([Mutineer::Result.killed, plain, tested])
+    assert_equal [2, 1], doc["summary"].values_at("ran_at_load", "ran_at_load_tested")
+    assert_equal [["aaa111", true], ["bbb222", false]], doc["ran_at_load"].map { |h| h.values_at("id", "tested") }
+  end
+
+  # #286: `tested` sits before `copies`, which stays the last key.
+  def test_tested_precedes_copies_on_a_ran_at_load_row
+    row = Mutineer::Result.ran_at_load.with(subject: subject, id: "kept00000004", tested_at_load: true,
+                                            mutation: mutation_at("100", "0", :literal_mutation))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([row]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000004" => ["drop00000004"] })
+    entry = JSON.parse(out.string)["ran_at_load"].first
+    assert_equal %w[diff tested copies], entry.keys.last(3)
+  end
+
+  # #286: only ran_at_load[] entries carry `tested`.
+  def test_other_lists_have_no_tested
+    m = mutation_at("100", "0", :literal_mutation)
+    rows = [Mutineer::Result.killed, Mutineer::Result.unplaceable, Mutineer::Result.error,
+            Mutineer::Result.ignored].each_with_index.map do |r, i|
+      r.with(subject: subject, mutation: m, id: "notested#{i}", tested_at_load: true)
+    end
+    doc = render(rows)
+    %w[killed unplaceable no_verdict ignored].each do |list|
+      refute_empty doc[list], list
+      doc[list].each { |entry| refute entry.key?("tested"), list }
+    end
+  end
+
   # copies stays the last key on a row that gains diff and seconds.
   def test_copies_follow_the_diff_on_a_killed_row
     out = StringIO.new
