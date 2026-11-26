@@ -770,6 +770,8 @@ class CoverageMapTest < Minitest::Test
                                  /not the shape a coverage cache saves/],
       "an infinite timing" => [->(_root, cache) { File.write(cache, File.read(cache).sub(/"timings":\{/, '"timings":{"zz_test.rb":1e400,')) },
                                /not the shape a coverage cache saves/],
+      "a negative timing" => [->(_root, cache) { edit_cache.(cache) { |c| c["timings"] = { "alpha_test.rb" => -1.0 } } },
+                              /not the shape a coverage cache saves/],
       "a malformed map" => [->(_root, cache) { edit_cache.(cache) { |c| c["map"] = { "alpha.rb:5" => "alpha_test.rb" } } },
                             /not the shape a coverage cache saves/],
       "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]
@@ -2083,6 +2085,28 @@ class CoverageMapTest < Minitest::Test
     map = build([STRONG_TEST], cache_dir: dir)
     assert map.phase_a_ran
     refute_empty map.tests_for(CALC, line_of("a + b"))
+  end
+
+  # #546: a hand-edited run cache with a bad timing is a cache miss, not a backtrace.
+  def test_run_cache_with_a_bad_timing_is_rebuilt
+    dir = Dir.mktmpdir("mutineer-cache")
+    assert build([STRONG_TEST], cache_dir: dir).phase_a_ran
+    path = File.join(dir, "coverage.json")
+    data = JSON.parse(File.read(path))
+    ["fast", -1.0].each do |bad|
+      data["timings"] = { STRONG_TEST => bad }
+      File.write(path, JSON.generate(data))
+      map = build([STRONG_TEST], cache_dir: dir)
+      assert map.phase_a_ran, "a timing of #{bad.inspect} must miss the cache"
+      assert_equal [STRONG_TEST], map.order_tests(CALC, [STRONG_TEST])
+    end
+  end
+
+  # A failed file timed far below the fastest passing one gives no negative log2 argument.
+  def test_order_tests_survives_a_failed_file_timed_below_the_floor
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["a_test.rb"], project_root: ROOT,
+                                          timings: { "a_test.rb" => 0.0, "b_test.rb" => 5.0 })
+    assert_equal %w[a_test.rb b_test.rb], map.order_tests(CALC, %w[b_test.rb a_test.rb])
   end
 
   # --- Acceptance: runner Phase B selection --------------------------------
