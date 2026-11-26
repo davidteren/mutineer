@@ -1,0 +1,23 @@
+docs/plans/2026-11-24-283-343-fix-baseline-completeness-plan.md
+  s_d1e28437164ffb::t_8a0c63ad3c0ad9 388-389,397
+test/action_harness_test.rb
+  s_d1e28437164ffb::t_c95bd77e2aa78c 37,123
+test/fixtures/action_harness.sh
+  s_d1e28437164ffb::t_d1f96e527d976f 552-555
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d0c6f1132248cbaa4def465a3a745149c01c12f",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
