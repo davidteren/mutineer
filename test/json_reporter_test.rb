@@ -540,7 +540,6 @@ class JsonReporterTest < Minitest::Test
     assert doc["no_verdict"].first["diff"].start_with?("--- a/#{FILE}\n")
   end
 
-  # copies stays the last key on a row that gains diff and seconds.
   # #286: a ran_at_load mutant that survived its tests is counted and marked,
   # so a reader can see survivors that ran_at_load hides.
   def test_ran_at_load_entries_say_which_survived_their_tests
@@ -579,6 +578,7 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # copies stays the last key on a row that gains diff and seconds.
   def test_copies_follow_the_diff_on_a_killed_row
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant(id: "kept00000003")]), { FILE => SRC })
