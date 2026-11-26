@@ -252,8 +252,7 @@ below. Such a mutant can be a missing test or a kill that this run cannot see. I
 selected for the line, so the mutant never ran. `summary.ran_at_load_tested` counts the `true` entries. To get a
 verdict, run the load again with the mutant in place. `--test-command` does that for every case: for the file, or
 with `--only Class#method` for one method. It refuses a boot file (`--rails`, `--boot`, or a `rails:` or `boot:` key in
-`.mutineer.yml`), because the test command boots the app itself, and it refuses `--strategy redefine` (also as a
-`strategy:` key). Two coverage-guided runs can kill such a mutant: `--strategy reload` with no boot file, when the
+`.mutineer.yml`), because the test command boots the app itself, and it refuses `--strategy redefine`. Two coverage-guided runs can kill such a mutant: `--strategy reload` with no boot file, when the
 class body of the mutated file made the call, and `--daemon` with eager load off, when another class made the call
 after the mutant loaded. A mutant that survives there is still `ran_at_load`, so only `--test-command` confirms a
 survivor.
