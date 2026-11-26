@@ -29,8 +29,9 @@ All notable changes to this project are documented here. The format is based on
 - **`ran_at_load` mutants count in the unrun share (#286).** When
   `unplaceable`, skipped, `ran_at_load` and unpaired mutants together are
   more than 1 and more than 10% of the mutants the run tried to score, stderr
-  warns, and names how many `ran_at_load` mutants survived their tests. The
-  exit code does not change.
+  warns, and names how many `ran_at_load` mutants survived their tests.
+  `--fail-fast` leaves unpaired mutants out of that sum, as before. The exit
+  code does not change.
 - **Breaking: `--baseline` fails an incomplete run, and a survivor without a
   verdict is not fixed (#283).** A run where nothing could be scored and
   something broke, or where more than one mutant has no verdict and they
