@@ -763,7 +763,8 @@ module Mutineer
     # expression return during a test (#493): the tests ran a copy of the
     # block that the load stored, or did not run the mutated code. Any other
     # result comes back unchanged. A `--matrix` row is kept. The callers run
-    # this after {load_verdict} and {selection_verdict}.
+    # this after {load_verdict} and {selection_verdict}. The moved result is
+    # marked `tested_at_load`, because it survived its tests first (#286).
     #
     # @param result [Mutineer::Result] the mutant's verdict.
     # @param candidate [Boolean] the answer of {stored_block_candidate?}.
@@ -776,11 +777,13 @@ module Mutineer
     def self.stored_block_verdict(result, candidate:, probed:, reached:)
       return result unless candidate && probed && result.survived? && !reached
 
-      result.with(status: :ran_at_load)
+      result.with(status: :ran_at_load, tested_at_load: true)
     end
 
     # A survivor whose line ran at load becomes `ran_at_load` ({ran_at_load?});
-    # any other result comes back unchanged. A `--matrix` row is kept.
+    # any other result comes back unchanged. A `--matrix` row is kept. The
+    # moved result is marked `tested_at_load`, because it survived its tests
+    # first (#286).
     #
     # @param result [Mutineer::Result] the mutant's verdict.
     # @param source_file [String] the mutated source file path.
@@ -792,7 +795,7 @@ module Mutineer
     def self.load_verdict(result, source_file, mutation, subject, source, coverage_map)
       return result unless result.survived? && ran_at_load?(source_file, mutation, subject, source, coverage_map)
 
-      result.with(status: :ran_at_load)
+      result.with(status: :ran_at_load, tested_at_load: true)
     end
 
     # Map each line number to `{ ops:, reason: }`, using inline

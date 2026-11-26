@@ -301,6 +301,9 @@ module Mutineer
           uncapturable: @agg.uncapturable_count,
           unplaceable: @agg.unplaceable_count,
           ran_at_load: @agg.ran_at_load_count,
+          # Additive (2.0, #286): the ran_at_load mutants that survived their tests
+          # before a load rule moved them. Each can hide a test gap.
+          ran_at_load_tested: @agg.ran_at_load_tested_count,
           skipped_invalid: @agg.skipped_invalid_count,
           errored: @agg.errored_count, timeout: @agg.timeout_count,
           ignored: @agg.ignored_count,
@@ -364,7 +367,8 @@ module Mutineer
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Additive (1.7, #187): mutants on a line that ran at load. Not in no_verdict.
         # Additive (1.11, #498): the diff, as on unplaceable.
-        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r) }
+        # Additive (2.0, #286): `tested`, true for one that survived its tests first.
+        ran_at_load: @agg.results.select(&:ran_at_load?).map { |r| mutant_with_diff_json(r, tested: true) }
                          .sort_by { |h| [h[:file], h[:line], h[:operator], h[:id].to_s] },
         # Every mutant that was attempted and produced no verdict, whatever the
         # reason — the set the --threshold completeness gate counts. Named for the
@@ -487,7 +491,8 @@ module Mutineer
         "total" => @agg.total, "killed" => @agg.killed_count,
         "survived" => @agg.survived_count, "no_coverage" => @agg.no_coverage_count,
         "uncapturable" => @agg.uncapturable_count, "unplaceable" => @agg.unplaceable_count,
-        "ran_at_load" => @agg.ran_at_load_count, "ignored" => @agg.ignored_count,
+        "ran_at_load" => @agg.ran_at_load_count, "ran_at_load (tested)" => @agg.ran_at_load_tested_count,
+        "ignored" => @agg.ignored_count,
         "dropped" => dropped_count,
         "skipped" => @agg.skipped_invalid_count,
         "errored" => @agg.errored_count, "timeout" => @agg.timeout_count,
@@ -860,14 +865,16 @@ module Mutineer
     # @api private
     # @param result [Mutineer::Result] the mutant result.
     # @param seconds [Boolean] also add `seconds` (#495), for `killed`.
+    # @param tested [Boolean] also add `tested` (#286), for `ran_at_load`.
     # @return [Hash] {#mutant_json} with `diff`; `diff` is nil when the result
     #   has no subject or mutation.
-    def mutant_with_diff_json(result, seconds: false)
+    def mutant_with_diff_json(result, seconds: false, tested: false)
       row = mutant_json(result)
       copies = row.delete(:copies)
       row[:diff] = unified_diff(result)
       attach_diff(row, result)
       row[:seconds] = result.seconds&.round(3) if seconds
+      row[:tested] = result.tested_at_load? if tested
       row[:copies] = copies if copies
       row
     end
@@ -1302,6 +1309,9 @@ module Mutineer
       # Not a verdict: the line ran before the mutant was applied (#187).
       out.puts format("Ran at load:  %-6d  (ran while the app or class loaded; mutineer cannot re-run that; " \
                       "verify with --test-command)", @agg.ran_at_load_count)
+      # The part of those that survived their tests first: each can hide a test gap (#286).
+      out.puts format("  tested:     %-6d  (of those: survived their tests before the load rule moved them, so each " \
+                      "can hide a test gap; tested: true in --format json)", @agg.ran_at_load_tested_count)
       # Not mutants: candidates an operator chose not to mutate (#291).
       out.puts format("Declined:     %-6d  (candidates an operator did not mutate; --dry-run shows the count " \
                       "per operator%s)", declined.values.sum, scoped ? "; not narrowed by --since" : "")

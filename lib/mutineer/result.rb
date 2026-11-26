@@ -47,6 +47,12 @@ module Mutineer
   #                  Excluded from
   #                  the denominator and from the no-verdict gate, like
   #                  unplaceable. `--test-command` verifies these mutants.
+  #                  `tested_at_load` is true when the run scored the mutant
+  #                  survived with its tests and a load rule then moved it
+  #                  (JobPlan.load_verdict, JobPlan.stored_block_verdict), so
+  #                  the mutant may hide a test gap (#286). It is false when
+  #                  no test was selected, so the mutant never ran
+  #                  (JobPlan.coverage_selection).
   #   ignored      - a known-equivalent mutant the user suppressed, via an
   #                  inline `# mutineer:disable-line` comment or a
   #                  `.mutineer.yml` `ignore:` id. A pre-fork classification
@@ -82,9 +88,11 @@ module Mutineer
   # from a fork back to the process that forked it, so both ends always run the
   # same code. Nothing persists a marshaled Result (reports, baselines and the
   # coverage cache are JSON), so a new field needs no Marshal compatibility.
-  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason, :seconds) do
-    # Every field but `status` defaults to nil. `reason` is the text a user
-    # gave for an ignored mutant, from an inline marker or an `ignore:` mapping.
+  Result = Data.define(:status, :details, :subject, :mutation, :id, :kills, :reason, :seconds,
+                       :tested_at_load) do
+    # Every field but `status` defaults to nil, and `tested_at_load` to false.
+    # `reason` is the text a user gave for an ignored mutant, from an inline
+    # marker or an `ignore:` mapping.
     #
     # @param status [Symbol] the outcome.
     # @param details [String, nil] error or skip details.
@@ -94,8 +102,9 @@ module Mutineer
     # @param kills [Mutineer::Kills, nil] the matrix row of a `--matrix` run.
     # @param reason [String, nil] why an ignored mutant was suppressed.
     # @param seconds [Float, nil] wall-clock seconds of the mutant's run step.
+    # @param tested_at_load [Boolean] a ran_at_load mutant that the run scored survived before a load rule moved it (#286).
     def initialize(status:, details: nil, subject: nil, mutation: nil, id: nil, kills: nil, reason: nil,
-                   seconds: nil)
+                   seconds: nil, tested_at_load: false)
       super
     end
 
@@ -171,6 +180,8 @@ module Mutineer
     def ran_at_load?  = status == :ran_at_load
     # @return [Boolean] true when the status is ignored.
     def ignored?      = status == :ignored
+    # @return [Boolean] true for a ran_at_load mutant that survived its tests before a load rule moved it (#286).
+    def tested_at_load? = tested_at_load == true
 
   end
 
@@ -233,6 +244,8 @@ module Mutineer
     def unplaceable_count     = count(:unplaceable)
     # @return [Integer] ran-at-load count.
     def ran_at_load_count     = count(:ran_at_load)
+    # @return [Integer] ran-at-load mutants that survived their tests before a load rule moved them (#286).
+    def ran_at_load_tested_count = (@by_status[:ran_at_load] || []).count(&:tested_at_load?)
     # @return [Integer] skipped-invalid count.
     def skipped_invalid_count = count(:skipped)
     # @return [Integer] errored count.
@@ -281,6 +294,9 @@ module Mutineer
     # re-parse and was correctly never run, which is a validity outcome rather
     # than a broken harness. Cost: an overwhelmingly-skipped run still scores on
     # what little ran; that is our operator misbehaving and wants its own signal.
+    #
+    # A ran_at_load mutant that survived its tests (`tested_at_load`) also ran.
+    # It is not counted here, because its result is not trusted (#286).
     #
     # @return [Integer] killed + survived + no-verdict.
     def attempted_count = killed_count + survived_count + no_verdict_count

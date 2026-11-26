@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format is based on
   report (#283).** `incomplete` says the run fails the completeness rule;
   each `unverified_survivors[]` entry is a baseline survivor this run did not
   decide, with its current `status`. Schema `2.0`.
+- **`summary.ran_at_load_tested` and `ran_at_load[].tested` (#286).** They
+  count and mark the `ran_at_load` mutants that survived their tests first: a
+  survivor on a line that ran at load, and a survivor in a block whose call
+  ran at load (#493). Such a mutant can hide a test gap. The human and HTML
+  reports show the count. The score and the exit code do not change.
+  Schema `2.0`.
 
 ### Changed
 

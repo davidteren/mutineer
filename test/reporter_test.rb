@@ -446,6 +446,40 @@ class ReporterTest < Minitest::Test
     assert_includes s, "Mutation score: 50.0%"
   end
 
+  # #286: the human report has a tested row under Ran at load, at 0 too.
+  def test_human_report_counts_ran_at_load_that_survived_their_tests
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new)
+    assert_match(/^  tested:     1 +\(of those: survived their tests before the load rule moved them/, out.string)
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, Mutineer::Result.ran_at_load]).report(out: out, err: StringIO.new)
+    assert_match(/^  tested:     0 /, out.string)
+  end
+
+  def test_html_counts_tested_ran_at_load
+    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
+    out = StringIO.new
+    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new, format: "html")
+    assert_includes out.string, "<span><strong>1</strong> ran_at_load (tested)</span>"
+  end
+
+  # #286 (R7): the mark changes no score, attempted count, no_verdict count or exit code.
+  def test_tested_ran_at_load_changes_no_score_or_exit_code
+    [true, false].each do |tested|
+      results = [Mutineer::Result.killed, Mutineer::Result.survived] +
+                Array.new(3) { Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: tested) }
+      rep = reporter(results)
+      assert_equal 50.0, aggregate(results).mutation_score, "tested=#{tested}"
+      assert_equal 0, rep.exit_code(threshold: 50.0), "tested=#{tested}"
+      assert_equal 1, rep.exit_code(threshold: 51.0), "tested=#{tested}"
+      # The JSON summary writes these two counts as they are.
+      assert_equal [2, 0], [aggregate(results).attempted_count, aggregate(results).no_verdict_count],
+                   "tested=#{tested}"
+    end
+  end
+
   def test_na_score_warns_on_stderr
     out = StringIO.new
     err = StringIO.new
