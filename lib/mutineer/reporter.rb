@@ -203,8 +203,8 @@ module Mutineer
         message << " See unplaceable[] in --format json; --test-command runs them."
       end
       if ran.positive?
-        message << " A ran_at_load mutant is on code that ran while the app or its class loaded, so this run " \
-                   "cannot judge it. See ran_at_load[] in --format json: tested is true for one that survived " \
+        message << " A ran_at_load mutant is on a line that ran while the app or its class loaded, or in a " \
+                   "block whose call did, so this run cannot judge it. See ran_at_load[] in --format json: tested is true for one that survived " \
                    "its tests. --test-command verifies them."
       end
       if @agg.skipped_invalid_count.positive?

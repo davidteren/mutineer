@@ -673,6 +673,8 @@ class ReporterTest < Minitest::Test
     assert_includes err, "(3 ran at load of which 2 survived their tests; 60.0%, limit 10%)"
     assert_includes err, "does not change the exit code"
     assert_includes err, "ran_at_load[]"
+    # The block rule (#493) moves mutants whose own line did not run at load.
+    assert_includes err, "on a line that ran while the app or its class loaded, or in a block whose call did"
     refute_includes err, "unplaceable"
   end
 
