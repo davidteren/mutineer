@@ -385,6 +385,8 @@ R13 needs care: with no delta the template line must add no blank line. Follow w
    # every 2.0.0 prerelease and above every 1.x release.
    if [ "$FORMAT" != "json" ] && [ -n "$baseline_path" ]; then
      gem_ver="$("${runner[@]}" --version 2>/dev/null || echo 0)"
+     # Gem output goes into a workflow command: escape %, CR and LF.
+     safe_ver="${gem_ver//%/%25}"; safe_ver="${safe_ver//$'\r'/%0D}"; safe_ver="${safe_ver//$'\n'/%0A}"
      if ! ruby -e 'exit(Gem::Version.correct?(ARGV[0]) && Gem::Version.new(ARGV[0]) >= Gem::Version.new("2.0.0.A") ? 0 : 1)' "$gem_ver" 2>/dev/null; then
        echo "::error::mutineer: resolved mutineer $safe_ver, but a baseline with a format other than json needs >= 2.0.0. An older gem passes an incomplete baseline run, and only the json report shows it. Upgrade the Gemfile pin or the version input, or set format: json."
        exit 2
@@ -392,7 +394,7 @@ R13 needs care: with no delta the template line must add no blank line. Follow w
    fi
    ```
 
-   Do not print `$FORMAT` or the baseline path in the message. Both are user input, and a newline in a workflow command is an injection. `$gem_ver` is already printed by the `since` floor.
+   Do not print `$FORMAT` or the baseline path in the message. Both are user input, and a newline in a workflow command is an injection. The version is already printed by the `since` floor, escaped as `$safe_ver`.
 4. The `baseline` input description: add "With a format other than json, the gem must be 2.0.0 or later (a 2.0.0 prerelease also passes; the action exits 2 for an older gem)." As built, `$gem_ver` is escaped as `$safe_ver` before it goes into the workflow command.
 
 **Harness (`test/fixtures/action_harness.sh`).** The stub prints `1.0.0` for `--version`. Change that line to print `${STUB_VERSION:-1.0.0}` (escaped as `\${STUB_VERSION:-1.0.0}` inside the unquoted heredoc). Add cases after `case24`:

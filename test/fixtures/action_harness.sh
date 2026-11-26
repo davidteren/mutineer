@@ -549,3 +549,7 @@ run_step case26g BASELINE="$SCRATCH/base26.json" STUB_EXIT=1
 echo; echo "== 26h: a gem version with % and a newline is escaped in the floor message =="
 run_step case26h FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=$'9%\nX'
 grep -q 'resolved mutineer 9%25%0AX, but a baseline' "$SCRATCH/case26h/stdout.txt" && echo "  OK: case26h version escaped" || echo "  FAIL: case26h version not escaped"
+
+echo; echo "== 26i: the since floor escapes a gem version with % and a newline too =="
+run_step case26i SINCE=none STUB_VERSION=$'0%\nX'
+grep -q 'resolved mutineer 0%25%0AX, but the action' "$SCRATCH/case26i/stdout.txt" && echo "  OK: case26i version escaped" || echo "  FAIL: case26i version not escaped"
