@@ -268,8 +268,9 @@ class ReloadGuardsTest < Minitest::Test
     e = Callback.new(:before, :check)
     other = Callback.new(:before, :other)
     after = Callback.new(:after, :check)
+    named_after = Callback.new(:before, :after)
     klass = callback_class
-    klass.__callbacks = { save: Chain.new(e, other, after) }
+    klass.__callbacks = { save: Chain.new(e, other, after, named_after) }
     with_callbacks_before_load(klass => { save: Chain.new(e, after) }) do
       guards = Mutineer::ReloadGuards
       assert_nil guards.fresh_conditional_skips(klass, :save, %i[before check])
@@ -278,7 +279,7 @@ class ReloadGuardsTest < Minitest::Test
                    "other is a new entry, so Rails gets it"
       assert_nil guards.fresh_conditional_skips(klass, :save, %i[after check])
       # With no kind, a left filter named :after must not land in the kind slot.
-      assert_equal %i[before other], guards.fresh_conditional_skips(klass, :save, %i[check other])
+      assert_equal %i[before after], guards.fresh_conditional_skips(klass, :save, %i[check after])
       args = %i[before]
       assert_same args, guards.fresh_conditional_skips(klass, :save, args), "no filter"
       args = []
