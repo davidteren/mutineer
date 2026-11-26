@@ -587,6 +587,8 @@ class CallSuperclassReloadTest < Minitest::Test
   RERUNNABLE_BLOCKS = {
     "" => [true, nil],
     "def a; end" => [true, "K.instance_method(:a)"],
+    "def Other.a; end" => [false, nil],
+    "class << Other\n  def a; end\nend" => [false, nil],
     "private\n  def a; end" => [true, "K.instance_method(:a)"],
     "private def a = 1" => [true, "K.instance_method(:a)"],
     "attr_reader :b" => [true, nil],
@@ -691,6 +693,65 @@ class CallSuperclassReloadTest < Minitest::Test
     assert_equal :fresh, fresh.new(1).tag
   end
 
+  # #585: a second run of a reopened builder block that undoes a change
+  # another file made would give a false kill, so the load raises. A load
+  # with no such change runs as before.
+  REOPEN_585 = "KeptPoint585 = Struct.new(:x) do\n  def y = 1\n  def label = \"p\"\n  def to_s = label\n  " \
+               "def self.w = 1\n  class KeptInner585\n    def z = 1\n    def self.v = 1\n  end\nend\n"
+  OTHER_FILE_CHANGES_585 = {
+    "class KeptPoint585\n  alias_method :raw_y, :y\n  def y = raw_y + 1\nend\n" => "KeptPoint585#y (",
+    "def KeptPoint585.w = 5\n" => "#<Class:KeptPoint585>#w (",
+    "class KeptInner585\n  def z = 5\nend\n" => "KeptInner585#z (",
+    "class KeptPoint585\n  alias_method :to_s, :label\nend\n" => "KeptPoint585#to_s (alias of label)",
+    "class KeptPoint585\n  private :y\nend\n" => "KeptPoint585#y (",
+    "class KeptPoint585\n  remove_method :label\nend\n" => "KeptPoint585#label (removed)",
+    "class << KeptPoint585\n  remove_method :w\nend\n" => "#<Class:KeptPoint585>#w (removed)",
+    "class KeptInner585\n  remove_method :z\nend\n" => "KeptInner585#z (removed)",
+    "def KeptInner585.v = 5\n" => "#<Class:KeptInner585>#v ("
+  }.freeze
+
+  def test_reopened_constant_raises_when_its_block_undoes_a_change_from_another_file
+    OTHER_FILE_CHANGES_585.each do |other_text, named|
+      Dir.mktmpdir do |dir|
+        source = File.join(dir, "kept_point585.rb")
+        other = File.join(dir, "kept_point585_ext.rb")
+        mutant = File.join(dir, "kept_point585_mutant.rb")
+        File.write(source, REOPEN_585)
+        File.write(mutant, Mutineer::JobPlan.keep_live_superclasses(REOPEN_585.sub("def y = 1", "def y = 2")))
+        load source
+        Mutineer::ConcernBlocks.load_mutant(source, mutant)
+        assert_equal 2, KeptPoint585.new(1).y, "no other file changed the class, so the block runs again"
+
+        File.write(other, other_text)
+        load other
+        error = assert_raises(RuntimeError, other_text) { Mutineer::ConcernBlocks.load_mutant(source, mutant) }
+        assert_includes error.message, named, other_text
+        refute_includes error.message, "raw_y", "an alias of the source file's own method is not another file's"
+      end
+    ensure
+      %i[KeptPoint585 KeptInner585].each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
+    end
+    # The same file may set a visibility after the block, so that check runs
+    # after the whole file. A later class statement of the file that defines
+    # a method again is the reload's own redefinition, not the block's.
+    Dir.mktmpdir do |dir|
+      source = File.join(dir, "kept_point585.rb")
+      other = File.join(dir, "kept_point585_ext.rb")
+      mutant = File.join(dir, "kept_point585_mutant.rb")
+      text = "#{REOPEN_585}class KeptPoint585\n  private :label\n  def z = 1\nend\n"
+      File.write(source, text)
+      File.write(mutant, Mutineer::JobPlan.keep_live_superclasses(text.sub("def y = 1", "def y = 2")))
+      load source
+      File.write(other, "class KeptPoint585\n  def z = 5\nend\n")
+      load other
+      Mutineer::ConcernBlocks.load_mutant(source, mutant)
+      assert_equal 2, KeptPoint585.new(1).y
+      assert_includes KeptPoint585.private_instance_methods(false), :label
+    ensure
+      %i[KeptPoint585 KeptInner585].each { |name| Object.send(:remove_const, name) if Object.const_defined?(name, false) }
+    end
+  end
+
   def builder_run(test)
     %w[reload redefine].to_h do |strategy|
       [strategy, run_strategy(strategy, sources: %w[builder_constant.rb builder_constant_holders.rb], test: test)]
@@ -758,6 +819,11 @@ class CallSuperclassReloadTest < Minitest::Test
     "def self.build_base = Struct.new(:a)\nclass Q < (b = build_base)\nend\n" => :as_written,
     "def self.build_base = Struct.new(:a)\nclass Q < Factory.build_base\nend\n" => :as_written,
     "def self.build_base = Struct.new(:a)\nclass Q < Class.new(build_base)\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < send(:build_base)\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < method(:build_base).call\nend\n" => :as_written,
+    "def self.build_base = Struct.new(:a)\nclass Q < Class.new(Factory.public_send(name))\nend\n" => :as_written,
+    "class Q < Class.new(Factory.public_send(name))\nend\n" => :wrapped,
+    "BASE = :build_base\ndef self.build_base = Struct.new(:a)\nclass Q < method(BASE).call\nend\n" => :as_written,
     "Fields = Struct.new(*NAMES)\nclass Q < Class.new(Fields)\nend\n" => :as_written,
     "Fields = build_fields\nclass Q < DelegateClass(Fields)\nend\n" => :as_written,
     "A, Fields = 1, Struct.new(:v)\nclass Q < Class.new(Fields)\nend\n" => :as_written,

@@ -88,9 +88,11 @@ module Mutineer
     # an {INDIRECT_RESHAPE_CALLS} call with a receiver counts every constant it
     # writes, as does a file with a {STRING_EVALS} call with arguments, a
     # `send` with a computed name (anywhere, since it may run `eval`), or a
-    # `class << expr` statement whose body is unsafe. Such a constant is built again on each load, as
-    # before #528. A change made in another file, or through a call outside
-    # that list (`method(:alias_method).call`), is not seen (#585).
+    # `class << expr` statement whose body is unsafe. A literal name in
+    # `send(:alias_method)` or `method(:alias_method)` counts as that call
+    # ({sent_name}). Such a constant is built again on each load, as before
+    # #528. A change made in another file is not seen here:
+    # {ReloadGuards.reopened_constant} raises when a rerun replaces it (#585).
     #
     # @param program [Prism::ProgramNode] the parsed file.
     # @return [Set<Symbol>]
@@ -147,21 +149,29 @@ module Mutineer
     # The calls that run a method named by their first argument.
     SEND_CALLS = %i[send public_send __send__].freeze
 
+    # The calls that return a method by name for a later `call`
+    # (`k.method(:alias_method).call(...)`).
+    METHOD_READS = %i[method public_method instance_method].freeze
+
     # The method a call runs: its own name, or the literal symbol or string
     # it passes to `send`, `public_send` or `__send__`
-    # (`k.send(:alias_method, ...)`). A computed name, or a `send` of a
-    # `send`, gives nil, which may be any method, so the caller fails closed.
+    # (`k.send(:alias_method, ...)`), or to a {METHOD_READS} call
+    # (`k.method(:alias_method)`). A computed name, or a `send` of a `send`
+    # or of a {METHOD_READS} call, gives nil, which may be any method, so the
+    # caller fails closed.
     #
     # @param call [Prism::CallNode]
     # @return [Symbol, nil]
     def self.sent_name(call)
-      return call.name unless SEND_CALLS.include?(call.name)
+      return call.name unless METHOD_READS.include?(call.name) || SEND_CALLS.include?(call.name)
+      # `request.method` with no argument is an HTTP verb, not a method lookup.
+      return call.name if call.arguments.nil? && METHOD_READS.include?(call.name)
 
       first = call.arguments&.arguments&.first
       return nil unless first.is_a?(Prism::SymbolNode) || first.is_a?(Prism::StringNode)
 
       name = first.unescaped.to_sym
-      SEND_CALLS.include?(name) ? nil : name
+      SEND_CALLS.include?(name) || METHOD_READS.include?(name) ? nil : name
     end
 
 
@@ -254,9 +264,10 @@ module Mutineer
     end
 
     # Whether each statement of a builder block's body is safe to run again on
-    # the same class: a def; a {RERUN_SAFE_CALLS} call with no receiver, no
-    # block, and def or literal arguments; a constant write whose value is a
-    # {kept_builder?} or is {class_state_free?}; or a `class`, `module` or
+    # the same class: a def on the class or `self` not named in {HOOK_DEFS}; a {RERUN_SAFE_CALLS}
+    # call with no receiver, no block, and def or literal arguments; a
+    # constant write whose value is a {kept_builder?}, or is
+    # {class_state_free?} and not {makes_object?}; or a `class`, `module` or
     # `class << self` statement whose own body passes the same test. Anything
     # else can read the earlier state of the class (`alias_method`, `include`,
     # whose `included` hook Ruby runs again, `ORIG = instance_method(:x)`), so
@@ -270,8 +281,10 @@ module Mutineer
 
       body.body.all? do |statement|
         case statement
-        when Prism::DefNode then !HOOK_DEFS.include?(statement.name)
-        when Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode then rerunnable_body?(statement.body)
+        # `def Other.m` and `class << Other` change another object, which the rerun check does not see (#585).
+        when Prism::DefNode then !HOOK_DEFS.include?(statement.name) && self_or_none?(statement.receiver)
+        when Prism::ClassNode, Prism::ModuleNode then rerunnable_body?(statement.body)
+        when Prism::SingletonClassNode then self_or_none?(statement.expression) && rerunnable_body?(statement.body)
         when Prism::ConstantWriteNode, Prism::ConstantPathWriteNode
           kept_builder?(statement.value) || (class_state_free?(statement.value) && !makes_object?(statement.value))
         when Prism::CallNode
@@ -282,6 +295,12 @@ module Mutineer
         else false
         end
       end
+    end
+
+    # @param node [Prism::Node, nil] a def's receiver or a `class << expr` expression.
+    # @return [Boolean] whether it is absent or `self`.
+    def self.self_or_none?(node)
+      node.nil? || node.is_a?(Prism::SelfNode)
     end
 
     # The hook methods Ruby calls while a class body runs. A second run of a

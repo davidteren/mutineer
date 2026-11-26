@@ -179,16 +179,125 @@ module Mutineer
     # new class after they build it, so with no live class this gives what the
     # original text gives.
     #
+    # Another file can change the live class (`class Point` with
+    # `alias_method :raw_y, :y` and a new `def y`). A second run of the block
+    # undoes that change, and a test that expects it would fail for every
+    # mutant, a false kill (#585). So when the run replaces a method from
+    # another file or an alias, or adds back a method another file removed
+    # ({lost_changes}), in the class, a class or module statement in the
+    # block, or the singleton class of either, this raises, and the mutant scores
+    # `error`. A visibility the run changed is checked once the whole file
+    # has loaded ({check_reruns!}), because a later line of the same file may
+    # set it again (`class Point; private :y; end`).
+    #
     # @param scope [Module, nil] the module the constant is assigned in; nil
     #   at the top level.
     # @param name [Symbol] the constant name.
     # @param builder [Proc] builds the class, as the original text would.
     # @yield the builder block, run on the class.
+    # @raise [RuntimeError] naming each lost change.
     # @return [Class]
     def self.reopened_constant(scope, name, builder, &body)
+      owner = scope || Object
+      live = owner.const_get(name, false) if owner.const_defined?(name, false)
       klass = kept_constant(scope, name, &builder)
-      klass.class_exec(&body)
+      # A new class has no method from another file; outside a load there is no source file to compare.
+      return klass.tap { |k| k.class_exec(&body) } unless loading? && klass.equal?(live)
+
+      before = [klass, klass.singleton_class].to_h { |mod| [mod, method_states(mod)] }
+      # The first load ran this block, so each class statement in it opens a
+      # module that exists. A file that the block autoloads is not traced.
+      # `class << X` fires no event, so each module's singleton class is noted with it.
+      opened = TracePoint.new(:class) do |trace|
+        next unless trace.path && @load_files.include?(RepeatedCallbacks.real_path(trace.path))
+
+        [trace.self, trace.self.singleton_class].each { |mod| before[mod] ||= method_states(mod) }
+      end
+      opened.enable { klass.class_exec(&body) }
+      lost = []
+      before.each do |mod, states|
+        after = method_states(mod)
+        lost.concat(lost_changes(mod, states, after))
+        states.each do |method, (_, _, visibility)|
+          @rerun_checks&.push([name, mod, method, visibility]) if after[method] && after[method][2] != visibility
+        end
+      end
+      raise_lost(name, lost) unless lost.empty?
       klass
+    end
+
+    # Raises when a builder block that ran again during this load changed a
+    # visibility that the rest of the file did not set back ({reopened_constant}),
+    # now that the whole mutant file has loaded. Another file set it (#585).
+    #
+    # @raise [RuntimeError] naming each lost visibility, so the mutant scores `error`.
+    # @return [void]
+    def self.check_reruns!
+      lost = @rerun_checks.to_a.select { |_, mod, method, visibility| (now = method_states(mod)[method]) && now[2] != visibility }
+      return if lost.empty?
+
+      raise_lost(lost.first.first, lost.map { |_, mod, method, visibility| "#{mod.inspect}##{method} (#{visibility})" })
+    end
+
+    # @param name [Symbol] the kept constant.
+    # @param lost [Array<String>] each lost change.
+    # @raise [RuntimeError] always, so the mutant scores `error`.
+    # @return [void]
+    def self.raise_lost(name, lost)
+      raise "[mutineer] reloading #{name} ran its block again over a change another file made: " \
+            "#{lost.join(", ")}. That change would be lost, so this mutant cannot run under reload " \
+            "(#585). Run this file with --strategy redefine or --test-command."
+    end
+
+    # Each method of `mod` itself, by name: the real path of the file that
+    # defines its code (nil for a method with no Ruby source, such as a
+    # `Struct` member), its original name, which differs for an alias, and its
+    # visibility.
+    #
+    # @param mod [Module]
+    # @return [Hash{Symbol => Array(String, Symbol, Symbol)}]
+    def self.method_states(mod)
+      { public: mod.public_instance_methods(false), protected: mod.protected_instance_methods(false),
+        private: mod.private_instance_methods(false) }.each_with_object({}) do |(visibility, names), states|
+        names.each do |method|
+          code = mod.instance_method(method)
+          file = code.source_location&.first
+          states[method] = [file && RepeatedCallbacks.real_path(file), code.original_name, visibility]
+        end
+      end
+    end
+
+    # The changes from another file that a second run of a builder block
+    # undid on `mod` (#585). The block's own defs come from the source or
+    # the mutant file and keep their names, and a mutant adds no method. So a
+    # replaced method whose file is another file's or that was an alias, and
+    # a method the run added again (another file removed it), each count.
+    #
+    # @param mod [Module]
+    # @param before [Hash] {method_states} before the run.
+    # @param after [Hash] {method_states} after the run.
+    # @return [Array<String>] one description for each lost change.
+    def self.lost_changes(mod, before, after)
+      changed = before.filter_map do |method, (file, original, _)|
+        now = after[method]
+        next if now.nil? || now[0..1] == [file, original]
+
+        if original != method
+          "#{mod.inspect}##{method} (alias of #{original})"
+        elsif foreign_file?(file)
+          "#{mod.inspect}##{method} (#{file})"
+        end
+      end
+      changed + (after.keys - before.keys).map { |method| "#{mod.inspect}##{method} (removed)" }
+    end
+
+    # Whether a method's file is neither the source file nor the mutant file
+    # of the current load. A nil file (no Ruby source) is not foreign.
+    #
+    # @param file [String, nil] a real path from {method_states}.
+    # @return [Boolean]
+    def self.foreign_file?(file)
+      !file.nil? && !@load_files.to_a.include?(file)
     end
 
     # True while a mutant file loads.
@@ -214,14 +323,19 @@ module Mutineer
       @enums_before_load = {}
       @chains_before_load = {}
       @callbacks_before_load = before
+      @load_files = [source_file, mutant_path].compact.map { |path| RepeatedCallbacks.real_path(path) }
+      @rerun_checks = []
       @loading = true
       result = yield
+      check_reruns!
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
       growth_check { log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) } if sizes
       result
     ensure
       @loading = false
       @callbacks_before_load = nil
+      @load_files = nil
+      @rerun_checks = nil
     end
 
     # Runs one step of the callback-growth check (#479). The check only

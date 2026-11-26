@@ -1877,7 +1877,12 @@ class ProjectTest < Minitest::Test
     "class Row < P\n  def attrs = members.map { |m| public_send(m) }\nend\n" => true,
     "def run(m, s) = send(m, s)\nrun(:eval, \"1\")\n" => true,
     "ORIGIN = P.new(0)\nORIGIN.class.include(Comparable)\n" => true,
-    "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false
+    "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false,
+    "ORIGIN = P.new(0)\nORIGIN.class.method(:alias_method).call(:raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.instance_method(:x)\n" => false,
+    "ORIGIN = P.new(0)\nm = :alias_method\nORIGIN.class.method(m).call(:raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(:method, :alias_method).call(:raw_x, :x)\n" => true,
+    "def verb(request) = request.method\n" => false
   }.freeze
 
   def test_unkept_constant_names_holds_a_constant_the_file_may_change

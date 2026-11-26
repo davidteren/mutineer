@@ -565,7 +565,9 @@ module Mutineer
     #   read node;
     # - a read of a constant in the second Set of `rebuilt`;
     # - a call of a method named in the first Set of `rebuilt`, with any
-    #   receiver, which fails closed. The `Struct.new`, `Data.define` or
+    #   receiver, which fails closed, also through a literal `send(:name)` or
+    #   `method(:name)`, and a `send` or `method` with a computed name when the
+    #   file defines a method. The `Struct.new`, `Data.define` or
     #   `Class.new` call itself does not count, so `class Point < Struct.new(:x)`
     #   beside a `def self.new` is still wrapped.
     #
@@ -580,7 +582,12 @@ module Mutineer
 
       defs, constants = rebuilt
       return true if (node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)) && constants.include?(node.name)
-      return true if node.is_a?(Prism::CallNode) && defs.include?(node.name) && !Project.builder_call?(node)
+      if node.is_a?(Prism::CallNode) && !Project.builder_call?(node)
+        # `send(:build)` and `method(:build)` run `build`; a computed `send` or
+        # `method` may run any method of the file.
+        sent = Project.sent_name(node)
+        return true if sent.nil? ? !defs.empty? : defs.include?(sent)
+      end
 
       inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
       node.compact_child_nodes.any? { |child| reads_rebuilt?(child, rebuilt, inner) }

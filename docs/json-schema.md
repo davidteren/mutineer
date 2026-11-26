@@ -151,22 +151,23 @@ class (#527). A superclass call also keeps its text when it reads a local variab
 a block inside it), uses an instance, class or global variable, reads a constant that the same file builds
 again with a value reload does not keep, or calls a method that the same file defines (with any receiver;
 the `Struct.new`, `Data.define` or `Class.new` call itself does not count), such as
-`class Row < Class.new(base)` or `class Point < point_base` (#533). A constant whose value holds only data,
+`class Row < Class.new(base)` or `class Point < point_base`, also through `send(:point_base)` or
+`method(:point_base)`, or a `send` or `method` call with a computed name in a file that defines a method (#533). A constant whose value holds only data,
 such as `FIELDS = %i[a b].freeze`, does not count; a local variable counts even when it holds only
 literals. When that call builds a new class, every mutant of the file that loads scores `error` with
 `superclass mismatch` (#527), instead of keeping a stale parent and giving false survivors. Run that file
 with `--strategy redefine`, or assign the class to a constant with a literal builder
 (`Fields = Struct.new(:v)`), which reload keeps. A superclass that reaches a rebuilt class through another
-file or a registry is still wrapped (#574).
+file or a registry keeps the old parent, so a mutant in that class can survive falsely (#574).
 
 Under `--strategy reload` and `--daemon`, a method is `unplaceable` for one of these causes. Each row is
 explained below.
 
 | Under `--strategy reload` and `--daemon`, a method is `unplaceable` when it is | Why reload cannot place it | What runs it |
 |---|---|---|
-| in the block of a class statement's superclass call, such as `class X < Struct.new(:a) do ... end` (#492) | Reload keeps the live superclass, so that block does not run again (#576). | `--strategy redefine`, `--test-command` |
+| in the block of a class statement's superclass call, such as `class X < Struct.new(:a) do ... end` (#492) | Reload keeps the live superclass, so that block does not run again (#576). Redefine has no named owner for it. | `--test-command` |
 | in the value of a constant set with `\|\|=`, or in code under `unless defined?(X)` or `if !defined?(X)` that defines `X` (#529) | The first load set the constant, so a second load skips the code. Other guards are not marked (#573). | `--strategy redefine`, `--test-command` |
-| in the block of `X = Struct.new(...) do`, `Data.define(...) do` or `Class.new do` with literal arguments, when the block has a statement that reload does not run twice (#528) | Reload keeps the class. It runs the block again only when the block has no parameter and each statement is a method definition, a constant assignment that reads nothing of the class, `attr_reader`, `attr_writer`, `attr_accessor`, a visibility call, or a `class`, `module` or `class << self` statement with such a body. One other statement, such as `alias_method`, `include` or `delegate`, keeps the whole block from running again (#576). | `--strategy redefine`, `--test-command` |
+| in the block of `X = Struct.new(...) do`, `Data.define(...) do` or `Class.new do` with literal arguments, when the block has a statement that reload does not run twice (#528) | Reload keeps the class. It runs the block again only when the block has no parameter and each statement is a method definition on the class or `self` other than a hook such as `method_added` or `inherited`, a constant assignment that reads nothing of the class and builds no new object, `attr_reader`, `attr_writer`, `attr_accessor`, a visibility call, or a `class`, `module` or `class << self` statement with such a body. One other statement, such as `alias_method`, `include` or `delegate`, keeps the whole block from running again (#576). | `--strategy redefine`, `--test-command` |
 | a method that calls `skip_callback` or a `skip_*_action` when the file calls such a method outside every method, or that gives a skip that runs at load its filter or condition (#543) | The reload drops a conditional skip that the first load already applied, so the mutated call would not reach Rails (#578). | `--strategy redefine`, `--test-command` |
 | a method that calls `define_callbacks` or `define_model_callbacks` (#504) | Reload skips a chain the class already has, with the options the call gives. | `--strategy redefine`, `--test-command` |
 | some methods in a concern's `included` or `prepended` block (#256, #297) | The block runs only when a class first includes the concern. See the list below. | `--test-command` |
@@ -197,18 +198,22 @@ the class again on each load (#575):
   receiver; a call of `eval`,
   `instance_eval`, `class_eval` or `module_eval` with an argument, with or without a receiver; a `send`,
   `public_send` or `__send__` whose literal method name is one of those, or whose method name is computed
-  (anywhere, since it may run `eval`); or a `class << expr` statement with an unsafe body
+  (anywhere, since it may run `eval`); a `method`, `public_method` or `instance_method` call with a
+  receiver whose literal method name is one of those, or one with a computed method name (anywhere; `request.method` with no argument does not count); or a `class << expr` statement with an unsafe body
   whose expression is not a constant or `self`. A kept class would get that change a
   second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
-  last part. A change that another file makes, or one made through `method(:alias_method).call`, is not seen
-  (#585). When a class statement of
+  last part. This rule reads only the same file. When the block of a kept class runs again and undoes a
+  change that another file made to the class, a class or module statement in the block, or the singleton
+  class of either (a method it defined or aliased, a visibility it set, or a method it removed), the mutant scores
+  `error`, because that change would be lost (#585). A constant that another file assigns again in such a
+  class is not checked (#585). When a class statement of
   the same file inherits from a constant that this rule does not keep, every mutant of the file that loads
   scores `error` with `superclass mismatch` (#527, #575).
 
 When the builder has a block, reload runs that block again on the kept class, so a mutant of a method in it
 gets a real verdict. It does that only when the block is safe to run twice: it has no block parameter
-(`|k|`, `_1` or `it`), and each statement is a method definition other than a hook Ruby calls while a
-class body runs (`method_added`, `inherited`, `included` and similar); `attr_reader`, `attr_writer`,
+(`|k|`, `_1` or `it`), and each statement is a method definition on the class or `self` (not
+`def Other.m`) other than a hook Ruby calls while a class body runs (`method_added`, `inherited`, `included` and similar); `attr_reader`, `attr_writer`,
 `attr_accessor`, `private`, `public`, `protected`, `private_class_method` or `public_class_method` with
 literal or method-definition arguments; a constant assignment whose value is such a builder or reads
 nothing of the class (no `self`, no call without a receiver, no instance or class variable, and no `new` or class
@@ -216,7 +221,7 @@ builder call, so a second run gives the same value); or a `class`, `module` or `
 statement with such a body. Any other statement can read the state the first run left: `alias_method`
 renames a method the first run already wrapped, and Ruby runs a module's `included` hook again on each
 `include`. So a block with such a statement does not run again, and each method in it is `unplaceable`
-under reload (#576). In 744 gems, 305 of 332 such blocks run again. `--strategy redefine` runs these
+under reload (#576). In 744 gems, 303 of 330 such blocks run again. `--strategy redefine` runs these
 methods.
 
 Reload also does not place a method that calls `define_callbacks` or `define_model_callbacks` anywhere in

@@ -57,6 +57,7 @@ class RailsCallbackRestoreTest < Minitest::Test
     # #528, cover the siblings: a builder block that calls `define_callbacks`
     # and `set_callback` does not run again, so the kept class keeps one callback.
     assert skips.fetch("built_kept"), "reload keeps BuiltNote's class"
+    assert skips.fetch("built_same_entry"), "BuiltNote keeps its callback entry: its block did not run again"
     quiet = { "QuietConcern" => %w[quiet? stamp], "QuietChild" => %w[quiet? stamp], "QuietLambda" => %w[quiet? stamp] }
     assert_equal quiet, skips.fetch("logs_before")
     assert_equal quiet, skips.fetch("logs_after")

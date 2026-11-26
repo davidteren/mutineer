@@ -215,6 +215,7 @@ module RailsCallbackRestoreProbe
       before = counts.call
       logs_before = logs.call
       built = BuiltNote
+      built_entries = BuiltNote.__callbacks[:save].to_a
       # The child loads the reload text, which keeps BuiltNote (#528).
       mutant = File.join(dir, "quiet_mutant.rb")
       File.write(mutant, Mutineer::JobPlan.keep_live_superclasses(CONDITIONAL_SKIP_FILE))
@@ -226,7 +227,8 @@ module RailsCallbackRestoreProbe
         true
       end
       { "before" => before, "after" => counts.call, "logs_before" => logs_before, "logs_after" => logs.call,
-        "typo_raises" => raised, "built_kept" => BuiltNote.equal?(built) }
+        "typo_raises" => raised, "built_kept" => BuiltNote.equal?(built),
+        "built_same_entry" => BuiltNote.__callbacks[:save].to_a.zip(built_entries).all? { |now, was| now.equal?(was) } }
     end
   end
 
