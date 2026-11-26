@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format is based on
   1.10.0 ignored the setting there and printed `... has no effect with --test-command`; that warning is gone.
   If you use `load_path` for `--daemon` runs and also run `--test-command`, the command now gets those directories too.
   An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
-  When the clean run cannot load a file, the smoke error now names the file first, then the generic hint. With a `load_path`, or a `RUBYLIB` or `RUBYOPT -I` of yours, it also names the likely cause: a wrapper that unset `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
+  When the clean run cannot load a file, the smoke error now names the file first, then the generic hint. With a `load_path`, or a `RUBYLIB` or `RUBYOPT -I` of yours, it also names the likely cause: a wrapper that unsets `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
 
 ### Changed
 
