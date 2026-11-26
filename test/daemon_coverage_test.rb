@@ -5,6 +5,7 @@ require "mutineer/config"
 require "mutineer/runner"
 require "mutineer/daemon_client"
 require "tmpdir"
+require "stringio"
 
 # #26/U7 — coverage narrowing restored on the daemon path. The daemon builds the
 # coverage map app-side (Coverage started before boot) and ships it to the tool, which
@@ -148,12 +149,72 @@ class DaemonCoverageTest < Minitest::Test
                     "subtotal_cents mutants are still run (covered)"
   end
 
+  # #398: on a cache hit the daemon checks only the tests that cover the
+  # sources. price_list_test.rb is red but covers no line of billing/fee.rb, so
+  # no mutant can run it: the hit goes on, and a fresh capture still stops on it.
+  # (Every test here loads Order through `fixtures :all`, so order.rb would not do.)
+  def test_cache_hit_skips_a_red_test_that_covers_no_source_on_the_daemon_path
+    Dir.mktmpdir("mutineer-daemon-hit") do |dir|
+      tests = %w[billing/fee_test.rb price_list_test.rb].map { |t| File.join(APP, "test/models", t) }
+      boot = boot_config("order_test.rb").merge(sources: [File.join(APP, "app/models/billing/fee.rb")], tests: tests)
+      build = lambda do |cache|
+        client = Mutineer::DaemonClient.new(boot: boot.merge(cache_dir: cache), app_root: APP).start
+        begin
+          client.coverage
+        ensure
+          client.quit
+        end
+      end
+      build.(File.join(dir, "cache"))
+      ENV["MUTINEER_FLUNK_PRICE_LIST"] = "1"
+      hit = build.(File.join(dir, "cache"))
+      miss = build.(File.join(dir, "fresh"))
+
+      refute_empty hit["map"]
+      refute_includes hit["map"].values.flatten, "test/models/price_list_test.rb"
+      assert_empty hit["failed_clean_tests"]
+      assert_equal %w[test/models/price_list_test.rb], miss["failed_clean_tests"], "the test really is red"
+    ensure
+      ENV.delete("MUTINEER_FLUNK_PRICE_LIST")
+    end
+  end
+
   def test_daemon_writes_the_coverage_cache_to_cache_dir
     Dir.mktmpdir("mutineer-daemon-cache") do |dir|
       config = config_for("order_subtotal_only_test.rb")
       config.cache_dir = dir
       Mutineer::Runner.execute(config)
       assert_path_exists File.join(dir, "coverage.json")
+    end
+  end
+
+  # #517: --verbose reaches the map-building daemon, so its capture warning
+  # shows the real error. The tool-side drain then adds the load note, because
+  # the daemon cannot see the RUBYLIB it dropped. No load path finds
+  # test_helper here, so every capture fails the way a dropped -Itest does.
+  def test_verbose_capture_warning_shows_the_error_and_the_load_note
+    [true, false].each do |verbose|
+      Dir.mktmpdir("mutineer-daemon-517") do |dir|
+        boot = boot_config("order_test.rb").merge(load_paths: [], cache_dir: dir, verbose: verbose)
+        errio = StringIO.new
+        with_env("RUBYLIB" => "test", "BUNDLER_ORIG_RUBYLIB" => nil) do
+          client = Mutineer::DaemonClient.new(boot: boot, app_root: APP, errio: errio).start
+          begin
+            assert_equal %w[test/models/order_test.rb], client.coverage["failed_test_files"]
+          ensure
+            client.quit
+          end
+        end
+        line = errio.string.lines.grep(/coverage skipped for test\/models\/order_test\.rb/).first.to_s
+        if verbose
+          assert_includes line, "fork capture failed: LoadError: cannot load such file -- test_helper"
+          # RUBYOPT is the caller's; it may also hold a -I, so the note may name both.
+          assert_match(/\(the daemon does not pass (RUBYOPT or )?RUBYLIB to the app;/, line)
+        else
+          assert_includes line, "fork capture produced no result (re-run with --verbose for the error)"
+          refute_includes line, "does not pass"
+        end
+      end
     end
   end
 end

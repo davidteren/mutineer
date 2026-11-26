@@ -4,15 +4,33 @@ require_relative "project_path"
 
 module Mutineer
   # Source -> test pairing by path convention (#11). Pure stdlib path logic:
-  # no Rails, no class loading, no process. Two jobs:
+  # no Rails, no class loading, no process. Six jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
+  #   * expand_test: one --test value (#380). A directory becomes the test
+  #                     files under it. A glob becomes the files it matches.
+  #                     An existing file stays as typed.
+  #   * resolve_test_map — expand each `tests:` map entry's source and test
+  #                     patterns (#382), clean and dedupe the file lists, and
+  #                     record every pattern that matched no file.
+  #   * mapped_tests_for — the mapped tests for one source from a resolved
+  #                     map, concatenated in entry order (#382).
   #   * infer_tests    — a source's test files by convention (app/ and lib/
   #                     sources map to test/.../_test.rb, test/.../<name>_*_test.rb,
   #                     test/.../test_*.rb or spec/.../_spec.rb), preserving
   #                     namespaced subdirectories. The first EXISTING exact
   #                     candidate stays first. Split Minitest files join a
   #                     Minitest match. A matched spec is left as that one file.
+  #                     A concern at app/<dir>/concerns/<rest>.rb with no test
+  #                     there also tries exact and split names at <dir>/<rest>.
+  #                     A longer source keeps its file. A model keeps a split
+  #                     file it already pairs with (#408). When none of these
+  #                     finds a test, a source at packs/<pack>/app/ or
+  #                     packs/<pack>/lib/ gets the same rules with the pack
+  #                     folder as the root (#494).
+  #   * test_given_as_source? — whether a positional argument is a test file
+  #                     by these same names, given as a source by mistake
+  #                     after `--test` (#293).
   #
   # Independently unit-testable: every method is pure in/out over the
   # filesystem, so the pairing contract is exercised with plain fixtures, no
@@ -30,19 +48,311 @@ module Mutineer
     # @param project_root [String] repository root for relative expansion.
     # @return [Array<String>] flattened, deduped source file list.
     def expand_sources(args, project_root:)
-      root = File.expand_path(project_root)
+      root = FsPath.read(File.expand_path(project_root))
       # The root as typed and as its real path (macOS `/var` vs `/private/var`),
       # resolved once for every file below.
       roots = [root, ProjectPath.root_real(root)].uniq
       Array(args).flat_map do |arg|
+        arg = FsPath.read(arg)
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
-          Dir.glob(File.join(abs, "**", "*.rb")).sort.map { |f| existing_relative(f, roots) || f }
+          # Escape metacharacters in the directory name so `component[1]` stays
+          # literal (same rule as {directory_test_files}).
+          listed = if (rel = root_relative(abs, roots))
+                     fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+                   else
+                     fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
+                   end
+          listed.sort_by(&:b).map do |f|
+            full = File.absolute_path?(f) ? f : File.expand_path(f, root)
+            existing_relative(full, roots) || full
+          end
         else
           # `..` resolves as text, as FileSwap and the daemon already read it.
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
-      end.uniq
+      end.map { |path| FsPath.read(path) }.uniq
+    end
+
+    # Characters that make a --test value a glob when no path has that name.
+    # An existing file is never read as a glob, so a name may contain these.
+    TEST_GLOB_MARK = /[*?\[{]/
+
+    # How one --test value is read. Blank is not a directory: File.expand_path
+    # of "" is the project root, and that would select every test.
+    #
+    # @param value [String] one --test value, as typed.
+    # @param project_root [String] repository root.
+    # @return [Symbol] :blank, :directory, :file, :glob, or :plain.
+    def classify_test_value(value, project_root:)
+      return :blank if value.nil? || value.strip.empty?
+
+      abs = File.expand_path(value, project_root)
+      return :directory if File.directory?(abs)
+      return :file if File.exist?(abs)
+      return :glob if value.match?(TEST_GLOB_MARK)
+
+      :plain
+    end
+
+    # One --test value, as paths. [] means a directory or glob matched nothing.
+    # A file stays as typed. A missing plain path stays as typed, so the CLI
+    # can still say "no such file". Paths from a directory or glob are sorted.
+    # Inside the project they are root-relative. Outside it they are absolute.
+    #
+    # @param value [String] one --test value, as typed.
+    # @param project_root [String] repository root.
+    # @return [Array<String>] matching paths, or [value] when it is not expanded.
+    def expand_test(value, project_root:)
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      case classify_test_value(value, project_root: project_root)
+      when :directory
+        directory_test_files(File.expand_path(value, root), root, roots)
+      when :glob
+        glob_test_files(value, root, roots)
+      else
+        [value]
+      end
+    end
+
+    # Expand every entry of a checked `test_map` into cleaned file lists.
+    # Source patterns use Dir.glob then {expand_sources}, so a directory
+    # match becomes its `.rb` files and `./lib/a.rb` / `lib//a.rb` clean to
+    # the same path. Test patterns go through {expand_test}; a missing plain
+    # path is dropped (no match). Overlapping patterns keep each file once,
+    # sorted. Patterns with no file are listed under `:unmatched` with a
+    # 1-based entry number and the key (`"sources"` or `"tests"`). Does not
+    # print or exit; the CLI reports unmatched patterns (#382).
+    #
+    # @param test_map [Array<Hash{Symbol => Array<String>}>] checked map entries
+    #   with `:sources` and `:tests` pattern lists.
+    # @param project_root [String] repository root for relative expansion.
+    # @return [Hash{Symbol => Array}] `:entries` is
+    #   `[{sources: [...], tests: [...]}, ...]`; `:unmatched` is
+    #   `[{entry: Integer, key: String, pattern: String}, ...]`.
+    def resolve_test_map(test_map, project_root:)
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      unmatched = []
+      entries = Array(test_map).each_with_index.map do |entry, index|
+        number = index + 1
+        sources = expand_map_patterns(Array(entry[:sources]), number, "sources", unmatched) do |pattern|
+          expand_map_source_pattern(pattern, root, roots)
+        end
+        tests = expand_map_patterns(Array(entry[:tests]), number, "tests", unmatched) do |pattern|
+          expand_map_test_pattern(pattern, root, roots)
+        end
+        { sources: sources, tests: tests }
+      end
+      { entries: entries, unmatched: unmatched }
+    end
+
+    # Mapped test files for one source from a resolved map. Each entry whose
+    # expanded sources include `source` contributes its tests, in entry order.
+    # An unmatched source returns `[]`. Does not dedupe across entries; the
+    # CLI unions the run's test list (#382).
+    #
+    # @param source [String] root-relative source path, as in the resolved map.
+    # @param resolved [Hash{Symbol => Array}] result of {resolve_test_map}.
+    # @return [Array<String>] mapped test paths in entry order.
+    def mapped_tests_for(source, resolved)
+      Array(resolved[:entries]).each_with_object([]) do |entry, out|
+        out.concat(entry[:tests]) if entry[:sources].include?(source)
+      end
+    end
+
+    # Characters Dir.glob reads as a pattern. A real directory name may
+    # contain them. They are escaped so the name stays a literal prefix.
+    GLOB_META = /([*?\[\]{}\\])/
+
+    # A path used as a literal prefix in Dir.glob.
+    #
+    # @param path [String] directory path, relative or absolute.
+    # @return [String] the same path with pattern characters escaped.
+    def glob_literal(path)
+      FsPath.read(path).gsub(GLOB_META) { "\\#{Regexp.last_match(1)}" }
+    end
+
+    # `Dir.glob` with each path read as UTF-8, or binary when it is not (#346).
+    #
+    # @param args [Array] arguments forwarded to {Dir.glob}.
+    # @return [Array<String>]
+    def fs_glob(*args, **kwargs)
+      Dir.glob(*args, **kwargs).map { |path| FsPath.read(path) }
+    end
+
+    # `Dir.children` with each name read as UTF-8, or binary when it is not (#346).
+    #
+    # @param dir [String] directory to list.
+    # @return [Array<String>]
+    def fs_children(dir)
+      Dir.children(dir).map { |path| FsPath.read(path) }
+    end
+
+    # Test files under a directory. The name rule is {TEST_NAME}. Dot entries
+    # stay out, because Dir.glob skips them. The result is sorted.
+    # The directory name is literal, even when it contains a pattern character.
+    #
+    # @param abs [String] absolute directory path.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] root-relative paths, or absolute paths outside the root.
+    def directory_test_files(abs, root, roots)
+      listed = if (rel = root_relative(abs, roots))
+                 fs_glob(File.join(glob_literal(rel), "**", "*.rb"), base: root)
+               else
+                 fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
+               end
+      listed.filter_map { |match| named_test_file(match, root, roots) }.sort_by(&:b)
+    end
+
+    # Files a glob matches from the project root. Directories are ignored.
+    # There is no test-name filter. An absolute pattern ignores base.
+    # Dir.glob keeps a leading "./"; the path is then made root-relative.
+    #
+    # @param pattern [String] glob as typed.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] sorted matching file paths.
+    def glob_test_files(pattern, root, roots)
+      listed = if File.absolute_path?(pattern)
+                 fs_glob(pattern)
+               else
+                 fs_glob(pattern, base: root)
+               end
+      listed.filter_map { |match| glob_file(match, root, roots) }.sort_by(&:b)
+    end
+
+    # A directory match whose basename is a test name, as a stored path.
+    #
+    # @param match [String] path from Dir.glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [String, nil] stored path, or nil when the match is not a test file.
+    def named_test_file(match, root, roots)
+      full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+      return unless File.file?(full)
+      return unless File.basename(full).match?(TEST_NAME)
+
+      existing_relative(full, roots) || full
+    end
+
+    # A glob match that is a file, as a stored path. Directories are dropped.
+    #
+    # @param match [String] path from Dir.glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [String, nil] stored path, or nil when the match is not a file.
+    def glob_file(match, root, roots)
+      full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+      return unless File.file?(full)
+
+      existing_relative(full, roots) || full
+    end
+
+    # Expand each pattern for one map key. An empty expansion records the
+    # pattern under `unmatched`. Results are deduped and sorted.
+    #
+    # @api private
+    # @param patterns [Array<String>] source or test patterns from one entry.
+    # @param number [Integer] 1-based entry index.
+    # @param key [String] `"sources"` or `"tests"`.
+    # @param unmatched [Array<Hash>] accumulator for patterns with no file.
+    # @yieldparam pattern [String] one pattern to expand.
+    # @yieldreturn [Array<String>] matching file paths.
+    # @return [Array<String>] cleaned, deduped, sorted paths.
+    def expand_map_patterns(patterns, number, key, unmatched)
+      patterns.flat_map do |pattern|
+        files = yield(pattern)
+        unmatched << { entry: number, key: key, pattern: pattern } if files.empty?
+        files
+      end.uniq.sort_by(&:b)
+    end
+
+    # One map source pattern: Dir.glob then {expand_sources}, so a matched
+    # directory becomes its `.rb` files and path spellings clean the same way.
+    # Matches outside the project root are dropped (brace patterns like
+    # `{..,app}/x.rb` can escape a text-only `..` check).
+    #
+    # @api private
+    # @param pattern [String] relative source pattern.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] matching source paths, sorted.
+    def expand_map_source_pattern(pattern, root, roots)
+      # An existing file or directory is literal, even when its name holds a
+      # glob character (same rule as {classify_test_value} for --test).
+      abs = File.expand_path(pattern, root)
+      listed = if File.exist?(abs)
+                 [pattern]
+               else
+                 fs_glob(pattern, base: root)
+               end
+      return [] if listed.empty?
+
+      expand_sources(listed, project_root: root).filter_map do |path|
+        path_abs = File.expand_path(path, root)
+        next unless File.exist?(path_abs)
+
+        existing_relative(path_abs, roots)
+      end.uniq.sort_by(&:b)
+    end
+
+    # One map test pattern. Directories (typed or matched by a glob) expand
+    # with the {TEST_NAME} filter, matching a typed `--test` directory. Files
+    # a glob matches stay unfiltered (including `test_helper.rb`), matching
+    # `--test` globs. A missing plain path is not a match. Matches outside the
+    # project root are dropped (#382 review).
+    #
+    # @api private
+    # @param pattern [String] relative test pattern.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] matching test paths, sorted.
+    def expand_map_test_pattern(pattern, root, roots)
+      listed = case classify_test_value(pattern, project_root: root)
+               when :directory
+                 directory_test_files(File.expand_path(pattern, root), root, roots)
+               when :glob
+                 expand_map_test_glob(pattern, root, roots)
+               else
+                 # :file / :plain / :blank — same as {expand_test}, then root-filter.
+                 expand_test(pattern, project_root: root)
+               end
+      listed.filter_map do |path|
+        abs = File.expand_path(path, root)
+        next unless File.file?(abs)
+
+        existing_relative(abs, roots)
+      end.uniq.sort_by(&:b)
+    end
+
+    # Glob matches for a map `tests:` pattern. A matched directory expands with
+    # {directory_test_files}; a matched file is kept as-is (no name filter).
+    # `--test` globs still drop directories; only the map expands them (#382).
+    #
+    # @api private
+    # @param pattern [String] relative or absolute glob.
+    # @param root [String] expanded project root.
+    # @param roots [Array<String>] the project root, expanded and real.
+    # @return [Array<String>] matching test paths (may include outside-root paths).
+    def expand_map_test_glob(pattern, root, roots)
+      matches = if File.absolute_path?(pattern)
+                  fs_glob(pattern)
+                else
+                  fs_glob(pattern, base: root)
+                end
+      matches.flat_map do |match|
+        full = File.absolute_path?(match) ? match : File.expand_path(match, root)
+        if File.directory?(full)
+          directory_test_files(full, root, roots)
+        elsif File.file?(full)
+          [existing_relative(full, roots) || full]
+        else
+          []
+        end
+      end
     end
 
     # An existing file's root-relative path, or nil outside the root. Tries the
@@ -67,9 +377,14 @@ module Mutineer
     # @param roots [Array<String>] the project root, expanded and real.
     # @return [String, nil] root-relative path, or nil outside the root.
     def root_relative(abs, roots)
+      abs = FsPath.read(abs)
       roots.each do |r|
-        prefix = r.end_with?("/") ? r : "#{r}/"
-        return abs.delete_prefix(prefix) if abs.start_with?(prefix)
+        r = FsPath.read(r)
+        prefix = r.b
+        prefix += "/".b unless prefix.end_with?("/".b)
+        next unless FsPath.bytes_start_with?(abs, prefix)
+
+        return FsPath.bytes_delete_prefix(abs, prefix)
       end
       nil
     end
@@ -91,7 +406,13 @@ module Mutineer
     # candidate from {#candidates} stays first. Each `<basename>_*_test.rb` in
     # the mirrored test directory is added after it (#87). A spec that the exact
     # rules already found is left alone: split Minitest names do not join it
-    # and do not replace it.
+    # and do not replace it. When that list is empty, a concern tries the same
+    # exact and split names at its namespace path (#408). The `concerns/` path
+    # still wins when it has any test. A longer source, including a longer
+    # concern, keeps a split file. A model keeps a split file it already pairs
+    # with: this fallback does not take one away. When both find nothing, a
+    # source at `packs/<pack path>/app/` or `packs/<pack path>/lib/` gets the
+    # same rules with the pack folder as the root ({#pack_tests}, #494).
     #
     # @param source_rel [String] relative source path.
     # @param project_root [String] repository root for existence checks.
@@ -100,10 +421,96 @@ module Mutineer
     def infer_tests(source_rel, project_root:, prefer: "minitest")
       base, lib = logical_path(source_rel)
       root = File.expand_path(project_root)
+      found = tests_at(base, lib, root, prefer)
+      return found unless found.empty?
+
+      ns = namespace_base(source_rel)
+      found = namespace_tests(ns, root, prefer) if ns
+      return found unless found.empty?
+
+      pack_tests(source_rel, root, prefer)
+    end
+
+    # A source in a Packwerk pack: `packs/<pack path>/app/...` or
+    # `packs/<pack path>/lib/...` (#494). The shortest pack path wins.
+    PACK_SOURCE = %r{\A(packs/.+?)/((?:app|lib)/.+\.rb)\z}
+
+    # Splits a pack source into its pack folder and its path inside the pack.
+    # Path text only: no `packwerk.yml` or `packs.yml` is read. A path with a
+    # `..` or `.` segment is not a pack source, so the pack root stays inside
+    # the project.
+    #
+    # @param source_rel [String] relative source path.
+    # @return [Array(String, String), nil] e.g. `["packs/catalog", "app/models/item.rb"]`, or nil.
+    def pack_split(source_rel)
+      # A `..` or `.` segment could move the pack root outside the project.
+      return if source_rel.split("/").any? { |segment| segment == ".." || segment == "." }
+
+      match = PACK_SOURCE.match(source_rel)
+      match && [match[1], match[2]]
+    end
+
+    # The tests the rules of {#infer_tests} find for a pack source when its
+    # pack folder is read as the project root, with the pack path put back in
+    # front (#494). `[]` for a source outside `packs/`. The inner path starts
+    # with `app/` or `lib/`, so the inner call never reaches this rule again.
+    #
+    # @param source_rel [String] relative source path.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] project-relative test paths.
+    def pack_tests(source_rel, root, prefer)
+      pack, inner = pack_split(source_rel)
+      return [] unless pack
+
+      infer_tests(inner, project_root: File.join(root, pack), prefer: prefer).map { |test| File.join(pack, test) }
+    end
+
+    # Exact and split tests for one logical base. A spec stays the only file.
+    #
+    # @param base [String] logical source path without extension.
+    # @param lib [Boolean] whether the source originated from lib/.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] existing test paths, exact candidate first.
+    def tests_at(base, lib, root, prefer)
       exact = candidates(base, lib, prefer).find { |rel| File.exist?(File.expand_path(rel, root)) }
       return [exact] if exact&.end_with?("_spec.rb")
 
       ([exact] + split_test_files(base, lib, root)).compact.uniq
+    end
+
+    # Namespace exact and split tests for a concern whose `concerns/` path
+    # has none. A split is left out only when a longer concern has no test
+    # of its own and therefore pairs with that split. A longer model is
+    # already left out by {split_test_files}. A spec stays the only file.
+    #
+    # @param ns [String] namespace base from {namespace_base}.
+    # @param root [String] expanded project root.
+    # @param prefer [String] preferred framework name.
+    # @return [Array<String>] existing test paths, exact candidate first.
+    def namespace_tests(ns, root, prefer)
+      found = tests_at(ns, false, root, prefer)
+      return found if found.any? { |rel| rel.end_with?("_spec.rb") }
+
+      name = File.basename(ns)
+      found.reject do |rel|
+        entry = File.basename(rel)
+        split_entry?(entry, name) && claimed_by_longer_concern?(root, ns, entry)
+      end
+    end
+
+    # Namespace mirror for a concern, or nil.
+    # `app/<dir>/concerns/<rest>.rb` returns `<dir>/<rest>`.
+    # `concerns` must sit directly under `app/<dir>`.
+    #
+    # @param source_rel [String] relative source path.
+    # @return [String, nil] logical base without extension, or nil.
+    def namespace_base(source_rel)
+      match = source_rel.match(%r{\Aapp/([^/]+)/concerns/(.+)\.rb\z})
+      return unless match
+
+      "#{match[1]}/#{match[2]}"
     end
 
     # Strip the source root to a logical path (no ".rb") and flag lib/
@@ -142,6 +549,64 @@ module Mutineer
       rspec = ["spec/#{base}_spec.rb"]
       rspec << "spec/lib/#{base}_spec.rb" if lib
       prefer == "rspec" ? rspec + minitest : minitest + rspec
+    end
+
+    # Basenames that pair as tests in {candidates}: `*_test.rb`, `*_spec.rb`
+    # and Minitest's `test_*.rb`, but not its `test_helper.rb` support file.
+    TEST_NAME = /\A(?!test_helper\.rb\z)(?:.+_(?:test|spec)|test_.+)\.rb\z/
+
+    # Whether the `run` guard rejects a positional argument as a test file
+    # given as a source (#293). Segments are read from the path relative to
+    # the root, so a `test/` folder above the project never counts. A
+    # `*_test.rb` / `*_spec.rb` path is flagged when it has a `test/` or
+    # `spec/` segment (the guard's original rule), or when it sits in the same
+    # directory as a given test, which catches root-level tests. A
+    # `test_*.rb` path is flagged only under the
+    # project's top-level `test/` or `spec/`, because real sources use the
+    # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
+    # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
+    # `<stem>_spec.rb`, or a split `<stem>_*_test.rb` not claimed by a longer
+    # source on disk) sits beside it in the test set is not flagged. Paths
+    # compare relative to the root, as in
+    # {expand_sources} (the root's real path counts too, for macOS `/var` vs
+    # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
+    # is read.
+    #
+    # @param path [String] positional argument as typed.
+    # @param project_root [String] repository root for relative expansion.
+    # @param tests [Array<String>] the explicit test files.
+    # @return [Boolean] true when the argument looks like a misplaced test.
+    def test_given_as_source?(path, project_root:, tests:)
+      name = File.basename(path)
+      return false unless name.match?(TEST_NAME)
+
+      root = File.expand_path(project_root)
+      roots = [root, ProjectPath.root_real(root)].uniq
+      relative = lambda do |p|
+        abs = File.expand_path(p, root)
+        root_relative(abs, roots) || abs
+      end
+      rel = relative.call(path)
+      # Outside the root, read segments from a relative path as typed
+      # (`../test/b_test.rb`) and not from an absolute one, so a `test/`
+      # folder above the root never counts.
+      segments = root_relative(File.expand_path(path, root), roots)
+      segments ||= path.start_with?(File::SEPARATOR) ? "" : path
+      return segments.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      return true if segments.match?(%r{(\A|/)(test|spec)/})
+
+      dir = File.dirname(rel)
+      beside = Array(tests).map(&relative)
+                           .select { |t| File.dirname(t) == dir }
+                           .map { |t| File.basename(t) }
+      stem = File.basename(name, ".rb")
+      own = ["test_#{stem}.rb", "#{stem}_spec.rb"]
+      base = rel.delete_suffix(".rb")
+      return false if beside.any? do |t|
+        own.include?(t) || (longer_owns_entry?(t, stem) && !claimed_by_longer_source?(root, base, t))
+      end
+
+      beside.any?
     end
 
     # `<basename>_*_test.rb` files in each mirrored test directory (#87). The
@@ -185,13 +650,15 @@ module Mutineer
       return [] unless inside_project?(dir_abs, root_abs)
       return [] unless File.directory?(dir_abs)
 
-      Dir.children(dir_abs).filter_map do |entry|
+      fs_children(dir_abs).filter_map do |entry|
         next unless split_entry?(entry, name)
-        next unless File.file?(File.join(dir_abs, entry))
+        next unless File.file?(dir_abs.b + "/".b + entry.b)
         next if claimed_by_longer_source?(root, base, entry, dir_rel)
 
-        File.join(dir_rel, entry)
-      end.sort
+        FsPath.read(dir_rel == "." ? entry.b : dir_rel.b + "/".b + entry.b)
+        # Byte order: a UTF-8 name and a binary name can both hold bytes
+        # above 127, and String#sort raises on that mix (#346).
+      end.sort_by(&:b)
     end
 
     # True when `dir_abs` is the project root or a directory inside it.
@@ -201,8 +668,12 @@ module Mutineer
     # @param root_abs [String] expanded project root.
     # @return [Boolean]
     def inside_project?(dir_abs, root_abs)
-      prefix = root_abs == File::SEPARATOR ? File::SEPARATOR : "#{root_abs}#{File::SEPARATOR}"
-      dir_abs == root_abs || dir_abs.start_with?(prefix)
+      dir_b = FsPath.read(dir_abs).b
+      root_b = FsPath.read(root_abs).b
+      return true if dir_b == root_b
+
+      prefix = root_b == "/".b ? "/".b : root_b + "/".b
+      FsPath.bytes_start_with?(dir_b, prefix)
     end
 
     # True when `entry` is `<name>_<piece>_test.rb` and not the exact
@@ -212,10 +683,16 @@ module Mutineer
     # @param name [String] source basename without extension.
     # @return [Boolean]
     def split_entry?(entry, name)
-      return false unless entry.end_with?("_test.rb")
+      entry = FsPath.read(entry)
+      name = FsPath.read(name)
+      return false unless entry.b.end_with?("_test.rb".b)
 
-      rest = entry.delete_prefix("#{name}_")
-      rest != entry && rest.match?(/\A.+_test\.rb\z/)
+      needle = name.b + "_".b
+      return false unless entry.b.start_with?(needle)
+
+      rest = entry.b.byteslice(needle.bytesize..)
+      suffix = "_test.rb".b
+      !rest.nil? && rest.bytesize > suffix.bytesize && rest.end_with?(suffix)
     end
 
     # True when a longer source file on disk owns this split test. `user.rb`
@@ -232,20 +709,77 @@ module Mutineer
     #   this directory. An `app/` source does not take a `test/lib/` file.
     # @return [Boolean]
     def claimed_by_longer_source?(root, base, entry, scanned_dir = nil)
-      name = File.basename(base)
-      stem = entry.sub(/_test\.rb\z/, "")
-      return false unless stem.start_with?("#{name}_")
-
-      rest = stem.delete_prefix("#{name}_")
-      return false if rest.empty?
-
       dir = File.dirname(base)
-      parts = rest.split("_", -1)
-      (1..parts.length).any? do |i|
-        longer = "#{name}_#{parts.first(i).join("_")}"
-        next false unless longer_owns_entry?(entry, longer)
-
+      longer_owner_stems(File.basename(base), entry).any? do |longer|
         longer_source_exists?(root, dir, longer, scanned_dir)
+      end
+    end
+
+    # True when a longer concern pairs with this split name.
+    # The file sits under `app/<dir>/concerns/`, a directory
+    # {longer_source_exists?} does not search for a namespace base.
+    # The longer concern claims the name only when its `concerns/` path has
+    # no test, because only then does it look at the namespace path.
+    # A model keeps a split file it already pairs with (#408).
+    #
+    # @param root [String] expanded project root.
+    # @param ns_base [String] namespace base, such as `models/storage/totaled`.
+    # @param entry [String] test file basename.
+    # @return [Boolean]
+    def claimed_by_longer_concern?(root, ns_base, entry)
+      dir = namespace_concerns_dir(ns_base)
+      return false unless dir
+
+      longer_owner_stems(File.basename(ns_base), entry).any? do |longer|
+        rel = File.join(dir, "#{longer}.rb")
+        abs = File.expand_path(rel, root)
+        # A source path with `..` must not make this look at a file outside the project.
+        next false unless inside_project?(abs, root) && File.file?(abs)
+
+        base, lib = logical_path(rel)
+        tests_at(base, lib, root, "minitest").empty?
+      end
+    end
+
+    # `app/<dir>/concerns/<rest-dir>` for a namespace base `<dir>/<rest>`.
+    #
+    # @param ns_base [String] namespace base from {namespace_base}.
+    # @return [String, nil] relative concerns directory, or nil when the base
+    #   has no rest path.
+    def namespace_concerns_dir(ns_base)
+      app_dir, rest = ns_base.split("/", 2)
+      return unless app_dir && rest
+
+      parent = File.dirname(rest)
+      if parent == "."
+        File.join("app", app_dir, "concerns")
+      else
+        File.join("app", app_dir, "concerns", parent)
+      end
+    end
+
+    # Longer basenames that own `entry`, one per prefix of its pieces.
+    # `user_session__test.rb` yields nothing for `user_session`.
+    #
+    # @param name [String] shorter source basename without extension.
+    # @param entry [String] test file basename.
+    # @return [Array<String>] owner basenames without extension.
+    def longer_owner_stems(name, entry)
+      # Bytes, so a non-UTF-8 name compares without raising (#346).
+      name = name.b
+      raw = entry.b
+      suffix = "_test.rb".b
+      stem = raw.end_with?(suffix) ? raw.byteslice(0, raw.bytesize - suffix.bytesize) : raw
+      needle = name + "_".b
+      return [] unless stem.start_with?(needle)
+
+      rest = stem.byteslice(needle.bytesize..)
+      return [] if rest.nil? || rest.empty?
+
+      parts = rest.split("_".b, -1)
+      (1..parts.length).filter_map do |i|
+        longer = name + "_".b + parts.first(i).join("_".b)
+        FsPath.read(longer) if longer_owns_entry?(entry, longer)
       end
     end
 
@@ -257,7 +791,7 @@ module Mutineer
     # @param stem [String] longer source basename without extension.
     # @return [Boolean]
     def longer_owns_entry?(entry, stem)
-      entry == "#{stem}_test.rb" || split_entry?(entry, stem)
+      entry.b == stem.b + "_test.rb".b || split_entry?(entry, stem)
     end
 
     # True when a longer source file exists beside this logical path.
@@ -271,12 +805,12 @@ module Mutineer
     # @param scanned_dir [String, nil] relative test directory being scanned.
     # @return [Boolean]
     def longer_source_exists?(root, dir, stem, scanned_dir = nil)
-      file = "#{stem}.rb"
+      file = stem.b + ".rb".b
       folders = [dir == "." ? nil : dir]
       %w[app lib].each { |prefix| folders << (dir == "." ? prefix : File.join(prefix, dir)) }
       folders.uniq.any? do |folder|
-        rel = folder ? File.join(folder, file) : file
-        next false unless File.file?(File.join(root, rel))
+        rel = FsPath.read(folder ? folder.b + "/".b + file : file)
+        next false unless File.file?(root.b + "/".b + rel.b)
         next false if scanned_dir && !source_searches_dir?(rel, scanned_dir)
 
         true

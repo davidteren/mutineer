@@ -5,6 +5,7 @@ require "io/wait"
 require "open3"
 require_relative "external_backend"
 require_relative "rails_run_env"
+require_relative "redaction"
 
 module Mutineer
   # Raised when the daemon cannot be booted or is gone for good: a bad boot path, an
@@ -43,11 +44,35 @@ module Mutineer
     # Seconds the daemon gets to boot the app and answer the handshake. A boot
     # that never returns ends the run instead of hanging it (#101).
     BOOT_TIMEOUT = 600
+    # Most seconds close_io waits for the stderr drain to finish. The drain
+    # ends at EOF, or once the daemon has exited and the pipe is empty, so
+    # only a grandchild that keeps writing makes close_io wait this long.
+    DRAIN_GRACE = 1
+    # Seconds the stderr drain waits for output before it checks whether the
+    # daemon has exited. A grandchild that holds the pipe open never sends EOF.
+    DRAIN_POLL = 0.1
     # Bundler's marker for a variable that was unset before it activated.
     BUNDLER_UNSET = "BUNDLER_ENVIRONMENT_PRESERVER_INTENTIONALLY_NIL"
+    # Variables the daemon never inherits, so a parent require cannot run in
+    # the app (#100). A load path set in them is missing in the daemon; the
+    # load_path setting replaces it through the boot config (#491).
+    LOAD_ENV = %w[RUBYOPT RUBYLIB].freeze
+    # A missing required file: a `LoadError` at a line start or after `: `,
+    # as a cause line, a boot error, Minitest (`LoadError: cannot load ...`)
+    # and RSpec (`LoadError:`, then the message on the next line) print it.
+    MISSING_FILE_CAUSE = /(?:^\s*|: )LoadError:\s+cannot load such file/
+    # A RUBYOPT that adds a load path: `-Itest`, `-I test`, `Itest` (the dash
+    # is optional there), or `-wItest` after the flag-only switches.
+    RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
+    # Start of the daemon's warning for a test file whose coverage capture
+    # failed. CoverageMap::Capture#fail_test writes it. The stderr drain adds
+    # the load note to the first such line (#517).
+    COVERAGE_SKIPPED = "[mutineer] coverage skipped for "
+    # Published guide to the load_path setting, for an installed gem's users.
+    LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#extra-load-paths"
 
     # @param boot [Hash] boot config sent to the daemon: project_root, boot,
-    #   load_paths, framework, rails.
+    #   load_paths, framework, rails, verbose (see {DaemonBackend.boot_config}).
     # @param app_root [String] directory to spawn the daemon in (the app root).
     # @param ruby_version [String, nil] RBENV_VERSION for the app's Ruby.
     #   nil keeps a pin already in the environment. That pin is often the
@@ -61,6 +86,7 @@ module Mutineer
       @gemfile = gemfile || File.join(app_root, "Gemfile")
       @errio = errio
       @restarts = 0
+      @capture_noted = false # one load note on the capture warnings (#517)
     end
 
     # Spawn the daemon and complete the ready handshake. Raises DaemonBootError on
@@ -72,13 +98,25 @@ module Mutineer
       self
     end
 
-    # How many database configs the booted test environment reported.
-    # 1 when the daemon did not send a count.
+    # The booted test environment's databases, as the daemon reported them:
+    # "names" and "primary", or "error" when the lookup failed. nil when the
+    # app has no worker-DB adapter.
     #
-    # @return [Integer]
-    def database_count
-      @database_count || 1
-    end
+    # @return [Hash, nil]
+    attr_reader :databases
+
+    # Why the last {#request} answered `"error"`: the redacted `Class: message`
+    # line from the daemon's child (#388), or `daemon crashed` / `daemon
+    # stopped answering` when no reply came. nil when the reply carried no
+    # cause, or the last request answered anything else. A missing-file
+    # `LoadError` line can end with a note on dropped load variables
+    # ({#with_load_env_hint}, #491). Read it right after
+    # {#request}: a client serves one worker thread at a time
+    # ({DaemonBackend} gives each thread its own), so no other request can
+    # replace it in between.
+    #
+    # @return [String, nil]
+    attr_reader :last_cause
 
     # Ask the daemon to create `slots` worker databases. Raises when the copy
     # fails or another run holds the database, so the caller stops before any
@@ -108,8 +146,12 @@ module Mutineer
     # @param timeout [Numeric] per-mutant wall-clock timeout (seconds).
     # @param worker [Integer] worker slot; the daemon routes the fork to
     #   `<db>-<worker>` for isolation. Defaults to 0 (serial).
-    # @return [String] one of survived/killed/error/timeout.
+    # @return [String] one of survived/killed/error/timeout. An `"error"`
+    #   reply's cause is in {#last_cause}.
     def request(id:, payload:, tests:, timeout:, worker: 0)
+      @last_cause = nil
+      # A write that fails reads no reply, so a stale flag must not name it a hang.
+      @timed_out = false
       # close_io nils the pipes, so a client whose respawn never completed would
       # otherwise fail per-mutant forever (NoMethodError on nil) and let the backend
       # score every remaining mutant against nothing. Deadness is a property of the
@@ -127,8 +169,12 @@ module Mutineer
         rescue Errno::EPIPE, IOError
           nil
         end
-      return reply["verdict"] if reply && reply["id"] == id
+      if reply && reply["id"] == id
+        @last_cause = with_load_env_hint(reply["details"]) if reply["verdict"] == "error"
+        return reply["verdict"]
+      end
 
+      @last_cause = @timed_out ? "daemon stopped answering" : "daemon crashed"
       restart!
       "error"
     end
@@ -204,13 +250,56 @@ module Mutineer
         end
       end
       # A parent require must not run in the app, even when Bundler saved it.
-      %w[RUBYOPT RUBYLIB].each { |key| env.delete(key) }
+      LOAD_ENV.each { |key| env.delete(key) }
       # No saved original means the value belongs to the tool process.
       %w[GEM_HOME GEM_PATH BUNDLE_PATH BUNDLE_WITHOUT BUNDLER_VERSION].each do |key|
         env.delete(key) unless restored.include?(key)
       end
       env
     end
+
+    # {.with_load_env_hint} for a mutant's cause line.
+    #
+    # @api private
+    # @param cause [String, nil] the child's cause line.
+    # @return [String, nil]
+    def with_load_env_hint(cause) = self.class.with_load_env_hint(cause)
+
+    # A text that reports a missing file, with a note when this run set a
+    # load variable that the daemon dropped (#491). The text is a mutant's
+    # cause line, or the coverage build's error or red clean-check message
+    # (#500), or the daemon's capture warning for one test file (#517).
+    # Names only the variables, never their values: RUBYOPT can hold a secret.
+    #
+    # @api private
+    # @param cause [String, nil] the text to note.
+    # @return [String, nil]
+    def self.with_load_env_hint(cause)
+      return cause unless cause&.match?(MISSING_FILE_CAUSE)
+
+      names = LOAD_ENV.select do |key|
+        value = user_value(key).to_s
+        key == "RUBYOPT" ? value.match?(RUBYOPT_LOAD_PATH) : !value.strip.empty?
+      end
+      return cause if names.empty?
+
+      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if the missing file is in a " \
+        "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
+        "see #{LOAD_PATH_GUIDE})"
+    end
+
+    # The value the user set for +key+, before Bundler changed it.
+    #
+    # @api private
+    # @param key [String]
+    # @return [String, nil]
+    def self.user_value(key)
+      saved = ENV.fetch("BUNDLER_ORIG_#{key}", nil)
+      return ENV.fetch(key, nil) if saved.nil?
+
+      saved == BUNDLER_UNSET ? nil : saved
+    end
+    private_class_method :user_value
 
     # Drop rbenv and asdf version bins so shims can select the app Ruby.
     # Leave those bins in place when no shim directory exists, so +bundle+
@@ -346,15 +435,17 @@ module Mutineer
             "-r", DAEMON_PATH, "-e", "Mutineer::DaemonServer.run",
             unsetenv_others: true, chdir: @app_root
           )
-          # Drain daemon stderr to the tool's stderr so child/boot errors are visible.
-          # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn;
-          # the rescue swallows the benign EBADF/IOError raised when close_io closes
-          # the pipe out from under an in-flight copy_stream.
-          @drain = Thread.new do # rubocop:disable ThreadSafety/NewThread
-            IO.copy_stream(@stderr, @errio)
-          rescue IOError, Errno::EBADF
-            nil
-          end
+          # Requests and replies are UTF-8 JSON, so both pipes are tagged
+          # UTF-8 and do not depend on LANG (#303, #346). `JSON.generate`
+          # already returns UTF-8; the stdin tag keeps a later write of a
+          # UTF-8 string from being converted. The stderr drain reads bytes
+          # and marks each line UTF-8 itself (write_redacted).
+          @stdin.set_encoding(Encoding::UTF_8)
+          @stdout.set_encoding(Encoding::UTF_8)
+          # Drain daemon stderr to the tool's stderr so child/boot errors are visible,
+          # redacted line by line (#288: the app's output goes through here too).
+          # Tracked (not fire-and-forget) so close_io can reclaim it on quit/respawn.
+          @drain = Thread.new { drain_stderr(@stderr) } # rubocop:disable ThreadSafety/NewThread
 
           send_line(@boot)
           read_line(BOOT_TIMEOUT)
@@ -373,7 +464,7 @@ module Mutineer
         close_io
         raise (timed_out ? DaemonBootTimeout : DaemonBootError), "daemon failed to boot under the app bundle: #{detail}"
       end
-      @database_count = ready["database_count"] || 1
+      @databases = ready["databases"]
     end
 
     # Respawn after a crash, up to MAX_RESTARTS, then hard-fail loudly.
@@ -413,6 +504,112 @@ module Mutineer
       nil
     end
 
+    # Copy each line of the daemon's stderr to the tool's stderr, redacted.
+    # A line is the unit the daemon and the app write, so a password is never
+    # split across two redaction calls. The line break is kept outside the
+    # redaction, so a line redaction hides as a whole still ends its line.
+    # The drain ends at EOF, or once the daemon has exited and the pipe is
+    # empty: a grandchild that keeps the pipe open would otherwise hold it
+    # until close_io's DRAIN_GRACE (#341). Either way it writes a last line
+    # that has no newline. After a write fails (EPIPE from a tool stderr that
+    # went away), the drain keeps reading and drops the lines, so the daemon
+    # never blocks on a full pipe. The outer rescue swallows the benign
+    # EBADF/IOError raised when close_io closes the pipe under an in-flight
+    # read, so the thread never ends with an error that close_io's join would
+    # re-raise.
+    #
+    # @param io [IO] the daemon's stderr pipe.
+    # @return [nil]
+    def drain_stderr(io)
+      writable = true
+      pending = "".b
+      loop do
+        # Read the exit before the pipe: everything the daemon wrote is in the
+        # pipe by the time it has exited, so an empty read after it is the end.
+        exited = @wait_thr && !@wait_thr.alive?
+        chunk = io.read_nonblock(4096, exception: false)
+        break if chunk.nil?
+
+        if chunk == :wait_readable
+          # After the exit, one more quiet poll before stopping, so a mutant
+          # child's last line, written just after the daemon died, still shows.
+          ready = io.wait_readable(DRAIN_POLL)
+          break if exited && !ready
+
+          next
+        end
+        pending << chunk.b
+        # Nothing new can be emitted before a newline, so a long line is not
+        # rescanned on every read.
+        next unless chunk.include?("\n")
+
+        ready, pending = Redaction.take_redactable(pending, flush: false)
+        writable &&= write_redacted(ready) if writable && !ready.empty?
+      end
+      if writable && !pending.empty?
+        ready, = Redaction.take_redactable(pending, flush: true)
+        write_redacted(ready) unless ready.empty?
+      end
+      nil
+    rescue StandardError
+      nil
+    end
+
+    # Write daemon stderr to the tool's stderr, redacted. One line at a time,
+    # unless a password form itself contains a newline: then the chunk is one
+    # redaction so the form is not split. A failed redaction still keeps each
+    # ordinary line's break.
+    #
+    # @param chunk [String] raw bytes, with or without a trailing newline.
+    # @return [Boolean] false when the write failed.
+    def write_redacted(chunk)
+      return true if chunk.nil? || chunk.empty?
+
+      if chunk.include?("\n") && Redaction.newline_forms.any?
+        write_redacted_piece(chunk)
+      else
+        chunk.each_line { |line| write_redacted_piece(line) }
+      end
+      true
+    rescue StandardError
+      false
+    end
+
+    # Write one piece of daemon stderr, redacted. The trailing newline is kept
+    # outside the replacement.
+    #
+    # @param line [String]
+    # @return [void]
+    def write_redacted_piece(line)
+      newline = line.end_with?("\n")
+      body = (newline ? line.chomp("\n") : line).dup.force_encoding(Encoding::UTF_8)
+      body.scrub! unless body.valid_encoding? # an invalid byte must not stop the drain
+      @errio.write(with_capture_note(Redaction.text(body)))
+      @errio.write("\n") if newline
+    end
+
+    # Adds the load note ({.with_load_env_hint}) to the first capture warning
+    # that reports a missing file (#517). The daemon prints that warning in
+    # the app, which cannot see the dropped variables; the drain runs here,
+    # which can. Later warnings stay as they are, so one note does not repeat
+    # on every line of a suite that cannot load its helper. A piece holds
+    # more than one line when a password form spans a newline.
+    #
+    # @api private
+    # @param text [String] redacted daemon stderr, without its last newline.
+    # @return [String]
+    def with_capture_note(text)
+      return text if @capture_noted || !text.include?(COVERAGE_SKIPPED)
+
+      text.split("\n", -1).map do |line|
+        next line if @capture_noted || !line.start_with?(COVERAGE_SKIPPED)
+
+        noted = with_load_env_hint(line)
+        @capture_noted = true unless noted.equal?(line)
+        noted
+      end.join("\n")
+    end
+
     # Close the IPC pipes, stop the stderr-drain thread, and reap the daemon so a
     # respawn or quit leaves no leaked fd, thread, or zombie.
     #
@@ -425,7 +622,11 @@ module Mutineer
       rescue Errno::ESRCH
         nil # it exited between the check and the kill
       end
-      @drain&.kill # stop the drain BEFORE closing its fd (avoids a copy_stream EBADF)
+      # The drain ends on its own once the daemon has exited and the pipe is
+      # empty, writing a boot error with no final newline. Wait for that, then
+      # stop it BEFORE closing its fd (avoids an EBADF mid-read).
+      @drain&.join(DRAIN_GRACE)
+      @drain&.kill
       [@stdin, @stdout, @stderr].each { |io| io&.close rescue nil } # rubocop:disable Style/RescueModifier
       @wait_thr&.join # reap the exited daemon so respawn/quit leaves no zombie
       @stdin = @stdout = @stderr = @drain = @wait_thr = nil

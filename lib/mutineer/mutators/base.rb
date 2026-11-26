@@ -20,6 +20,7 @@ module Mutineer
       def mutations_for(subject, source)
         @source = source
         @mutations = []
+        @declined = 0
         @body = subject.def_node.body
         @body&.accept(self)
         drop_dangling_heredocs
@@ -50,7 +51,25 @@ module Mutineer
         @in_undiscovered = outer
       end
 
+      # Returns how many candidates the last {#mutations_for} call declined: an
+      # edit that would split a heredoc from its body, or an equivalent skip
+      # listed in docs/equivalent-skips.md. A declined candidate is never a
+      # mutation, so it is not in the run's total.
+      #
+      # @return [Integer] declined candidates; 0 before the first call.
+      def declined
+        @declined || 0
+      end
+
       private
+
+      # Counts one declined candidate.
+      #
+      # @return [nil] so a skip line reads `return decline if ...`.
+      def decline
+        @declined += 1
+        nil
+      end
 
       # Drops a mutation that splits a heredoc opener from its body.
       #
@@ -61,10 +80,13 @@ module Mutineer
       # the replaced range holds the body but the replacement keeps only the
       # opener, the opener has no body and the source does not parse. A
       # replacement that copies the opener and the body together stays.
+      # Each dropped mutation counts as declined.
       #
       # @return [void]
       def drop_dangling_heredocs
+        before = @mutations.size
         @mutations.reject! { |mutation| dangling_heredoc?(mutation) }
+        @declined += before - @mutations.size
       end
 
       # Returns whether the mutation replaces a heredoc opener and keeps the

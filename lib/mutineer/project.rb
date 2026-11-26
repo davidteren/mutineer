@@ -17,13 +17,331 @@ module Mutineer
     def self.discover(paths, only: nil)
       subjects = Array(paths).flat_map do |path|
         result = Parser.parse_file(path)
-        visitor = SubjectVisitor.new(path)
+        visitor = SubjectVisitor.new(path, plain_path_calls(result.value), superclass_constant_names(result.value))
         visitor.visit(result.value)
         visitor.promote_module_functions!
+        exclude_ambiguous_hook_defs!(visitor.subjects, result.value)
+        mark_callback_definers!(visitor.subjects, result.value)
         visitor.subjects
       end
       only ? subjects.select { |s| s.qualified_name == only } : subjects
     end
+
+    # Each class statement's superclass that is a constant, inside any
+    # parentheses: the name for a bare constant (`:BaseRow` for
+    # `class Row < BaseRow` and for `class Row < ::BaseRow`), and the text as
+    # written for a path (`"Billing::BaseRow"`, `"::BaseRow"`). Reload keeps the value of a constant assignment
+    # that {kept_constant_write?} matches to one of these, and discovery marks
+    # a def inside that value (#503). Both read the names here, so discovery
+    # marks at least every value the reload text keeps
+    # ({JobPlan.keep_live_superclasses}).
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Symbol, String>]
+    def self.superclass_constant_names(program)
+      names = Set.new
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        next unless node.is_a?(Prism::ClassNode)
+
+        superclass = node.superclass
+        # `class Row < (BaseRow)` names it too, as JobPlan.kept_target reads it.
+        superclass = superclass.body.body.first while sole_statement_parentheses?(superclass)
+        names << superclass.name if superclass.is_a?(Prism::ConstantReadNode) ||
+                                    (superclass.is_a?(Prism::ConstantPathNode) && superclass.parent.nil?)
+        names << superclass.slice if superclass.is_a?(Prism::ConstantPathNode)
+      end
+      names
+    end
+
+    # Whether `node` is one pair of parentheses around one statement. Discovery
+    # ({superclass_constant_names}) and the reload text ({JobPlan.kept_target})
+    # both look through such parentheses with this one test, so they agree.
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.sole_statement_parentheses?(node)
+      node.is_a?(Prism::ParenthesesNode) && node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1
+    end
+
+    # Whether reload keeps the value of this constant write (#503). It fails
+    # closed: a write it does not keep leaves the file as written, which errors
+    # visibly with "superclass mismatch" when it builds a new class (#527).
+    # All three must hold:
+    #
+    # - The write names a superclass of the file: a bare write (`BaseRow = ...`)
+    #   matches a bare superclass (`< BaseRow` or `< ::BaseRow`), and a path
+    #   write matches a path superclass spelled the same (`Billing::Base = ...`
+    #   with `< Billing::Base`). So `Base = ...` beside
+    #   `class User < ActiveRecord::Base` is not kept.
+    # - A path write's parent is a constant path or `self`, so the scope the
+    #   guard reads runs no code a second time.
+    # - The value is a {kept_builder?} call, which reads nothing the file can
+    #   build again. A builder method of the file (`BaseRow = build_base`) would
+    #   keep a class its mutant never reaches, a silent false survivor.
+    #
+    # {JobPlan.kept_constant_splice} and discovery both ask here, so discovery
+    # marks every def inside a kept value {Subject#in_kept_constant}.
+    #
+    # @param node [Prism::Node]
+    # @param names [Set<Symbol, String>] {superclass_constant_names} of the file.
+    # @return [Boolean]
+    def self.kept_constant_write?(node, names)
+      if node.is_a?(Prism::ConstantWriteNode)
+        return false unless names.include?(node.name)
+      elsif node.is_a?(Prism::ConstantPathWriteNode)
+        return false unless names.include?(node.target.slice) && constant_scope?(node.target.parent)
+      else
+        return false
+      end
+      kept_builder?(node.value)
+    end
+
+    # The class builders a kept value may call, by receiver name.
+    KEPT_BUILDERS = { Struct: :new, Data: :define, Class: :new }.freeze
+
+    # A `Struct.new`, `Data.define` or `Class.new` call (also `::Struct`) whose
+    # arguments are literals: symbols, strings, numbers, `true`, `false`,
+    # `nil`, and keyword pairs of those. It may have a literal block. A
+    # constant, a variable, a splat or a call in an argument can name a class
+    # or value the file builds again, so such a value is not kept (#533).
+    #
+    # @param node [Prism::Node]
+    # @return [Boolean]
+    def self.kept_builder?(node)
+      return false unless node.is_a?(Prism::CallNode)
+      return false unless node.block.nil? || node.block.is_a?(Prism::BlockNode)
+
+      receiver = node.receiver
+      root = receiver.is_a?(Prism::ConstantReadNode) || (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil?)
+      return false unless root && KEPT_BUILDERS[receiver.name] == node.name
+
+      (node.arguments&.arguments || []).all? { |argument| literal_argument?(argument) }
+    end
+
+    # The literal nodes {kept_builder?} accepts as an argument.
+    LITERALS = [Prism::SymbolNode, Prism::StringNode, Prism::IntegerNode, Prism::FloatNode,
+                Prism::TrueNode, Prism::FalseNode, Prism::NilNode].freeze
+
+    # @param node [Prism::Node] one argument of a builder call.
+    # @return [Boolean]
+    def self.literal_argument?(node)
+      return true if LITERALS.any? { |type| node.is_a?(type) }
+
+      node.is_a?(Prism::KeywordHashNode) && node.elements.all? do |pair|
+        pair.is_a?(Prism::AssocNode) && literal_argument?(pair.key) && literal_argument?(pair.value)
+      end
+    end
+
+    # Whether a constant write's parent runs no code: none (`::X`), `self`, or
+    # a chain of constants (`A::B`).
+    #
+    # @param node [Prism::Node, nil]
+    # @return [Boolean]
+    def self.constant_scope?(node)
+      return true if node.nil? || node.is_a?(Prism::SelfNode) || node.is_a?(Prism::ConstantReadNode)
+
+      node.is_a?(Prism::ConstantPathNode) && constant_scope?(node.parent)
+    end
+
+    # The calls that build an ActiveSupport callback chain: `define_callbacks`
+    # and ActiveModel's `define_model_callbacks`, which calls it once per name.
+    # During a reload {ReloadGuards::CallbackRedefinition} skips a chain the
+    # class already has, with the options the call gives (#504).
+    CALLBACK_DEFINERS = %i[define_callbacks define_model_callbacks].freeze
+
+    # Marks each def that calls a {CALLBACK_DEFINERS} method
+    # {Subject#calls_define_callbacks}, so it is `unplaceable` under reload.
+    # When the class body calls such a def, the guard skips the chain it
+    # defines, with the names and options a mutant changed, so the mutant
+    # never reaches Rails. It would score `survived` unapplied (#504).
+    #
+    # It fails closed. A {CALLBACK_DEFINERS} call counts with any receiver.
+    # A def that calls a marked def of the same file by name (any receiver),
+    # or through `super` from a def of the same name, is marked too, so a
+    # helper that calls another helper is covered. The match is by name, so a
+    # same-named call in another class of the file is marked as well. The
+    # whole def is marked, because any line of it can change the names or
+    # options it passes. A def the class body never calls loses real verdicts
+    # under reload. Still unmarked (#530): a def that only computes the names
+    # or options (`define_callbacks :save, **opts`), a call through `send`,
+    # `public_send`, `__send__` or `method`, and a caller in another file.
+    #
+    # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @param program [Prism::ProgramNode] the complete parsed file.
+    # @return [void]
+    def self.mark_callback_definers!(subjects, program)
+      defs = []
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        defs << node if node.is_a?(Prism::DefNode)
+      end
+      marked = Set.new
+      helpers = Set.new
+      loop do
+        found = defs.select { |d| !marked.include?(d) && calls_callback_definer?(d, helpers) }
+        break if found.empty?
+
+        marked.merge(found)
+        helpers.merge(found.map(&:name))
+      end
+      subjects.each { |subject| subject.calls_define_callbacks = true if marked.include?(subject.def_node) }
+    end
+
+    # Whether a def calls a {CALLBACK_DEFINERS} method or one of `helpers`
+    # (any receiver), or is one of `helpers` by name and calls `super`.
+    #
+    # @param def_node [Prism::DefNode]
+    # @param helpers [Set<Symbol>] the names of the file's marked defs.
+    # @return [Boolean]
+    def self.calls_callback_definer?(def_node, helpers)
+      nodes = def_node.compact_child_nodes
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        return true if node.is_a?(Prism::CallNode) && (CALLBACK_DEFINERS.include?(node.name) || helpers.include?(node.name))
+        return true if (node.is_a?(Prism::SuperNode) || node.is_a?(Prism::ForwardingSuperNode)) &&
+                       helpers.include?(def_node.name)
+      end
+      false
+    end
+
+    # Keeps hook defs unplaceable when the raw AST can define another method
+    # with the same name and source line. Count all defs, including bodies that
+    # SubjectVisitor does not select, and Ruby's explicit method creators (see
+    # {.created_method_locations}). Indirect callable bodies may come from any
+    # block or lambda in this file, including a stored hook block. An unknown
+    # creator name blocks only those possible source lines. Instance and
+    # singleton definitions can both reach singleton-class hosts, so their
+    # shared name and line are ambiguous too. Run before `only` so selecting
+    # one subject cannot hide a collision.
+    #
+    # @param subjects [Array<Mutineer::Subject>] subjects from one source file.
+    # @param program [Prism::ProgramNode] the complete parsed file.
+    # @return [void]
+    def self.exclude_ambiguous_hook_defs!(subjects, program)
+      return unless subjects.any?(&:reload_hook_call)
+
+      counts = Hash.new(0)
+      body_lines = Set.new
+      indirect_names = Set.new
+      nodes = [program]
+      while (node = nodes.pop)
+        nodes.concat(node.compact_child_nodes)
+        if node.is_a?(Prism::LambdaNode) || node.is_a?(Prism::BlockNode)
+          body_lines << node.location.start_line
+        end
+        location = if node.is_a?(Prism::DefNode)
+                     [node.location.start_line, [node.name]]
+                   elsif node.is_a?(Prism::CallNode)
+                     created_method_locations(node)
+                   end
+        next unless location
+
+        line, names = location
+        if line
+          names.each { |name| counts[[line, name]] += 1 }
+        else
+          names.each { |name| indirect_names << name }
+        end
+      end
+      indirect_names.each { |name| body_lines.each { |line| counts[[line, name]] += 1 } }
+      subjects.each do |subject|
+        line = subject.def_node.location.start_line
+        subject.reload_hook_call = nil if counts[[line, subject.name]] > 1 || counts[[line, nil]].positive?
+      end
+    end
+    private_class_method :exclude_ambiguous_hook_defs!
+
+    # The source line and names Ruby assigns to explicit method creators. A
+    # block-defined method starts at the block opening and a literal lambda at
+    # its arrow. A positional callable takes precedence over a supplied block.
+    # Other positional bodies and block passes have an indirect source: the
+    # caller checks possible block/lambda lines instead of the call line.
+    # An attribute method starts at the message token, not its receiver line.
+    # Literal symbol and string names are exact. A dynamic name, splat, or attr
+    # writer flag may name any method on that line, represented by nil.
+    #
+    # @param node [Prism::CallNode] call to inspect.
+    # @return [Array, nil] source line and names (a nil line means an indirect
+    #   callable body), or nil for a call outside this built-in family.
+    def self.created_method_locations(node)
+      arguments = node.arguments&.arguments || []
+      case node.name
+      when :define_method, :define_singleton_method
+        body = arguments[1] || node.block
+        body = body.expression if body.is_a?(Prism::BlockArgumentNode)
+        line = body.location.start_line if body.is_a?(Prism::BlockNode) || body.is_a?(Prism::LambdaNode)
+        return [line, [literal_method_name(arguments.first)]]
+      when :attr_reader, :attr_writer, :attr_accessor, :attr
+        mode = { attr_reader: :reader, attr_writer: :writer, attr_accessor: :both, attr: :reader }.fetch(node.name)
+        if node.name == :attr && arguments.size == 2 &&
+           (arguments.last.is_a?(Prism::TrueNode) || arguments.last.is_a?(Prism::FalseNode))
+          mode = arguments.last.is_a?(Prism::TrueNode) ? :both : :reader
+          arguments = arguments.first(1)
+        end
+        names = arguments.flat_map do |argument|
+          name = literal_method_name(argument)
+          next [nil] unless name
+
+          case mode
+          when :reader then [name]
+          when :writer then [:"#{name}="]
+          else [name, :"#{name}="]
+          end
+        end
+        [node.message_loc.start_line, names]
+      end
+    end
+    private_class_method :created_method_locations
+
+    # A literal method name, or nil when it depends on a runtime value.
+    #
+    # @param node [Prism::Node, nil] name argument.
+    # @return [Symbol, nil]
+    def self.literal_method_name(node)
+      node.unescaped.to_sym if node.is_a?(Prism::SymbolNode) || node.is_a?(Prism::StringNode)
+    end
+    private_class_method :literal_method_name
+
+    # The call statements that run each time the file loads, in order: each one
+    # sits in the file's top-level statements or in a `module` or `class` body
+    # reached only through such statements. A call under any `if`, `unless`,
+    # `case`, `&&`, `rescue` or loop, an assignment, an argument, a def or a block
+    # is not on this path. A file with a `return` outside any def or block may
+    # stop before a call, so it has none (#297).
+    #
+    # @param program [Prism::ProgramNode] the parsed file.
+    # @return [Set<Prism::CallNode>] compared by identity.
+    def self.plain_path_calls(program)
+      calls = Set.new.compare_by_identity
+      return calls if top_level_return?(program)
+
+      bodies = [program.statements]
+      while (body = bodies.pop)
+        body.body.each do |node|
+          calls << node if node.is_a?(Prism::CallNode)
+          bodies << node.body if (node.is_a?(Prism::ModuleNode) || node.is_a?(Prism::ClassNode)) &&
+                                 node.body.is_a?(Prism::StatementsNode)
+        end
+      end
+      calls
+    end
+    private_class_method :plain_path_calls
+
+    # True when the node holds a `return` that is not inside a def, a block or a
+    # lambda, so loading the file can stop early.
+    #
+    # @param node [Prism::Node] node to search.
+    # @return [Boolean]
+    def self.top_level_return?(node)
+      return true if node.is_a?(Prism::ReturnNode)
+      return false if node.is_a?(Prism::DefNode) || node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode)
+
+      node.compact_child_nodes.any? { |child| top_level_return?(child) }
+    end
+    private_class_method :top_level_return?
 
     # Walks an AST, maintaining a namespace stack, emitting Subjects.
     # Nested inside Project to signal its private role.
@@ -33,6 +351,9 @@ module Mutineer
 
       # ActiveSupport::Concern calls whose block another module or class runs (see {#concern_block}).
       CONCERN_BLOCKS = %i[class_methods included prepended].freeze
+
+      # Calls whose first argument names a method they reach (see {#placeable_hook}).
+      NAME_TAKERS = %i[method instance_method send public_send __send__].freeze
 
       # A constant name, or a path of them; Ruby allows Unicode in both.
       CONSTANT_PATH = /\A[[:upper:]][[:word:]]*(?:::[[:upper:]][[:word:]]*)*\z/
@@ -61,8 +382,15 @@ module Mutineer
       # Builds a subject visitor.
       #
       # @param file [String] source file path being visited.
-      def initialize(file)
+      # @param plain_calls [Set<Prism::CallNode>] the file's call statements on a
+      #   plain path (see {Project.plain_path_calls}); only these hook calls can be placed.
+      # @param kept_names [Set<Symbol, String>] the file's superclass constants (see
+      #   {Project.superclass_constant_names}); a def in the value of a constant
+      #   write that {Project.kept_constant_write?} matches is {Subject#in_kept_constant}.
+      def initialize(file, plain_calls = Set.new, kept_names = Set.new)
         @file = file
+        @plain_calls = plain_calls
+        @kept_names = kept_names
         @namespace_stack = []
         @lexical_stack = [] # class/module names as written, `::X` kept (#145)
         @subjects = []
@@ -83,6 +411,11 @@ module Mutineer
         @singleton_uncertain = false # the open `class << self` was inside a def or a non-builder block
         @concern_modules = Set.new   # the {#module_key} of each module that ran `extend ActiveSupport::Concern`
         @hook_block = false          # inside a concern's `included` or `prepended` block (see {#hook_block?})
+        @enclosing_subject = nil     # the subject of the def being visited, for a nested def (#290)
+        @hook_call = nil             # that block's call node, when reload can place its defs (see {#placeable_hook})
+        @hook_uses = Set.new         # the names that block calls outside its def bodies
+        @in_superclass_block = false # inside a class statement's superclass expression (#492)
+        @in_kept_constant = false    # inside the value of a superclass constant reload keeps (#503)
         super()
       end
 
@@ -96,15 +429,35 @@ module Mutineer
         return if @module_function_names.empty?
 
         named = @module_function_names.to_set
-        @subjects.each_with_index { |s, i| s.singleton = true if named.include?([@subject_keys[i], s.name]) }
+        @subjects.each_with_index do |s, i|
+          next unless named.include?([@subject_keys[i], s.name])
+
+          s.singleton = true
+          s.reload_hook_call = nil # a module function has a second, private copy no hook def placement makes
+        end
       end
 
-      # Visits class nodes and tracks namespace nesting.
+      # Visits class nodes and tracks namespace nesting. A def inside the
+      # superclass expression (`class X < Struct.new(:a) do ... end`) is marked
+      # {Subject#in_superclass_block}: a reload keeps the live superclass, so
+      # that block does not run again (#492).
       #
       # @param node [Prism::ClassNode] class node.
       # @return [void]
       def visit_class_node(node)
-        with_namespace(node.constant_path) { super }
+        with_namespace(node.constant_path) do
+          visit(node.constant_path)
+          if node.superclass
+            saved = @in_superclass_block
+            @in_superclass_block = true
+            begin
+              visit(node.superclass)
+            ensure
+              @in_superclass_block = saved
+            end
+          end
+          visit(node.body) if node.body
+        end
       end
 
       # Visits module nodes and tracks namespace nesting.
@@ -156,6 +509,7 @@ module Mutineer
           hook = hook_block?(node)
           return preserving_scope do
             @hook_block ||= hook
+            @hook_call, @hook_uses = placeable_hook(node) if hook
             @owner_unknown = true
             super
           end
@@ -194,13 +548,17 @@ module Mutineer
       # Names the class a builder block assigned to this constant builds (see {#builds_class?}).
       #
       # `=`, `||=` and `&&=` store the class, so each names it; `+=` stores what `+`
-      # returns, so its builder is left unnamed.
+      # returns, so its builder is left unnamed. A plain `=` of a name a class
+      # statement in the file inherits from marks each def in its value
+      # {Subject#in_kept_constant}, because reload keeps that value (#503).
       #
       # @param node [Prism::ConstantWriteNode, Prism::ConstantPathWriteNode, Prism::ConstantOrWriteNode,
       #   Prism::ConstantAndWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode]
       #   constant assignment.
       # @return [void]
       def visit_constant_write_node(node)
+        saved_kept = @in_kept_constant
+        @in_kept_constant = true if Project.kept_constant_write?(node, @kept_names)
         call = assigned_value(node.value)
         return super unless builds_class?(call)
 
@@ -211,6 +569,8 @@ module Mutineer
         ensure
           @assigned = saved
         end
+      ensure
+        @in_kept_constant = saved_kept
       end
       alias visit_constant_path_write_node visit_constant_write_node
       alias visit_constant_or_write_node visit_constant_write_node
@@ -244,25 +604,32 @@ module Mutineer
       # @param node [Prism::DefNode] method definition node.
       # @return [void]
       def visit_def_node(node)
-        @subjects << Subject.new(
+        subject = Subject.new(
           file: @file,
           namespace: (@block_namespace || @namespace_stack).dup,
           lexical: @lexical_stack.dup,
           block_owner: @block_owner,
           owner_unknown: @owner_unknown,
           hook_block: @hook_block,
+          reload_hook_call: reload_hook_call_for(node),
+          in_superclass_block: @in_superclass_block,
+          in_kept_constant: @in_kept_constant,
+          calls_define_callbacks: false, # set by Project.mark_callback_definers!
           name: node.name,
           singleton: !node.receiver.nil? || @singleton_depth.positive? || @module_function_active,
-          def_node: node
+          def_node: node,
+          enclosing_subject: @enclosing_subject
         )
+        @subjects << subject
         @subject_keys << module_key
         saved_active = @module_function_active
-        saved_self = [@self_unknown, @self_scope]
+        saved_self = [@self_unknown, @self_scope, @enclosing_subject]
         @self_unknown = true # `self` in a method body is the receiver it is called on
         @self_scope = node
+        @enclosing_subject = subject
         super
         @module_function_active = saved_active # a visibility call in a method body runs only when it is called
-        @self_unknown, @self_scope = saved_self
+        @self_unknown, @self_scope, @enclosing_subject = saved_self
       end
 
       private
@@ -347,7 +714,7 @@ module Mutineer
             end
           @lexical_stack += [root ? "::#{name}" : name]
           @module_function_active = false
-          @block_owner = @block_namespace = nil
+          @block_owner = @block_namespace = @hook_call = nil
           # redefine reopens the lexical chain, which does not pass through the block's `self`
           @namespace_unknown = @owner_unknown = in_singleton || self_in_block || @namespace_unknown
           @singleton_depth = 0
@@ -361,7 +728,7 @@ module Mutineer
       # Visitor state a class/module body or builder block sets for what it contains.
       SCOPE_STATE = %i[@namespace_stack @lexical_stack @module_function_active @block_owner @block_namespace
                        @owner_unknown @singleton_depth @singleton_cref @namespace_unknown @anonymous_block @body
-                       @self_unknown @self_scope @singleton_uncertain @hook_block].freeze
+                       @self_unknown @self_scope @singleton_uncertain @hook_block @hook_call @hook_uses].freeze
 
       # Runs the block and then restores every {SCOPE_STATE} variable, so a
       # nested body's state never leaks out of it.
@@ -512,14 +879,72 @@ module Mutineer
       # ActiveSupport::Concern` earlier in this file (see {#concern_block}).
       # ActiveSupport runs the block only when a class first includes or prepends
       # the concern, so loading the file again stores the new block but never
-      # runs it in a class that already has the concern (#256). Everything the
-      # block defines, a nested class or a builder block included, stays as the
-      # original wrote it under `--strategy reload`.
+      # runs it in a class that already has the concern (#256). Reload can still
+      # place a def that sits directly in such a block (see {#placeable_hook} and
+      # {#reload_hook_call_for}, #297); anything else the block defines, a nested
+      # class or a builder block included, stays as the original wrote it.
       #
       # @param node [Prism::CallNode] a call {#concern_block} sorted as a concern block.
       # @return [Boolean]
       def hook_block?(node)
         %i[included prepended].include?(node.name) && @concern_modules.include?(module_key)
+      end
+
+      # The hook call and the names its block calls outside its def bodies, when
+      # reload can place the block's defs (#297), else nil and an empty set. The
+      # call must be on a plain path ({Project.plain_path_calls}), so the statement
+      # the mutant file adds before it runs exactly when the call runs. An alias in
+      # the block keeps the original body, so a block with any `alias` or
+      # `alias_method` places nothing. The names come from bare calls, `self.`
+      # calls and the name given to `method`, `instance_method`, `send`,
+      # `public_send` or `__send__`, in every nested block and lambda too:
+      # discovery cannot tell a block that runs at once from one that runs
+      # later. A name such a call computes at runtime places nothing.
+      #
+      # @param node [Prism::CallNode] the hook call.
+      # @return [Array(Prism::CallNode, Set<Symbol>), Array(nil, Set<Symbol>)]
+      def placeable_hook(node)
+        uses = Set.new
+        return [nil, uses] unless @plain_calls.include?(node)
+
+        nodes = [node.block.body].compact
+        while (current = nodes.pop)
+          next if current.is_a?(Prism::DefNode)
+          return [nil, Set.new] if current.is_a?(Prism::AliasMethodNode)
+
+          if current.is_a?(Prism::CallNode) && (current.receiver.nil? || current.receiver.is_a?(Prism::SelfNode))
+            return [nil, Set.new] if current.name == :alias_method
+
+            uses << current.name
+            if NAME_TAKERS.include?(current.name) && (name_arg = current.arguments&.arguments&.first)
+              # A runtime name may be any def in the block.
+              return [nil, Set.new] unless name_arg.is_a?(Prism::SymbolNode) || name_arg.is_a?(Prism::StringNode)
+
+              uses << name_arg.unescaped.to_sym
+            end
+          end
+          nodes.concat(current.compact_child_nodes)
+        end
+        [node, uses]
+      end
+
+      # The hook call of the block this def sits in directly, when reload can
+      # place the def (#297), else nil. The def must be in the block itself, or
+      # in its `class << self` without a receiver: not in a def, a nested class
+      # or module, or another block. `module_function` gives the def a second,
+      # private copy, and a name the block itself uses kept the original's
+      # result, so neither is placeable. An explicit receiver other than `self`
+      # can be bound only inside the hook, which the extracted def does not keep.
+      #
+      # @param node [Prism::DefNode] the def being recorded.
+      # @return [Prism::CallNode, nil]
+      def reload_hook_call_for(node)
+        return unless @hook_call && @self_scope.equal?(@hook_call.block) && !@module_function_active
+        return if node.receiver && !node.receiver.is_a?(Prism::SelfNode)
+        return if @singleton_depth > 1 || (@singleton_depth == 1 && node.receiver)
+        return if @hook_uses.include?(node.name)
+
+        @hook_call
       end
 
       # Runs the block with the defs it visits owned by the class a builder block builds.

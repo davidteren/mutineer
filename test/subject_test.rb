@@ -47,6 +47,11 @@ class SubjectTest < Minitest::Test
     plain = build.call
     refute plain.unplaceable?("redefine")
     refute plain.unplaceable?("reload")
+
+    # #297: reload places a hook-block def that discovery found a hook call for.
+    placed = build.call(owner_unknown: true, hook_block: true, reload_hook_call: Object.new)
+    assert placed.unplaceable?("redefine")
+    refute placed.unplaceable?("reload")
   end
 
   def test_body_loc_nil_for_empty_method

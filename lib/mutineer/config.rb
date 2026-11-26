@@ -3,6 +3,7 @@
 require "did_you_mean"
 require "etc"
 require "yaml"
+require_relative "fs_path"
 
 module Mutineer
   # The phrase every 1.x warning uses for behaviour that 2.0 turns into an
@@ -62,7 +63,15 @@ module Mutineer
     ConfigOption.new(field: :capture_timeout, type: :positive_int, yaml_key: "capture_timeout",
                      flag: "--capture-timeout"),
     ConfigOption.new(field: :cache_dir, type: :string, yaml_key: "cache_dir", flag: "--cache-dir"),
+    # Directories put on $LOAD_PATH before the boot file, the sources and the
+    # tests, in-process and in the daemon (#491). `-I` is its short flag.
+    ConfigOption.new(field: :extra_load_paths, type: :string_list, yaml_key: "load_path", flag: "--load-path"),
     ConfigOption.new(field: :allow_empty, type: :bool, yaml_key: "allow_empty", flag: "--allow-empty"),
+    ConfigOption.new(field: :since_paired_tests, type: :bool, yaml_key: "since_paired_tests",
+                     flag: "--since-paired-tests"),
+    ConfigOption.new(field: :shared_databases, type: :string_list, yaml_key: "shared_databases"),
+    # YAML-only: pairs source patterns with extra test patterns for pairing (#382).
+    ConfigOption.new(field: :test_map, type: :test_map, yaml_key: "tests"),
     ConfigOption.new(field: :coverage_from, type: :string, flag: "--coverage-from"),
     ConfigOption.new(field: :format, type: :enum, flag: "--format", values: %w[human json html]),
     ConfigOption.new(field: :strategy, type: :enum, flag: "--strategy", values: %w[reload redefine],
@@ -84,10 +93,34 @@ module Mutineer
   # `matrix` (--matrix) runs every covering test for each mutant and reports
   # which tests kill it (see KillMatrix); it never changes a verdict.
   #
+  # `shared_databases` (file only) names test database configs that parallel
+  # `--daemon` workers may share; see DaemonBackend.worker_count_for.
+  #
+  # `test_map` (file key `tests`, no flag) holds checked source→test pattern
+  # entries that pairing adds to a source's paired tests (#382). Distinct from
+  # `:tests`, the CLI `--test` file list.
+  #
   # Boot mode adds: boot (a file to require ONCE in the parent so the app env,
   # e.g. Rails, is booted before forking; sources are then NOT manually required)
   # and rails (sugar: defaults boot to config/environment, prefers redefine without
   # a daemon, and reconnects ActiveRecord per fork).
+  #
+  # `extra_load_paths` (file key `load_path`, flag `--load-path` or `-I`) holds
+  # the directories the user puts on $LOAD_PATH (#491); see
+  # JobPlan.extra_load_dirs. Distinct from `load_paths`, which is code only:
+  # the `lib` a run without a boot file puts first, as `rake test` does.
+  #
+  # `unpaired_sources` is code only. Pairing stores each source it skips
+  # because no conventional test exists. An explicit test list leaves it empty.
+  # There is no flag and no config-file key.
+  #
+  # `tests_by_source` is code only, as `unpaired_sources` is. Pairing stores
+  # each paired source with its tests (convention tests, then `tests:` map
+  # tests). An explicit test list leaves it empty.
+  #
+  # `since_paired_tests` (off by default) narrows the test list of an
+  # in-process or `--daemon` run under `--since` to the tests paired with the
+  # sources that have a mutant on a changed line ({JobPlan.since_tests}, #496).
   Config = Struct.new(
     :sources, :tests, :operators, :threshold, :only, :dry_run,
     :cache_dir, :project_root, :load_paths,
@@ -95,14 +128,16 @@ module Mutineer
     :boot, :rails, :since, :framework, :verbose, :ignore, :ignore_reasons,
     # :daemon is user-facing (--daemon flag + KNOWN_KEYS + boolean coerce).
     # :daemon_timeout stays programmatic (set by tests/Runner; no flag yet).
+    # :unpaired_sources stays programmatic (set by pairing; no flag yet).
     :baseline, :baseline_epsilon, :fail_fast, :test_command,
     :daemon, :daemon_timeout, :timeout, :capture_timeout, :matrix, :allow_empty, :coverage_from,
+    :shared_databases, :unpaired_sources, :tests_by_source, :test_map, :since_paired_tests, :extra_load_paths,
     keyword_init: true
   ) do
     # Config file name.
     CONFIG_FILE = ".mutineer.yml"
-    # Keys accepted in .mutineer.yml, derived from the schema. `require` maps to the
-    # :require_paths field.
+    # Keys accepted in .mutineer.yml, derived from the schema. `require` maps to
+    # :require_paths; `tests` maps to :test_map (not the CLI :tests field).
     KNOWN_KEYS = CONFIG_OPTIONS.filter_map(&:yaml_key).freeze
 
     # @param explicit [Array<Symbol>] fields the user wrote (CLI or file). Derived
@@ -118,7 +153,7 @@ module Mutineer
       self.threshold     ||= 0.0
       self.dry_run       ||= false
       self.cache_dir     ||= ".mutineer"
-      self.project_root  ||= Dir.pwd
+      self.project_root = FsPath.read(project_root || Dir.pwd)
       self.load_paths    ||= ["lib"]
       self.jobs          ||= Etc.nprocessors
       self.format        ||= "human"
@@ -133,6 +168,12 @@ module Mutineer
       self.daemon        = false if daemon.nil?
       self.matrix        = false if matrix.nil?
       self.allow_empty   = false if allow_empty.nil?
+      self.shared_databases ||= []
+      self.unpaired_sources ||= []
+      self.tests_by_source ||= {}
+      self.test_map      ||= []
+      self.since_paired_tests = false if since_paired_tests.nil?
+      self.extra_load_paths ||= []
     end
 
     # True when the user wrote `key`, on the command line or in the config
@@ -291,12 +332,14 @@ module Mutineer
       specs > tests.length / 2.0 ? "rspec" : "minitest"
     end
 
-    # Maps a config key to its Struct field.
+    # Maps a config key to its Struct field. Reads the schema row so YAML keys
+    # that differ from the field (`require` → :require_paths, `tests` →
+    # :test_map) stay correct without a hand-maintained alias list.
     #
     # @param known_key [String] config key.
     # @return [Symbol] struct field name.
     def self.field_for(known_key)
-      known_key == "require" ? :require_paths : known_key.to_sym
+      CONFIG_OPTIONS.find { |o| o.yaml_key == known_key }&.field || known_key.to_sym
     end
 
     # Parses one raw value into the typed value for `field`. A value that does
@@ -346,7 +389,10 @@ module Mutineer
         raise ConfigError, "#{prefix}unknown #{field} #{value.to_s.inspect}. Expected: #{opt.values.join(', ')}"
       when :ignore_list
         parse_ignore_list(value, file)
+      when :test_map
+        parse_test_map(value, file)
       when :string_list
+        check_load_path_shape!(value, origin) if field == :extra_load_paths
         items = Array(value).map(&:to_s)
         # Only `operators` treats [] as "run these" rather than "use the
         # default". A blank key then makes no mutants and exits 0. An empty
@@ -382,6 +428,25 @@ module Mutineer
       end
     end
 
+    # A `load_path` value is a directory or a list of directories. Without this
+    # check `Array(value).map(&:to_s)` would turn `{a: b}` into the entries
+    # `a` and `b`, and `true` into the directory "true".
+    #
+    # @api private
+    # @param value [Object] raw value from the flag or the file.
+    # @param origin [String] the flag, or "<file>: load_path".
+    # @return [void]
+    # @raise [ConfigError] for a blank entry or a value of another shape.
+    def self.check_load_path_shape!(value, origin)
+      entries = value.is_a?(Array) ? value : [value]
+      if entries.any? { |entry| entry.nil? || (entry.is_a?(String) && entry.strip.empty?) }
+        raise ConfigError, "#{origin} must name a directory, not blank (got: #{value.inspect})"
+      end
+      return if entries.all?(String)
+
+      raise ConfigError, "#{origin} must be a directory or a list of directories (got: #{value.inspect})"
+    end
+
     # Reads a finite Float from a number or a plain decimal string. Rejects booleans,
     # NaN and Infinity: `Float(true)` is an error, but a YAML `.nan` is a Float.
     # A string must be digits with an optional fraction, the same digits-only rule
@@ -396,6 +461,94 @@ module Mutineer
           when String then Float(value) if value.match?(/\A\d+(\.\d+)?\z/)
           end
       f if f&.finite?
+    end
+
+    # Reads a `tests:` map into checked entries. Each entry is a Hash with
+    # `:sources` and `:tests` arrays of relative pattern strings. A single
+    # string pattern becomes a one-element list. `[]` is valid (no map).
+    # Absolute paths, blank patterns, unknown keys, and non-mapping entries
+    # raise ConfigError naming the file and `tests entry N`.
+    #
+    # @api private
+    # @param value [Object] the raw YAML value.
+    # @param file [String, nil] config file name.
+    # @return [Array<Hash{Symbol => Array<String>}>]
+    # @raise [Mutineer::ConfigError] when the value or an entry is malformed.
+    def self.parse_test_map(value, file)
+      label = file || CONFIG_FILE
+      origin = "#{label}: tests"
+      got = "(got: #{value.inspect})"
+      unless value.is_a?(Array)
+        raise ConfigError, "#{origin} must be a list of mappings with sources and tests #{got}"
+      end
+
+      value.each_with_index.map do |entry, index|
+        number = index + 1
+        entry_origin = "#{origin} entry #{number}"
+        unless entry.is_a?(Hash)
+          raise ConfigError, "#{entry_origin} must be a mapping with sources and tests " \
+                             "(got: #{entry.inspect})"
+        end
+
+        keys = entry.keys.map(&:to_s)
+        unknown = keys - %w[sources tests]
+        unless unknown.empty?
+          names = unknown.map(&:inspect).join(", ")
+          raise ConfigError, "#{entry_origin} has unknown key #{names}"
+        end
+        raise ConfigError, "#{entry_origin} is missing sources" unless keys.include?("sources")
+        raise ConfigError, "#{entry_origin} is missing tests" unless keys.include?("tests")
+
+        sources = entry.key?("sources") ? entry["sources"] : entry[:sources]
+        tests = entry.key?("tests") ? entry["tests"] : entry[:tests]
+        {
+          sources: parse_test_map_patterns(sources, entry_origin, "sources"),
+          tests: parse_test_map_patterns(tests, entry_origin, "tests")
+        }
+      end
+    end
+
+    # Turns one `sources` or `tests` value into a non-empty list of relative
+    # pattern strings. A bare string becomes a one-element list.
+    #
+    # @api private
+    # @param value [Object] raw YAML value for the key.
+    # @param entry_origin [String] `file: tests entry N` prefix for errors.
+    # @param key [String] `"sources"` or `"tests"`.
+    # @return [Array<String>]
+    # @raise [Mutineer::ConfigError] when the list or a pattern is invalid.
+    def self.parse_test_map_patterns(value, entry_origin, key)
+      patterns = case value
+                 when String then [value]
+                 when Array then value
+                 else
+                   raise ConfigError, "#{entry_origin} #{key} must be a pattern or a list of " \
+                                      "patterns (got: #{value.inspect})"
+                 end
+      raise ConfigError, "#{entry_origin} #{key} must not be empty" if patterns.empty?
+
+      patterns.map do |pattern|
+        unless pattern.is_a?(String)
+          raise ConfigError, "#{entry_origin} #{key} pattern must be a string " \
+                             "(got: #{pattern.inspect})"
+        end
+        if pattern.strip.empty?
+          raise ConfigError, "#{entry_origin} #{key} pattern must not be blank " \
+                             "(got: #{pattern.inspect})"
+        end
+        if File.absolute_path?(pattern)
+          raise ConfigError, "#{entry_origin} #{key} pattern must be relative, not absolute " \
+                             "(got: #{pattern.inspect})"
+        end
+        # Patterns resolve against the run directory. A `..` segment can leave
+        # that root, so reject it here the same way absolute paths are rejected.
+        if pattern.split(%r{[/\\]}).include?("..")
+          raise ConfigError, "#{entry_origin} #{key} pattern must stay under the run directory " \
+                             "(got: #{pattern.inspect})"
+        end
+
+        pattern
+      end
     end
 
     # Reads an `ignore:` value into ids plus a reason for each mapping.

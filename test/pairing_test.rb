@@ -169,6 +169,81 @@ class PairingTest < Minitest::Test
     end
   end
 
+  # #380: one --test value becomes test paths. A file stays as typed.
+  def test_expand_test_selects_a_directory_a_glob_or_a_file
+    with_tree(
+      "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb",
+      "test/test_d.rb", "test/test_helper.rb", "test/support/helper.rb",
+      "test/.hidden/e_test.rb", "spec/x_spec.rb", "spec/spec_helper.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      dir = ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb", "test/test_d.rb"]
+      assert_equal dir, pair.expand_test("test", project_root: root)
+      assert_equal dir, pair.expand_test(File.join(root, "test"), project_root: root)
+      assert_equal ["spec/x_spec.rb"], pair.expand_test("spec", project_root: root)
+      assert_equal ["test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("test/**/*_test.rb", project_root: root)
+      assert_equal ["spec/x_spec.rb", "test/a_test.rb", "test/models/b_test.rb", "test/models/deep/c_test.rb"],
+                   pair.expand_test("{test,spec}/**/*_{test,spec}.rb", project_root: root)
+      assert_equal ["test/a_test.rb", "test/test_d.rb", "test/test_helper.rb"],
+                   pair.expand_test("test/*.rb", project_root: root)
+      assert_empty pair.expand_test("test/mod*", project_root: root)
+      assert_equal ["./test/a_test.rb"], pair.expand_test("./test/a_test.rb", project_root: root)
+      assert_equal ["test/a_test.rb"], pair.expand_test("./test/*_test.rb", project_root: root)
+      assert_equal ["test/nope_test.rb"], pair.expand_test("test/nope_test.rb", project_root: root)
+      assert_empty pair.expand_test("test/**/*_nomatch.rb", project_root: root)
+      assert_empty pair.expand_test("test/support", project_root: root)
+      FileUtils.touch(File.join(root, "test", "[x]_test.rb"))
+      assert_equal ["test/[x]_test.rb"], pair.expand_test("test/[x]_test.rb", project_root: root)
+    end
+  end
+
+  # A directory includes system tests and test_ support files.
+  # A glob of one folder does not.
+  def test_expand_test_keeps_system_tests_and_test_support_files
+    with_tree("test/models/a_test.rb", "test/system/s_test.rb", "test/support/test_helpers.rb", "test/routes_test.rb") do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test/models/a_test.rb", "test/routes_test.rb", "test/support/test_helpers.rb", "test/system/s_test.rb"],
+                   pair.expand_test("test", project_root: root)
+      assert_equal ["test/models/a_test.rb"], pair.expand_test("test/models/**/*_test.rb", project_root: root)
+    end
+  end
+
+  # A directory name is literal. Pattern characters do not select a sibling.
+  def test_expand_test_reads_a_directory_name_as_literal
+    with_tree(
+      "test[a]/a_test.rb", "testa/nested/wrong_test.rb",
+      "br{ace}/a_test.rb", "a?b/a_test.rb", "axb/wrong_test.rb",
+      "star*/a_test.rb", "starX/wrong_test.rb"
+    ) do |root|
+      pair = Mutineer::Pairing
+      assert_equal ["test[a]/a_test.rb"], pair.expand_test("test[a]", project_root: root)
+      assert_equal ["br{ace}/a_test.rb"], pair.expand_test("br{ace}", project_root: root)
+      assert_equal ["a?b/a_test.rb"], pair.expand_test("a?b", project_root: root)
+      assert_equal ["star*/a_test.rb"], pair.expand_test("star*", project_root: root)
+    end
+  end
+
+  # A directory outside the project stays absolute.
+  def test_expand_test_keeps_an_outside_directory_absolute
+    with_tree("proj/test/a_test.rb", "other/b_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "other")
+      assert_equal [File.join(other, "b_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
+  # An outside directory whose name is a pattern still lists only its own files.
+  def test_expand_test_reads_an_outside_directory_name_as_literal
+    with_tree("proj/lib/a.rb", "out[a]/a_test.rb", "outa/nested/wrong_test.rb") do |dir|
+      root = File.join(dir, "proj")
+      other = File.join(dir, "out[a]")
+      assert_equal [File.join(other, "a_test.rb")],
+                   Mutineer::Pairing.expand_test(other, project_root: root)
+    end
+  end
+
   # #87: a suite split as <basename>_*_test.rb still pairs when the exact file
   # is absent. Order is sorted so the choice is stable.
   def test_split_test_files_pair_when_no_exact_file_exists
@@ -285,6 +360,30 @@ class PairingTest < Minitest::Test
     end
   end
 
+  def test_longer_source_in_a_non_ascii_directory_keeps_its_split_file
+    with_tree("app/caf\u00e9/user.rb", "app/caf\u00e9/user_session.rb",
+              "test/caf\u00e9/user_session_test.rb") do |root|
+      assert_empty infer_tests("app/caf\u00e9/user.rb", root)
+      assert_equal ["test/caf\u00e9/user_session_test.rb"],
+                   infer_tests("app/caf\u00e9/user_session.rb", root)
+    end
+  end
+
+  def test_split_names_sort_when_one_is_not_utf8
+    Dir.mktmpdir("mutineer-pair") do |root|
+      FileUtils.mkdir_p(File.join(root, "test"))
+      File.write(File.join(root, "user.rb"), "")
+      File.write(File.join(root, "test", "user_caf\u00e9_test.rb"), "")
+      begin
+        File.binwrite(File.join(root, "test").b + "/user_\xFF_test.rb".b, "")
+      rescue Errno::EILSEQ
+        skip "this filesystem refuses a file name that is not UTF-8"
+      end
+      names = infer_tests("user.rb", root)
+      assert_equal ["test/user_caf\u00e9_test.rb", "test/user_\xFF_test.rb"].map(&:b), names.map(&:b)
+    end
+  end
+
   def test_root_source_does_not_take_a_longer_sibling_test
     with_tree("user.rb", "user_session.rb", "test/user_session_test.rb") do |root|
       assert_empty infer_tests("user.rb", root)
@@ -314,6 +413,599 @@ class PairingTest < Minitest::Test
     end
     with_tree("lib/helper.rb", "test/helper_extra_test.rb") do |root|
       assert_equal ["test/helper_extra_test.rb"], infer_tests("lib/helper.rb", root)
+    end
+  end
+
+  def flagged?(path, tests, root: "/proj")
+    Mutineer::Pairing.test_given_as_source?(path, project_root: root, tests: tests)
+  end
+
+  def test_given_as_source_flags_suffix_and_prefix_names_under_test_dirs
+    %w[test/a_test.rb test/test_a.rb spec/a_spec.rb test/models/test_user.rb].each do |path|
+      assert flagged?(path, []), path
+    end
+  end
+
+  def test_given_as_source_skips_test_helper_and_non_test_names
+    %w[test/test_helper.rb test/a_tests.rb lib/calc.rb].each do |path|
+      refute flagged?(path, []), path
+    end
+  end
+
+  def test_given_as_source_flags_a_root_level_test_beside_a_given_test
+    assert flagged?("b_test.rb", ["a_test.rb"])
+    assert flagged?("./b_test.rb", ["a_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_prefixed_source_beside_a_test
+    refute flagged?("lib/test_runners.rb", ["lib/runner_test.rb"])
+    refute flagged?("test_b.rb", ["test_a.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_prefixed_source_in_a_nested_test_dir
+    refute flagged?("lib/foo/test/test_app.rb", ["test/a_test.rb"])
+    refute flagged?("/proj/lib/foo/spec/test_app.rb", ["test/a_test.rb"])
+    assert flagged?("/proj/test/test_b.rb", ["test/test_a.rb"])
+  end
+
+  def test_given_as_source_matches_paths_typed_through_the_real_root
+    Dir.mktmpdir("mutineer-pair") do |tmp|
+      real = File.join(tmp, "real")
+      FileUtils.mkdir_p(real)
+      link = File.join(tmp, "link")
+      File.symlink(real, link)
+      root_real = File.realpath(real)
+      assert flagged?(File.join(root_real, "test/test_b.rb"), [], root: link)
+      assert flagged?(File.join(root_real, "b_test.rb"), ["a_test.rb"], root: link)
+    end
+  end
+
+  def test_given_as_source_ignores_test_dirs_above_the_root
+    refute flagged?("/home/test/proj/lib/test_runners.rb", [], root: "/home/test/proj")
+    refute flagged?("/home/test/proj/lib/ab_test.rb", ["test/ab_test_test.rb"], root: "/home/test/proj")
+    assert flagged?("/home/test/proj/test/b_test.rb", [], root: "/home/test/proj")
+  end
+
+  def test_given_as_source_keeps_a_test_named_source_in_another_dir
+    refute flagged?("lib/ab_test.rb", ["test/other_test.rb"])
+    refute flagged?("b_test.rb", ["sub/a_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_source_whose_own_test_is_given
+    %w[ab_test_test.rb test_ab_test.rb ab_test_spec.rb ab_test_strong_test.rb].each do |test|
+      refute flagged?("ab_test.rb", [test]), test
+    end
+  end
+
+  def test_given_as_source_flags_a_test_named_source_beside_another_test
+    # Known limit (#293 plan AE6): no name link to the given test, same dir.
+    assert flagged?("ab_test.rb", ["other_test.rb"])
+  end
+
+  def test_given_as_source_keeps_a_test_named_source_outside_test_dirs
+    refute flagged?("app/models/ab_test.rb", ["test/models/ab_test_test.rb"])
+  end
+
+  def test_given_as_source_ignores_test_dirs_above_the_root_for_outside_paths
+    refute flagged?("/home/test/other/b_test.rb", ["a_test.rb"], root: "/home/test/proj")
+    assert flagged?("../test/b_test.rb", [], root: "/home/test/proj")
+  end
+
+  def test_given_as_source_flags_a_split_test_owned_by_a_longer_source
+    Dir.mktmpdir("mutineer-pair") do |root|
+      File.write(File.join(root, "user_test_session.rb"), "")
+      assert flagged?("user_test.rb", ["user_test_session_test.rb"], root: root)
+    end
+    Dir.mktmpdir("mutineer-pair") do |root|
+      refute flagged?("user_test.rb", ["user_test_session_test.rb"], root: root)
+    end
+  end
+
+  # A concern source is app/<dir>/concerns/<rest>.rb. The namespace base drops concerns/.
+  def test_namespace_base
+    pair = Mutineer::Pairing
+    assert_equal "models/storage/totaled", pair.namespace_base("app/models/concerns/storage/totaled.rb")
+    assert_equal "controllers/authentication", pair.namespace_base("app/controllers/concerns/authentication.rb")
+    [ "lib/concerns/foo.rb", "app/concerns/baz.rb", "app/models/billing/concerns/bar.rb",
+      "concerns/qux.rb", "app/models/concerns.rb", "models/concerns/x.rb", "app/models/user.rb"
+    ].each do |path|
+      assert_nil pair.namespace_base(path), path
+    end
+  end
+
+  # The namespace test pairs when the concerns/ path has no test.
+  def test_concern_pairs_with_the_test_at_its_namespace_path
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/storage/totaled_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A test at the concerns/ path wins. The namespace file is not added.
+  def test_concerns_path_wins_over_the_namespace_path
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/concerns/storage/totaled_test.rb",
+              "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/concerns/storage/totaled_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A split file at the concerns/ path blocks the namespace fallback.
+  def test_split_file_at_the_concerns_path_blocks_the_namespace_fallback
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "test/models/concerns/storage/totaled_bytes_test.rb",
+              "test/models/storage/totaled_test.rb") do |root|
+      assert_equal ["test/models/concerns/storage/totaled_bytes_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A controller concern uses the namespace path under test/controllers.
+  def test_controller_concern_pairs_at_the_top_level_namespace_path
+    source = "app/controllers/concerns/authentication.rb"
+    with_tree(source, "test/controllers/authentication_test.rb") do |root|
+      assert_equal ["test/controllers/authentication_test.rb"], infer_tests(source, root)
+    end
+  end
+
+  # A spec and a test_ prefix name are exact namespace names.
+  def test_concern_namespace_fallback_accepts_spec_and_test_prefix_names
+    source = "app/models/concerns/storage/totaled.rb"
+    with_tree(source, "spec/models/storage/totaled_spec.rb") do |root|
+      assert_equal ["spec/models/storage/totaled_spec.rb"], infer_tests(source, root)
+      assert_equal ["spec/models/storage/totaled_spec.rb"], infer_tests(source, root, prefer: "rspec")
+    end
+    with_tree(source, "test/models/storage/test_totaled.rb") do |root|
+      assert_equal ["test/models/storage/test_totaled.rb"], infer_tests(source, root)
+    end
+  end
+
+  # Split names at the namespace path follow the same longer-source rule as
+  # a mirror split. The concerns/ path still wins. A model keeps its file.
+  def test_namespace_split_names_follow_the_longer_source_rule
+    concern = "app/models/concerns/storage/totaled.rb"
+    user = "app/models/concerns/user.rb"
+    session = "app/models/concerns/user_session.rb"
+    cases = [
+      {
+        label: "a split name pairs when no longer source owns it",
+        files: [concern, "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/storage/totaled_bytes_test.rb"] }
+      },
+      {
+        label: "the exact namespace name stays ahead of the split names",
+        files: [concern, "test/models/storage/totaled_test.rb",
+                "test/models/storage/totaled_zeta_test.rb",
+                "test/models/storage/totaled_alpha_test.rb"],
+        expect: { concern => ["test/models/storage/totaled_test.rb",
+                              "test/models/storage/totaled_alpha_test.rb",
+                              "test/models/storage/totaled_zeta_test.rb"] }
+      },
+      {
+        label: "a spec at the namespace path stays the only file",
+        files: [concern, "spec/models/storage/totaled_spec.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["spec/models/storage/totaled_spec.rb"] },
+        prefers: %w[minitest rspec]
+      },
+      {
+        label: "an exact test at the concerns path blocks the namespace split",
+        files: [concern, "test/models/concerns/storage/totaled_test.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/concerns/storage/totaled_test.rb"] }
+      },
+      {
+        label: "a split test at the concerns path blocks the namespace split",
+        files: [concern, "test/models/concerns/storage/totaled_sum_test.rb",
+                "test/models/storage/totaled_bytes_test.rb"],
+        expect: { concern => ["test/models/concerns/storage/totaled_sum_test.rb"] }
+      },
+      {
+        label: "a controller concern pairs a top-level namespace split",
+        files: ["app/controllers/concerns/authentication.rb",
+                "test/controllers/authentication_token_test.rb"],
+        expect: {
+          "app/controllers/concerns/authentication.rb" =>
+            ["test/controllers/authentication_token_test.rb"]
+        }
+      },
+      {
+        label: "a split outside the namespace mirror does not pair",
+        files: [concern, "test/other/totaled_bytes_test.rb"],
+        expect: { concern => [] }
+      },
+      {
+        label: "a longer model keeps the namespace split",
+        files: [user, "app/models/user_session.rb", "test/models/user_session_test.rb"],
+        expect: {
+          user => [],
+          "app/models/user_session.rb" => ["test/models/user_session_test.rb"]
+        }
+      },
+      {
+        label: "a longer lib source keeps the namespace split",
+        files: [user, "lib/models/user_session.rb", "test/models/user_session_test.rb"],
+        expect: {
+          user => [],
+          "lib/models/user_session.rb" => ["test/models/user_session_test.rb"]
+        }
+      },
+      {
+        label: "a longer concern keeps the namespace split",
+        files: [user, session, "test/models/user_session_guards_test.rb"],
+        expect: {
+          user => [],
+          session => ["test/models/user_session_guards_test.rb"]
+        }
+      },
+      {
+        label: "an intermediate concern owns the longer split name",
+        files: [user, session, "app/models/concerns/user_session_guards.rb",
+                "test/models/user_session_guards_test.rb"],
+        expect: {
+          user => [],
+          session => [],
+          "app/models/concerns/user_session_guards.rb" =>
+            ["test/models/user_session_guards_test.rb"]
+        }
+      }
+    ]
+    cases.each do |row|
+      with_tree(*row[:files]) do |root|
+        row[:expect].each do |source, tests|
+          (row[:prefers] || ["minitest"]).each do |prefer|
+            assert_equal tests, infer_tests(source, root, prefer: prefer), "#{row[:label]} (#{source}, #{prefer})"
+          end
+        end
+      end
+    end
+  end
+
+  # The longer concern keeps its concerns-path test and does not add the
+  # namespace split. The shorter concern keeps that split, because the longer
+  # concern does not run it.
+  def test_shorter_concern_keeps_a_namespace_split_the_longer_concern_does_not_run
+    shorter = "app/models/concerns/user.rb"
+    longer = "app/models/concerns/user_session.rb"
+    with_tree(shorter, longer,
+              "test/models/concerns/user_session_test.rb",
+              "test/models/user_session_extra_test.rb") do |root|
+      assert_equal ["test/models/concerns/user_session_test.rb"], infer_tests(longer, root)
+      assert_equal ["test/models/user_session_extra_test.rb"], infer_tests(shorter, root)
+    end
+  end
+
+  # A source path with `..` must not make the longer-concern lookup stat a file
+  # outside the project. The namespace base here climbs out of the root.
+  def test_longer_concern_lookup_stays_inside_the_project
+    Dir.mktmpdir do |parent|
+      root = File.join(parent, "project")
+      FileUtils.mkdir_p(File.join(root, "app/models/concerns"))
+      outside = File.join(parent, "outside")
+      FileUtils.mkdir_p(outside)
+      File.write(File.join(outside, "user_session.rb"), "")
+
+      climbing = "models/../../../../outside/user"
+      refute Mutineer::Pairing.send(:claimed_by_longer_concern?, root, climbing, "user_session_extra_test.rb")
+    end
+  end
+
+  # The model's only test is a split name a concern also uses. The concern
+  # must not take it away.
+  def test_model_keeps_its_only_split_file_when_a_concern_shares_the_name
+    with_tree("app/models/user.rb", "app/models/concerns/user_session.rb",
+              "test/models/user_session_extra_test.rb") do |root|
+      assert_equal ["test/models/user_session_extra_test.rb"],
+                   infer_tests("app/models/user.rb", root)
+      assert_equal ["test/models/user_session_extra_test.rb"],
+                   infer_tests("app/models/concerns/user_session.rb", root)
+    end
+  end
+
+  # Only app/<dir>/concerns/ falls back. Nested and other roots do not.
+  def test_only_a_concerns_dir_directly_below_an_app_dir_falls_back
+    with_tree("lib/concerns/foo.rb", "test/foo_test.rb",
+              "app/concerns/baz.rb", "test/baz_test.rb",
+              "app/models/billing/concerns/bar.rb", "test/models/billing/bar_test.rb",
+              "concerns/qux.rb", "test/qux_test.rb") do |root|
+      assert_empty infer_tests("lib/concerns/foo.rb", root)
+      assert_empty infer_tests("app/concerns/baz.rb", root)
+      assert_empty infer_tests("app/models/billing/concerns/bar.rb", root)
+      assert_empty infer_tests("concerns/qux.rb", root)
+    end
+  end
+
+  # The model keeps its split file. The concern may use that same test.
+  def test_model_keeps_its_split_file_when_a_concern_shares_it
+    with_tree("app/models/user.rb", "app/models/concerns/user_authentication.rb",
+              "test/models/user_test.rb", "test/models/user_authentication_test.rb") do |root|
+      assert_equal ["test/models/user_test.rb", "test/models/user_authentication_test.rb"],
+                   infer_tests("app/models/user.rb", root)
+      assert_equal ["test/models/user_authentication_test.rb"],
+                   infer_tests("app/models/concerns/user_authentication.rb", root)
+    end
+  end
+
+  # test_helper.rb is a support file. A concern named helper does not pair with it.
+  def test_helper_concern_does_not_pair_with_test_helper
+    source = "app/models/concerns/helper.rb"
+    with_tree(source, "test/models/test_helper.rb") do |root|
+      assert_empty infer_tests(source, root)
+    end
+  end
+
+  # #382 U3: resolve_test_map expands patterns; mapped_tests_for looks up by source.
+  def resolve_map(entries, root)
+    Mutineer::Pairing.resolve_test_map(entries, project_root: root)
+  end
+
+  def test_resolve_test_map_expands_a_sources_glob_with_recursion
+    with_tree("app/c/a.rb", "app/c/sub/b.rb", "app/other/x.rb", "test/c_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/c/**/*.rb"], tests: ["test/c_test.rb"] }], root)
+      assert_equal ["app/c/a.rb", "app/c/sub/b.rb"], got[:entries].first[:sources]
+    end
+  end
+
+  def test_resolve_test_map_expands_a_brace_tests_glob_across_directories
+    with_tree(
+      "lib/a.rb",
+      "test/c/one_test.rb", "test/i/two_test.rb", "test/other/skip_test.rb"
+    ) do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/{c,i}/**/*_test.rb"] }],
+        root
+      )
+      assert_equal ["test/c/one_test.rb", "test/i/two_test.rb"], got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_sources_directory_matches_expand_sources
+    with_tree("app/a.rb", "app/sub/b.rb", "app/notruby.txt", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app"], tests: ["test/a_test.rb"] }], root)
+      assert_equal Mutineer::Pairing.expand_sources(["app"], project_root: root),
+                   got[:entries].first[:sources]
+    end
+  end
+
+  def test_resolve_test_map_tests_directory_uses_test_name_filter
+    with_tree(
+      "lib/a.rb",
+      "test/x_test.rb", "test/y_spec.rb", "test/test_z.rb",
+      "test/test_helper.rb", "test/support/setup.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["lib/a.rb"], tests: ["test"] }], root)
+      assert_equal ["test/test_z.rb", "test/x_test.rb", "test/y_spec.rb"],
+                   got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_tests_glob_keeps_test_helper
+    with_tree(
+      "lib/a.rb",
+      "test/a_test.rb", "test/test_helper.rb", "test/support/setup.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["lib/a.rb"], tests: ["test/**/*.rb"] }], root)
+      assert_equal ["test/a_test.rb", "test/support/setup.rb", "test/test_helper.rb"],
+                   got[:entries].first[:tests]
+    end
+  end
+
+  def test_resolve_test_map_normalizes_equivalent_source_paths
+    with_tree("lib/a.rb", "test/a_test.rb") do |root|
+      %w[./lib/a.rb lib//a.rb lib/a.rb].each do |pattern|
+        got = resolve_map([{ sources: [pattern], tests: ["test/a_test.rb"] }], root)
+        assert_equal ["lib/a.rb"], got[:entries].first[:sources], pattern
+      end
+    end
+  end
+
+  def test_resolve_test_map_sources_glob_expands_a_matched_directory
+    with_tree("app/c/a.rb", "app/c/sub/b.rb", "app/file.rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/*"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/c/a.rb", "app/c/sub/b.rb", "app/file.rb"],
+                   got[:entries].first[:sources]
+    end
+  end
+
+  # An existing source path with glob metacharacters is literal (#380 rule).
+  def test_resolve_test_map_keeps_a_bracketed_source_path_literal
+    with_tree("app/models/a[1].rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/models/a[1].rb"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/models/a[1].rb"], got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
+  # A directory whose name holds glob metacharacters still expands recursively.
+  def test_resolve_test_map_expands_a_bracketed_source_directory
+    with_tree("app/component[1]/x.rb", "app/component[1]/sub/y.rb", "test/a_test.rb") do |root|
+      got = resolve_map([{ sources: ["app/component[1]"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/sub/y.rb", "app/component[1]/x.rb"],
+                   got[:entries].first[:sources]
+      assert_empty got[:unmatched]
+    end
+  end
+
+  # A sources glob that matches a bracketed directory keeps the files under it.
+  def test_resolve_test_map_sources_glob_keeps_files_under_a_bracketed_directory
+    with_tree(
+      "app/component[1]/x.rb", "app/other/y.rb", "test/a_test.rb"
+    ) do |root|
+      got = resolve_map([{ sources: ["app/*"], tests: ["test/a_test.rb"] }], root)
+      assert_equal ["app/component[1]/x.rb", "app/other/y.rb"],
+                   got[:entries].first[:sources]
+    end
+  end
+
+  # A tests: glob that matches directories expands them with the test-name filter.
+  def test_resolve_test_map_tests_glob_expands_matched_directories
+    with_tree(
+      "lib/a.rb",
+      "test/controllers/a_test.rb", "test/integration/b_test.rb",
+      "test/controllers/helper.rb", "test/loose.rb"
+    ) do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/{controllers,integration}"] }],
+        root
+      )
+      assert_equal ["test/controllers/a_test.rb", "test/integration/b_test.rb"],
+                   got[:entries].first[:tests]
+      assert_empty got[:unmatched]
+
+      mixed = resolve_map([{ sources: ["lib/a.rb"], tests: ["test/*"] }], root)
+      assert_equal [
+        "test/controllers/a_test.rb",
+        "test/integration/b_test.rb",
+        "test/loose.rb"
+      ], mixed[:entries].first[:tests]
+    end
+  end
+
+  # Brace patterns that escape the root via `..` must not keep outside paths.
+  def test_resolve_test_map_drops_brace_patterns_that_leave_the_root
+    Dir.mktmpdir do |parent|
+      outside = File.join(parent, "outside.rb")
+      File.write(outside, "def x; 1; end\n")
+      root = File.join(parent, "proj")
+      FileUtils.mkdir_p(File.join(root, "app"))
+      FileUtils.mkdir_p(File.join(root, "test"))
+      File.write(File.join(root, "app/x.rb"), "def x; 1; end\n")
+      File.write(File.join(root, "test/a_test.rb"), "# test\n")
+      got = resolve_map([{ sources: ["{..,app}/outside.rb"], tests: ["test/a_test.rb"] }], root)
+      assert_empty got[:entries].first[:sources]
+      assert_equal [{ entry: 1, key: "sources", pattern: "{..,app}/outside.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_missing_plain_test_path_is_no_match
+    with_tree("lib/a.rb") do |root|
+      got = resolve_map(
+        [{ sources: ["lib/a.rb"], tests: ["test/missing_test.rb"] }],
+        root
+      )
+      assert_empty got[:entries].first[:tests]
+      assert_equal [{ entry: 1, key: "tests", pattern: "test/missing_test.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_names_entry_and_key_for_an_unmatched_pattern
+    with_tree("lib/a.rb", "lib/b.rb", "test/a_test.rb") do |root|
+      got = resolve_map(
+        [
+          { sources: ["lib/a.rb"], tests: ["test/a_test.rb"] },
+          { sources: ["lib/b.rb"], tests: ["test/nope_test.rb"] }
+        ],
+        root
+      )
+      assert_equal [{ entry: 2, key: "tests", pattern: "test/nope_test.rb" }],
+                   got[:unmatched]
+    end
+  end
+
+  def test_resolve_test_map_dedupes_overlapping_patterns_and_sorts
+    with_tree(
+      "app/a.rb", "app/b.rb",
+      "test/a_test.rb", "test/b_test.rb"
+    ) do |root|
+      got = resolve_map(
+        [{
+          sources: ["app/a.rb", "app/*.rb", "app/b.rb"],
+          tests: ["test/b_test.rb", "test/*_test.rb", "test/a_test.rb"]
+        }],
+        root
+      )
+      assert_equal ["app/a.rb", "app/b.rb"], got[:entries].first[:sources]
+      assert_equal ["test/a_test.rb", "test/b_test.rb"], got[:entries].first[:tests]
+    end
+  end
+
+  def test_mapped_tests_for_concatenates_matching_entries_in_order
+    with_tree(
+      "lib/shared.rb", "lib/other.rb",
+      "test/one_test.rb", "test/two_test.rb", "test/three_test.rb"
+    ) do |root|
+      resolved = resolve_map(
+        [
+          { sources: ["lib/shared.rb"], tests: ["test/one_test.rb"] },
+          { sources: ["lib/*.rb"], tests: ["test/two_test.rb", "test/three_test.rb"] }
+        ],
+        root
+      )
+      # Each entry's tests are sorted; entries concatenate in map order.
+      assert_equal ["test/one_test.rb", "test/three_test.rb", "test/two_test.rb"],
+                   Mutineer::Pairing.mapped_tests_for("lib/shared.rb", resolved)
+      assert_equal ["test/three_test.rb", "test/two_test.rb"],
+                   Mutineer::Pairing.mapped_tests_for("lib/other.rb", resolved)
+      assert_equal [], Mutineer::Pairing.mapped_tests_for("lib/missing.rb", resolved)
+    end
+  end
+
+  # --- #494 pack pairing ------------------------------------------------------
+
+  # AE7 to AE10: the pack rule, row by row. Each row is a tree, a source and
+  # the expected list. Rows with no pack (AE10) and a source that pairs at the
+  # project root (AE8) keep the 1.9.0 answer.
+  PACK_ROWS = [
+    ["AE7 exact", %w[packs/catalog/test/models/item_test.rb],
+     "packs/catalog/app/models/item.rb", %w[packs/catalog/test/models/item_test.rb]],
+    ["AE8 root rule wins", %w[test/packs/catalog/app/models/item_test.rb packs/catalog/test/models/item_test.rb],
+     "packs/catalog/app/models/item.rb", %w[test/packs/catalog/app/models/item_test.rb]],
+    ["nested pack", %w[packs/a/packs/b/test/x_test.rb], "packs/a/packs/b/app/x.rb", %w[packs/a/packs/b/test/x_test.rb]],
+    ["grouped pack", %w[packs/group/a/test/models/x_test.rb], "packs/group/a/app/models/x.rb",
+     %w[packs/group/a/test/models/x_test.rb]],
+    ["lib source, test/lib", %w[packs/a/test/lib/tools/x_test.rb], "packs/a/lib/tools/x.rb",
+     %w[packs/a/test/lib/tools/x_test.rb]],
+    ["lib source, test", %w[packs/a/test/tools/x_test.rb], "packs/a/lib/tools/x.rb", %w[packs/a/test/tools/x_test.rb]],
+    ["spec", %w[packs/a/spec/models/x_spec.rb], "packs/a/app/models/x.rb", %w[packs/a/spec/models/x_spec.rb]],
+    ["split test", %w[packs/a/test/models/item_test.rb packs/a/test/models/item_price_test.rb],
+     "packs/a/app/models/item.rb", %w[packs/a/test/models/item_test.rb packs/a/test/models/item_price_test.rb]],
+    ["longer source keeps its split", %w[packs/a/app/models/item_price.rb packs/a/test/models/item_test.rb
+                                         packs/a/test/models/item_price_test.rb],
+     "packs/a/app/models/item.rb", %w[packs/a/test/models/item_test.rb]],
+    ["concern namespace", %w[packs/a/test/models/storage/totaled_test.rb],
+     "packs/a/app/models/concerns/storage/totaled.rb", %w[packs/a/test/models/storage/totaled_test.rb]],
+    ["app/public", %w[packs/a/test/public/x_test.rb], "packs/a/app/public/x.rb", %w[packs/a/test/public/x_test.rb]],
+    ["pack named app", %w[packs/app/test/x_test.rb], "packs/app/app/x.rb", %w[packs/app/test/x_test.rb]],
+    ["no test in the pack", %w[packs/a/test/models/other_test.rb], "packs/a/app/models/x.rb", []],
+    ["AE10 packsx", %w[packsx/a/test/x_test.rb], "packsx/a/app/x.rb", []],
+    ["AE10 app/packs", %w[app/packs/a/test/x_test.rb], "app/packs/a/app/x.rb", []],
+    ["AE10 no app or lib", %w[packs/a/test/x_test.rb], "packs/a/x.rb", []],
+    ["AE10 lib", %w[test/x_test.rb], "lib/x.rb", %w[test/x_test.rb]],
+    ["AE10 app", %w[test/models/x_test.rb], "app/models/x.rb", %w[test/models/x_test.rb]]
+  ].freeze
+
+  def test_pack_rule_across_layouts
+    PACK_ROWS.each do |label, tree, source, expected|
+      with_tree(*tree) do |root|
+        assert_equal expected, Mutineer::Pairing.infer_tests(source, project_root: root), label
+      end
+    end
+  end
+
+  def test_pack_split
+    {
+      "packs/catalog/app/models/item.rb" => ["packs/catalog", "app/models/item.rb"],
+      "packs/catalog/lib/tools/x.rb" => ["packs/catalog", "lib/tools/x.rb"],
+      "packs/a/packs/b/app/x.rb" => ["packs/a/packs/b", "app/x.rb"],
+      "packs/group/a/app/x.rb" => ["packs/group/a", "app/x.rb"],
+      "packs/app/app/x.rb" => ["packs/app", "app/x.rb"],
+      "packs/a/app/models/packs/b/app/x.rb" => ["packs/a", "app/models/packs/b/app/x.rb"],
+      "packs/a/x.rb" => nil,
+      "packs/app/x.rb" => nil,
+      "packsx/a/app/x.rb" => nil,
+      "app/packs/a/app/x.rb" => nil,
+      "lib/x.rb" => nil,
+      "packs/a/app/x.txt" => nil,
+      "packs/../../outside/app/x.rb" => nil,
+      "packs/a/../b/app/x.rb" => nil,
+      "packs/./a/app/x.rb" => nil
+    }.each do |path, expected|
+      if expected
+        assert_equal expected, Mutineer::Pairing.pack_split(path), path
+      else
+        assert_nil Mutineer::Pairing.pack_split(path), path
+      end
     end
   end
 end

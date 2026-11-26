@@ -21,11 +21,17 @@ Gem::Specification.new do |spec|
     "changelog_uri" => "#{spec.homepage}/blob/main/CHANGELOG.md",
     "bug_tracker_uri" => "#{spec.homepage}/issues",
     "documentation_uri" => "https://davidteren.github.io/mutineer/",
-    "rubygems_mfa_required" => "true"
+    "rubygems_mfa_required" => "true",
+    # Rails Hyperdrive companion opt-in: `bin/rails hyperdrive:init` copies the
+    # shipped skills/ into an app that bundles mutineer. "*" matches every app.
+    "hyperdrive_targets" => "*",
+    # Display hint for `bin/rails hyperdrive:discover` ("ships skill"); not an opt-in.
+    "hyperdrive_artifacts" => "skill"
   }
 
   # bin/mutineer MUST be shipped, else the declared executable has no source file.
-  spec.files       = Dir.glob("lib/**/*.rb") + Dir.glob("bin/*") + %w[README.md LICENSE CHANGELOG.md]
+  # skills/ holds the agent skill that Rails Hyperdrive installs (see metadata above).
+  spec.files       = Dir.glob("lib/**/*.rb") + Dir.glob("bin/*") + Dir.glob("skills/**/*") + %w[README.md LICENSE CHANGELOG.md]
   spec.bindir      = "bin"
   spec.executables = ["mutineer"]
   spec.require_paths = ["lib"]

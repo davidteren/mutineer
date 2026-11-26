@@ -3,10 +3,14 @@
 require "tempfile"
 require_relative "result"
 require_relative "parser"
+require_relative "source_bytes"
 require_relative "child_stdout"
 require_relative "child_coverage"
 require_relative "kill_channel"
 require_relative "concern_blocks"
+require_relative "redaction"
+require_relative "child_cause"
+require_relative "reach_probe"
 
 module Mutineer
   # Fork-based isolation for running one mutant. The block runs in a child
@@ -29,9 +33,15 @@ module Mutineer
     # Seconds between the parent's checks on a running child.
     POLL_INTERVAL = 0.005
 
+    # Byte scan for a path anchor. A snippet without one skips the parse that
+    # {anchor_paths} would do (#339). `send(:__dir__)` and
+    # `send(:require_relative)` contain the same tokens.
+    ANCHOR_PATTERN = /__dir__|__FILE__|require_relative/
+
     # Runs the block in a forked child. The block's return value (an Integer
     # exit code) or any explicit `exit` is honoured; an unhandled exception
-    # becomes exit 2 with the cause written to STDERR.
+    # becomes exit 2 with the cause written to STDERR. The cause also reaches
+    # the Result's `details` through a {ChildCause} pipe.
     #
     # The child silences its stdout (see {ChildStdout.silence}) before the
     # block runs, so test output never reaches the user. Stderr stays open.
@@ -50,8 +60,13 @@ module Mutineer
     def self.run(timeout: DEFAULT_TIMEOUT, channel: false)
       rd, wr = IO.pipe if channel
       wr&.sync = true
+      cause_rd, cause_wr = IO.pipe
+      cause_wr.sync = true
       pid = fork do
+        child = Process.pid
         rd&.close
+        cause_rd.close
+        ChildCause.arm!(cause_wr, child)
         # Own process group so a timeout kill can reap grandchildren (match
         # daemon/external backends). Best-effort: if setpgid fails, kill the pid.
         Process.setpgid(0, 0) rescue nil # rubocop:disable Style/RescueModifier
@@ -66,8 +81,11 @@ module Mutineer
           code = e.status
         rescue Exception => e # rubocop:disable Lint/RescueException
           # STDERR, not `warn`: a test may have left `$stderr` as a StringIO.
-          STDERR.puts "[mutineer-child] #{e.class}: #{e.message}"
+          STDERR.puts "[mutineer-child] #{Redaction.describe(e)}"
+          ChildCause.write(cause_wr, e, child)
           code = 2
+        ensure
+          ChildCause.disarm!
         end
         STDERR.flush
         # exit! skips at_exit handlers — critical, since a child forked from
@@ -77,6 +95,7 @@ module Mutineer
       end
 
       wr&.close
+      cause_wr.close
       buffer = +"" if rd
       reading = !rd.nil?
 
@@ -86,7 +105,7 @@ module Mutineer
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
       loop do
         reaped, status = Process.waitpid2(pid, Process::WNOHANG)
-        return finish(decode(status), rd, buffer, finished: true) if reaped
+        return finish(decode(status, ChildCause.read(cause_rd)), rd, buffer, finished: true) if reaped
 
         if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
           begin
@@ -97,7 +116,7 @@ module Mutineer
           begin
             _reaped, status = Process.waitpid2(pid)
             # Child may have finished cleanly between WNOHANG and kill; honor it.
-            return finish(decode(status), rd, buffer, finished: true) if status && status.exited? && !status.signaled?
+            return finish(decode(status, ChildCause.read(cause_rd)), rd, buffer, finished: true) if status && status.exited? && !status.signaled?
           rescue Errno::ECHILD
             # already reaped
           end
@@ -112,8 +131,10 @@ module Mutineer
       end
     ensure
       rd&.close
+      cause_rd&.close
       # Closed after the fork in the normal path; still open if fork raised.
       wr.close if wr && !wr.closed?
+      cause_wr.close if cause_wr && !cause_wr.closed?
     end
 
     # Reads what the channel holds now, without blocking.
@@ -138,9 +159,10 @@ module Mutineer
     #
     # The verdict matches a run without `--matrix`, which skips everything after
     # the first failing serial test except the code around it (see
-    # {KillChannel}). So when a serial test has named a kill and the child then
+    # {KillChannel}). So when a serial test has named a failure and the child then
     # ended inside a region that run would skip (an exit, a crash or the
-    # timeout in a later test, class or group), the mutant is `killed`: the
+    # timeout in a later test, class or group), its first failure decides:
+    # `error` for an unavailable database outcome, otherwise `killed`. The
     # plain run never reached that point. An end anywhere else keeps the exit
     # status, because the plain run reaches that code too: the rest of the
     # failing test's class wrapper or group hooks, or the suite hooks. A kill in
@@ -167,6 +189,11 @@ module Mutineer
       return result.with(kills: Kills.new(killed_by: [], ran: [], complete: false)) if report.invalid
 
       result = Result.killed if report.started && report.serial_kill && report.skipping.positive?
+      # Early end after a serial DB error: the child never reached the naming
+      # code that would write the exception class (#417 / KTD5).
+      if report.started && report.serial_error && report.skipping.positive?
+        result = Result.error(ChildCause::MATRIX_EARLY_END)
+      end
       agrees = result.killed? ? report.killed.any? : result.survived? && report.killed.empty?
       complete = finished && report.started && report.finished && report.lost.zero? && agrees
       result.with(kills: Kills.new(killed_by: report.killed, ran: report.ran, complete: complete))
@@ -189,17 +216,52 @@ module Mutineer
     #
     # A concern's stored `included` and `prepended` blocks from the source file
     # are forgotten around the load, so ActiveSupport accepts the blocks the
-    # temp file stores (#256).
+    # temp file stores (#256). For a def in such a block, the caller passes the
+    # text and `hook_def` from {JobPlan.hook_mutant}, and the load places the
+    # mutated def (#297, #348).
+    #
+    # {ConcernBlocks.load_mutant} turns Ruby's warnings off for the load, so
+    # the constants it assigns again do not warn (#364).
     #
     # @api private
     # @param mutated [String] mutated source text.
     # @param source_file [String] original source file path.
+    # @param hook_def [Hash{Symbol => Object}, nil] see {ConcernBlocks.load_mutant}.
     # @return [Object] whatever `load` returns.
-    def self.apply_whole_file(mutated, source_file)
-      Tempfile.create([".mutineer_mutant", ".rb"], File.dirname(File.expand_path(source_file))) do |f|
-        f.write(mutated)
+    def self.apply_whole_file(mutated, source_file, hook_def: nil)
+      write_beside(mutated, source_file) { |path| ConcernBlocks.load_mutant(source_file, path, hook_def: hook_def) }
+    end
+
+    # Writes `code` to a hidden `.mutineer_mutant` file beside `source_file`,
+    # yields its path, and removes it after the block. Both strategies write
+    # through here. Only redefine enables the system-temp fallback when the
+    # source directory is not writable.
+    #
+    # The file is locked until the block ends, as the daemon locks its own file
+    # (#295). A SIGKILL drops the lock too. The pid in the name and the lock
+    # tell another run's sweep that the file is in use, so the sweep does not
+    # delete it between the write and the `load`.
+    #
+    # @api private
+    # @param code [String] the Ruby source to write.
+    # @param source_file [String] the source file the code replaces.
+    # @param fallback [Boolean] use the system temp directory when the source
+    #   directory is not writable; redefine only.
+    # @yieldparam path [String] absolute path of the written file.
+    # @return [Object] whatever the block returns.
+    def self.write_beside(code, source_file, fallback: false)
+      dir = File.dirname(File.expand_path(source_file))
+      dir = Dir.tmpdir if fallback && !File.writable?(dir)
+      Tempfile.create([".mutineer_mutant", ".rb"], dir) do |f|
+        f.flock(File::LOCK_EX) rescue nil # rubocop:disable Style/RescueModifier
+        # Binary: a text write would follow the locale and could change
+        # the bytes. SourceBytes encodes the text to the encoding its
+        # magic comment names, and adds one when a redefine snippet has
+        # none (#346).
+        f.binmode
+        f.write(SourceBytes.for_file(code))
         f.flush
-        ConcernBlocks.replace(source_file) { load f.path }
+        yield f.path
       end
     end
 
@@ -216,15 +278,13 @@ module Mutineer
     # @param mutation [Mutineer::Mutation] mutation to apply.
     # @param subject [Mutineer::Subject] subject being mutated.
     # @param source [String] full source text.
+    # @param reach_path [String, nil] sentinel for a mutant with a reach
+    #   probe (#345, #493).
+    #   The loaded def records a run of the mutated expression. Nil leaves
+    #   the def as the mutation alone.
+    # @param reach_key [String, nil] thread-local key for `reach_path`.
     # @return [Object] whatever `load` returns.
-    def self.apply_surgical(mutation, subject, source)
-      loc = subject.def_node.location
-      def_start = loc.start_offset
-      snippet = source.byteslice(def_start...loc.end_offset)
-      rel_s = mutation.start_offset - def_start
-      rel_e = mutation.end_offset - def_start
-      mutated_def = snippet.byteslice(0...rel_s) + mutation.replacement + snippet.byteslice(rel_e..)
-
+    def self.apply_surgical(mutation, subject, source, reach_path: nil, reach_key: nil)
       # Rebuild the FULL namespace nesting textually so unqualified enclosing-
       # namespace constants resolve exactly as the reload strategy would. A
       # bare redefinition on the owner would collapse Module.nesting to [owner]
@@ -240,12 +300,7 @@ module Mutineer
       # falsely survives. Re-open the singleton class so the redefinition lands on
       # the same method the test calls. `def self.foo` already carries its
       # receiver, so it is left as-is (wrapping it would mis-target).
-      inner =
-        if subject.singleton && subject.def_node.receiver.nil?
-          "class << self\n#{mutated_def}\nend"
-        else
-          mutated_def
-        end
+      inner = mutated_def(mutation, subject, source, reach_path: reach_path, reach_key: reach_key)
       inner = "#{subject.block_owner}.class_eval do\n#{inner}\nend" if subject.block_owner
       wrapped = "#{prefix}#{inner}#{"\nend" * keywords.size}"
 
@@ -253,7 +308,7 @@ module Mutineer
       # running the ORIGINAL method (C2 false-survived). Raise -> the fork
       # block aborts before any test runs -> Result.error, never a bogus
       # `survived`.
-      raise "surgical snippet failed to reparse" if Parser.parse_string(wrapped).errors.any?
+      raise "surgical snippet failed to reparse" if Parser.invalid?(wrapped)
 
       # Preserve original visibility — class/module bodies define methods
       # public, but 7a's `load` would re-apply the file's private/protected
@@ -267,13 +322,161 @@ module Mutineer
       # Module.nesting identically, with no dynamic string execution for
       # scanners to flag. The input is the project's OWN source (the enclosing
       # method, textually mutated), loaded only in this forked child.
-      Tempfile.create(["mutineer_surgical", ".rb"]) do |f|
-        f.write(wrapped)
-        f.flush
-        load f.path
-      end
+      #
+      # The file sits beside the source, as in apply_whole_file (#279). A
+      # read-only source directory keeps the 1.x system-temp location, so
+      # redefine still runs there. Either file is a different path from the
+      # source, so {anchor_paths} rewrites `__FILE__`, `__dir__`, and
+      # `require_relative` to the original file before the load. Without that,
+      # a temp-dir load raises ENOENT or LoadError and every mutant of the
+      # method scores `killed` (#339). The hidden `.mutineer_mutant` name
+      # keeps Zeitwerk away (#253) and lets the parent sweep an orphan after a
+      # timeout kill.
+      anchored = anchor_paths(wrapped, subject)
+      # The anchored text is what `load` runs. A rewrite that does not reparse
+      # must take the same error path as the unanchored snippet above.
+      raise "surgical snippet failed to reparse" if anchored != wrapped && Parser.invalid?(anchored)
+
+      write_beside(anchored, subject.file, fallback: true) { |path| load path }
 
       target.send(vis, subject.name) if vis && vis != :public
+    end
+
+    # Rewrites path anchors in a redefine snippet so they resolve against the
+    # original source file when `load` runs a different file (#339).
+    #
+    # The hidden snippet is never the source file. Beside the source, `__dir__`
+    # still names that directory, but `__FILE__` names the hidden file, and a
+    # symlinked source makes `__dir__` and `require_relative` follow the link's
+    # directory. In the system temp directory every one of them follows the
+    # temp directory, so each mutant raises and scores `killed`. The rewrite
+    # uses the live method's `source_location` when that file is `subject.file`,
+    # so a symlink keeps the path the program loaded. `__dir__` and
+    # `require_relative` use `File.realpath`, as Ruby does.
+    #
+    # Calls with an implicit receiver, literal `self`, or `Kernel` / `::Kernel`
+    # are rewritten, including `send` and `__send__` whose name is a literal.
+    # A call on any other receiver is left alone: `other.__dir__` is a private
+    # call and raises.
+    #
+    # @api private
+    # @param code [String] the wrapped snippet.
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String] `code`, or a copy with the anchors rewritten.
+    def self.anchor_paths(code, subject)
+      return code unless code.match?(ANCHOR_PATTERN)
+
+      file_path = anchor_file(subject)
+      dir_literal = anchor_directory(file_path).dump
+      PathAnchor.rewrite(code, file_path.dump, dir_literal, bare_kernel: bare_kernel_builtin?(subject))
+    end
+
+    # Whether a bare `Kernel` in `subject` is `::Kernel`. A class or enclosing
+    # module that defines its own `Kernel` must keep that constant: rewriting
+    # `Kernel.__dir__` would turn a `NoMethodError` into a path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [Boolean]
+    def self.bare_kernel_builtin?(subject)
+      cursor = Object
+      modules = subject.lexical_namespace.map do |element|
+        cursor = element.start_with?("::") ? Object.const_get(element.delete_prefix("::")) : cursor.const_get(element)
+      end
+      lookup = []
+      modules.reverse_each { |mod| mod.ancestors.each { |ancestor| lookup << ancestor if ancestor.is_a?(Module) } }
+      lookup.each do |candidate|
+        next unless candidate.const_defined?(:Kernel, false)
+
+        return candidate.const_get(:Kernel, false).equal?(::Kernel)
+      end
+      true
+    rescue NameError
+      false
+    end
+
+    # The path `__FILE__` must return for `subject`. The live method's
+    # `source_location` wins when it is the same file, because that string is
+    # the one the unmutated method returns (a symlink path stays a symlink
+    # path). Otherwise the expanded subject path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String] absolute path.
+    def self.anchor_file(subject)
+      defined_in = defined_path(subject)
+      return defined_in if defined_in && same_file?(defined_in, subject.file)
+
+      File.expand_path(subject.file)
+    end
+
+    # The directory `__dir__` and `require_relative` use for `file_path`:
+    # `File.dirname(File.realpath(file_path))`. A subject path that is not a
+    # file yet (a unit probe) uses the real directory that contains it.
+    #
+    # @api private
+    # @param file_path [String] the path {anchor_file} chose.
+    # @return [String] absolute real directory.
+    def self.anchor_directory(file_path)
+      File.dirname(File.realpath(file_path))
+    rescue SystemCallError
+      File.realpath(File.dirname(File.expand_path(file_path)))
+    end
+
+    # The file the live method was defined in, when that method is `subject`'s
+    # own. An inherited method, or a method that is not defined yet, returns nil
+    # so {anchor_file} uses the subject path.
+    #
+    # @api private
+    # @param subject [Mutineer::Subject] the method being redefined.
+    # @return [String, nil] `source_location` path, or nil.
+    def self.defined_path(subject)
+      target = subject.namespace.empty? ? Object : Object.const_get(subject.namespace.join("::"))
+      target = target.singleton_class if subject.singleton
+      method = target.instance_method(subject.name)
+      return unless method.owner == target
+
+      method.source_location&.first
+    rescue NameError
+      nil
+    end
+
+    # Whether `left` and `right` are the same file after resolving symlinks.
+    #
+    # @api private
+    # @param left [String] a path.
+    # @param right [String] a path.
+    # @return [Boolean]
+    def self.same_file?(left, right)
+      File.realpath(left) == File.realpath(right)
+    rescue SystemCallError
+      false
+    end
+
+    # The enclosing def with the mutation applied, wrapped in `class << self`
+    # for a singleton def with no receiver (#20). Pure text: it reads no live
+    # module, so the tool process can call it too ({JobPlan.hook_mutant},
+    # {Runner.run}).
+    #
+    # @api private
+    # @param mutation [Mutineer::Mutation] mutation to apply.
+    # @param subject [Mutineer::Subject] subject being mutated.
+    # @param source [String] full source text.
+    # @param reach_path [String, nil] see {apply_surgical}.
+    # @param reach_key [String, nil] see {apply_surgical}.
+    # @return [String] the mutated def.
+    def self.mutated_def(mutation, subject, source, reach_path: nil, reach_key: nil)
+      loc = subject.def_node.location
+      def_start = loc.start_offset
+      snippet = source.byteslice(def_start...loc.end_offset)
+      rel_s = mutation.start_offset - def_start
+      rel_e = mutation.end_offset - def_start
+      mutated = snippet.byteslice(0...rel_s) + mutation.replacement + snippet.byteslice(rel_e..)
+      if reach_path && rel_s >= 0 && rel_s + mutation.replacement.bytesize <= mutated.bytesize
+        probed = ReachProbe.wrap(mutated, rel_s, rel_s + mutation.replacement.bytesize, reach_path, reach_key)
+        mutated = probed if probed
+      end
+      subject.singleton && subject.def_node.receiver.nil? ? "class << self\n#{mutated}\nend" : mutated
     end
 
     # Resolve each namespace ELEMENT to its live Module and pick the correct
@@ -320,14 +523,213 @@ module Mutineer
     #
     # @api private
     # @param status [Process::Status] child exit status.
+    # @param cause [String, nil] the {ChildCause} line the child sent, if any.
     # @return [Mutineer::Result] decoded result.
-    def self.decode(status)
+    def self.decode(status, cause = nil)
       case status.exitstatus
       when 0 then Result.survived
       when 1 then Result.killed
-      when 2 then Result.error("child exited with status 2")
+      when 2 then Result.error(cause || "child exited with status 2")
       else        Result.error("unexpected exit status: #{status.exitstatus.inspect}")
       end
     end
+
+    # Rewrites path anchors in one snippet (#339). A `require_relative` argument
+    # is rewritten on its own first, so a nested `__dir__` or `__FILE__` is not
+    # left pointing at the file `load` runs.
+    #
+    # @api private
+    class PathAnchor < Prism::Visitor
+      # Argument nodes that are not a path expression. A keyword argument makes
+      # `require_relative` raise `ArgumentError` before it touches a file, so
+      # the call is left as written. A splat is a path and is kept.
+      SKIPPED_ARGUMENTS = [
+        Prism::KeywordHashNode, Prism::BlockArgumentNode, Prism::ForwardingArgumentsNode
+      ].freeze
+
+      # @param source [String] the snippet or argument to rewrite.
+      # @param file_literal [String] a dumped Ruby string of the original `__FILE__`.
+      # @param dir_literal [String] a dumped Ruby string of the original `__dir__`.
+      # @param bare_kernel [Boolean] rewrite a bare `Kernel` receiver. False when
+      #   the method's lexical scope defines a different `Kernel`.
+      def initialize(source, file_literal, dir_literal, bare_kernel)
+        @source = source
+        @file_literal = file_literal
+        @dir_literal = dir_literal
+        @bare_kernel = bare_kernel
+        @edits = []
+      end
+
+      # Parses `source` and applies the edits. A parse that still builds a tree
+      # is rewritten too: Prism 2 reports `T += 1` inside a method while Ruby
+      # loads it (#392), and the anchors in that method must still move.
+      # With no tree, `source` comes back unchanged.
+      #
+      # @param source [String] snippet or argument source.
+      # @param file_literal [String] dumped original `__FILE__`.
+      # @param dir_literal [String] dumped original `__dir__`.
+      # @param bare_kernel [Boolean] see {#initialize}.
+      # @return [String]
+      def self.rewrite(source, file_literal, dir_literal, bare_kernel: true)
+        parsed = Prism.parse(source)
+        return source unless parsed.value
+
+        anchor = new(source, file_literal, dir_literal, bare_kernel)
+        anchor.visit(parsed.value)
+        anchor.apply
+      end
+
+      # Replaces a `__FILE__` keyword with the original path.
+      #
+      # @param node [Prism::SourceFileNode] the keyword.
+      # @return [void]
+      def visit_source_file_node(node)
+        replace(node, @file_literal)
+      end
+
+      # Replaces a path-anchor call, or walks into a call that is not one.
+      #
+      # @param node [Prism::CallNode] a call in the snippet.
+      # @return [void]
+      def visit_call_node(node)
+        return replace(node, @dir_literal) if dir_call?(node)
+
+        if (argument = relative_argument(node))
+          anchored = rewrite_slice(argument)
+          # `::Kernel.require` and `::File` do not follow a nested constant or an
+          # instance `require`. `absolute_path` leaves a leading `~` as a path
+          # segment; `expand_path` would treat it as a home directory, which
+          # `require_relative` does not. An ignored block is part of the call
+          # location and is dropped: `require_relative` does not yield it.
+          text = ["::Kernel.require(::File.absolute_path(", anchored, ", ", @dir_literal, "))"].join
+          return replace(node, text)
+        end
+
+        super
+      end
+
+      # Applies recorded edits from the end, so earlier byte offsets stay valid.
+      #
+      # @return [String] the rewritten source.
+      def apply
+        @edits.sort_by! { |start_off,| -start_off }
+        @edits.inject(@source) do |code, (start_off, end_off, text)|
+          code.byteslice(0, start_off) + text + code.byteslice(end_off..)
+        end
+      end
+
+      private
+
+      # True when `node` is the `__dir__` keyword, including `self.__dir__`,
+      # `Kernel.__dir__`, and `send` / `__send__` of the literal name.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def dir_call?(node)
+        args = positional(node)
+        return false if args.nil?
+
+        if node.name == :__dir__
+          path_receiver?(node) && args.empty?
+        elsif send_call?(node)
+          args.size == 1 && literal_name(args.first) == "__dir__"
+        else
+          false
+        end
+      end
+
+      # The single path argument of a `require_relative` call, or nil when the
+      # call is not that anchor. `send(:require_relative, expr)` returns `expr`.
+      # A splat is included: `require_relative(*paths)` passes those paths on.
+      # A block does not matter: the method does not yield it.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Prism::Node, nil]
+      def relative_argument(node)
+        args = positional(node)
+        return unless args
+
+        if node.name == :require_relative && path_receiver?(node) && args.size == 1
+          args.first
+        elsif send_call?(node) && args.size == 2 && literal_name(args.first) == "require_relative"
+          args.last
+        end
+      end
+
+      # True for an implicit receiver, literal `self`, or `Kernel` / `::Kernel`.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def path_receiver?(node)
+        receiver = node.receiver
+        return true if receiver.nil? || receiver.is_a?(Prism::SelfNode)
+
+        kernel_constant?(receiver)
+      end
+
+      # True when `node` is `Kernel` or `::Kernel`.
+      #
+      # @param node [Prism::Node]
+      # @return [Boolean]
+      def kernel_constant?(node)
+        (node.is_a?(Prism::ConstantPathNode) && node.parent.nil? && node.name == :Kernel) ||
+          (@bare_kernel && node.is_a?(Prism::ConstantReadNode) && node.name == :Kernel)
+      end
+
+      # True for `send` or `__send__` on a receiver {path_receiver?} accepts.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Boolean]
+      def send_call?(node)
+        (node.name == :send || node.name == :__send__) && path_receiver?(node)
+      end
+
+      # Positional arguments, or nil when one of them is a splat or keywords.
+      #
+      # @param node [Prism::CallNode]
+      # @return [Array<Prism::Node>, nil]
+      def positional(node)
+        args = node.arguments&.arguments || []
+        return if args.any? { |arg| SKIPPED_ARGUMENTS.any? { |kind| arg.is_a?(kind) } }
+
+        args
+      end
+
+      # The text of a symbol or string literal, without quotes.
+      #
+      # @param node [Prism::Node]
+      # @return [String, nil]
+      def literal_name(node)
+        node.unescaped if node.is_a?(Prism::SymbolNode) || node.is_a?(Prism::StringNode)
+      end
+
+      # The snippet bytes of `node`.
+      #
+      # @param node [Prism::Node]
+      # @return [String]
+      def slice(node)
+        location = node.location
+        @source.byteslice(location.start_offset, location.end_offset - location.start_offset)
+      end
+
+      # Rewrites anchors inside one argument, keeping the call's `bare_kernel` flag.
+      #
+      # @param node [Prism::Node]
+      # @return [String]
+      def rewrite_slice(node)
+        self.class.rewrite(slice(node), @file_literal, @dir_literal, bare_kernel: @bare_kernel)
+      end
+
+      # Records a replacement of `node`'s source range.
+      #
+      # @param node [Prism::Node]
+      # @param text [String] the Ruby source to write instead.
+      # @return [void]
+      def replace(node, text)
+        location = node.location
+        @edits << [location.start_offset, location.end_offset, text]
+      end
+    end
+    private_constant :PathAnchor
   end
 end

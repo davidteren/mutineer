@@ -25,9 +25,9 @@ class HtmlReporterTest < Minitest::Test
                                    id: "pricing-total-comparison-1")
   end
 
-  def render(results, source_map = { FILE => SRC })
+  def render(results, source_map = { FILE => SRC }, unpaired: {})
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map)
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map, unpaired: unpaired)
                       .report(out: out, err: StringIO.new, format: "html")
     out.string
   end
@@ -49,14 +49,63 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "if price &gt; 100"  # mutated diff line, escaped
   end
 
+  # #374: the HTML summary counts dropped repeats, and a survivor card lists their ids.
+  def test_summary_and_survivor_name_dropped_copies
+    row = survivor
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([row]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html",
+                              copies: { row.id => ["copy00000001"] })
+    html = out.string
+    assert_includes html, "<span><strong>1</strong> dropped</span>"
+    assert_includes html, "copies <span class=\"id\">copy00000001</span>"
+  end
+
   def test_summary_counts_unplaceable
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.unplaceable]),
                     "<span><strong>1</strong> unplaceable</span>"
   end
 
+  # #419: HTML shows the No mutants method count when the reporter has it.
+  def test_summary_counts_no_mutants_and_declined
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html",
+                              subjects: 5, unmutated_subjects: [{ subject: "A#a", file: "a.rb", line: 1 }],
+                              declined: { "range" => 2 })
+    html = out.string
+    assert_includes html, "<span><strong>1</strong> no_mutants</span>"
+    assert_includes html, "<span><strong>5</strong> methods</span>"
+    assert_includes html, "<span><strong>2</strong> declined</span>"
+  end
+
+  # #420: under --since, declined stays full-run and the HTML label says so.
+  def test_scoped_declined_notes_not_narrowed
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "html", scoped: true,
+                              declined: { "range" => 2 })
+    assert_includes out.string, "<span><strong>2</strong> declined (not narrowed by --since)</span>"
+  end
+
   def test_summary_counts_ran_at_load
     assert_includes render([Mutineer::Result.killed, Mutineer::Result.ran_at_load]),
                     "<span><strong>1</strong> ran_at_load</span>"
+  end
+
+  def test_summary_counts_unpaired_and_lists_the_sources
+    html = render([Mutineer::Result.killed], unpaired: { "lib/b.rb" => 2, "lib/<a>.rb" => nil })
+    assert_includes html, "<span><strong>2</strong> unpaired</span>"
+    assert_includes html, "Sources with no paired test"
+    assert_includes html, "lib/&lt;a&gt;.rb"
+    assert_includes html, "unknown"
+    assert_includes html, "lib/b.rb"
+  end
+
+  def test_unpaired_heading_is_absent_when_no_source_was_skipped
+    html = render([Mutineer::Result.killed])
+    assert_includes html, "<span><strong>0</strong> unpaired</span>"
+    refute_includes html, "Sources with no paired test"
   end
 
   def test_source_is_html_escaped_not_raw
@@ -145,6 +194,42 @@ class HtmlReporterTest < Minitest::Test
     assert_includes html, "<span><strong>2</strong> timeout</span>"
   end
 
+  # #480: the HTML report lists each errored mutant and its cause; the
+  # human report does so under --verbose only.
+  def errored_mutant(details)
+    Mutineer::Result.error(details).with(subject: subject, id: "abc123def456",
+                                         mutation: mutation_at(">=", ">", :comparison))
+  end
+
+  def test_errored_section_lists_each_mutant_and_its_cause
+    html = render([errored_mutant("LoadError: <x>"), Mutineer::Result.error(nil)])
+    assert_includes html, "<h2>Errored mutants</h2>"
+    assert_includes html, "#{FILE}:3 &middot; comparison &middot; <span class=\"id\">abc123def456</span>"
+    assert_includes html, "<pre class=\"diff\">LoadError: &lt;x&gt;</pre>"
+    assert_includes html, "no mutant location"
+    assert_includes html, Mutineer::Reporter::ERRORED_NO_CAUSE
+    refute_includes render([survivor]), "Errored mutants"
+  end
+
+  def test_human_errored_list_needs_verbose
+    report = lambda do |verbose|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([errored_mutant("RuntimeError: boom")]), { FILE => SRC })
+                        .report(out: out, err: StringIO.new, format: "human", verbose: verbose)
+      out.string
+    end
+    assert_includes report.call(true),
+                    "Errored Mutants\n---------------\n  Pricing#total (#{FILE}:3) comparison abc123def456\n" \
+                    "    RuntimeError: boom\n"
+    refute_includes report.call(false), "Errored Mutants"
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.error("boom")]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "human", verbose: true)
+    assert_includes out.string, "  unknown method (no mutant location)\n    boom\n"
+    # An empty cause is no cause.
+    assert_includes render([errored_mutant(" ")]), "<pre class=\"diff\">#{Mutineer::Reporter::ERRORED_NO_CAUSE}</pre>"
+  end
+
   def test_no_matrix_section_without_the_flag
     refute_includes render([survivor]), "Kill matrix"
   end
@@ -160,4 +245,62 @@ class HtmlReporterTest < Minitest::Test
     refute_includes html, "same value <raw>"
   end
 
+
+  # --- #343 limit 4: the HTML report shows the baseline comparison ---
+
+  def baseline_delta(results, stored_ids, **opts)
+    doc = { "schema_version" => "2.0", "summary" => { "score" => 100.0 },
+            "survivors" => stored_ids.map { |id| { "id" => id, "subject" => "Pricing#total", "file" => FILE,
+                                                    "line" => 3, "operator" => "comparison" } } }
+    Mutineer::Baseline.new(doc).diff(Mutineer::AggregateResult.new(results), **opts)
+  end
+
+  def render_with(results, delta, format: "html", source_map: { FILE => SRC })
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), source_map)
+                      .report(out: out, err: StringIO.new, format: format, baseline: delta)
+    out.string
+  end
+
+  def test_baseline_section_shows_a_regression_and_names_the_new_survivor
+    results = [Mutineer::Result.killed, survivor]
+    html = render_with(results, baseline_delta(results, []))
+    assert_includes html, "<h2>Baseline comparison</h2>"
+    assert_includes html, "REGRESSION vs baseline"
+    assert_includes html, "  + Pricing#total (pricing.rb:3) comparison"
+  end
+
+  def test_baseline_section_shows_an_incomplete_run_and_the_unverified_survivors
+    stored = Mutineer::Result.error.with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "stored1")
+    results = [stored, Mutineer::Result.error, Mutineer::Result.killed]
+    html = render_with(results, baseline_delta(results, %w[stored1]))
+    assert_includes html, "INCOMPLETE vs baseline"
+    assert_includes html, "incomplete run: "
+    assert_match(/  \? Pricing#total \(pricing\.rb:3\) comparison \[error\]/, html)
+  end
+
+  def test_baseline_section_holds_the_same_lines_as_the_human_report
+    results = [Mutineer::Result.killed, survivor]
+    delta = baseline_delta(results, %w[gone])
+    html = render_with(results, delta)
+    body = CGI.unescapeHTML(html[%r{<pre class="baseline">(.*?)</pre>}m, 1])
+    human = render_with(results, delta, format: "human")
+    section = human[/Baseline comparison\n-+\n(.*)\z/m, 1]
+    assert_equal section, body
+  end
+
+  def test_baseline_section_is_html_escaped
+    weird = Mutineer::Result.survived.with(subject: subject(FILE, ["A<b>&C"]),
+                                           mutation: mutation_at(">=", ">", :comparison), id: "weird1")
+    html = render_with([weird], baseline_delta([weird], []))
+    section = html[%r{<pre class="baseline">(.*?)</pre>}m, 1]
+    assert_includes section, "A&lt;b&gt;&amp;C"
+    refute_includes section, "A<b>"
+  end
+
+  def test_no_baseline_section_without_a_baseline
+    results = [Mutineer::Result.killed, survivor]
+    assert_equal render(results), render_with(results, nil)
+    refute_includes render(results), "Baseline comparison"
+  end
 end

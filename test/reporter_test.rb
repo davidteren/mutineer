@@ -20,6 +20,19 @@ class ReporterTest < Minitest::Test
 
   def aggregate(results) = Mutineer::AggregateResult.new(results)
 
+  # #275: mutants at one offset list in the same order whatever order they ran in.
+  def test_same_offset_survivors_list_in_a_fixed_order
+    base = survivor_result
+    other = base.with(mutation: base.mutation.with(replacement: "<", operator: :arithmetic))
+    outs = [[base, other], [other, base]].map do |results|
+      out = StringIO.new
+      Mutineer::Reporter.new(aggregate(results), { FILE => SRC }).report(out: out, err: StringIO.new)
+      out.string
+    end
+    assert_equal outs[0], outs[1]
+    assert_operator outs[0].index("arithmetic"), :<, outs[0].index("comparison")
+  end
+
   # --- AggregateResult contract ---
 
   def test_empty_score_is_nil
@@ -74,6 +87,39 @@ class ReporterTest < Minitest::Test
     r = reporter([Mutineer::Result.killed, Mutineer::Result.killed,
                   Mutineer::Result.killed, Mutineer::Result.killed, Mutineer::Result.survived])
     assert_equal 0, r.exit_code(threshold: 80.0) # 80.0 >= 80.0
+  end
+
+  # The score is rounded for display. The gate must not read it: 1999 of 2000
+  # shows 100.0 and used to pass --threshold 100 with a survivor (#280).
+  def test_the_gate_compares_the_unrounded_score
+    {
+      [1999, 1, 100.0] => 1, # shows 100.0
+      [1599, 400, 80.0] => 1, # shows 80.0
+      [57, 43, 57.0] => 0, # 57.0 / 100 * 100 is 56.99999999999999 as a float
+      [161, 89, 64.4] => 0, # 64.4 * 250 is 16100.000000000002 as a float
+      [2, 1, 66.66666666666667] => 1 # rationalize would read this as 200/3
+    }.each do |(killed, survived, threshold), expected|
+      r = reporter(Array.new(killed) { Mutineer::Result.killed } + Array.new(survived) { Mutineer::Result.survived })
+
+      assert_equal expected, r.exit_code(threshold: threshold), "#{killed} killed, #{survived} survived at #{threshold}"
+    end
+  end
+
+  # When the rounded score points the other way, the verdict line must give the
+  # exact counts, or it states a false inequality.
+  def test_verdict_names_the_exact_counts_when_the_rounded_score_disagrees
+    out = StringIO.new
+    reporter(Array.new(1999) { Mutineer::Result.killed } + [survivor_result]).human_report(out, StringIO.new, 100.0)
+
+    refute_match(/PASSED/, out.string)
+    assert_match(/FAILED: 1999 of 2000 killed is below threshold 100.0% \(the 100.0% score is rounded\)/, out.string)
+
+    out = StringIO.new
+    r = reporter(Array.new(2001) { Mutineer::Result.killed } + Array.new(499) { survivor_result })
+    r.human_report(out, StringIO.new, 80.04) # exactly 80.04, shows 80.0
+
+    assert_equal 0, r.exit_code(threshold: 80.04)
+    assert_match(/PASSED: 2001 of 2500 killed meets threshold 80.04% \(the 80.0% score is rounded\)/, out.string)
   end
 
   # A score over a slice of the run is not this suite's score: 90 errored and 10
@@ -400,24 +446,6 @@ class ReporterTest < Minitest::Test
     assert_includes s, "Mutation score: 50.0%"
   end
 
-  def test_ran_at_load_tested_count_prints_only_when_positive
-    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
-    out = StringIO.new
-    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new)
-    assert_includes out.string, "of which 1 ran in their covering tests and passed (may hide a test gap; not in the score)"
-
-    out = StringIO.new
-    reporter([Mutineer::Result.killed, Mutineer::Result.ran_at_load]).report(out: out, err: StringIO.new)
-    refute_includes out.string, "of which"
-  end
-
-  def test_html_counts_tested_ran_at_load
-    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
-    out = StringIO.new
-    reporter([Mutineer::Result.killed, tested]).report(out: out, err: StringIO.new, format: "html")
-    assert_includes out.string, "<span><strong>1</strong> ran_at_load (tested)</span>"
-  end
-
   def test_na_score_warns_on_stderr
     out = StringIO.new
     err = StringIO.new
@@ -544,6 +572,214 @@ class ReporterTest < Minitest::Test
     refute_includes out.string, "Kill matrix"
   end
 
+  # --- unrun share (#291) ---
+
+  # stderr after a report of `results`, with the given report options.
+  def unrun_err(results, **opts)
+    err = StringIO.new
+    reporter(results).report(out: StringIO.new, err: err, **opts)
+    err.string
+  end
+
+  def killed_and_unplaceable(killed, unplaceable)
+    Array.new(killed) { Mutineer::Result.killed } + Array.new(unplaceable) { Mutineer::Result.unplaceable }
+  end
+
+  def test_warns_when_the_unplaceable_share_is_over_the_limit
+    err = unrun_err(killed_and_unplaceable(2, 3))
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run"
+    assert_includes err, "(3 unplaceable; 60.0%, limit 10%)"
+    assert_includes err, "does not change the exit code"
+    assert_includes err, "unplaceable[]"
+    refute_includes err, "re-parse"
+  end
+
+  def test_unrun_share_leaves_no_coverage_out_of_the_denominator
+    results = killed_and_unplaceable(2, 3) + Array.new(10) { Mutineer::Result.no_coverage }
+    assert_includes unrun_err(results), "3 of the 5 mutants"
+  end
+
+  def test_unrun_warning_names_skipped_invalid
+    err = unrun_err(Array.new(2) { Mutineer::Result.killed } + Array.new(2) { Mutineer::Result.skipped })
+    assert_includes err, "(2 skipped (invalid); 50.0%"
+    assert_includes err, "did not re-parse"
+    assert_includes err, "https://github.com/davidteren/mutineer/issues"
+    # #392: the parser version decides validity, so the report must name it.
+    assert_includes err, "with the source file and these versions: Ruby #{RUBY_VERSION}, Prism #{Prism::VERSION}."
+    refute_includes err, "unplaceable"
+  end
+
+  def test_unrun_warning_prints_on_json_and_under_threshold
+    out = StringIO.new
+    err = StringIO.new
+    results = Array.new(2) { Mutineer::Result.killed } + Array.new(3) { Mutineer::Result.skipped }
+    reporter(results).report(out: out, err: err, format: "json", threshold: 80.0)
+    assert_includes err.string, "were not run"
+    assert_equal 3, JSON.parse(out.string)["summary"]["skipped_invalid"]
+  end
+
+  def test_no_unrun_warning_under_the_limit_or_the_floor
+    refute_includes unrun_err(killed_and_unplaceable(20, 2)), "were not run"
+    refute_includes unrun_err(killed_and_unplaceable(1, 1)), "were not run"
+  end
+
+  def test_unrun_warning_keeps_the_exit_code
+    assert_equal 0, reporter(killed_and_unplaceable(2, 3)).exit_code(threshold: 80.0)
+  end
+
+  def test_human_summary_has_an_unpaired_line
+    text = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/b.rb" => 1, "lib/a.rb" => 1 }).first
+    assert_match(
+      /Unpaired:\s+2\s+\(mutants not run; 2 sources have no paired test; 50\.0% of the mutants in scope\)/,
+      text
+    )
+  end
+
+  def test_scope_share_leaves_out_ignored_rows
+    text, = unpaired_report(
+      Array.new(2) { Mutineer::Result.killed } + [Mutineer::Result.ignored],
+      { "lib/a.rb" => 2 }
+    )
+    assert_includes text, "50.0% of the mutants in scope"
+    refute_includes text, "40.0%"
+  end
+
+  def test_scope_share_is_absent_under_fail_fast
+    text, = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 2 }, fail_fast: true)
+    line = text.lines.grep(/Unpaired:/).first
+    assert line
+    refute_includes line, "%"
+  end
+
+  def test_empty_human_report_keeps_the_unpaired_line
+    text, err = unpaired_report([], { "lib/a.rb" => 2 })
+    assert_match(/\AUnpaired:\s+2\s+\(mutants not run; 1 source has no paired test; 100\.0% of the mutants in scope\)\n\z/, text)
+    assert_empty err
+  end
+
+  def test_score_line_lists_unpaired
+    text, = unpaired_report([Mutineer::Result.killed], { "lib/a.rb" => 2 })
+    assert_includes text, "2 unpaired"
+    assert_includes text, "Mutation score: 100.0%"
+  end
+
+  def test_unpaired_mutants_join_the_unrun_share
+    _text, err = unpaired_report(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 3 })
+    assert_includes err, "3 of the 5 mutants mutineer tried to score were not run"
+    assert_includes err, "(3 in sources with no paired test; 60.0%, limit 10%)"
+    assert_includes err, "unpaired_sources[]"
+    assert_includes err, "run those sources in a separate command with --test"
+    refute_includes err, "or pass --test"
+    refute_includes err, "unplaceable[]"
+    refute_includes err, "re-parse"
+  end
+
+  def test_fail_fast_leaves_unpaired_out_of_the_unrun_share
+    out, err, doc = unpaired_json(Array.new(2) { Mutineer::Result.killed }, { "lib/a.rb" => 3 }, fail_fast: true)
+    refute_includes err, "were not run"
+    assert_equal 3, doc["summary"]["unpaired_mutants"]
+    refute_includes out, "were not run"
+  end
+
+  def test_no_unrun_warning_when_no_result_exists
+    _text, err = unpaired_report([], { "lib/a.rb" => 3 })
+    refute_includes err, "were not run"
+  end
+
+  def test_unrun_share_adds_unpaired_to_unplaceable
+    _text, err = unpaired_report(
+      Array.new(2) { Mutineer::Result.killed } + [Mutineer::Result.unplaceable],
+      { "lib/a.rb" => 2 }
+    )
+    assert_includes err, "3 of the 5"
+    assert_includes err, "(1 unplaceable, 2 in sources with no paired test; 60.0%, limit 10%)"
+  end
+
+  def test_no_unrun_warning_for_unpaired_under_the_limit_or_the_floor
+    _text, over = unpaired_report(Array.new(20) { Mutineer::Result.killed }, { "lib/a.rb" => 2 })
+    _text, floor = unpaired_report([Mutineer::Result.killed], { "lib/a.rb" => 1 })
+    refute_includes over, "were not run"
+    refute_includes floor, "were not run"
+  end
+
+  def test_unpaired_warning_keeps_the_exit_code_and_the_json
+    out = StringIO.new
+    err = StringIO.new
+    reporter = Mutineer::Reporter.new(
+      aggregate(Array.new(2) { Mutineer::Result.killed }),
+      { FILE => SRC },
+      unpaired: { "lib/a.rb" => 3 }
+    )
+    reporter.report(out: out, err: err, format: "json", threshold: 80.0)
+    assert_includes err.string, "were not run"
+    assert JSON.parse(out.string)
+    assert_equal 0, reporter.exit_code(threshold: 80.0)
+  end
+
+  # --- declined candidates (#291) ---
+
+  def test_human_summary_has_a_declined_line
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, declined: { "range" => 2 })
+    assert_match(/Declined:\s+2\s+\(candidates an operator did not mutate/, out.string)
+    refute_includes out.string, "not narrowed by --since"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true, declined: { "range" => 2 })
+    assert_match(/Declined:\s+2 .*not narrowed by --since/, out.string)
+  end
+
+  # --- methods with no mutants (#386) ---
+
+  def test_human_summary_has_a_no_mutants_line
+    entries = [{ subject: "A#a", file: "a.rb", line: 1 }, { subject: "A#b", file: "a.rb", line: 2 }]
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, subjects: 5, unmutated_subjects: entries)
+    assert_includes out.string, "No mutants:   2       (methods of 5 that the selected operators did not mutate; " \
+                                "--dry-run --verbose and the JSON report list them)\n"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, scoped: true, subjects: 5,
+                                               unmutated_subjects: entries)
+    # #420: --since already narrowed the counts; the row does not say otherwise.
+    assert_includes out.string, "list them)\n"
+    refute_includes out.string.split("No mutants:").last, "not narrowed by --since"
+  end
+
+  # #374: the summary counts dropped repeats, including zero.
+  def test_human_summary_counts_dropped_copies
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    assert_match(/Dropped:\s+0\s+\(repeats of a kept mutant; see --format json\)/, out.string)
+
+    kept = survivor_result.with(id: "kept00000001")
+    out = StringIO.new
+    reporter([kept]).report(out: out, err: StringIO.new, copies: { "kept00000001" => %w[drop00000001 drop00000002] })
+    assert_match(/Dropped:\s+2\s+\(repeats of a kept mutant; see --format json\)/, out.string)
+  end
+
+  # #495: the Time line gives the total and each phase; n/a for a phase the
+  # run did not have. No timing, no line.
+  def test_human_summary_has_a_time_line
+    out = StringIO.new
+    timing = { total_seconds: 12.3456, boot_seconds: nil, coverage_seconds: 3.4, clean_check_seconds: 0.8,
+               mutants_seconds: 6.1 }
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new, timing: timing)
+    assert_includes out.string, "Time:         12.346s  (boot n/a, coverage 3.400s, clean check 0.800s, " \
+                                "mutants 6.100s; phases do not add up to the total)\n"
+
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "Time:"
+  end
+
+  def test_human_summary_leaves_out_the_no_mutants_row_when_counts_are_unknown
+    out = StringIO.new
+    reporter([Mutineer::Result.killed]).report(out: out, err: StringIO.new)
+    refute_includes out.string, "No mutants:"
+    assert_includes out.string, "Declined:"
+  end
+
   private
 
   def matrix_report(results)
@@ -561,4 +797,19 @@ class ReporterTest < Minitest::Test
     Mutineer::Reporter.new(aggregate(results), { FILE => SRC })
   end
 
+  def unpaired_report(results, unpaired, fail_fast: false)
+    out = StringIO.new
+    err = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, unpaired: unpaired, fail_fast: fail_fast)
+                      .report(out: out, err: err)
+    [out.string, err.string]
+  end
+
+  def unpaired_json(results, unpaired, fail_fast: false)
+    out = StringIO.new
+    err = StringIO.new
+    Mutineer::Reporter.new(aggregate(results), { FILE => SRC }, unpaired: unpaired, fail_fast: fail_fast)
+                      .report(out: out, err: err, format: "json")
+    [out.string, err.string, JSON.parse(out.string)]
+  end
 end

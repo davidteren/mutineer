@@ -138,4 +138,18 @@ class WorkerPoolTest < Minitest::Test
     assert_same results[0].details, results[1].details
   end
 
+  # #288: the crash text reaches the JSON report, so it must not quote the
+  # DATABASE_URL password.
+  def test_worker_crash_details_hide_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+
+    results = Mutineer::WorkerPool.new(1).run([[1]]) { |_| raise "boom #{url}" }
+
+    assert_includes results[0].details, "[REDACTED]"
+    refute_includes results[0].details, "s3cret"
+  ensure
+    ENV["DATABASE_URL"] = saved
+  end
 end

@@ -25,12 +25,14 @@ module Mutineer
       #
       # The operator skips an implicit array (`x = 1, 2`), because it has no
       # brackets. It also skips an array that holds a heredoc, because the
-      # heredoc body stays behind as code.
+      # heredoc body stays behind as code. Only the heredoc skip counts as
+      # declined.
       #
       # @param node [Prism::ArrayNode] array node to inspect.
       # @return [void]
       def emit(node)
-        return if node.opening_loc.nil? || node.elements.empty? || heredoc?(node)
+        return if node.opening_loc.nil? || node.elements.empty?
+        return decline if heredoc?(node)
 
         @mutations << Mutation.new(
           start_offset: node.location.start_offset,

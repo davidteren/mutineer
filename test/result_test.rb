@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
-require "minitest/mock"
 
 class ResultTest < Minitest::Test
   def test_killed
@@ -112,6 +111,12 @@ class ResultTest < Minitest::Test
     assert_equal statuses, statuses.uniq
   end
 
+  def test_unrun_count
+    agg = Mutineer::AggregateResult.new([Mutineer::Result.killed, Mutineer::Result.killed, Mutineer::Result.unplaceable,
+                                         Mutineer::Result.skipped, Mutineer::Result.skipped])
+    assert_equal 3, agg.unrun_count
+  end
+
   def test_incomplete_when_nothing_scored_and_one_mutant_errored
     agg = Mutineer::AggregateResult.new([Mutineer::Result.error])
     assert_predicate agg, :broken_nil_score?
@@ -134,31 +139,20 @@ class ResultTest < Minitest::Test
     assert_predicate agg, :incomplete?
   end
 
+  # The share alone decides above the floor: 2 of 20 is exactly 10%, 2 of 19 is above it.
+  def test_no_verdict_share_at_the_limit_is_complete_and_above_it_is_not
+    at_limit = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(18) { Mutineer::Result.killed })
+    above = Mutineer::AggregateResult.new(Array.new(2) { Mutineer::Result.error } + Array.new(17) { Mutineer::Result.killed })
+    refute_predicate at_limit, :broken_share_exceeded?
+    refute_predicate at_limit, :incomplete?
+    assert_predicate above, :broken_share_exceeded?
+    assert_predicate above, :incomplete?
+  end
+
   def test_unplaceable_and_ran_at_load_are_not_no_verdict
     agg = Mutineer::AggregateResult.new([Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load,
                                          Mutineer::Result.killed])
     assert_equal 0, agg.no_verdict_count
     refute_predicate agg, :incomplete?
-  end
-
-  # #286: only a survivor whose line ran at load becomes a tested ran_at_load
-  # mutant; any other verdict comes back unchanged.
-  def test_load_verdict_marks_only_a_survivor_as_tested_at_load
-    Mutineer::JobPlan.stub(:ran_at_load?, true) do
-      survived = Mutineer::JobPlan.load_verdict(Mutineer::Result.survived, "a.rb", nil, nil, "", nil)
-      assert_predicate survived, :ran_at_load?
-      assert_predicate survived, :tested_at_load?
-
-      killed = Mutineer::Result.killed
-      assert_same killed, Mutineer::JobPlan.load_verdict(killed, "a.rb", nil, nil, "", nil)
-    end
-  end
-
-  def test_tested_at_load_defaults_to_false
-    refute_predicate Mutineer::Result.ran_at_load, :tested_at_load?
-    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true)
-    assert_predicate tested, :tested_at_load?
-    agg = Mutineer::AggregateResult.new([tested, Mutineer::Result.ran_at_load])
-    assert_equal 1, agg.ran_at_load_tested_count
   end
 end

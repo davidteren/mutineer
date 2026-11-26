@@ -28,10 +28,16 @@ module Mutineer
     #                     with its current `status`. Not fixed, and never gates.
     #                     Omitted ids in a partial or empty unscoped run use
     #                     `not_run`, a baseline-only label, not a Result status.
+    #                     An absent id with a stored path from another machine
+    #                     uses `foreign_path`, also baseline-only (#343), in a
+    #                     full run with results, given sources and a selected
+    #                     operator. With `sources: nil` it counts as fixed.
     #                     Filled on a diff-scoped side too (#283, #286).
-    #   score_drop      - current score < baseline score - epsilon. nil on
-    #                     either side skips the check, and a diff-scoped run
-    #                     (`scoped: true`) never sets it (see #diff).
+    #   score_drop      - the exact score fell by more than epsilon (see
+    #                     #diff). nil on either side skips the check, and a
+    #                     diff-scoped run (`scoped: true`) never sets it.
+    #                     score_before and score_after are rounded, so a drop
+    #                     can show with equal values.
     #   score_comparable - the two scores share a denominator (neither side was
     #                     diff-scoped and both are non-nil), so a consumer may
     #                     render them side by side. False means the score-drop
@@ -68,7 +74,7 @@ module Mutineer
     # @return [Mutineer::Baseline] baseline object.
     # @raise [Mutineer::ConfigError] when the file is missing or invalid.
     def self.load(path)
-      doc = JSON.parse(File.read(path))
+      doc = JSON.parse(File.read(path, encoding: "UTF-8"))
       unless doc.is_a?(Hash) && doc["schema_version"] && doc["survivors"].is_a?(Array)
         raise ConfigError, "not a Mutineer JSON report: #{path}"
       end
@@ -100,6 +106,9 @@ module Mutineer
     def initialize(doc)
       @survivors = doc["survivors"] || []
       @score = doc.dig("summary", "score")
+      # The exact counts behind the rounded score (#343).
+      @killed = doc.dig("summary", "killed")
+      @survived = doc.dig("summary", "survived")
       # Strict literal true only: a malformed value (say the STRING "false" in a
       # hand-edited baseline) must not silently disable the score-drop gate.
       @scoped = doc.dig("summary", "scoped") == true
@@ -108,8 +117,10 @@ module Mutineer
     end
 
     # Diff a current AggregateResult against this baseline by survivor id.
-    # `epsilon` tolerates float jitter on the score (default 0.0 = any drop
-    # gates).
+    # `epsilon` tolerates a score drop of that many percentage points (default
+    # 0.0 = any drop gates). The drop is measured on the exact score,
+    # `killed / (killed + survived)` from the counts of both reports, not on the
+    # rounded `summary.score` (#343).
     #
     # A stored survivor is fixed only when this run killed it, ignored it, or no
     # longer has it. When its current result is undecided (an error, a timeout,
@@ -192,12 +203,11 @@ module Mutineer
         if (r = stored_match(undecided_index, h, foreign, file_key))
           unverified << h.merge("status" => r.status.to_s)
         elsif unscoped
-          if stored_match(fixed_index, h, foreign, file_key) ||
-             (!partial && aggregate.total.positive? && !outside_selection?(h, source_keys, operator_names, project_root))
-            fixed << h
-          else
-            unverified << h.merge("status" => "not_run")
-          end
+          status = if stored_match(fixed_index, h, foreign, file_key) then nil
+                   elsif partial || aggregate.total.zero? then "not_run"
+                   else absent_status(h, source_keys, operator_names, project_root)
+                   end
+          status ? unverified << h.merge("status" => status) : fixed << h
         end
       end
 
@@ -208,7 +218,7 @@ module Mutineer
       # via `scoped:`, or the stored baseline via its `summary.scoped` marker):
       # the denominators differ, so the scores are not comparable.
       comparable = unscoped && !@score.nil? && !current_score.nil?
-      score_drop = comparable && current_score < @score - epsilon
+      score_drop = comparable && score_dropped?(aggregate, epsilon)
 
       Delta.new(new_survivors: new_survivors, fixed_survivors: fixed,
                 score_before: @score, score_after: current_score,
@@ -219,27 +229,48 @@ module Mutineer
 
     private
 
-    # Whether an absent stored mutant was excluded by source or operator
-    # selection. A missing project file is a removal, but a foreign path cannot
-    # prove removal in this checkout. Matched results bypass this metadata check.
+    # Whether the score fell by more than `epsilon` percentage points. Uses the
+    # exact counts of both reports, like AggregateResult#meets_threshold?, so a
+    # drop hidden by rounding gates and a drop inside epsilon does not (#343).
+    # A stored report with no integer counts (hand-made) compares the rounded
+    # scores, as before (#567).
+    #
+    # @param aggregate [Mutineer::AggregateResult] current results; its score is non-nil.
+    # @param epsilon [Numeric] score-drop tolerance in percentage points.
+    # @return [Boolean]
+    def score_dropped?(aggregate, epsilon)
+      counts = [@killed, @survived]
+      exact = counts.all? { |n| n.is_a?(Integer) && !n.negative? } && counts.sum.positive?
+      return aggregate.mutation_score < @score - epsilon unless exact
+
+      before = Rational(@killed * 100, @killed + @survived)
+      after = Rational(aggregate.killed_count * 100, aggregate.covered_count)
+      after < before - epsilon.to_s.to_r
+    end
+
+    # The status of a stored survivor that a full run with results no longer
+    # has, or nil when that absence counts as a fix. A missing project file is a
+    # removal. A stored id outside the selected sources or operators is
+    # `not_run`. A stored path outside the project that does not exist on this
+    # machine (a baseline written elsewhere) is `foreign_path`: the run cannot
+    # check it (#343). Matched results bypass this metadata check.
     #
     # @param stored [Hash] stored baseline survivor.
     # @param sources [Set<String>, nil] normalized selected source paths.
     # @param operators [Set<String>, nil] selected operator names.
     # @param project_root [String] root for stored project-relative paths.
-    # @return [Boolean] whether the stored id was outside the selected scope.
-    def outside_selection?(stored, sources, operators, project_root)
-      return true if operators && !operators.include?(stored["operator"].to_s)
-      return false unless sources
-
+    # @return [String, nil] `"not_run"`, `"foreign_path"`, or nil for fixed.
+    def absent_status(stored, sources, operators, project_root)
       path = stored["file"]
-      return true unless path
-
-      key = ProjectPath.relative(path, ProjectPath.root_real(project_root))
-      return false if sources.include?(key)
-      return true if File.absolute_path?(key)
-
-      File.exist?(ProjectPath.absolute(path, project_root))
+      key = path && ProjectPath.relative(path, ProjectPath.root_real(project_root))
+      foreign = key && File.absolute_path?(key)
+      # A source file removed from this checkout is a fix whatever was selected.
+      return if key && !foreign && !File.exist?(ProjectPath.absolute(path, project_root))
+      return "not_run" if operators && !operators.include?(stored["operator"].to_s)
+      return unless sources
+      return if key && sources.include?(key)
+      # Outside the project and not on this machine: the run cannot check it.
+      foreign && !File.exist?(key) ? "foreign_path" : "not_run"
     end
 
     # Indexes results by the three keys a stored survivor can match on: the

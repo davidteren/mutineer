@@ -7,7 +7,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   // Reduced motion: no motion layer, and every number is final at once.
   await expect(root).not.toHaveClass(/\bmotion\b/);
   await expect(page.locator('.scroll-progress, .visually-hidden, .reveal')).toHaveCount(0);
-  expect(await page.locator('.odo').allTextContents()).toEqual(['21', '01', '8,170', '24']);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['22', '01', '8,170', '24']);
   await expect(root).toHaveAttribute('data-theme', 'dark');
   const summary = page.locator('.boundary-test summary');
   await summary.focus();
@@ -22,7 +22,7 @@ test('theme, keyboard disclosure, copy and mobile navigation work together', asy
   await expect(page.locator('.copy').first()).toHaveText('Copied ✓');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('gem install mutineer');
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ['/', '/learn.html', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html']) {
+  for (const path of ['/', '/learn.html', '/agentic-coding.html', '/rails.html', '/json-schema.html', '/sample-report.html', '/equivalent-skips.html']) {
     await page.goto(path);
     await expect(root).toHaveAttribute('data-theme', 'light');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -71,7 +71,7 @@ test('printing before scrolling shows the real numbers', async ({ page }) => {
   await page.goto('/');
   expect(await page.locator('.evidence-strip .odo').textContent()).toBe('\u20070');
   await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
-  expect(await page.locator('.odo').allTextContents()).toEqual(['21', '01', '8,170', '24']);
+  expect(await page.locator('.odo').allTextContents()).toEqual(['22', '01', '8,170', '24']);
   await expect(page.locator('.visually-hidden')).toHaveCount(0);
 });
 
@@ -111,9 +111,21 @@ test('motion keeps step labels, true numbers and every section visible', async (
     numbers: [...document.querySelectorAll('.odo')].map(e => e.textContent),
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
   }));
-  expect(state).toEqual({ hidden: 0, numbers: ['21', '01', '8,170', '24'], overflow: 0 });
+  expect(state).toEqual({ hidden: 0, numbers: ['22', '01', '8,170', '24'], overflow: 0 });
   // After counting, each number reads once (no hidden copy left behind).
   expect(await page.locator('.hero-proof-num').innerText()).toMatch(/^8,170\s/);
   await expect(page.locator('.odo[aria-hidden], .visually-hidden')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('inline code chips keep at least 8px of side padding', async ({ page }) => {
+  await page.goto('/equivalent-skips.html');
+  for (const selector of ['.prose td > code', '.prose p > code', '.prose li > code']) {
+    const pads = await page.locator(selector).evaluateAll((els) => els.flatMap((el) => {
+      const s = getComputedStyle(el);
+      return [parseFloat(s.paddingLeft), parseFloat(s.paddingRight)];
+    }));
+    expect(pads.length, selector).toBeGreaterThan(0);
+    expect(Math.min(...pads), selector).toBeGreaterThanOrEqual(8);
+  }
 });

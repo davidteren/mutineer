@@ -3,6 +3,7 @@
 /storage/*.sqlite3-wal
 /storage/*.sqlite3-[0-9]*
 /storage/*.sqlite3_[0-9]*
+/storage/*-mutineer.lock
 /log/*.log
 /tmp/
 /.mutineer/

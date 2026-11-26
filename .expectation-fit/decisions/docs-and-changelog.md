@@ -1,0 +1,8 @@
+# Docs and changelog
+
+- **Keep Operator Page Counts Aligned.** When the Mutineer operator registry's total or Tier-2 count changes, update the corresponding counts in the `docs/index.html` Operators section and keep the registry-count test passing. (cubic `e5a7d3fc`)
+- **Keep CLAUDE.md as an import.** When reviewing CLAUDE.md release-policy documentation, preserve its import of AGENTS.md as the single source of truth and do not require copied release rules; keep the test asserting that no release rule is copied. (cubic `54c58040`)
+- **Use Published URLs in Gem Hints.** When a runtime hint links to a guide that the gem does not ship, point the hint to the published guide URL so installed gem users can access it. (cubic `d52b9d9f`)
+- **Keep pending changelog entries under Unreleased after merges.** When reviewing changelog changes after merging another branch, verify that entries describing unreleased work remain under `## [Unreleased]` rather than being silently placed under a released version heading. Raise the issue and move the entry back to `[Unreleased]` when the heading is wrong, even if the merge reports no conflict. (cubic `44609449`)
+- **Equivalent Mutant Prompt Guidance.** When reviewing the coding-agent prompt in `docs/quick-start.md`, ensure it asks agents to explain equivalent survivors and propose an `ignore` entry with a reason, while reserving distinguishing-test proposals for non-equivalent survivors. (cubic `6da46c67`)
+- **Version Scope for Survivor Checks.** When reviewing Mutineer agent acceptance guidance, preserve `summary.survived == 0` for every version when every scored mutant must be killed, and limit the rounded-score workaround to versions 1.7.0 and earlier. (cubic `56ff8f53`)

@@ -3,6 +3,8 @@
 require_relative "test_helper"
 require "minitest/mock"
 require "mutineer/rails_worker_db"
+require "open3"
+require "tmpdir"
 
 # #26/U5 — zero-dep unit coverage for the pure parts of the worker-DB adapter. The
 # path-munging is the one bit of non-trivial logic that could break silently, so it
@@ -18,6 +20,27 @@ class RailsWorkerDbTest < Minitest::Test
 
   def test_worker_database_path_handles_a_bare_name
     assert_equal "mydb-1", Mutineer::RailsWorkerDb.worker_database_path("mydb", 1)
+  end
+
+  # The daemon loads this file on the app's Ruby. That Ruby may be older
+  # than 3.4 and have no Prism. Requiring parser.rb raises LoadError, and
+  # the daemon then runs parallel workers on one database (#346).
+  def test_loads_when_prism_cannot_be_required
+    lib = File.expand_path("../lib", __dir__)
+    script = <<~RUBY
+      module Kernel
+        alias_method :require_without_block, :require
+        def require(path)
+          raise LoadError, "prism blocked" if path == "prism"
+          require_without_block(path)
+        end
+      end
+      require "mutineer/rails_worker_db"
+      puts Mutineer::RailsWorkerDb.name
+    RUBY
+    out, err, status = Open3.capture3(RbConfig.ruby, "-I#{lib}", "-e", script)
+    assert_equal 0, status.exitstatus, err
+    assert_equal "Mutineer::RailsWorkerDb", out.strip
   end
 
   # R10: the adapter must never touch AR unless the app loaded it. In the zero-dep
@@ -289,8 +312,135 @@ class RailsWorkerDbTest < Minitest::Test
     assert_nil Mutineer::RailsWorkerDb.schema_file_version("ActiveRecord::Schema.define do")
   end
 
+  # #317: a SQLite worker loads the schema file the app's config names, not a
+  # fixed db/schema.rb. Runs in a temp app root with a stubbed ActiveRecord.
+  # SQLite and MySQL workers share this lookup, so both honour the same settings.
+  def test_schema_format_for_prefers_the_config_and_reads_strings
+    with_schema_config(dump: nil, global: "ruby") do
+      assert_equal :ruby, Mutineer::RailsWorkerDb.schema_format_for(Object.new),
+                   "a config without schema_format (Rails < 8.1) uses the app-wide setting, as a symbol"
+    end
+    with_schema_config(dump: nil) do
+      config = Object.new
+      config.define_singleton_method(:schema_format) { "sql" }
+      assert_equal :sql, Mutineer::RailsWorkerDb.schema_format_for(config),
+                   "the database's own schema_format wins over the app-wide :ruby"
+    end
+  end
+
+  def test_ruby_schema_path_follows_the_configured_file
+    in_app_root do |root|
+      File.write("db/schema.rb", "# MySQL schema SQLite cannot load\n")
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(dump: File.join(root, "db/schema_sqlite.rb")) do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "Rails resolves the Ruby-format file"
+      end
+      with_schema_config(dump: "db/schema_sqlite.rb") do
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path,
+                     "a relative SCHEMA value is expanded, so `load` never searches $LOAD_PATH"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_is_nil_when_no_ruby_schema_file_applies
+    in_app_root do |root|
+      File.write("db/schema.rb", "\n")
+      with_schema_config(dump: nil) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "schema_dump: false loads no schema"
+      end
+      with_schema_config(dump: File.join(root, "db/missing.rb")) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "a named file that does not exist loads nothing"
+      end
+      with_schema_config(global: :sql, dump: File.join(root, "db/schema.rb")) do |asked|
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "structure.sql apps keep the copy, even beside a schema.rb"
+        assert_empty asked
+      end
+      with_schema_config(global: :ruby, per_config: :sql, dump: File.join(root, "db/schema.rb")) do
+        assert_nil Mutineer::RailsWorkerDb.ruby_schema_path, "a per-database schema_format (Rails 8.1) wins"
+      end
+      with_schema_config(global: :sql, per_config: :ruby, dump: File.join(root, "db/schema.rb")) do
+        assert_equal File.join(root, "db/schema.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+      end
+    end
+  end
+
+  def test_ruby_schema_path_accepts_a_global_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "Rails receives the normalized Ruby format"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_accepts_a_per_database_string_format
+    in_app_root do |root|
+      File.write("db/schema_sqlite.rb", "\n")
+      with_schema_config(global: :sql, per_config: "ruby", dump: "db/schema_sqlite.rb") do |asked|
+        assert_equal File.join(root, "db/schema_sqlite.rb"), Mutineer::RailsWorkerDb.ruby_schema_path
+        assert_equal [:ruby], asked, "the per-database string format wins and is normalized"
+      end
+    end
+  end
+
+  def test_ruby_schema_path_excludes_string_sql_formats
+    in_app_root do
+      File.write("db/schema.rb", "\n")
+      [{ global: "sql" }, { global: :ruby, per_config: "sql" }].each do |formats|
+        with_schema_config(**formats, dump: "db/schema.rb") do |asked|
+          assert_nil Mutineer::RailsWorkerDb.ruby_schema_path
+          assert_empty asked, "SQL formats do not ask Rails for a Ruby schema"
+        end
+      end
+    end
+  end
+
+  # Yields the real path of a temp app root with a db/ folder, as the cwd.
+  def in_app_root(&block)
+    Dir.mktmpdir do |dir|
+      Dir.chdir(dir) do
+        Dir.mkdir("db")
+        block.call(Dir.pwd)
+      end
+    end
+  end
+
+  # Stub the ActiveRecord surface {RailsWorkerDb.ruby_schema_path} reads.
+  # `dump` is what Rails' schema_dump_path returns.
+  # Yields the formats it was asked for.
+  def with_schema_config(dump:, global: :ruby, per_config: nil)
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    asked = []
+    db_config = Object.new
+    db_config.define_singleton_method(:schema_format) { per_config } if per_config
+    base = Module.new
+    base.define_singleton_method(:connection_db_config) { db_config }
+    tasks = Module.new
+    tasks.define_singleton_method(:schema_dump_path) do |config, format|
+      raise "wrong db config" unless config.equal?(db_config)
+
+      asked << format
+      dump
+    end
+    active_record = Module.new
+    active_record.define_singleton_method(:schema_format) { global }
+    active_record.const_set(:Base, base)
+    active_record.const_set(:Tasks, Module.new)
+    active_record::Tasks.const_set(:DatabaseTasks, tasks)
+    Object.const_set(:ActiveRecord, active_record)
+    yield asked
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
   def teardown
     db = Mutineer::RailsWorkerDb
+    file = db.instance_variable_get(:@sqlite_lock_file)
+    file.close if file && !file.closed?
+    db.instance_variable_set(:@sqlite_lock_file, nil)
     db.forget_mysql_base_config
     db.instance_variable_set(:@mysql_held_locks, nil)
     db.instance_variable_set(:@lock_connection, nil)
@@ -384,6 +534,98 @@ class RailsWorkerDbTest < Minitest::Test
     assert_equal "/tmp/mysql.sock", cfg[:socket]
   end
 
+  def test_mysql_version_support_accepts_mysql_8
+    %w[8.0.36 8.0.36-0ubuntu0.22.04.1 8.4.0].each do |version|
+      assert_equal :supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_refuses_mysql_before_8
+    %w[5.7.44 5.7.44-log 5.6.51].each do |version|
+      assert_equal :not_supported, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  # MariaDB reports 10.x or 11.x, and some builds prefix 5.5.5-, so the name check runs first.
+  def test_mysql_version_support_marks_mariadb_and_mysql_9_not_tested
+    %w[10.11.6-MariaDB 11.4.2-MariaDB-log 5.5.5-10.6.12-MariaDB 9.1.0].each do |version|
+      assert_equal :not_tested, Mutineer::RailsWorkerDb.mysql_version_support(version), version
+    end
+  end
+
+  def test_mysql_version_support_marks_an_unreadable_version
+    [nil, "", "unknown"].each do |version|
+      assert_equal :unreadable, Mutineer::RailsWorkerDb.mysql_version_support(version), version.inspect
+    end
+  end
+
+  def test_provision_mysql_refuses_mysql_5_7_before_it_takes_a_lock
+    conn = VersionMysql.new("5.7.44")
+    error = provision_mysql_against(conn)
+    assert_equal "could not provision app_test: MySQL 5.7.44 is not supported. " \
+                 "--daemon needs MySQL 8.0 or later. Pass --no-daemon (or daemon: false) to stay serial.",
+                 error.message
+    assert conn.closed?
+    assert(conn.queries.none? { |sql| sql.match?(/GET_LOCK|DROP DATABASE|CREATE DATABASE/) })
+  end
+
+  def test_provision_mysql_warns_once_on_mariadb
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("10.11.6-MariaDB")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("server version 10.11.6-MariaDB is not tested with --daemon").size
+  end
+
+  def test_provision_mysql_warns_when_the_version_query_fails
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new(RuntimeError.new("boom"))) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_equal 1, err.scan("could not read the MySQL server version (got an error: RuntimeError: boom)").size
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_version_query_error
+    failure = RuntimeError.new("bad url mysql2://app:s3cret@db/app_test")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure)) }
+    assert_includes err, "mysql2://app:[REDACTED]@db/app_test"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_hides_the_configured_password_in_the_version_query_error
+    failure = RuntimeError.new("Access denied (password: s3cret)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "s3cret") }
+    assert_includes err, "(password: [REDACTED])"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_hides_a_short_configured_password_only_as_a_word
+    failure = RuntimeError.new("Access denied for app (using a)")
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new(failure), password: "a") }
+    assert_includes err, "Access denied for app (using [REDACTED])"
+  end
+
+  def test_provision_mysql_hides_a_password_in_the_server_version
+    _out, err = capture_io { provision_mysql_against(VersionMysql.new("10.11.6-MariaDB mysql2://app:s3cret@db")) }
+    assert_includes err, "mysql2://app:[REDACTED]@db"
+    refute_includes err, "s3cret"
+  end
+
+  def test_provision_mysql_accepts_mysql_8_without_a_warning
+    error = nil
+    _out, err = capture_io { error = provision_mysql_against(VersionMysql.new("8.0.36")) }
+    assert_equal "another Mutineer run is using app_test", error.message
+    assert_empty err
+  end
+
+  # Run provision_mysql(1) against `conn` and return the RuntimeError it raises.
+  def provision_mysql_against(conn, password: nil)
+    db = Mutineer::RailsWorkerDb
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test", password: password }.compact) do
+      db.stub(:open_mysql_connection, conn) do
+        assert_raises(RuntimeError) { db.provision_mysql(1) }
+      end
+    end
+  end
+
   def test_load_mysql_schema_restores_the_base_connection
     saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     calls = []
@@ -410,6 +652,130 @@ class RailsWorkerDbTest < Minitest::Test
       { adapter: "trilogy", database: "app_test" }, "app_test-mutineer-0", "app_test"
     )
     assert_equal %w[app_test-mutineer-0 app_test], calls
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # The tool counts these names; the primary is the config each worker copies.
+  # Hidden configs count, replicas do not.
+  def test_database_names_lists_the_test_configs_and_the_primary
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name, :replica) do
+      def replica? = replica
+    end
+    # `legacy` stands for a `database_tasks: false` config: Rails hides it
+    # unless include_hidden is set, and workers would still share it.
+    all = [config.new("primary"), config.new("primary_replica", true), config.new("cable"), config.new("legacy")]
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) do |env_name:, include_hidden: false|
+      include_hidden ? all : all.first(1) + all[2, 1]
+    end
+    base = Class.new
+    base.define_singleton_method(:configurations) { configs }
+    base.define_singleton_method(:connection_db_config) { config.new("primary") }
+    Object.const_set(:ActiveRecord, Module.new.tap { |m| m.const_set(:Base, base) })
+
+    assert_equal({ "names" => %w[primary cable legacy], "primary" => "primary" },
+                 Mutineer::RailsWorkerDb.database_names)
+  ensure
+    Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    Object.const_set(:ActiveRecord, saved) if saved
+  end
+
+  # The tripwire reads the live pools: a connected pool on a shared database
+  # is a use, under its own name, as a replica in the same `connects_to`, or
+  # as another config on the same database file. An idle pool is not.
+  def test_touched_shared_databases_names_connected_shared_pools_only
+    with_fake_pools do |fake, db|
+      assert_equal %w[cable], db.touched_shared_databases(%w[cable queue])
+      assert_empty db.touched_shared_databases(%w[queue])
+      assert_empty db.touched_shared_databases([])
+
+      fake.pools << fake.pool("queue_copy", "storage/queue.sqlite3", "QueueCopyRecord", connected: true)
+      assert_equal %w[queue], db.touched_shared_databases(%w[queue]), "the same database file is a use"
+    end
+  end
+
+  # A replica with its own database file still counts: `connects_to` puts it
+  # under the same class as the shared writer, even when the writer is idle.
+  # A primary replica (owned by ActiveRecord::Base) is not a shared use.
+  def test_a_replica_of_a_shared_database_counts_by_its_class
+    with_fake_pools do |fake, db|
+      fake.pools << fake.pool("queue_replica", "storage/queue_replica.sqlite3", "QueueRecord", connected: true)
+      fake.pools << fake.pool("primary_replica", "storage/test_replica.sqlite3", "ActiveRecord::Base",
+                              connected: true)
+      assert_equal %w[queue], db.touched_shared_databases(%w[queue])
+    end
+  end
+
+  # A pool that ran SQL since watch_sql counts after a test disconnects it.
+  def test_a_pool_that_ran_sql_counts_after_it_disconnects
+    with_fake_pools do |fake, db|
+      queue = fake.pools.find { |p| p.db_config.name == "queue" }
+      events = Module.new do
+        define_singleton_method(:subscribe) do |name, &block|
+          raise "unexpected #{name}" unless name == "sql.active_record"
+
+          block.call(name, 0, 0, "id", { connection: Struct.new(:pool).new(queue) })
+          block.call(name, 0, 0, "id", { connection: nil })
+        end
+      end
+      saved = Object.send(:remove_const, :ActiveSupport) if Object.const_defined?(:ActiveSupport)
+      Object.const_set(:ActiveSupport, Module.new.tap { |m| m.const_set(:Notifications, events) })
+      db.watch_sql
+      refute queue.connected?
+      assert_equal %w[queue], db.touched_shared_databases(%w[queue])
+    ensure
+      db.instance_variable_set(:@sql_pools, nil)
+      Object.send(:remove_const, :ActiveSupport) if Object.const_defined?(:ActiveSupport)
+      Object.const_set(:ActiveSupport, saved) if saved
+    end
+  end
+
+  # Only names in the database report count. An unknown name (the tool warned
+  # about it) shares nothing, so it must not trip the Rails 7.0 guard.
+  def test_rails_70_errors_only_for_a_known_shared_database
+    with_fake_pools(version: "7.0.8") do |_fake, db|
+      assert_empty db.touched_shared_databases(%w[cabel])
+      # Rails 7.0 lists no pool for :all, so a pass there would be a false clean.
+      error = assert_raises(RuntimeError) { db.touched_shared_databases(%w[cable]) }
+      assert_equal "shared_databases needs Rails 7.1 or later", error.message
+    end
+  end
+
+  # Fake Active Record pools for the tripwire tests: primary and cable
+  # connected, queue idle. Yields the fake and RailsWorkerDb.
+  def with_fake_pools(version: "7.2.3")
+    saved = Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
+    config = Struct.new(:name, :database) do
+      def replica? = name.end_with?("_replica")
+    end
+    owner = Struct.new(:connection_name)
+    pool_struct = Struct.new(:db_config, :pool_config, :connected) do
+      def connected? = connected
+    end
+    fake = Struct.new(:pools, :configs).new([], [])
+    fake.define_singleton_method(:pool) do |name, database, klass, connected:|
+      db_config = config.new(name, database)
+      configs << db_config unless configs.any? { |c| c.name == name }
+      pool_struct.new(db_config, owner.new(klass), connected)
+    end
+    fake.pools.push(fake.pool("primary", "storage/test.sqlite3", "ActiveRecord::Base", connected: true),
+                    fake.pool("cable", "storage/cable.sqlite3", "CableRecord", connected: true),
+                    fake.pool("queue", "storage/queue.sqlite3", "QueueRecord", connected: false))
+    handler = Object.new
+    handler.define_singleton_method(:connection_pool_list) { |role| role == :all ? fake.pools : [] }
+    configs = Object.new
+    configs.define_singleton_method(:configs_for) { |env_name:, include_hidden:| fake.configs }
+    base = Class.new
+    base.define_singleton_method(:connection_handler) { handler }
+    base.define_singleton_method(:configurations) { configs }
+    base.define_singleton_method(:connection_db_config) { fake.configs.first }
+    active_record = Module.new.tap { |m| m.const_set(:Base, base) }
+    active_record.define_singleton_method(:version) { Gem::Version.new(version) }
+    Object.const_set(:ActiveRecord, active_record)
+    yield fake, Mutineer::RailsWorkerDb
   ensure
     Object.send(:remove_const, :ActiveRecord) if Object.const_defined?(:ActiveRecord)
     Object.const_set(:ActiveRecord, saved) if saved
@@ -645,6 +1011,456 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  def test_sqlite_lock_path_expands_a_relative_file
+    config = sqlite_db_config("storage/test.sqlite3")
+    expected = "#{File.expand_path('storage/test.sqlite3')}-mutineer.lock"
+    assert_equal expected, Mutineer::RailsWorkerDb.sqlite_lock_path(config)
+  end
+
+  def test_sqlite_lock_path_keeps_an_absolute_file
+    config = sqlite_db_config("/tmp/app/storage/test.sqlite3")
+    assert_equal "/tmp/app/storage/test.sqlite3-mutineer.lock", Mutineer::RailsWorkerDb.sqlite_lock_path(config)
+  end
+
+  def test_sqlite_lock_path_is_nil_without_a_database_file
+    ["", ":memory:"].each do |name|
+      assert_nil Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config(name)), name
+    end
+  end
+
+  # The table is SQLite's file: rule (authority, escapes, query, fragment).
+  # `opened` is the file that name opens, or nil when it opens no shared file.
+  # test_sqlite_file_uri_lock_matches_the_file_sqlite_opens compares a sample
+  # with the file the sqlite3 CLI opens.
+  def test_sqlite_file_uri_lock_follows_the_opened_file
+    root = Dir.pwd
+    {
+      "file:storage/test.sqlite3" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=ro" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=rw&cache=shared" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?vfs=unix" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3#fragment" => "storage/test.sqlite3",
+      "file:storage/test.sqlite3?mode=rw#fragment" => "storage/test.sqlite3",
+      "file:storage/my%20db.sqlite3" => "storage/my db.sqlite3",
+      "file:storage/bad%zz.sqlite3" => "storage/bad%zz.sqlite3",
+      "file:storage/bad%.sqlite3" => "storage/bad%.sqlite3",
+      "file:foo/../bar.sqlite3" => "bar.sqlite3",
+      "file:./rel.sqlite3" => "rel.sqlite3",
+      "file:foo%2Fbar.sqlite3" => "foo/bar.sqlite3",
+      "file:a%00b.sqlite3" => "a",
+      "file:pre%00mid.sqlite3?mode=rw" => "pre",
+      "file:foo.sqlite3?MODE=memory" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=memory&mode=rw" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=rw&mode=ro" => "foo.sqlite3",
+      "file:foo.sqlite3?mode=ro&mode=rw" => nil,
+      "file:foo.sqlite3?mode=ro&mode=rwc" => nil,
+      "file:foo.sqlite3?mode=rw&mode=rwc" => nil,
+      "file:foo.sqlite3?=memory&mode=rw" => "foo.sqlite3",
+      "file:foo.sqlite3?immutable=1" => "foo.sqlite3",
+      "file:/var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:///var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:////var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file://localhost/var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file://localhost//var/app/storage/test.sqlite3" => "/var/app/storage/test.sqlite3",
+      "file:%2Fvar%2Fapp%2Fdb.sqlite3" => "/var/app/db.sqlite3",
+      "file::memory:" => nil,
+      "file::memory:?cache=shared" => nil,
+      "file:%3Amemory%3A" => nil,
+      "file:memdb1?mode=memory" => nil,
+      "file:memdb1?mode=memory&cache=shared" => nil,
+      "file:/var/app/db.sqlite3?mode=memory" => nil,
+      "file:foo.sqlite3?cache=shared&mode=memory" => nil,
+      "file:foo.sqlite3?mode=rw&mode=memory" => nil,
+      "file:foo.sqlite3?mode=mem%6Fry" => nil,
+      "file:foo.sqlite3?m%6Fde=memory" => nil,
+      "file:a%00b.sqlite3?mode=memory" => nil,
+      "file:" => nil,
+      "file:?mode=rw" => nil,
+      "file:///" => nil,
+      "file://localhost" => nil,
+      "file://localhost/" => nil,
+      "file:///./" => nil,
+      "file:%00hidden.sqlite3" => nil,
+      "file://otherhost/var/app/db.sqlite3" => nil,
+      "file://LocalHost/var/app/db.sqlite3" => nil,
+      "file:foo.sqlite3?mode=MEMORY" => nil,
+      "file:foo.sqlite3?mode" => nil,
+      "file:foo.sqlite3?mode=" => nil,
+      "file:foo.sqlite3?cache=SHARED" => nil
+    }.each do |name, opened|
+      actual = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config(name))
+      if opened.nil?
+        assert_nil actual, name
+      else
+        base = opened.start_with?("/") ? opened : File.expand_path(opened, root)
+        assert_equal "#{base}-mutineer.lock", actual, name
+      end
+    end
+  end
+
+  # The fixed table above states the rule. This asks SQLite which file it
+  # opened, so a parser drift fails here. It skips when the CLI is absent.
+  # The table still runs.
+  def test_sqlite_file_uri_lock_matches_the_file_sqlite_opens
+    sqlite3 = sqlite3_cli
+    skip "sqlite3 CLI is not installed" unless sqlite3
+
+    Dir.mktmpdir do |dir|
+      Dir.mkdir(File.join(dir, "storage"))
+      abs = File.join(dir, "app.sqlite3")
+      bare = abs.delete_prefix("/")
+      Dir.chdir(dir) do
+        [
+          "file:storage/test.sqlite3?mode=rwc",
+          "file:storage/my%20db.sqlite3?mode=rwc",
+          "file:storage/test.sqlite3?vfs=unix&mode=rwc",
+          "file:a%00b.sqlite3?mode=rwc",
+          "file:foo/../bar.sqlite3?mode=rwc",
+          "file:./rel.sqlite3?mode=rwc",
+          "file:pre%00mid.sqlite3?mode=rwc",
+          "file:caf%C3%A9.sqlite3?mode=rwc",
+          "file:#{abs}?mode=rwc",
+          "file:///#{bare}?mode=rwc",
+          "file:////#{bare}?mode=rwc",
+          "file://localhost/#{bare}?mode=rwc",
+          "file://localhost//#{bare}?mode=rwc",
+          "file::memory:",
+          "file:memdb1?mode=memory&cache=shared",
+          "file:",
+          "file:///",
+          "file://otherhost/#{bare}?mode=rwc",
+          "file:named.sqlite3?mode=rwc&mode=memory",
+          "file:named.sqlite3?MODE=memory&mode=rwc",
+          "file:widen.sqlite3?mode=ro&mode=rw",
+          "file:widen.sqlite3?mode=rw&mode=rwc"
+        ].each do |uri|
+          opened = sqlite_cli_opened_file(sqlite3, uri)
+          got = Mutineer::RailsWorkerDb.sqlite_uri_file(uri)
+          if opened.nil?
+            assert_nil got, uri
+          else
+            assert_equal sqlite_real_path(opened), sqlite_real_path(got), uri
+          end
+        end
+      end
+    end
+  end
+
+  # The memory flag is a Boolean, not nil, when the URI has no mode.
+  def test_sqlite_uri_parts_memory_flag_is_a_boolean
+    db = Mutineer::RailsWorkerDb
+
+    assert_equal ["a.sqlite3", false], db.sqlite_uri_parts("file:a.sqlite3")
+    assert_equal ["a.sqlite3", false], db.sqlite_uri_parts("file:a.sqlite3?mode=rwc")
+    assert_equal ["a.sqlite3", true], db.sqlite_uri_parts("file:a.sqlite3?mode=memory")
+  end
+
+  def test_sqlite_file_uri_and_plain_path_share_a_lock_in_the_app_root
+    Dir.mktmpdir do |tmp|
+      # Rails.root is a real path, and so is the working directory after chdir.
+      # The tmpdir is /var/... on macOS, which is a symlink to /private/var/...
+      dir = File.realpath(tmp)
+      Dir.chdir(dir) do
+        saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+        rails = Module.new
+        rails.define_singleton_method(:root) { dir }
+        Object.const_set(:Rails, rails)
+        begin
+          plain = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
+          uri = Mutineer::RailsWorkerDb.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3?mode=rwc"))
+          expected = "#{File.join(dir, 'storage', 'test.sqlite3')}-mutineer.lock"
+          assert_equal expected, plain
+          assert_equal plain, uri
+        ensure
+          Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+          Object.const_set(:Rails, saved) if saved
+        end
+      end
+    end
+  end
+
+  def test_sqlite_file_uri_does_not_use_rails_root
+    saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    rails = Module.new
+    rails.define_singleton_method(:root) { "/apps/shop" }
+    Object.const_set(:Rails, rails)
+    db = Mutineer::RailsWorkerDb
+    assert_equal "#{File.expand_path('storage/test.sqlite3')}-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("file:storage/test.sqlite3"))
+    assert_equal "/apps/shop/storage/test.sqlite3-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("storage/test.sqlite3"))
+    assert_equal "/var/app/storage/test.sqlite3-mutineer.lock",
+                 db.sqlite_lock_path(sqlite_db_config("file:/var/app/storage/test.sqlite3"))
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    Object.const_set(:Rails, saved) if saved
+  end
+
+  def test_sqlite_file_expands_against_rails_root
+    saved = Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    rails = Module.new
+    rails.define_singleton_method(:root) { "/apps/shop" }
+    Object.const_set(:Rails, rails)
+    assert_equal "/apps/shop/storage/test.sqlite3",
+                 Mutineer::RailsWorkerDb.sqlite_file(sqlite_db_config("storage/test.sqlite3"))
+  ensure
+    Object.send(:remove_const, :Rails) if Object.const_defined?(:Rails)
+    Object.const_set(:Rails, saved) if saved
+  end
+
+  def test_sqlite_exclusive_lock_stops_when_another_process_holds_shared
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      pid = spawn_sqlite_holder(lock, File::LOCK_SH)
+      error = assert_raises(RuntimeError) do
+        Mutineer::RailsWorkerDb.hold_sqlite_lock(lock, base, shared: false)
+      end
+      assert_equal "another Mutineer run is using #{base}", error.message
+      assert Mutineer::RailsWorkerDb.provision_wrapped?(error)
+    ensure
+      stop_sqlite_holder(pid)
+    end
+  end
+
+  def test_sqlite_exclusive_then_shared_lets_another_shared_lock_in
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: false)
+      db.hold_sqlite_lock(lock, base, shared: true)
+      out, status = sqlite_lock_probe(lock)
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_second_path_names_both_paths
+    Dir.mktmpdir do |dir|
+      first = File.join(dir, "a.sqlite3-mutineer.lock")
+      second = File.join(dir, "b.sqlite3-mutineer.lock")
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(first, File.join(dir, "a.sqlite3"), shared: false)
+      error = assert_raises(ArgumentError) do
+        db.hold_sqlite_lock(second, File.join(dir, "b.sqlite3"), shared: false)
+      end
+      assert_includes error.message, first
+      assert_includes error.message, second
+    end
+  end
+
+  def test_sqlite_fork_close_keeps_the_parent_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: true)
+      child = fork do
+        db.forget_lock_connection_after_fork!
+        exit!(db.instance_variable_get(:@sqlite_lock_file).nil? ? 0 : 1)
+      end
+      _, status = Process.wait2(child)
+      assert_equal 0, status.exitstatus
+      out, probe = sqlite_lock_probe(lock)
+      assert_equal 0, probe.exitstatus, out
+      assert_includes out, "exclusive=false"
+    end
+  end
+
+  def test_sqlite_forget_twice_in_one_fork_keeps_the_parent_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      db = Mutineer::RailsWorkerDb
+      db.hold_sqlite_lock(lock, base, shared: true)
+      child = fork do
+        db.forget_lock_connection_after_fork!
+        db.forget_lock_connection_after_fork!
+        exit! 0
+      rescue StandardError
+        exit! 1
+      end
+      _, status = Process.wait2(child)
+      assert_equal 0, status.exitstatus
+      out, probe = sqlite_lock_probe(lock)
+      assert_equal 0, probe.exitstatus, out
+      assert_includes out, "exclusive=false"
+    end
+  end
+
+  def test_sqlite_lock_in_an_unwritable_directory_names_the_path
+    skip "root ignores directory write permission" if Process.euid.zero?
+
+    Dir.mktmpdir do |dir|
+      locked = File.join(dir, "ro")
+      Dir.mkdir(locked)
+      File.chmod(0o555, locked)
+      path = File.join(locked, "test.sqlite3-mutineer.lock")
+      error = assert_raises(Errno::EACCES) do
+        Mutineer::RailsWorkerDb.hold_sqlite_lock(path, File.join(locked, "test.sqlite3"), shared: false)
+      end
+      assert_includes error.message, path
+    ensure
+      File.chmod(0o755, locked) if locked && File.directory?(locked)
+    end
+  end
+
+  def test_sqlite_existing_read_only_lock_file_opens
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      lock = "#{base}-mutineer.lock"
+      File.write(lock, "")
+      File.chmod(0o444, lock)
+      Mutineer::RailsWorkerDb.hold_sqlite_lock(lock, base, shared: false)
+      held = Mutineer::RailsWorkerDb.instance_variable_get(:@sqlite_lock_file)
+      assert_equal lock, held.path
+      refute held.closed?
+    end
+  end
+
+  def test_sqlite_provision_takes_the_lock
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      config = sqlite_db_config(base)
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
+      end
+      out, status = sqlite_lock_probe("#{base}-mutineer.lock")
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_provision_of_memory_takes_no_lock
+    [":memory:", "file::memory:?cache=shared", "file:memdb1?mode=memory&cache=shared"].each do |name|
+      config = sqlite_db_config(name)
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
+      end
+      assert_nil db.instance_variable_get(:@sqlite_lock_file), name
+    end
+  end
+
+  def test_sqlite_provision_of_a_file_uri_locks_that_file
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      config = sqlite_db_config("file:#{base}?mode=rwc")
+      db = Mutineer::RailsWorkerDb
+      db.stub(:available?, true) do
+        db.stub(:current_adapter, "sqlite3") do
+          db.stub(:primary_db_config, config) { db.provision(2) }
+        end
+      end
+      out, status = sqlite_lock_probe("#{base}-mutineer.lock")
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "shared=0 exclusive=false"
+    end
+  end
+
+  def test_sqlite_file_uri_stops_when_the_plain_file_is_locked
+    Dir.mktmpdir do |dir|
+      base = File.join(dir, "test.sqlite3")
+      pid = spawn_sqlite_holder("#{base}-mutineer.lock", File::LOCK_SH)
+      config = sqlite_db_config("file:#{base}?mode=ro")
+      db = Mutineer::RailsWorkerDb
+      error = assert_raises(RuntimeError) do
+        db.stub(:available?, true) do
+          db.stub(:current_adapter, "sqlite3") do
+            db.stub(:primary_db_config, config) { db.provision(1) }
+          end
+        end
+      end
+      assert_equal "another Mutineer run is using #{base}", error.message
+      assert db.provision_wrapped?(error)
+    ensure
+      stop_sqlite_holder(pid)
+    end
+  end
+
+  # A stand-in for an ActiveRecord SQLite config with this database name.
+  def sqlite_db_config(database)
+    Struct.new(:adapter, :database).new("sqlite3", database)
+  end
+
+  # Start a plain Ruby process that holds `mode` on `lock_path` until stopped.
+  def spawn_sqlite_holder(lock_path, mode)
+    read, write = IO.pipe
+    pid = Process.spawn(RbConfig.ruby, "-e", <<~RUBY, out: write)
+      file = File.open(#{lock_path.inspect}, File::RDONLY | File::CREAT, 0o644)
+      ok = file.flock(File::LOCK_NB | #{mode})
+      abort("busy") unless ok
+      $stdout.puts "HELD"
+      $stdout.flush
+      sleep 60
+    RUBY
+    write.close
+    line = read.gets
+    read.close
+    flunk("holder did not lock #{lock_path}: #{line.inspect}") unless line&.start_with?("HELD")
+    pid
+  end
+
+  # Stop a holder from spawn_sqlite_holder and reap it.
+  def stop_sqlite_holder(pid)
+    return unless pid
+
+    Process.kill("TERM", pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::ECHILD
+    nil
+  end
+
+  # Absolute path of sqlite3 on PATH, or nil. The URI oracle skips when this
+  # is nil. The path is absolute so a later chdir cannot lose a relative PATH entry.
+  def sqlite3_cli
+    ENV["PATH"].split(File::PATH_SEPARATOR).each do |dir|
+      bin = File.expand_path(File.join(dir, "sqlite3"))
+      return bin if File.executable?(bin) && !File.directory?(bin)
+    end
+    nil
+  end
+
+  # `path` with symlinks in its directory resolved. SQLite reports the real
+  # path of a file it opened (/private/var/... for a /var/... tmpdir on macOS),
+  # and the working directory is the real path too, while an absolute path
+  # given as-is keeps its symlinks. The file, and its directory, may not exist
+  # yet, so resolve the nearest directory that does and keep the rest.
+  def sqlite_real_path(path)
+    existing = File.dirname(path)
+    existing = File.dirname(existing) until File.directory?(existing)
+    File.join(File.realpath(existing), path.delete_prefix(existing))
+  end
+
+  # The file SQLite opened for `uri`, or nil when it opened no shared file.
+  # `quote(file)` wraps the path in single quotes. An empty quote is no file.
+  def sqlite_cli_opened_file(sqlite3, uri)
+    out, status = Open3.capture2e(sqlite3, uri, "SELECT quote(file) FROM pragma_database_list WHERE name='main';")
+    return nil unless status.success?
+
+    quoted = out.strip
+    return nil if quoted.empty? || quoted == "''"
+    return nil unless quoted.start_with?("'") && quoted.end_with?("'")
+
+    quoted[1..-2].gsub("''", "'")
+  end
+
+  # From another process, try a shared then an exclusive lock; return what each gave.
+  def sqlite_lock_probe(lock_path)
+    Open3.capture2(RbConfig.ruby, "-e", <<~RUBY)
+      file = File.open(#{lock_path.inspect}, File::RDONLY)
+      shared = file.flock(File::LOCK_SH | File::LOCK_NB)
+      exclusive = file.flock(File::LOCK_EX | File::LOCK_NB)
+      $stdout.puts "shared=\#{shared.inspect} exclusive=\#{exclusive.inspect}"
+    RUBY
+  end
+
   # Rows from a client that only implements trilogy's each_hash.
   class HashRows
     def initialize(rows)
@@ -757,6 +1573,42 @@ class RailsWorkerDbTest < Minitest::Test
 
     def escape(value)
       value.to_s.gsub("'", "''")
+    end
+  end
+  # Answers SELECT VERSION() with a fixed text, or raises a given error, and
+  # refuses every GET_LOCK. Records each query and whether it was closed.
+  class VersionMysql
+    attr_reader :queries
+
+    def initialize(version)
+      @version = version
+      @queries = []
+      @closed = false
+    end
+
+    def query(sql)
+      @queries << sql
+      if sql.include?("VERSION()")
+        raise @version if @version.is_a?(Exception)
+
+        HashRows.new([{ "version" => @version }])
+      elsif sql.include?("GET_LOCK")
+        HashRows.new([{ "got" => "0" }])
+      else
+        HashRows.new([])
+      end
+    end
+
+    def escape(value)
+      value.to_s.gsub("'", "''")
+    end
+
+    def close
+      @closed = true
+    end
+
+    def closed?
+      @closed
     end
   end
 end

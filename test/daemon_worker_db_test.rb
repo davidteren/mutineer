@@ -1,8 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require_relative "run_lock_helpers"
 require "mutineer/daemon_client"
+require "mutineer/cli"
+require "mutineer/runner"
+require "json"
 require "open3"
+require "tmpdir"
 
 # #26/U5 — per-worker DB routing, proven end-to-end against the bundled fixture app.
 # Drives the daemon directly (via DaemonClient) so it can exercise MORE THAN ONE
@@ -12,9 +17,15 @@ require "open3"
 # transactional fixtures repopulate it — the serial-correctness half of #26 (the
 # concurrent `--jobs N == --jobs 1` gate is U6).
 class DaemonWorkerDbTest < Minitest::Test
+  include RunLockHelpers
+
   APP   = File.expand_path("fixtures/rails_app", __dir__)
+  ROOT  = File.expand_path("..", __dir__)
   ORDER = File.join(APP, "app/models/order.rb")
   TEST  = File.join(APP, "test/models/order_test.rb")
+  WORKER_DB = File.expand_path("../lib/mutineer/rails_worker_db.rb", __dir__)
+  SQLITE_BASE = File.expand_path("storage/test.sqlite3", APP)
+  SQLITE_LOCK = "#{SQLITE_BASE}-mutineer.lock"
 
   def boot_config
     {
@@ -23,8 +34,7 @@ class DaemonWorkerDbTest < Minitest::Test
       load_paths: [File.join(APP, "test")],
       source_dirs: [File.join(APP, "app/models")],
       framework: "minitest",
-      rails: true,
-      schema: File.join(APP, "db/schema.rb")
+      rails: true
     }
   end
 
@@ -101,6 +111,73 @@ class DaemonWorkerDbTest < Minitest::Test
     assert_includes out, { no_sha1: 0, old_version: 0, old_sha1: 0, same_sha1: 1 }.inspect
   end
 
+  # #317: a worker loads the schema file the app's config names. A decoy
+  # db/schema.rb that SQLite cannot load (like a MySQL schema) sits beside the
+  # `schema_dump: schema_sqlite.rb` file whose checksum the base DB holds.
+  # Real Rails resolves each name through DaemonServer's worker setup, under the
+  # fixture bundle, in a temp db dir. The worker uses the daemon's stored path.
+  SCHEMA_DUMP_CHECK = <<~RUBY
+    require "./config/environment"
+    require #{File.expand_path("../lib/mutineer/daemon_server", __dir__).inspect}
+    require "digest"
+    require "tmpdir"
+    ActiveRecord::Migration.verbose = false
+    daemon = Mutineer::DaemonServer
+    daemon.send(:setup_worker_db, "db_role" => "prepare")
+    db = Mutineer::RailsWorkerDb
+    found = { default: daemon.instance_variable_get(:@schema_path) == File.expand_path("db/schema.rb") }
+    Dir.mktmpdir do |dir|
+      ActiveRecord::Tasks::DatabaseTasks.db_dir = dir
+      File.write(File.join(dir, "schema.rb"), 'raise "loaded the decoy schema.rb"')
+      sqlite_schema = File.join(dir, "schema_sqlite.rb")
+      File.write(sqlite_schema, File.read("db/schema.rb"))
+      base = { adapter: "sqlite3", database: File.join(dir, "base.sqlite3"), schema_dump: "schema_sqlite.rb" }
+      route = lambda do |extra = {}|
+        ActiveRecord::Base.establish_connection(base.merge(extra))
+        daemon.send(:setup_worker_db, "db_role" => "prepare")
+        daemon.instance_variable_get(:@schema_path)
+      end
+      found[:renamed] = route.() == sqlite_schema
+      ActiveRecord.schema_format = "ruby"
+      config = ActiveRecord::Base.connection_db_config
+      found[:rails_string] = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(config, "ruby") == sqlite_schema
+      found[:daemon_string] = route.() == sqlite_schema
+      ActiveRecord.schema_format = :ruby
+      found[:off] = route.(schema_dump: false)
+      ActiveRecord.schema_format = :sql
+      found[:sql] = route.()
+      ActiveRecord.schema_format = :ruby
+      route.()
+      load sqlite_schema
+      c = ActiveRecord::Base.connection
+      c.execute("INSERT INTO orders (created_at, updated_at) VALUES (datetime(), datetime())")
+      c.execute("INSERT OR REPLACE INTO ar_internal_metadata VALUES ('schema_sha1', \#{c.quote(Digest::SHA1.hexdigest(File.read(sqlite_schema)))}, datetime(), datetime())")
+      db.after_fork(0, daemon.instance_variable_get(:@schema_path), seed: true)
+      found[:rows] = ActiveRecord::Base.connection.select_value("SELECT COUNT(*) FROM orders")
+      route.()
+      found[:decoy] = begin
+        db.after_fork(1, File.join(dir, "schema.rb"), seed: true)
+      rescue RuntimeError => e
+        e.message
+      end
+    end
+    puts found.inspect
+  RUBY
+
+  def test_seeded_worker_loads_the_schema_dump_file_not_db_schema_rb
+    env = Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+    out, status = Open3.capture2e(env, "bundle", "exec", "ruby", "-e", SCHEMA_DUMP_CHECK,
+                                  chdir: APP, unsetenv_others: true)
+    assert status.success?, out
+    # The daemon stores the fixture's default or renamed path, including Rails'
+    # accepted string format, or nil for schema_dump: false and SQL format.
+    # rows: the copy is current against schema_sqlite.rb, so its row stays.
+    # decoy: what the old fixed db/schema.rb path did to the same copy.
+    assert_includes out, { default: true, renamed: true, rails_string: true, daemon_string: true,
+                           off: nil, sql: nil, rows: 1,
+                           decoy: "loaded the decoy schema.rb" }.inspect
+  end
+
   def test_verdicts_are_correct_across_distinct_worker_dbs
     original = File.read(ORDER)
     # `*` -> `+`: subtotal 2*1000 becomes 1002, so the strong suite's
@@ -116,5 +193,338 @@ class DaemonWorkerDbTest < Minitest::Test
                      "arithmetic mutant is killed on worker #{w}'s DB"
       end
     end
+  end
+
+  # A holder that already took the shared lock must stop a second CLI run.
+  def test_a_second_sqlite_run_stops_while_the_first_holds_the_lock
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    out, status = run_cli(1)
+    assert_equal 1, status.exitstatus, out
+    assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+    refute_includes out, "mutation score"
+    refute_includes out, "not green"
+    assert File.exist?(SQLITE_LOCK)
+    assert system("git", "-C", APP, "check-ignore", "-q", "--", "storage/test.sqlite3-mutineer.lock"),
+           "the fixture gitignore does not cover the lock file"
+  ensure
+    stop_holder(holder)
+  end
+
+  # A mutant fork closes its copy of the lock file. The parent's lock stays.
+  def test_the_sqlite_lock_survives_a_fork_child_that_frees_its_copy
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      child = fork do
+        Mutineer::RailsWorkerDb.forget_lock_connection_after_fork!
+        exit!(0)
+      end
+      Process.wait(child)
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    out, status = run_cli(1)
+    assert_equal 1, status.exitstatus, out
+    assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+  ensure
+    stop_holder(holder)
+  end
+
+  # A killed holder releases the lock. The next run takes it again while mutants run.
+  def test_a_killed_sqlite_run_does_not_block_the_next_run
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.provision(2)
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    stop_holder(holder, signal: "KILL")
+    holder = nil
+    pid = nil
+    Dir.mktmpdir do |dir|
+      log = File.join(dir, "next.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir)])
+      seen = run_holds_sqlite_lock?(pid, log)
+      status = wait_child(pid, timeout: 180)
+      out = File.read(log)
+      assert seen, "the next run never held the lock\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "SCORE=100.0"
+      refute_includes out, "another Mutineer run"
+      assert File.exist?(SQLITE_LOCK)
+    end
+  ensure
+    stop_holder(holder)
+    stop_holder(pid, signal: "KILL")
+  end
+
+  # Two real CLI runs overlap. Run B stops. Run A's verdicts match a solo run.
+  def test_overlapping_sqlite_runs_stop_and_keep_the_same_verdicts
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = solo = nil
+    Dir.mktmpdir do |dir|
+      sleep_file = write_hold_file(dir)
+      a_json = File.join(dir, "a.json")
+      solo_json = File.join(dir, "solo.json")
+      log = File.join(dir, "a.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [sleep_file], output: a_json, format: "json")
+      seen = run_holds_sqlite_lock?(pid, log)
+      assert seen, "run A never held the lock\n#{File.read(log)}"
+      out, status = run_cli(1)
+      assert_equal 1, status.exitstatus, out
+      assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+      refute_includes out, "not green"
+      a_status = wait_child(pid, timeout: 240)
+      assert_equal 0, a_status.exitstatus, File.read(log)
+      solo_log = File.join(dir, "solo.log")
+      solo = spawn_logged_run(solo_log, jobs: 1, require_paths: [sleep_file], output: solo_json, format: "json")
+      solo_status = wait_child(solo, timeout: 240)
+      assert_equal 0, solo_status.exitstatus, File.read(solo_log)
+      assert_equal verdict_pairs(solo_json), verdict_pairs(a_json)
+    end
+  ensure
+    # A failed assertion must not leave a run holding the lock for later tests.
+    stop_holder(pid, signal: "KILL")
+    stop_holder(solo, signal: "KILL")
+  end
+
+  # #416, gap 4: a serial run keeps its prepare daemon until the run ends. So
+  # the lock stays held while the worker daemon respawns, and a second run
+  # cannot take it in that window. The respawn waits in its --require file
+  # until the probe is done, so neither worker daemon can hold the lock then.
+  def test_a_serial_run_holds_the_sqlite_lock_while_its_worker_respawns
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      release = File.join(dir, "release")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, require_paths: [write_hold_file(dir),
+                                                           write_role_file(dir, roles, release: release)])
+      assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
+      workers = daemon_pids(roles, "worker")
+      assert_equal 1, workers.size, File.read(roles)
+      Process.kill("KILL", workers.first)
+      # The client respawns only after it read EOF from the killed daemon, so
+      # that daemon is gone. The respawn is now waiting before its lock request.
+      assert wait_for_daemons(pid, roles, "worker", 2), "the worker daemon never respawned\n#{File.read(log)}"
+      refute process_alive?(workers.first), "the killed worker daemon is still running"
+      held = sqlite_lock_exclusive_busy?
+      File.write(release, "")
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert held, "no process held the lock while the worker daemon respawned\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "respawning (1/3)"
+      refute_includes out, "another Mutineer run"
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
+  # #416, gap 3: a run whose first daemon did not boot takes the exclusive
+  # lock in its one worker daemon, so it stops beside another run.
+  def test_a_fallback_run_stops_while_another_run_holds_the_sqlite_lock
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    Dir.mktmpdir do |dir|
+      out, status = run_cli(1, boot: write_coverage_failing_boot(dir, APP))
+      assert_equal 1, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_includes out, "another Mutineer run is using #{SQLITE_BASE}"
+      refute_match(/mutation score/i, out)
+    end
+  ensure
+    stop_holder(holder)
+  end
+
+  # #416, gap 3: alone, the fallback run's one daemon boots as "solo", holds
+  # the lock through the mutant phase, and the run scores.
+  def test_a_fallback_run_alone_holds_the_sqlite_lock_in_a_solo_daemon
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, boot: write_coverage_failing_boot(dir, APP),
+                                  require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      held = run_holds_sqlite_lock?(pid, log)
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      # The old "worker" role held the shared lock too, so `held` alone passes
+      # on main. The role log below is what proves the change.
+      assert held, "the fallback run never held the lock\n#{out}"
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_match(/SCORE=\d/, out)
+      # The coverage daemon failed in its boot file, before the --require files.
+      assert_equal ["solo"], File.readlines(roles, chomp: true).map { |line| line.split(" ", 2).last }
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
+  # #416, gap 3: a respawn of the solo daemon asks for the exclusive lock
+  # again. Nothing its dead daemon left behind may hold it.
+  def test_a_fallback_run_survives_a_respawn_of_its_solo_daemon
+    skip "SQLite lock tests run only when DB is unset" if ENV["DB"] && !ENV["DB"].empty?
+
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_logged_run(log, jobs: 1, boot: write_coverage_failing_boot(dir, APP),
+                                  require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
+      Process.kill("KILL", daemon_pids(roles, "solo").fetch(0))
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "respawning (1/3)"
+      refute_includes out, "another Mutineer run"
+      assert_equal 2, daemon_pids(roles, "solo").size, "the respawn booted as solo\n#{File.read(roles)}"
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
+  # Start a process under the fixture bundle that runs `script` and wait for its READY line.
+  def spawn_holder(script)
+    read, write = IO.pipe
+    pid = Process.spawn(app_env, "bundle", "exec", "ruby", "-e", script,
+                        chdir: APP, unsetenv_others: true, out: write, pgroup: true)
+    write.close
+    line = read.gets
+    read.close
+    return pid if line&.start_with?("READY")
+
+    stop_holder(pid, signal: "KILL")
+    flunk("holder did not start: #{line.inspect}")
+  end
+
+  # Signal a process group and reap its leader. A missing pid does nothing.
+  def stop_holder(pid, signal: "TERM")
+    return unless pid
+
+    Process.kill(signal, -pid)
+    Process.wait(pid)
+  rescue Errno::ESRCH, Errno::EPERM, Errno::ECHILD
+    nil
+  end
+
+  # Run the CLI on the fixture and return its combined output and status.
+  def run_cli(jobs, boot: "config/environment")
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.new(
+        sources: [#{ORDER.inspect}],
+        tests: [#{TEST.inspect}],
+        project_root: #{APP.inspect},
+        boot: #{boot.inspect},
+        rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: #{jobs}
+      )
+      Mutineer::CLI.run(config)
+    RUBY
+    Open3.capture2e(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script, chdir: ROOT)
+  end
+
+  # Start a daemon run on the fixture in its own process group, logging to `log`.
+  def spawn_logged_run(log, jobs:, require_paths: [], output: nil, format: "human", boot: "config/environment")
+    finish = if output
+               "Mutineer::CLI.run(config)"
+             else
+               "aggregate, = Mutineer::Runner.execute(config)\nwarn \"SCORE=\#{aggregate.mutation_score}\""
+             end
+    script = <<~RUBY
+      require "mutineer"
+      config = Mutineer::Config.new(
+        sources: [#{ORDER.inspect}],
+        tests: [#{TEST.inspect}],
+        project_root: #{APP.inspect},
+        boot: #{boot.inspect},
+        rails: true, daemon: true, strategy: "reload", framework: "minitest",
+        jobs: #{jobs},
+        require_paths: #{require_paths.inspect},
+        format: #{format.inspect},
+        output: #{output.inspect}
+      )
+      #{finish}
+    RUBY
+    Process.spawn(fixture_run_env, "bundle", "exec", "ruby", "-Ilib", "-e", script,
+                  chdir: ROOT, out: log, err: log, pgroup: true)
+  end
+
+  # The environment a daemon gets under the fixture bundle.
+  def app_env
+    Mutineer::DaemonClient.new(boot: boot_config, app_root: APP).send(:app_env)
+  end
+
+  # Wait for the run's first mutant progress line, then probe. By then the run
+  # took its lock. An earlier probe holds the exclusive lock for a moment and
+  # could make the run's own exclusive request fail.
+  def run_holds_sqlite_lock?(pid, log)
+    wait_for_mutant_phase(pid, log) && sqlite_lock_exclusive_busy?
+  end
+
+  # True only when another process holds a conflicting lock.
+  # A missing file is not a held lock.
+  def sqlite_lock_exclusive_busy?
+    _out, status = Open3.capture2(RbConfig.ruby, "-e", <<~RUBY)
+      begin
+        file = File.open(#{SQLITE_LOCK.inspect}, File::RDONLY)
+      rescue Errno::ENOENT
+        exit 1
+      end
+      exit(file.flock(File::LOCK_EX | File::LOCK_NB) ? 0 : 2)
+    RUBY
+    status.exitstatus == 2
+  end
+
+  # Per-mutant verdicts and summary counts from a JSON report, for comparing runs.
+  def verdict_pairs(path)
+    doc = JSON.parse(File.read(path))
+    rows = []
+    %w[survivors no_coverage uncapturable unplaceable ran_at_load ignored].each do |key|
+      Array(doc[key]).each { |row| rows << [row["id"], key] }
+    end
+    Array(doc["no_verdict"]).each { |row| rows << [row["id"], row["status"]] }
+    summary = doc.fetch("summary")
+    {
+      "rows" => rows.sort,
+      "killed" => summary["killed"],
+      "survived" => summary["survived"],
+      "errored" => summary["errored"],
+      "timeout" => summary["timeout"],
+      "score" => summary["score"],
+      "total" => summary["total"]
+    }
   end
 end

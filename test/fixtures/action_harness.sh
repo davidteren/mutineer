@@ -27,7 +27,17 @@ mkdir -p "$SCRATCH/bin"
 cat > "$SCRATCH/bin/mutineer" <<STUB
 #!/usr/bin/env bash
 # The action's version-floor check asks for --version before running.
-if [ "\${1:-}" = "--version" ]; then echo "1.0.0"; exit 0; fi
+if [ "\${1:-}" = "--version" ]; then echo "\${STUB_VERSION:-1.0.0}"; exit 0; fi
+# The action asks \`mutineer config KEY\` for resolved settings (#394).
+# STUB_CONFIG unset: answer with this checkout's real CLI. "old": act as a
+# release without the command. Any other value: print that value.
+if [ "\${1:-}" = "config" ]; then
+  case "\${STUB_CONFIG:-}" in
+    "") exec ruby -I"$ROOT/lib" "$ROOT/bin/mutineer" "\$@" ;;
+    old) echo "mutineer: unknown command 'config'" >&2; exit 2 ;;
+    *) echo "\$STUB_CONFIG"; exit 0 ;;
+  esac
+fi
 echo "STUB-ARGS: \$*" >> "$SCRATCH/stub-args.txt"
 out=""
 prev=""
@@ -72,6 +82,41 @@ run_step case1
 grep '::error' "$SCRATCH/case1/stdout.txt"
 grep -A1 'report<<' "$SCRATCH/case1/gh-output.txt" | tail -1 | sed 's/^/  report: /' 
 echo "  summary head: $(head -1 "$SCRATCH/case1/summary.md")"
+
+echo; echo "== 1b: dropped copies (#374) =="
+cat > "$SCRATCH/report-dropped.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":0,"survived":1,"no_coverage":0,"ignored":0,"no_verdict":0,"score":0.0,"scoped":false,"dropped":2},"survivors":[{"subject":"G.kind","file":"lib/g.rb","line":2,"operator":"literal_mutation","id":"aaaaaaaaaaaa","token":".erb","diff":"d","copies":["bbbbbbbbbbbb"]}]}
+JSON
+run_step case1b STUB_REPORT="$SCRATCH/report-dropped.json" STUB_EXIT=1
+grep -q 'Dropped: 2 repeat(s) of a kept mutant' "$SCRATCH/case1b/summary.md" && echo "  OK: dropped summary line" || echo "  FAIL: dropped summary line"
+grep -q 'copies `bbbbbbbbbbbb`' "$SCRATCH/case1b/summary.md" && echo "  OK: dropped copy id on the survivor" || echo "  FAIL: copy id missing from the summary"
+grep -q 'Copies: bbbbbbbbbbbb' "$SCRATCH/case1b/stdout.txt" && echo "  OK: dropped copy id on the annotation" || echo "  FAIL: copy id missing from the annotation"
+grep -q 'Dropped:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained a dropped line" || echo "  OK: old report has no dropped line"
+
+echo; echo "== 1c: unpaired sources (#481) =="
+cat > "$SCRATCH/report-unpaired.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":3,"unpaired_mutants":12},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":5},{"file":"lib/c.rb","mutants":3}]}
+JSON
+run_step case1c STUB_REPORT="$SCRATCH/report-unpaired.json" STUB_EXIT=0
+grep -qF 'Unpaired: 12 mutant(s) not run; 3 source(s) have no paired test. They are not in the score.' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired summary line" || echo "  FAIL: unpaired summary line"
+grep -q 'not counted' "$SCRATCH/case1c/summary.md" && echo "  FAIL: counted sources named as not counted" || echo "  OK: no not-counted part when every source is counted"
+grep -qF 'run those sources in a separate step that sets the `sources` and `test` inputs' "$SCRATCH/case1c/summary.md" && echo "  OK: unpaired hint keeps pairing for the other sources" || echo "  FAIL: unpaired hint lost the separate-step advice"
+cat > "$SCRATCH/report-unpaired-nil.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":2,"unpaired_mutants":4},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":4},{"file":"lib/b.rb","mutants":null}]}
+JSON
+run_step case1d STUB_REPORT="$SCRATCH/report-unpaired-nil.json" STUB_EXIT=0
+grep -qF 'Unpaired: 4 mutant(s) not run; 2 source(s) have no paired test; 1 source(s) not counted, so the mutant count is a lower bound.' "$SCRATCH/case1d/summary.md" && echo "  OK: unpaired line names the uncounted source" || echo "  FAIL: unpaired line misses the uncounted source"
+cat > "$SCRATCH/report-unpaired-zero.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":false,"unpaired_sources":0,"unpaired_mutants":0},"survivors":[],"unpaired_sources":[]}
+JSON
+run_step case1e STUB_REPORT="$SCRATCH/report-unpaired-zero.json" STUB_EXIT=0
+grep -q 'Unpaired:' "$SCRATCH/case1e/summary.md" && echo "  FAIL: zero unpaired sources gained a line" || echo "  OK: no unpaired line at zero"
+grep -q 'Unpaired:' "$SCRATCH/case1/summary.md" && echo "  FAIL: old report gained an unpaired line" || echo "  OK: old report has no unpaired line"
+cat > "$SCRATCH/report-unpaired-scoped.json" <<'JSON'
+{"schema_version":"1.10","summary":{"total":1,"killed":1,"survived":0,"no_coverage":0,"ignored":0,"no_verdict":0,"score":100.0,"scoped":true,"unpaired_sources":1,"unpaired_mutants":2},"survivors":[],"unpaired_sources":[{"file":"lib/a.rb","mutants":2}]}
+JSON
+run_step case1f STUB_REPORT="$SCRATCH/report-unpaired-scoped.json" STUB_EXIT=0
+grep -qF 'Unpaired: 2 mutant(s) on changed lines not run; 1 source(s) have no paired test.' "$SCRATCH/case1f/summary.md" && echo "  OK: scoped unpaired line names changed lines" || echo "  FAIL: scoped unpaired line misses changed lines"
 
 echo; echo "== 2: PASSING run (expects ::warning annotations, 'passed' summary) =="
 run_step case2 STUB_EXIT=0
@@ -211,23 +256,300 @@ after=$(cksum "$weird")
 [ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on an escaped path" || echo "  OK: escaped path rejected before running"
 grep '::error::' "$SCRATCH/case17/stdout.txt"
 
-echo; echo "== 18: incomplete baseline run (expects the INCOMPLETE baseline line) =="
-run_step case18 STUB_REPORT="$SCRATCH/report-incomplete.json"
-echo "  case18 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case18/summary.md")"
+echo; echo "== 17b: same-file path that ends in a newline (expects exit 2) (#394 review) =="
+mkdir -p "$SCRATCH/case17b"
+trailing="$SCRATCH/case17b/same.json"$'\n'
+cp "$SCRATCH/report.json" "$trailing"
+before=$(cksum "$trailing")
+run_step case17b STUB_EXIT=1 OUTPUT="$trailing" BASELINE="$trailing"
+after=$(cksum "$trailing")
+[ "$before" = "$after" ] && echo "  OK: trailing-newline baseline kept" || echo "  FAIL: trailing-newline baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on a trailing-newline path" || echo "  OK: trailing-newline path rejected before running"
 
-echo; echo "== 19: regressed and incomplete baseline run (expects both on the baseline line) =="
-run_step case19 STUB_REPORT="$SCRATCH/report-regressed-incomplete.json"
-echo "  case19 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case19/summary.md")"
+echo; echo "== 18: output under missing .mutineer cache dir (expects mkdir + delivered file) (#340) =="
+rm -rf .mutineer
+rm -f .mutineer.yml
+run_step case18 STUB_EXIT=0 OUTPUT=".mutineer/pr.json"
+[ -d .mutineer ] && echo "  OK: cache dir created" || echo "  FAIL: cache dir missing"
+[ -s .mutineer/pr.json ] && echo "  OK: output delivered into fresh cache dir" || echo "  FAIL: output not delivered"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: mutineer ran after mkdir" || echo "  FAIL: mutineer never ran"
 
-echo; echo "== 20: incomplete baseline run with no score (expects the nothing-scored line) =="
-run_step case20 STUB_REPORT="$SCRATCH/report-nil-incomplete.json"
+echo; echo "== 18b: output under other missing dir still exits 2 (#340) =="
+run_step case18b STUB_EXIT=0 OUTPUT="reports/pr.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran for a non-cache missing parent" || echo "  OK: non-cache missing parent rejected"
+grep -q 'cannot write output' "$SCRATCH/case18b/stdout.txt" && echo "  OK: missing-dir error" || echo "  FAIL: missing-dir error absent"
+
+echo; echo "== 18c: output under missing custom cache-dir from yml (#340) =="
+printf 'cache_dir: mcache\n' > .mutineer.yml
+run_step case18c STUB_EXIT=0 OUTPUT="mcache/pr.json"
+[ -d mcache ] && echo "  OK: yml cache dir created" || echo "  FAIL: yml cache dir missing"
+[ -s mcache/pr.json ] && echo "  OK: output delivered into yml cache dir" || echo "  FAIL: yml cache output missing"
+rm -f .mutineer.yml
+
+echo; echo "== 18i: cache dir whose name ends in a newline (#394 review) =="
+printf 'cache_dir: "nlcache\\n"\n' > .mutineer.yml
+nl_out="nlcache"$'\n'"/pr.json"
+run_step case18i STUB_EXIT=0 OUTPUT="$nl_out"
+[ -s "$nl_out" ] && echo "  OK: newline-ended cache dir created" || echo "  FAIL: newline-ended cache dir output missing"
+[ -e nlcache ] && echo "  FAIL: created the cache dir without its newline" || echo "  OK: no truncated cache dir"
+rm -f .mutineer.yml
+
+echo; echo "== 18d: cache dir from extra-args, as two words (#340) =="
+run_step case18d STUB_EXIT=0 OUTPUT="xcache/pr.json" EXTRA_ARGS="--cache-dir xcache"
+[ -s xcache/pr.json ] && echo "  OK: extra-args cache dir created" || echo "  FAIL: extra-args cache dir output missing"
+
+echo; echo "== 18e: cache dir from extra-args, with = (#340) =="
+run_step case18e STUB_EXIT=0 OUTPUT="ecache/pr.json" EXTRA_ARGS="--cache-dir=ecache"
+[ -s ecache/pr.json ] && echo "  OK: extra-args = cache dir created" || echo "  FAIL: extra-args = cache dir output missing"
+
+echo; echo "== 18f: cache dir from a short extra-args form the CLI accepts (#340) =="
+run_step case18f STUB_EXIT=0 OUTPUT="scache/pr.json" EXTRA_ARGS="--cache=scache"
+[ -s scache/pr.json ] && echo "  OK: short-form cache dir created" || echo "  FAIL: short-form cache dir output missing"
+
+echo; echo "== 18g: the CLI names the cache dir (#394) =="
+run_step case18g STUB_EXIT=0 OUTPUT="zcache/pr.json" STUB_CONFIG="zcache"
+[ -s zcache/pr.json ] && echo "  OK: CLI-named cache dir created" || echo "  FAIL: the action did not ask the CLI for cache_dir"
+
+echo; echo "== 18h: an older CLI without the config command falls back (#394) =="
+run_step case18h STUB_EXIT=0 OUTPUT="ocache/pr.json" EXTRA_ARGS="--cache=ocache" STUB_CONFIG="old"
+[ -s ocache/pr.json ] && echo "  OK: fallback cache dir created" || echo "  FAIL: fallback cache dir output missing"
+
+echo; echo "== 13b: the CLI names the baseline, output is that file (#394) =="
+mkdir -p "$SCRATCH/case13b"
+cp "$SCRATCH/report.json" "$SCRATCH/case13b/baseline.json"
+before=$(cksum "$SCRATCH/case13b/baseline.json")
+run_step case13b STUB_EXIT=1 OUTPUT="$SCRATCH/case13b/baseline.json" STUB_CONFIG="$SCRATCH/case13b/baseline.json"
+[ "$(cksum "$SCRATCH/case13b/baseline.json")" = "$before" ] && echo "  OK: CLI-named baseline kept" || echo "  FAIL: CLI-named baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: the action did not ask the CLI for baseline" || echo "  OK: CLI-named baseline rejected before running"
+
+echo; echo "== 14c: an older CLI without the config command, abbreviated baseline (#394) =="
+before=$(cksum "$SCRATCH/case14/baseline.json")
+run_step case14c STUB_EXIT=1 OUTPUT="$SCRATCH/case14/baseline.json" EXTRA_ARGS="--base $SCRATCH/case14/baseline.json" STUB_CONFIG="old"
+[ "$(cksum "$SCRATCH/case14/baseline.json")" = "$before" ] && echo "  OK: fallback baseline kept" || echo "  FAIL: fallback baseline was replaced"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: mutineer ran on the fallback baseline" || echo "  OK: fallback baseline rejected before running"
+
+# == 19: one table of unusual path names, run through every path input (#401) ==
+# Each name goes through every input that takes a path. A row asserts the
+# files and folders the Action leaves, not only its exit code. extra-args is
+# split on whitespace by design, so names with a space or a newline skip the
+# extra-args rows. A known gap prints TABLE-GAP while it fails, and FAIL once
+# it passes, so the list cannot go stale.
+echo; echo "== 19: unusual path names through every path input (#401) =="
+rm -rf .mutineer .mutineer.yml
+TABLE_LABELS=(space newline dash glob unicode tilde)
+TABLE_NAMES=("sp ace" "nl"$'\n' "-dash" "gl*ob" "ünï" "~tl")
+# " row/label=#issue " entries while a row still fails, space-separated.
+KNOWN_GAPS=""
+children() { ruby -e 'print Dir.children(".").sort.inspect'; }
+CLEAN_TREE="$(children; printf .)"
+why() { echo "$*" > "$SCRATCH/table-why"; return 1; }
+# Runs one row, removes what it made, and checks that nothing else was left.
+table_row() { # row, label, name, the row's function
+  local row=$1 label=$2 name=$3 fn=$4 ok=0 gap=""
+  : > "$SCRATCH/table-why"
+  rm -rf "$SCRATCH/t"
+  "$fn" "$name" > "$SCRATCH/table-row.log" 2>&1 || ok=1
+  rm -rf -- "./$name" .mutineer.yml
+  if [ "$ok" = 0 ] && [ "$(children; printf .)" != "$CLEAN_TREE" ]; then
+    why "left a stray entry: $(children)"; ok=1
+  fi
+  rm -rf -- "${name%%[[:space:]]*}"
+  case "$KNOWN_GAPS" in *" $row/$label="*) gap="${KNOWN_GAPS#*" $row/$label="}"; gap="${gap%% *}" ;; esac
+  if [ "$ok" = 0 ] && [ -z "$gap" ]; then echo "  TABLE-OK: $row/$label"
+  elif [ "$ok" = 0 ]; then echo "  FAIL: $row/$label passes now; remove it from KNOWN_GAPS ($gap)"
+  elif [ -n "$gap" ]; then echo "  TABLE-GAP: $row/$label ($gap)"
+  else echo "  FAIL: $row/$label: $(cat "$SCRATCH/table-why")"
+  fi
+}
+baseline_rejected() { # name: the baseline is untouched and the run refused
+  [ "$(cat -- "./$1")" = "{}" ] || why "baseline was replaced" || return
+  [ -s "$SCRATCH/stub-args.txt" ] && { why "mutineer ran on a same-file baseline"; return; }
+  grep -q 'are the same file' "$SCRATCH/t/stdout.txt" || why "no same-file error" || return
+  case "$1" in
+    *$'\n'*) grep -q '%0A' "$SCRATCH/t/stdout.txt" || why "same-file error dropped a newline" ;;
+  esac
+}
+
+# output: a folder and a file with the name.
+row_output() {
+  mkdir -- "./$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/$1"
+  [ -s "./$1/$1" ] || why "report not delivered to output" || return
+  local got
+  # -Eutf-8: with no locale Ruby reads the file as US-ASCII and the match raises on the unicode row.
+  got="$(ruby -Eutf-8 -e 'print File.read(ARGV[0])[/^report<<(\S+)\n(.*)\n\1$/m, 2], "."' "$SCRATCH/t/gh-output.txt")"
+  [ "${got%.}" = "$(pwd -P)/$1/$1" ] || why "report= is not the output path"
+}
+# output under a missing cache folder that .mutineer.yml names.
+row_yml_cache() {
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# output under a missing cache folder that extra-args names.
+row_args_cache() {
+  run_step t STUB_EXIT=0 OUTPUT="$1/pr.json" EXTRA_ARGS="--cache-dir=$1"
+  [ -s "./$1/pr.json" ] || why "cache folder not created or report not delivered"
+}
+# baseline input, output the same file.
+row_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" BASELINE="$1"
+  baseline_rejected "$1"
+}
+# baseline from .mutineer.yml, output the same file.
+row_yml_baseline() {
+  echo "{}" > "./$1"
+  ruby -ryaml -e 'File.write(".mutineer.yml", {"baseline" => ARGV[0]}.to_yaml)' -- "$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1"
+  baseline_rejected "$1"
+}
+# baseline from extra-args, output the same file.
+row_args_baseline() {
+  echo "{}" > "./$1"
+  run_step t STUB_EXIT=1 OUTPUT="$1" EXTRA_ARGS="--baseline=$1"
+  baseline_rejected "$1"
+}
+# working-directory: the annotation file= field keeps the escaped name.
+row_workdir() {
+  run_step t WORKING_DIRECTORY="$1"
+  local want="${1//%/%25}"
+  want="${want//$'\n'/ }"; want="${want//:/%3A}"; want="${want//,/%2C}"
+  grep -qF -- "::error file=$want/lib/calc.rb,line=20," "$SCRATCH/t/stdout.txt" || why "annotation file= lost the name"
+}
+
+for i in "${!TABLE_NAMES[@]}"; do
+  name="${TABLE_NAMES[$i]}" label="${TABLE_LABELS[$i]}"
+  table_row output "$label" "$name" row_output
+  table_row baseline "$label" "$name" row_baseline
+  table_row yml-baseline "$label" "$name" row_yml_baseline
+  table_row workdir "$label" "$name" row_workdir
+  case "$name" in
+    # A leading `~` is a home shortcut for cache_dir (CLI expand_path), not a
+    # literal folder name under cwd, so the cache-dir rows do not apply.
+    "~"*) echo "  TABLE-SKIP: yml-cache/$label, args-cache/$label (~ cache_dir is home-relative)" ;;
+    *) table_row yml-cache "$label" "$name" row_yml_cache ;;
+  esac
+  case "$name" in
+    *[[:space:]]*) echo "  TABLE-SKIP: args-cache/$label, args-baseline/$label (extra-args splits on whitespace)" ;;
+    "~"*) table_row args-baseline "$label" "$name" row_args_baseline ;;
+    *)
+      table_row args-cache "$label" "$name" row_args_cache
+      table_row args-baseline "$label" "$name" row_args_baseline
+      ;;
+  esac
+done
+
+# A cache directory and an output parent that differ only by a newline are
+# not the same folder. Creating the parent would put the report beside the
+# cache, not in it.
+echo; echo "== 19b: cache dir and output parent differ by a newline =="
+rm -rf .mutineer.yml plain $'plain\n'
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "plain"}.to_yaml)'
+run_step t19b STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+if [ -d $'plain\n' ] || [ -d plain ]; then
+  echo "  FAIL: created a folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19b/stdout.txt"; then
+  echo "  OK: newline parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => ARGV[0]}.to_yaml)' -- $'plain\n'
+run_step t19c STUB_EXIT=0 OUTPUT=$'plain\n/pr.json'
+[ -s $'plain\n/pr.json' ] && echo "  OK: newline cache dir created" || echo "  FAIL: newline cache dir not created"
+rm -rf -- plain $'plain\n' .mutineer.yml
+
+# A missing dash-leading parent that is not the cache dir must exit 2 without
+# creating the folder (ruby must see ARGV, not switches) (#401 OCR).
+echo; echo "== 19d: dash-leading output parent is not the cache dir =="
+rm -rf .mutineer.yml .mutineer -- -dash
+run_step t19d STUB_EXIT=0 OUTPUT="-dash/pr.json"
+if [ -d -- "-dash" ]; then
+  echo "  FAIL: created a dash-leading folder that is not the cache dir"
+elif grep -q 'no such directory' "$SCRATCH/t19d/stdout.txt"; then
+  echo "  OK: dash-leading parent is not the cache dir"
+else
+  echo "  FAIL: expected a missing-directory error"
+fi
+rm -rf -- -dash .mutineer.yml
+
+# Home-relative cache_dir (~/...) must still match an absolute output parent
+# under that home (CLI expand_path semantics) (#401 cubic).
+echo; echo "== 19e: home-relative cache_dir matches absolute output parent =="
+rm -rf .mutineer.yml
+fake_home="$SCRATCH/fake-home"
+rm -rf "$fake_home"
+mkdir -p "$fake_home"
+ruby -ryaml -e 'File.write(".mutineer.yml", {"cache_dir" => "~/mcache"}.to_yaml)'
+HOME="$fake_home" run_step t19e STUB_EXIT=0 OUTPUT="$fake_home/mcache/pr.json"
+[ -s "$fake_home/mcache/pr.json" ] && echo "  OK: home-relative cache dir created" || echo "  FAIL: home-relative cache dir not created"
+rm -rf "$fake_home" .mutineer.yml
+
+echo; echo "== 20: incomplete baseline run (expects the INCOMPLETE baseline line) =="
+run_step case20 STUB_REPORT="$SCRATCH/report-incomplete.json"
 echo "  case20 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case20/summary.md")"
 
-echo; echo "== 21: old gem omitted baseline completeness (expects exit 2, report preserved) =="
-run_step case21 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-baseline.json" OUTPUT="$SCRATCH/case21/out.json"
-grep -q 'baseline.incomplete' "$SCRATCH/case21/stdout.txt" && echo "  OK: old baseline report needs an upgrade" || echo "  FAIL: missing completeness silently accepted"
-cmp -s "$SCRATCH/report-old-baseline.json" "$SCRATCH/case21/out.json" && echo "  OK: old baseline report delivered" || echo "  FAIL: old report changed or lost"
+echo; echo "== 21: regressed and incomplete baseline run (expects both on the baseline line) =="
+run_step case21 STUB_REPORT="$SCRATCH/report-regressed-incomplete.json"
 echo "  case21 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case21/summary.md")"
 
-echo; echo "== 22: old gem report without a baseline (expects exit 0) =="
-run_step case22 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-no-baseline.json"
+echo; echo "== 22: incomplete baseline run with no score (expects the nothing-scored line) =="
+run_step case22 STUB_REPORT="$SCRATCH/report-nil-incomplete.json"
+echo "  case22 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case22/summary.md")"
+
+echo; echo "== 23: old gem omitted baseline completeness (expects exit 2, report preserved) =="
+run_step case23 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-baseline.json" OUTPUT="$SCRATCH/case23/out.json"
+grep -q 'baseline.incomplete' "$SCRATCH/case23/stdout.txt" && echo "  OK: old baseline report needs an upgrade" || echo "  FAIL: missing completeness silently accepted"
+cmp -s "$SCRATCH/report-old-baseline.json" "$SCRATCH/case23/out.json" && echo "  OK: old baseline report delivered" || echo "  FAIL: old report changed or lost"
+echo "  case23 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case23/summary.md")"
+
+echo; echo "== 24: old gem report without a baseline (expects exit 0) =="
+run_step case24 STUB_EXIT=0 STUB_REPORT="$SCRATCH/report-old-no-baseline.json"
+
+echo; echo "== 25: a score drop hidden by rounding (#343) =="
+jq '.baseline.score_before = 99.9 | .baseline.score_after = 99.9 | .baseline.new_survivors = []' "$SCRATCH/report.json" > "$SCRATCH/report-hidden-drop.json"
+run_step case25 STUB_REPORT="$SCRATCH/report-hidden-drop.json"
+echo "  case25 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case25/summary.md")"
+echo "  case1 baseline line: $(grep -o 'Baseline: .*' "$SCRATCH/case1/summary.md")"
+
+# #343: a baseline with a non-JSON format cannot prove completeness from the
+# report, so the action needs gem 2.0.0 or later (a 2.0.0 prerelease passes).
+cp "$SCRATCH/report.json" "$SCRATCH/base26.json"
+echo; echo "== 26: html format, baseline input, gem 1.0.0 (expects exit 2 before the run) =="
+run_step case26 FORMAT=html BASELINE="$SCRATCH/base26.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26 ran an old gem" || echo "  OK: case26 old gem refused before running"
+grep -q 'needs >= 2.0.0' "$SCRATCH/case26/stdout.txt" && echo "  OK: case26 names 2.0.0" || echo "  FAIL: case26 floor message missing"
+
+echo; echo "== 26b: human format, baseline from .mutineer.yml, gem 1.0.0 (expects exit 2) =="
+ruby -ryaml -e 'File.write(".mutineer.yml", {"baseline" => ARGV[0]}.to_yaml)' -- "$SCRATCH/base26.json"
+run_step case26b FORMAT=human
+rm -f .mutineer.yml
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26b ran an old gem" || echo "  OK: case26b old gem refused before running"
+
+echo; echo "== 26c: html format, baseline in extra-args, gem 1.0.0 (expects exit 2) =="
+run_step case26c FORMAT=html EXTRA_ARGS="--baseline=$SCRATCH/base26.json"
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  FAIL: case26c ran an old gem" || echo "  OK: case26c old gem refused before running"
+
+echo; echo "== 26d: html format, baseline, gem 2.0.0 (expects the run, exit 1) =="
+run_step case26d FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=2.0.0 STUB_EXIT=1
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26d gem 2.0.0 ran" || echo "  FAIL: case26d gem 2.0.0 refused"
+
+echo; echo "== 26e: html format, baseline, gem 2.0.0.rc1 (expects the run, exit 0) =="
+run_step case26e FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=2.0.0.rc1 STUB_EXIT=0
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26e prerelease ran" || echo "  FAIL: case26e prerelease refused"
+
+echo; echo "== 26f: html format, no baseline, gem 1.0.0 (expects the run, no floor) =="
+run_step case26f FORMAT=html STUB_EXIT=0
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26f ran without a baseline" || echo "  FAIL: case26f refused without a baseline"
+
+echo; echo "== 26g: json format, baseline, gem 1.0.0 (expects the run, no floor for json) =="
+run_step case26g BASELINE="$SCRATCH/base26.json" STUB_EXIT=1
+[ -s "$SCRATCH/stub-args.txt" ] && echo "  OK: case26g json ran" || echo "  FAIL: case26g json refused"
+
+echo; echo "== 26h: a gem version with % and a newline is escaped in the floor message =="
+run_step case26h FORMAT=html BASELINE="$SCRATCH/base26.json" STUB_VERSION=$'9%\nX'
+grep -q 'resolved mutineer 9%25%0AX, but a baseline' "$SCRATCH/case26h/stdout.txt" && echo "  OK: case26h version escaped" || echo "  FAIL: case26h version not escaped"
+
+echo; echo "== 26i: the since floor escapes a gem version with % and a newline too =="
+run_step case26i SINCE=none STUB_VERSION=$'0%\nX'
+grep -q 'resolved mutineer 0%25%0AX, but the action' "$SCRATCH/case26i/stdout.txt" && echo "  OK: case26i version escaped" || echo "  FAIL: case26i version not escaped"

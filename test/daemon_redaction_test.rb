@@ -8,6 +8,7 @@ require "tempfile"
 require_relative "test_helper"
 require "mutineer/daemon_server"
 require "mutineer/coverage_map"
+require "mutineer/daemon_client"
 
 # Rails parses DATABASE_URL itself, so a malformed one raises a URI error that
 # quotes the whole URL. No daemon reply or stderr line may echo the password.
@@ -21,6 +22,9 @@ class DaemonRedactionTest < Minitest::Test
 
     # @raise [RuntimeError]
     def self.after_fork(*, **) = raise("routing failed for #{BAD_URL}")
+
+    # @raise [RuntimeError]
+    def self.database_names = raise("no pool for #{BAD_URL}")
   end
 
   def setup
@@ -53,12 +57,103 @@ class DaemonRedactionTest < Minitest::Test
     end
   end
 
+  # #341: the daemon process sees a DATABASE_URL the boot file assigns. The
+  # parent's environment does not have it. The bare word is still hidden, and
+  # the protocol line stays JSON.
+  def test_stderr_hides_a_password_the_boot_file_assigns
+    out, err = daemon_boot(<<~RUBY)
+      ENV["DATABASE_URL"] = "postgres://u:s3cret@h/db"
+      STDERR.puts "bare s3cret end"
+    RUBY
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "bare [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  # #341: a dotenv file is read before the app boots, so a bare password from
+  # that file is hidden even when the boot file never assigns DATABASE_URL.
+  def test_boot_stops_when_stderr_cannot_be_redirected
+    dir = Dir.pwd
+    out = StringIO.new
+    Mutineer::DaemonServer.instance_variable_set(:@output, out)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, StringIO.new)
+    status = nil
+    # A singleton stub, removed after the block, so no later test sees it.
+    exit_stub = ->(code = true) { throw :boot_exit, code }
+    Mutineer::OutputFilter.stub(:install, :failed) do
+      Mutineer::DaemonServer.stub(:exit!, exit_stub) do
+        status = catch(:boot_exit) do
+          Mutineer::DaemonServer.send(:boot!, { "project_root" => dir, "framework" => "minitest" })
+          nil
+        end
+      end
+    end
+
+    assert_equal 1, status
+    assert_includes out.string, "password"
+  ensure
+    Dir.chdir(dir) if dir
+    Mutineer::DaemonServer.instance_variable_set(:@output, nil)
+    Mutineer::DaemonServer.instance_variable_set(:@protocol, nil)
+    Mutineer::Redaction.extra_urls = []
+    Mutineer::OutputFilter.uninstall
+  end
+
+  def test_stderr_hides_a_bare_password_from_a_dotenv_file
+    out, err = daemon_boot('STDERR.puts "file s3cret end"', dotenv: "DATABASE_URL=postgres://u:s3cret@h/db\n")
+
+    assert_equal true, JSON.parse(out.lines.last)["ready"], out
+    assert_includes err, "file [REDACTED] end"
+    refute_includes out + err, "s3cret"
+  end
+
+  def daemon_boot(boot_source, dotenv: nil)
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "boot.rb"), boot_source)
+      File.write(File.join(dir, ".env"), dotenv) if dotenv
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "boot" => boot_source && "boot.rb")
+      return Open3.capture3({ "DATABASE_URL" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                            stdin_data: "#{stdin}\n")
+    end
+  end
+
+  # #303: with LC_ALL=C the daemon reads its stdin as US-ASCII. A boot line
+  # with a non-ASCII path must still parse, so the daemon replies.
+  def test_boot_line_with_a_non_ascii_path_parses_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "caf\u00e9")
+      Dir.mkdir(root)
+      boot = File.join(root, "boot.rb")
+      File.write(boot, "raise \"boot ran\"\n")
+      lib = File.expand_path("../lib", __dir__)
+      script = "require \"mutineer/daemon_server\"; Mutineer::DaemonServer.run"
+      stdin = JSON.generate("cmd" => "boot", "project_root" => root, "boot" => boot)
+      out, err, = Open3.capture3({ "LC_ALL" => "C", "LANG" => nil }, RbConfig.ruby, "-I", lib, "-e", script,
+                                 stdin_data: "#{stdin}\n")
+      refute_empty out, err
+      assert_includes JSON.parse(out.lines.last)["error"], "boot ran"
+    end
+  end
+
   def test_provision_reply_hides_the_password
     Mutineer::DaemonServer.instance_variable_set(:@worker_db, LeakyWorkerDb)
 
     reply = Mutineer::DaemonServer.send(:provision_slots, 2)
 
     refute reply["ok"]
+    assert_includes reply["error"], "postgres://u:[REDACTED]@ho st/db"
+    refute_includes reply["error"], "s3cret"
+  end
+
+  # A failed database lookup goes to the tool in the ready reply.
+  def test_database_lookup_reply_hides_the_password
+    Mutineer::DaemonServer.instance_variable_set(:@worker_db, LeakyWorkerDb)
+
+    reply = Mutineer::DaemonServer.send(:databases)
+
     assert_includes reply["error"], "postgres://u:[REDACTED]@ho st/db"
     refute_includes reply["error"], "s3cret"
   end
@@ -88,24 +183,40 @@ class DaemonRedactionTest < Minitest::Test
       result = daemon.send(:run_mutant, "id" => 1, "worker" => 0, "timeout" => 10)
 
       assert_equal "error", result["verdict"]
+      # #388: the reply names the cause, redacted.
+      assert_equal "RuntimeError: routing failed for postgres://u:[REDACTED]@ho st/db", result["details"]
       log = File.read(errio.path)
       assert_includes log, "[REDACTED]"
       refute_includes log, "s3cret"
     end
   end
 
-  def test_worker_db_load_error_log_hides_the_password
-    errio = StringIO.new
-    Mutineer::DaemonServer.instance_variable_set(:@errio, errio)
-    require "mutineer/rails_worker_db"
+  # #416: a LoadError after the adapter file loaded fails the boot, so it
+  # reaches the client in the ready-false reply. Drives the real boot path
+  # in a child process: that reply, and stderr, hide the password.
+  def test_worker_db_load_error_boot_reply_hides_the_password
+    Dir.mktmpdir do |dir|
+      lib = File.expand_path("../lib", __dir__)
+      script = <<~RUBY
+        require "mutineer/daemon_server"
+        require "mutineer/rails_worker_db"
+        Mutineer::RailsWorkerDb.define_singleton_method(:available?) do
+          raise LoadError, "cannot load adapter for \#{ENV.fetch("DATABASE_URL")}"
+        end
+        Mutineer::DaemonServer.run
+      RUBY
+      # A real solo boot line. available? raises before the role is read.
+      stdin = JSON.generate("cmd" => "boot", "project_root" => dir, "rails" => true, "db_role" => "solo")
+      out, err, status = Open3.capture3({ "DATABASE_URL" => BAD_URL }, RbConfig.ruby, "-I", lib, "-e", script,
+                                        stdin_data: "#{stdin}\n")
+      assert_equal 1, status.exitstatus, err
+      reply = JSON.parse(out.lines.last)
 
-    Mutineer::RailsWorkerDb.stub(:available?, -> { raise LoadError, "cannot load adapter for #{BAD_URL}" }) do
-      Mutineer::DaemonServer.send(:setup_worker_db, {})
+      refute reply["ready"]
+      assert_equal "LoadError: cannot load adapter for postgres://u:[REDACTED]@ho st/db", reply["error"]
+      refute_includes out + err, "s3cret"
+      refute_includes err, "worker-DB routing unavailable"
     end
-
-    assert_includes errio.string, "worker-DB routing unavailable"
-    assert_includes errio.string, "[REDACTED]"
-    refute_includes errio.string, "s3cret"
   end
 
   def test_redact_hides_a_malformed_password_with_a_space_or_a_quote
@@ -126,10 +237,219 @@ class DaemonRedactionTest < Minitest::Test
     assert_equal "auth failed: [REDACTED] ([REDACTED])", text
   end
 
+  def test_describe_error_fails_closed_when_the_message_raises
+    error = RuntimeError.new("x")
+    def error.message = raise("boom")
+
+    assert_equal Mutineer::Redaction::FAILED, Mutineer::DaemonServer.send(:describe_error, error)
+  end
+
   def test_redact_leaves_text_without_credentials_alone
     ENV.delete("DATABASE_URL")
     text = "PG::ConnectionBad: could not connect to http://host:5432/db"
 
     assert_equal text, Mutineer::DaemonServer.send(:redact, text)
+  end
+
+  # #288: the daemon's stderr (which also carries the app's stdout) reaches the
+  # tool's stderr through the client's drain, one redacted line at a time.
+  def drain(bytes)
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.binmode
+    # Write while the drain reads: a payload larger than the pipe buffer
+    # (16 KiB on some macOS runners) would block a write made first.
+    writer = Thread.new do
+      wr.write(bytes)
+      wr.close
+    end
+    client.send(:drain_stderr, rd)
+    writer.join
+    errio.string
+  ensure
+    rd&.close
+  end
+
+  # #517: the exact warning CoverageMap::Capture#fail_test prints, so a
+  # reworded warning fails here instead of losing the note silently.
+  def capture_warning(reason)
+    Dir.mktmpdir("mutineer-517") do |cache_dir|
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: Dir.pwd, cache_dir: cache_dir)
+      _out, err = capture_io { map.send(:fail_test, File.join(Dir.pwd, "test/models/order_test.rb"), reason) }
+      err
+    end
+  end
+
+  # Only the user's load variables count; the tool's own Bundler values do not.
+  NO_LOAD_ENV = { "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLER_ORIG_RUBYOPT" => nil,
+                  "BUNDLER_ORIG_RUBYLIB" => nil }.freeze
+
+  def test_drain_adds_the_load_note_to_the_first_missing_file_capture_warning
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+    out = with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support", "RUBYOPT" => "-Isecret/opt")) do
+      drain(missing + missing)
+    end
+    first, second = out.lines
+
+    assert first.start_with?(missing.chomp), first
+    assert_includes first, "(the daemon does not pass RUBYOPT or RUBYLIB to the app;"
+    assert_equal missing, second, "one note for each daemon: a later warning has no note"
+    refute_includes out, "test/support", "the note names the variable, never its value"
+    refute_includes out, "secret/opt"
+  end
+
+  def test_drain_leaves_other_capture_and_child_lines_alone
+    generic = capture_warning("fork capture produced no result (re-run with --verbose for the error)")
+    child = "[daemon-child] LoadError: cannot load such file -- x\n"
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+
+    with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support")) do
+      assert_equal generic + child, drain(generic + child), "no error text, or not a capture warning: no note"
+    end
+    with_env(NO_LOAD_ENV) do
+      assert_equal missing, drain(missing), "no load variable set: no note"
+    end
+  end
+
+  # The drain hands with_capture_note a whole piece, with more than one line,
+  # when a password form spans a newline. The warning can be its second line.
+  def test_capture_note_finds_the_warning_on_a_later_line_of_a_piece
+    missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: StringIO.new)
+    with_env(NO_LOAD_ENV.merge("RUBYLIB" => "test/support")) do
+      noted = client.send(:with_capture_note, "app line\n#{missing.chomp}")
+      first, second = noted.split("\n")
+
+      assert_equal "app line", first
+      assert_includes second, "does not pass RUBYLIB to the app"
+    end
+  end
+
+  def test_daemon_stderr_drain_hides_the_password
+    out = drain("boot failed: #{BAD_URL}\nsecond line\n")
+
+    assert_includes out, "postgres://u:[REDACTED]@ho st/db"
+    assert_includes out, "second line"
+    refute_includes out, "s3cret"
+  end
+
+  # A long line is scanned once its newline arrives, not on every 4 KiB read,
+  # so the drain stays linear in the line length. The line is larger than
+  # any pipe buffer, so the reads really come in pieces.
+  def test_daemon_stderr_drain_scans_a_long_line_once
+    real = Mutineer::Redaction.method(:take_redactable)
+    calls = 0
+    counting = lambda do |buffer, flush:|
+      calls += 1
+      real.call(buffer, flush: flush)
+    end
+    out = Mutineer::Redaction.stub(:take_redactable, counting) { drain("#{"A" * 200_000}\n") }
+
+    assert_equal 200_001, out.bytesize
+    assert_operator calls, :<=, 2
+  end
+
+  def test_daemon_stderr_drain_survives_invalid_bytes
+    out = drain("bad \xFF byte #{BAD_URL}\n".b)
+
+    assert_includes out, "[REDACTED]"
+    refute_includes out, "s3cret"
+  end
+
+  def test_daemon_stderr_drain_keeps_the_line_break_after_an_invalid_byte
+    assert_equal "bad \uFFFD\nnext\n", drain("bad \xFF\nnext\n".b)
+  end
+
+  # After a tool stderr has gone away (EPIPE), the drain drops lines but keeps
+  # reading, so the daemon never blocks, and it ends quietly, so close_io's
+  # join cannot re-raise the error mid-cleanup.
+  def test_daemon_stderr_drain_survives_a_broken_errio
+    errio = Object.new
+    def errio.write(*) = raise(Errno::EPIPE)
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    wr.write("line\n" * 100)
+    wr.close
+
+    assert_nil client.send(:drain_stderr, rd)
+    assert_predicate rd, :eof?, "the drain must keep reading so the daemon never blocks on a full pipe"
+  ensure
+    rd&.close
+  end
+
+  def test_daemon_stderr_drain_keeps_line_breaks_when_redaction_fails_closed
+    failed = Mutineer::Redaction::FAILED
+    out = Mutineer::Redaction.stub(:text, failed) { drain("one\ntwo\n") }
+
+    assert_equal "#{failed}\n#{failed}\n", out
+  end
+
+  def test_close_io_lets_the_drain_finish_a_last_partial_line
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+    wr.write("boot failed: #{BAD_URL}")
+    wr.close
+
+    client.send(:close_io)
+
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  end
+
+  # #341 item 7: a grandchild that holds the stderr pipe open never sends EOF.
+  # Once the daemon has exited and the pipe is empty, close_io stops waiting,
+  # and the last partial line still prints.
+  def test_close_io_does_not_wait_on_a_pipe_a_grandchild_holds
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe # wr stays open, as a grandchild would keep it
+    daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "$stderr.print 'boot failed: #{BAD_URL}'", err: wr))
+    daemon.join
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@wait_thr, daemon)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    client.send(:close_io)
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    # The old drain always waited the full DRAIN_GRACE; leave room for a slow runner.
+    assert_operator elapsed, :<, Mutineer::DaemonClient::DRAIN_GRACE * 0.8
+    assert_equal "boot failed: postgres://u:[REDACTED]@ho st/db", errio.string
+  ensure
+    wr&.close
+  end
+
+  # A mutant child can still write just after the daemon died. The drain waits
+  # one more quiet poll, so that line still shows. The line is written from
+  # inside that poll, so the test needs no sleep and takes the post-exit path.
+  def test_close_io_keeps_a_line_written_just_after_the_daemon_exits
+    errio = StringIO.new
+    client = Mutineer::DaemonClient.new(boot: {}, app_root: Dir.tmpdir, errio: errio)
+    rd, wr = IO.pipe
+    daemon = Process.detach(spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-e", "exit"))
+    daemon.join
+    late = wr
+    rd.define_singleton_method(:wait_readable) do |timeout|
+      late&.write("late line\n")
+      late = nil
+      super(timeout)
+    end
+    client.instance_variable_set(:@stderr, rd)
+    client.instance_variable_set(:@wait_thr, daemon)
+    client.instance_variable_set(:@drain, Thread.new { client.send(:drain_stderr, rd) })
+
+    client.send(:close_io)
+
+    assert_equal "late line\n", errio.string
+  ensure
+    wr&.close
+  end
+
+  def test_daemon_stderr_drain_keeps_a_last_partial_line
+    assert drain("first\ntail without newline").end_with?("tail without newline")
   end
 end

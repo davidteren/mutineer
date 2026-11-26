@@ -1,0 +1,236 @@
+# Reading results and fixing survivors
+
+Read report rows, fix survivors, suppress equivalent mutants, and check which tests kill mutants.
+
+## What each result means
+
+| Report row | What happened | In the score? |
+| --- | --- | --- |
+| Killed | A test failed against the mutant. | Yes |
+| Survived | Every test passed. Inspect the change. | Yes |
+| No coverage | No test covers the line, or its tests do not reach this mutation. Add or extend a test first. | No |
+| Timeout | Tests exceeded `--timeout`. | No |
+| Errored | Tests crashed, or the first failed Minitest test had a database connection or lock error. No verdict. The JSON report names the cause in `no_verdict[].details` when the child raised, when a Minitest database error ended the run, when RSpec failed outside examples, or when `--matrix` ended early after a serial database error (#388, #417). It also names an RSpec database error, and for `--test-command` the last output line of the command (#480). The HTML report lists each errored mutant with that cause, and so does the human report under `--verbose`. A mutant with no recorded cause shows "no cause recorded; stderr of the run may name it". | No |
+| Ignored | You marked the mutant as equivalent. | No |
+| Skipped | The change produced invalid Ruby and did not run. | No |
+
+The first failed RSpec example follows that same connection and lock rule (#347).
+There is no `--daemon` for RSpec. Under `--matrix` the example is not a killer and the row stays incomplete.
+
+A source with no paired test is not run.
+The report counts that source and its mutants.
+Those mutants are not in the score.
+
+Two changes on one line that produce the same source are one edit.
+Mutineer runs one copy and drops the other.
+The human report's `Dropped:` line counts the copies that did not run.
+They are not in the score.
+The JSON report lists their ids on the kept mutant as `copies`.
+
+The [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#summary) explains the rarer Uncapturable, Unplaceable, and Ran at load results.
+
+**Mutation score:** `killed / (killed + survived)`. All other rows are excluded. An empty denominator produces an empty score (`null` in JSON), not 0.
+
+With `--threshold`, excessive Timeout, Errored, or Uncapturable results still fail the run. See [Timeouts and the score](https://github.com/davidteren/mutineer/blob/main/docs/ci.md#timeouts-and-the-score).
+
+## What to do with a survivor
+
+1. Read the diff. Identify the behaviour it breaks.
+2. Add or strengthen a test that fails against the mutant. Run again.
+3. If behaviour stays identical, suppress the **equivalent** mutant with a reason. No test can kill it.
+
+For example, replacing `x * 1` with `x / 1` gives the same result when `x` is a number. See [Suppressing equivalent mutants](https://github.com/davidteren/mutineer/blob/main/docs/results.md#suppressing-equivalent-mutants).
+
+**Prompt for your coding agent**
+
+```text
+Read report.json from Mutineer (--format json). For each survivor, show the source line, the mutant diff, and the behaviour the change breaks. Write one test per survivor that passes on the original code and fails on the mutant. Do not edit the source. If a mutant cannot be killed because it does not change behaviour, explain why and propose an ignore: entry with a reason instead of a test. Re-run the same Mutineer command with the same sources and flags. If you created a new test file and the command lists tests with --test, add a --test for that file. Report summary.score.
+```
+
+## Suppressing equivalent mutants
+
+Equivalent mutants survive without changing behaviour. Suppression excludes them from the score, makes 100% reachable, and keeps `--threshold` meaningful.
+
+| Method | Usage |
+| --- | --- |
+| Inline | Add `# mutineer:disable-line`. Scope it with an operator: `# mutineer:disable-line comparison`. This suppresses every mutant of that operator on the line; use an `ignore:` id to suppress only one. |
+| Inline reason | Add a reason after `--`: `# mutineer:disable-line comparison -- the test checks only 20`. |
+| Config | Add a bare mutant id or an `id` mapping with an optional `reason` under `.mutineer.yml` `ignore:`. |
+| Reports | JSON lists each survivor's `id`. JSON and HTML show suppression reasons. Markers without reasons store none. |
+
+**Mappings require Mutineer 1.7 or later in every gate reading the config.** Older versions silently ignore mappings, leaving their mutants unsuppressed.
+
+| Gate | Version control |
+| --- | --- |
+| Action | `version:`, or `Gemfile.lock` with `use-bundler: true` |
+| Your CI job | `Gemfile.lock` |
+
+```ruby
+return 0.1 if qty >= 10 # mutineer:disable-line comparison -- the test checks only 20
+```
+
+```yaml
+# .mutineer.yml
+ignore:
+  - ID_FROM_THE_JSON_REPORT
+  - id: ID_FROM_THE_JSON_REPORT
+    reason: x / 1 equals x * 1 for numbers
+```
+
+| Command | Output |
+| --- | --- |
+| `mutineer triage REPORT.json --reason TEXT --all` | One mapping per survivor, then one per id in that survivor's `copies` |
+| `mutineer triage REPORT.json --reason TEXT --id ID` | The selected survivor and its `copies`. An id from `copies` selects that survivor's whole group. Repeat `--id` for several |
+
+`triage` edits no files. Paste its mappings under `ignore:` after every gate uses 1.7 or later.
+
+An `ignore:` entry ignores only the id it names.
+If the report lists `copies`, keep an entry for each of those ids too.
+With only the id the report shows as the row, the next run reports the other copy.
+Once every copy is listed, a run shows the extra ids on the kept mutant's `copies`, and `Dropped:` counts them.
+An entry that matches no row, and is not in any `copies` list, is unused.
+An entry that appears only in `copies` is still in force.
+
+[Equivalent skips](https://davidteren.github.io/mutineer/equivalent-skips.html) lists built-in skips. You cannot disable them.
+
+For a `present?` call changed to its receiver, see [Triage a `present?` survivor](https://davidteren.github.io/mutineer/equivalent-skips.html#triage-a-present-survivor).
+
+## Mutant ids
+
+A mutant id contains 12 hex characters. Its hash uses:
+
+| Input | Detail |
+| --- | --- |
+| File path | Relative to the project root |
+| Method | Qualified name |
+| Mutation | Operator, mutated code, and position among identical mutants in the method |
+| Duplicate method | Second and later same-named methods also include their position among same-named methods in the file; the first method's id stays unchanged. |
+
+Duplicate names can occur with two top-level `def index` definitions in separate DSL blocks.
+
+| Change | Effect on ids |
+| --- | --- |
+| Edit outside the method | None, unless it changes a listed input |
+| Move or rename the file | Ids change |
+| Rename the method or its class | Ids change |
+| Add an identical mutant earlier in the method | Later identical mutants' ids change |
+| Add a same-named method earlier in the file | Affected methods' ids change |
+| Upgrade to a version where an operator starts or stops declining a swap | Later swaps of the same name in that method can change id (see [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md)) |
+| Change the run directory | Relative paths can change ids |
+| Use sources outside the project root | Absolute paths make ids differ between machines |
+
+The project root is the run directory, or the Action's `working-directory`. Use the same root for stable ids.
+
+A current-format `ignore:` entry stays in the file when its mutant's id changes. It then usually matches nothing, but after an operator starts or stops declining a swap it can match a different mutant. If the entry has a reason, that reason still reads as if it applied. An old-format entry that still matches a mutant is not one of these: the old-id warning names it.
+
+`run` warns once for each such entry and still exits 0:
+
+```text
+[mutineer] ignore entry 0123456789ab matched no mutant in this run's sources and operators. If those cover its code, the entry is stale: remove it.
+```
+
+The warning covers only that run's sources and operators. A run of some files warns about an entry whose mutant is in a file you did not pass. That entry may still match a full run. A source you did pass, and that pairing skipped because it has no test, still counts: its entries are not called unmatched, and `run` agrees with `run --dry-run` of the same files. `--since` does not add a warning: ignores are matched before the diff narrows the run, so an entry for a mutant outside the diff stays quiet. `--only` skips the warning, because it narrows methods before matching.
+
+The JSON report lists the ids in `summary.unmatched_ignores`, in file order, each id once. Under `--only` the list is empty. An empty list there does not mean every entry matched. `--dry-run` prints the same warning, and `--dry-run --format json` lists the same ids.
+
+`mutineer migrate --dry-run` over every source lists entries that match nothing and exits 1. It writes nothing. A CI job can rely on that exit code in 1.x and after 2.0. Use the same sources and `--operators` as a full `run`. A dropped repeat of an edit still counts as matched, so it is not listed.
+
+**Migrating from ids without the file path.** Before 1.3, ids omitted file paths, allowing collisions between files (issue #126). Old ids work until 2.0, with warnings.
+
+| Setting | Compatibility and action |
+| --- | --- |
+| `ignore:` | Old entries still suppress mutants. Warnings list new ids, files, and methods for each entry. |
+| One match | Replace the old entry with the new id. |
+| Multiple matches | The old entry also hid unintended mutants. Keep only intended ids, including across same-named methods or different files. |
+| Full migration list | Run every source and operator set you use, including Tier-2 (additional operators) `--operators`. Warnings cover only that run. |
+| `mutineer migrate` | Writes every matching new id for bare-id entries. A mapping entry that matches several mutants is not rewritten; split it by hand. Delete unintended ids. See [Migrate old ignore ids](https://github.com/davidteren/mutineer/blob/main/docs/results.md#migrate-old-ignore-ids). |
+| `--baseline` | Matches survivors by old id and file. Stored absolute paths outside the project root match by old id alone. |
+| Baseline replacement | Generate with `--format json` when prompted. `migrate` does not rewrite baselines. |
+
+Generate a new baseline only after every reader uses 1.3 or later. Older versions treat every new-format survivor as new. The Action uses `version:`, or `Gemfile.lock` with `use-bundler: true`. Your CI job uses `Gemfile.lock`.
+
+| JSON field | Meaning |
+| --- | --- |
+| `summary.id_format` | `2` identifies the new format |
+| `summary.legacy_id_matches.ignore` | Count of matched old-format ignore entries |
+| `summary.legacy_id_matches.baseline` | Count of survivors matched only through an old baseline id |
+| `summary.unmatched_ignores` | Ids of `ignore:` entries that matched no mutant in this run. Empty under `--only`, which does not mean every entry matched |
+
+Mutineer searches parent directories for `.mutineer.yml`. A config above the run directory triggers an ignore-id warning, except in your home directory. The warning names the correct run directory.
+
+## Migrate old ignore ids
+
+```sh
+mutineer migrate <source...> [--dry-run] [--operators LIST]
+```
+
+`migrate` updates old ids under `.mutineer.yml` `ignore:`. It preserves comments and all other lines.
+
+| Case | Result |
+| --- | --- |
+| Bare id matches several mutants | Writes every new id, preserving the 1.x match |
+| Id matches nothing | Keeps the entry; exits 1. `run` warns about the same kind of entry and still exits 0 |
+| `{ id:, reason: }` matches one mutant | Updates the id; preserves the reason |
+| Mapping matches several mutants | Keeps the entry, lists new ids, exits 1; split it manually |
+| Block scalar under `ignore:` | Changes nothing; exits 2 |
+| `--dry-run` | Prints changes and entries that match nothing; writes nothing. Exits 1 when any entry matches nothing. A CI job can use that exit code |
+
+Use the same sources and `--operators` as `run`. Migration runs no tests and changes no baseline. Generate a new baseline with `--format json`.
+
+## Kill matrix
+
+`--matrix` shows which tests kill each mutant and identifies tests that add no kills.
+
+```sh
+mutineer run lib/calculator.rb --test test/calculator_test.rb --matrix
+```
+
+Mutineer runs every test in each mutant's covering files and records failures. Coverage is per file, so tests that never reach the mutated line also count as run.
+
+| Row state | Meaning |
+| --- | --- |
+| Complete | Every covering test ran, and the suite returned normally |
+| Incomplete | The covering set did not finish normally, including a Minitest `Interrupt` |
+| Minitest database connection or lock failure | Leaves the row incomplete and adds no kill, even after an earlier assertion killed the mutant |
+
+| Test label | Meaning | Before deleting |
+| --- | --- | --- |
+| Blind | Ran in at least one complete row; killed no mutant in any row | Check its assertions. It may cover other files or changes no operator makes. Consider adding an assertion that can fail. |
+| Redundant | Another test kills every mutant it kills | Delete one test at a time and rerun. Two redundant tests can be a mutant's only killers. |
+
+These labels apply only to this run's mutants. Mutate the code a test exercises before calling it blind.
+
+**The matrix changes no verdict, score, or exit code.** Each mutant receives the verdict from a run without `--matrix`.
+
+| Execution case | Verdict behaviour |
+| --- | --- |
+| First failure in a normal run | Skips later tests, classes, and example groups |
+| Later skipped test exits, crashes, or times out | First failure decides: `killed` for ordinary failures; `error` for a Minitest or RSpec database connection or lock failure |
+| Minitest class `run` wrapper, RSpec `after(:all)`, or `after(:suite)` ends abnormally | These still run after failure; their exit status remains effective |
+| Minitest `parallelize_me!` failure | Exit status remains effective. Parallel classes run after serial classes and cannot stop once queued. Serial failures still stop the run. Among the queued tests, a database connection or lock error is judged by queue order, not by which thread finishes first (#347). |
+
+| Requirement or output | Detail |
+| --- | --- |
+| RSpec version | Requires RSpec 3.3 or later to distinguish examples on one line. Older versions produce only incomplete rows. |
+| Human report | Lists up to 20 blind and 20 redundant tests |
+| HTML report | Lists all blind and redundant tests |
+| JSON | `--format json` adds every test and each mutant's killers in `matrix`; see [JSON schema](https://davidteren.github.io/mutineer/json-schema.html#matrix) |
+| Test identity | File plus id |
+| Minitest name | For example, `CalculatorTest#test_add` |
+| RSpec name | Full description. Example ids such as `./spec/calc_spec.rb[1:2]` distinguish shared descriptions and preserve identity when generated descriptions change. |
+
+Every mutant with a covering test set runs that full set, costing as much as a survivor. Expect matrix runs to take 2.1 to 2.5 times as long. In 1.4, stopping at first failure reduced rack's `lib/rack/utils.rb` run from 86–89 seconds to 35–41 seconds.
+
+| Limit | Behaviour or action |
+| --- | --- |
+| Per-mutant `--timeout` | Defaults to 10 seconds |
+| Timeout after a test failure | Preserves the first failure's verdict; marks the row incomplete |
+| Incomplete rows | Report lists each row and warns that blind tests might have killed those mutants |
+| Complete the rows | Raise `--timeout`, or `.mutineer.yml` `timeout:` |
+| Backend | In-process only |
+| Incompatible settings | Exits 2 with `--daemon`, `--test-command`, `--fail-fast`, or `--dry-run`. The message identifies command-line or `.mutineer.yml` origins. |
+| Config has `matrix: true` | Pass `--no-matrix` to use incompatible settings |
+| Config has `fail_fast: true` | Pass `--no-fail-fast` with `--matrix` |
+
+The matrix checks only this run's mutants. Blind tests may protect other behaviour.
+Do not delete a blind test until its rows are complete.

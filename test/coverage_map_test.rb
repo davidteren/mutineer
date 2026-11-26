@@ -51,6 +51,193 @@ class CoverageMapTest < Minitest::Test
                  map.tests_for(CALC, line_of("a + b"))
   end
 
+  def test_capture_load_error_hides_the_password_and_keeps_verbose_causes
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      test = File.join(dir, "boom_test.rb")
+      File.write(test, <<~RUBY)
+        begin
+          raise "database postgres://u:s3cret@host/db unavailable"
+        rescue RuntimeError
+          raise "outer load failure"
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir, verbose: true)
+      status = nil
+
+      _, err = capture_subprocess_io { status, = map.send(:spawn_script, map.send(:subprocess_script, test)) }
+
+      assert_equal 1, status.exitstatus
+      assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
+      assert_includes err, "caused by: RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_rspec_clean_check_load_error_hides_the_password_and_keeps_verbose_causes
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      preload = File.join(dir, "boot.rb")
+      File.write(preload, <<~RUBY)
+        begin
+          raise "database postgres://u:s3cret@host/db unavailable"
+        rescue RuntimeError
+          raise "outer load failure"
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [preload], test_paths: [], project_root: dir,
+                                      framework: "rspec", verbose: true)
+      status = nil
+
+      _, err = capture_subprocess_io do
+        status, = map.send(:spawn_script, map.send(:clean_check_script, []), result: true)
+      end
+
+      assert_equal 1, status.exitstatus
+      assert_includes err, "[mutineer] load failed: RuntimeError: outer load failure"
+      assert_includes err, "caused by: RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes err, "s3cret"
+    end
+  end
+
+  def test_rspec_clean_check_failure_report_hides_the_password
+    Dir.mktmpdir("mutineer-redaction") do |dir|
+      spec = File.join(dir, "failing_spec.rb")
+      File.write(spec, <<~RUBY)
+        RSpec.describe "database" do
+          it("connects") { raise "database postgres://u:s3cret@host/db unavailable" }
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [spec], project_root: dir, framework: "rspec")
+      status = line = nil
+
+      capture_subprocess_io do
+        status, line = map.send(:spawn_script, map.send(:clean_check_script, [spec]), result: true)
+      end
+
+      assert_equal 1, status.exitstatus
+      report = JSON.parse(line).fetch("failure_report")
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
+    end
+  end
+
+  # A child that exits 0 without a valid result JSON must not pass the clean check.
+  def test_subprocess_clean_pass_rejects_exit_zero_without_result_json
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    status = Object.new
+    def status.success? = true
+    def status.nil? = false
+    map.define_singleton_method(:spawn_script) { |*| [status, "not-json"] }
+    ok, = map.send(:subprocess_clean_pass?, [])
+    refute ok, "exit 0 with no JSON result must fail closed"
+  end
+
+  # Progress dots before Failures: must not consume the capped detail (#360).
+  def test_truncate_clean_detail_starts_at_failures_section
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    dots = "." * (limit + 50)
+    text = "#{dots}\n\nFailures:\n\n  1) example fails\n     expected: 2\n          got: 1\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "Failures:"
+    assert_includes out, "example fails"
+    assert_includes out, "got: 1"
+    refute_includes out, dots[0, 20]
+  end
+
+  # An earlier Minitest Error: must win over a later Failure: (#360).
+  def test_truncate_clean_detail_keeps_an_error_before_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "x" * (limit + 20)
+    text = "#{noise}\n\n  1) Error:\nDbTest#test_connect:\nRuntimeError: boom\n\n  2) Failure:\nCalcTest#test_add:\nExpected: 1\n  Actual: 2\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_match(/\A\s*1\) Error:/, out)
+    assert_includes out, "DbTest#test_connect"
+    assert_includes out, "RuntimeError: boom"
+  end
+
+  # A bare Error: inside RSpec's Failure/Error: must not cut the load header (#360).
+  def test_truncate_clean_detail_keeps_rspec_load_error_header
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred while loading ./calc_spec.rb.\nFailure/Error: raise \"boom\"\n\nRuntimeError:\n  boom\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred while loading ./calc_spec.rb."
+    assert_includes out, "Failure/Error:"
+    refute_match(/\AError:/, out)
+  end
+
+  # after(:suite) / after(:context) use the same "An error occurred" header (#360).
+  def test_truncate_clean_detail_keeps_rspec_suite_hook_error
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    limit = Mutineer::CoverageMap::CLEAN_FAILURE_DETAIL_LIMIT
+    noise = "." * (limit + 20)
+    text = "#{noise}\n\nAn error occurred in an `after(:suite)` hook.\nFailure/Error: raise \"cleanup failed\"\n\nRuntimeError:\n  cleanup failed\n"
+    out = map.send(:truncate_clean_detail, text)
+    assert_operator out, :start_with?, "An error occurred in an `after(:suite)` hook."
+    assert_includes out, "Failure/Error:"
+    assert_includes out, "cleanup failed"
+  end
+
+  # An at_exit that fails after the child wrote passed:true must still fail the
+  # clean check: warm-cache scoring must not proceed on a red exit (#360).
+  def test_subprocess_clean_pass_rejects_nonzero_exit_after_passed_json
+    Dir.mktmpdir("mutineer-at-exit") do |dir|
+      test = File.join(dir, "at_exit_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class AtExitFailTest < Minitest::Test
+          def test_ok
+            assert true
+          end
+        end
+        at_exit { exit 1 }
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir)
+      ok = nil
+      capture_subprocess_io { ok, = map.send(:subprocess_clean_pass?, [test]) }
+      refute ok, "a nonzero exit after passed:true must fail the clean check"
+    end
+  end
+
+  def test_fork_clean_failure_report_hides_the_password
+    ensure_coverage_running
+    Dir.mktmpdir("mutineer-fork-redaction") do |dir|
+      test = File.join(dir, "db_fail_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/test"
+        class DbFailTest < Minitest::Test
+          def test_connects
+            raise "database postgres://u:s3cret@host/db unavailable"
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(
+        source_paths: [CALC], test_paths: [test],
+        cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: dir
+      )
+      ok = report = nil
+      capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [test], nil) }
+      refute ok
+      assert_includes report, "database postgres://u:[REDACTED]@host/db unavailable"
+      refute_includes report, "s3cret"
+    end
+  end
+
+  # A fork that raises before the reporter runs still returns a redacted error (#360).
+  def test_fork_clean_pass_preserves_a_redacted_exception_from_the_child
+    ensure_coverage_running
+    noisy = File.expand_path("fixtures/noisy_minitest_test.rb", __dir__)
+    map = fork_map(noisy, verbose: false)
+    ok = report = nil
+    after_fork = -> { raise "database postgres://u:s3cret@host/db unavailable" }
+    capture_subprocess_io { ok, report = map.send(:fork_clean_pass?, [noisy], after_fork) }
+    refute ok
+    assert_includes report, "RuntimeError: database postgres://u:[REDACTED]@host/db unavailable"
+    refute_includes report, "s3cret"
+  end
+
   def test_uncovered_line_returns_empty
     map = build([ADD_ONLY_TEST]) # add-only suite never calls #modulo
     assert_empty map.tests_for(CALC, line_of("a % b"))
@@ -222,7 +409,55 @@ class CoverageMapTest < Minitest::Test
       end
       assert_includes map.failed_clean_tests, "calc_test.rb"
       assert_empty map.failed_test_files, "a red assertion is not a capture crash"
+      # #360: the failing test name is kept for the SmokeCheckError line.
+      detail = map.failed_clean_details["calc_test.rb"].to_s
+      assert_match(/AuditFailingCalculatorTest#test_unrelated/, detail, detail)
+      assert_match(/Expected: 1\s+Actual: 2/, detail, detail)
     end
+  end
+
+  # #497: Rails' Minitest plugin removes every SummaryReporter, so a report
+  # built on one came back empty. Both clean-check paths must still name the
+  # failing test, its error, and the first backtrace line.
+  def test_clean_check_report_survives_a_plugin_that_drops_summary_reporters
+    Dir.mktmpdir("mutineer-497") do |dir|
+      test = File.join(dir, "red_test.rb")
+      File.write(test, <<~RUBY)
+        require "minitest/autorun"
+        # Mirrors railties' plugin_rails_init, which rejects SummaryReporter.
+        Minitest.extensions << "fake_rails" unless Minitest.extensions.include?("fake_rails")
+        def Minitest.plugin_fake_rails_init(options)
+          reporter.reporters.reject! { |r| r.is_a?(Minitest::SummaryReporter) }
+          reporter << Minitest::SummaryReporter.new(File.open(File::NULL, "w"), options)
+        end
+        class RedFor497Test < Minitest::Test
+          def test_boom
+            raise ArgumentError, "boom 497"
+          end
+        end
+      RUBY
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [test], project_root: dir)
+      fork_ok, fork_detail, = map.send(:fork_clean_pass?, [test], nil)
+      sub_ok, sub_detail, = map.send(:subprocess_clean_pass?, [test])
+      [[fork_ok, fork_detail], [sub_ok, sub_detail]].each do |ok, detail|
+        refute ok
+        assert_match(/RedFor497Test#test_boom/, detail, detail)
+        assert_match(/ArgumentError: boom 497/, detail, detail)
+        assert_match(/red_test\.rb:\d+/, detail, detail)
+      end
+    end
+  end
+
+  # #497 review: the failure reporter fails closed, so a run whose summary
+  # reporters a plugin dropped is still red.
+  def test_minitest_failure_report_fails_closed
+    report = Mutineer::MinitestFailureReport.new(StringIO.new)
+    pass = Struct.new(:passed?, :skipped?).new(true, false)
+    fail = Struct.new(:passed?, :skipped?).new(false, false)
+    report.record(pass)
+    assert_predicate report, :passed?
+    report.record(fail)
+    refute_predicate report, :passed?
   end
 
   # #96: a warm cache cannot certify a suite that now fails without a file-content
@@ -388,6 +623,58 @@ class CoverageMapTest < Minitest::Test
                  second.tests_for(CALC, line_of("a + b"))
   end
 
+  # #517: the daemon now gets --verbose for its coverage build. The flag only
+  # changes the warning text, so a --verbose run reuses the map a plain run
+  # saved, and the reverse.
+  def test_verbose_does_not_change_the_cache_digest
+    dir = Dir.mktmpdir("mutineer-cache")
+    build_with = lambda do |verbose|
+      Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                project_root: ROOT, verbose: verbose).build_or_load
+    end
+    assert build_with.(false).phase_a_ran
+    refute build_with.(true).phase_a_ran, "--verbose must not rebuild a saved map"
+    refute build_with.(false).phase_a_ran
+  end
+
+  # #536, #539, #544: a load_path directory can change which file a test
+  # loads while every file the last capture loaded stays the same. A reorder,
+  # a new file that shadows one in a later directory, and an edit in a
+  # directory outside the project root each capture every test again.
+  def test_load_path_directories_are_part_of_the_cache_key
+    Dir.mktmpdir("mutineer-xload") do |outside|
+      dir = Dir.mktmpdir("mutineer-cache")
+      local = File.join(outside, "local")
+      defaults = File.join(outside, "defaults")
+      FileUtils.mkdir_p([local, defaults])
+      File.write(File.join(defaults, "pricing_probe.rb"), "# v1\n")
+      build_with = lambda do |extra|
+        Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                  project_root: ROOT, extra_load_paths: extra).build_or_load
+      end
+
+      assert build_with.([local, defaults]).phase_a_ran
+      refute build_with.([local, defaults]).phase_a_ran, "nothing changed: the map is reused"
+      assert build_with.([defaults, local]).phase_a_ran, "#536: a reorder captures again"
+      refute build_with.([defaults, local]).phase_a_ran
+      File.write(File.join(defaults, "pricing_probe.rb"), "# v2\n")
+      assert build_with.([defaults, local]).phase_a_ran, "#539: an edit outside the root captures again"
+      File.write(File.join(local, "pricing_probe.rb"), "# shadow\n")
+      assert build_with.([local, defaults]).phase_a_ran
+      File.write(File.join(local, "other.rb"), "\n")
+      assert build_with.([local, defaults]).phase_a_ran, "#544: a new file in a directory captures again"
+    end
+  end
+
+  # A run without load_path keeps the digest of earlier versions.
+  def test_no_load_path_directory_keeps_the_cache_key
+    dir = Dir.mktmpdir("mutineer-cache")
+    build = ->(**kw) { Mutineer::CoverageMap.new(source_paths: [CALC], test_paths: [STRONG_TEST], cache_dir: dir,
+                                                 project_root: ROOT, **kw).build_or_load }
+    assert build.().phase_a_ran
+    refute build.(extra_load_paths: []).phase_a_ran
+  end
+
   def test_content_change_invalidates_cache_and_rebuilds
     dir = Dir.mktmpdir("mutineer-proj")
     cache = Dir.mktmpdir("mutineer-cache")
@@ -441,8 +728,9 @@ class CoverageMapTest < Minitest::Test
 
       reused = shared_map(%w[alpha.rb], shard, coverage_from: File.join(capture, "coverage.json"))
       runs = sentinel_runs(sentinel).group_by(&:first).values.map { |run| run.map(&:last).sort }
-      assert_equal [%w[alpha_test.rb], SHARED_TESTS].sort, runs.sort,
-                   "alpha_test.rb, the only test covering alpha.rb, runs alone, then the combined run"
+      assert_equal [%w[alpha_test.rb]], runs,
+                   "alpha_test.rb, the only test covering alpha.rb, runs alone; beta_test.rb never runs " \
+                   "with a mutant, so there is no combined run (#398)"
       refute reused.phase_a_ran
       assert_path_exists File.join(shard, "coverage.json")
 
@@ -460,7 +748,7 @@ class CoverageMapTest < Minitest::Test
     cases = {
       "an unchanged project" => [->(_root, _cache) {}, nil],
       "a changed test" => [->(root, _cache) { File.write(File.join(root, "beta_test.rb"), "\n", mode: "a") },
-                           /tests, --require files, boot file, load paths or framework differ/],
+                           /tests, --require files, boot file, load paths, framework or test seed differ/],
       "a changed source" => [->(root, _cache) { File.write(File.join(root, "alpha.rb"), "\n", mode: "a") },
                              /alpha\.rb changed since the capture/],
       "a source outside the capture" => [->(_root, _cache) {}, /not captured over beta\.rb/, %w[alpha.rb]],
@@ -478,6 +766,10 @@ class CoverageMapTest < Minitest::Test
                                          /no source fingerprints/],
       "a malformed owner list" => [->(_root, cache) { edit_cache.(cache) { |c| c["owners"] = [1] } },
                                    /not the shape a coverage cache saves/],
+      "a non-numeric timing" => [->(_root, cache) { edit_cache.(cache) { |c| c["timings"] = { "alpha_test.rb" => "fast" } } },
+                                 /not the shape a coverage cache saves/],
+      "an infinite timing" => [->(_root, cache) { File.write(cache, File.read(cache).sub(/"timings":\{/, '"timings":{"zz_test.rb":1e400,')) },
+                               /not the shape a coverage cache saves/],
       "a malformed map" => [->(_root, cache) { edit_cache.(cache) { |c| c["map"] = { "alpha.rb:5" => "alpha_test.rb" } } },
                             /not the shape a coverage cache saves/],
       "a missing file" => [->(_root, cache) { File.delete(cache) }, /cannot be read/]
@@ -539,6 +831,939 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # #303: with LANG unset Ruby reads files as US-ASCII. A cache or a
+  # --coverage-from capture with a non-ASCII path must still parse.
+  def test_reads_a_non_ascii_cache_and_capture_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      capture = File.join(dir, "capture.json")
+      [File.join(dir, "coverage.json"), capture].each { |f| File.write(f, JSON.generate("caf\u00e9.rb" => [1])) }
+      map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, coverage_from: capture)
+      with_ascii_default_external do
+        assert_equal [1], map.send(:read_cache)["caf\u00e9.rb"]
+        err = assert_raises(Mutineer::CoverageFromError) { map.send(:accepted_capture) }
+        assert_match(/cannot be reused/, err.message, "the capture parsed, then failed the fit check")
+      end
+    end
+  end
+
+  # --- #398: the clean check runs only the tests a mutant can run ---------
+
+  # Runs the block with MUTINEER_SENTINEL set, then returns each process's
+  # test files, sorted, so a combined run reads as one entry.
+  def sentinel_processes(dir)
+    sentinel = File.join(dir, "sentinel")
+    File.write(sentinel, "")
+    ENV["MUTINEER_SENTINEL"] = sentinel
+    yield
+    sentinel_runs(sentinel).group_by(&:first).values.map { |run| run.map(&:last).sort }.sort
+  ensure
+    ENV.delete("MUTINEER_SENTINEL")
+  end
+
+  # The booted parent, as `--boot` loads it: beta.rb then reads
+  # SharedAlpha.widen at boot, so only alpha_test.rb covers alpha.rb.
+  def boot_shared
+    ensure_coverage_running
+    require File.join(SHARED, "boot")
+  end
+
+  def test_cache_hit_runs_only_the_covering_tests_clean
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      first = nil
+      err = nil
+      misses = sentinel_processes(dir) { _, err = capture_io { first = shared_map(%w[alpha.rb], cache) } }
+      assert first.phase_a_ran
+      assert_equal [%w[alpha_test.rb], %w[beta_test.rb]], misses,
+                   "a miss captures each test alone; one covering test leaves no combined run"
+      assert_includes err, "[mutineer] coverage capture: the together check covers only the 1 test file that " \
+                           "covers the sources; 1 other test file ran alone only."
+      # #495: no separate clean check ran a test on this miss, so no seconds.
+      assert_nil first.clean_check_seconds
+
+      hit = nil
+      hits = sentinel_processes(dir) { _, err = capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[alpha_test.rb]], hits, "beta_test.rb covers no line of alpha.rb, so it is not run"
+      assert_empty hit.failed_clean_tests
+      # #495: the hit's clean check ran a test, so it has seconds.
+      assert_kind_of Float, hit.clean_check_seconds
+      assert_operator hit.clean_check_seconds, :>, 0
+      assert_includes err, "[mutineer] coverage cache hit: the clean check ran the 1 test file that covers " \
+                           "the sources; 1 other test file never runs with a mutant and was not checked."
+    end
+  end
+
+  def test_cache_hit_stops_on_a_covering_test_that_turns_red
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      hit = nil
+      with_env("MUTINEER_FLUNK" => "1") { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal %w[alpha_test.rb], hit.failed_clean_tests
+    end
+  end
+
+  # beta_test.rb is red, but it covers no line of alpha.rb, so no mutant of
+  # this run can run it. A miss still stops on it (#96): capture runs every test.
+  def test_cache_hit_skips_a_red_test_that_covers_no_source
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      hit = nil
+      miss = nil
+      with_env("MUTINEER_FLUNK_BETA" => "1") do
+        capture_io { hit = shared_map(%w[alpha.rb], cache) }
+        capture_io { miss = shared_map(%w[alpha.rb], File.join(dir, "fresh")) }
+      end
+      refute hit.phase_a_ran
+      assert_empty hit.failed_clean_tests
+      assert miss.phase_a_ran
+      assert_equal %w[beta_test.rb], miss.failed_clean_tests, "the test really is red"
+    end
+  end
+
+  # An empty map keeps every test: the daemon then runs every test for each mutant.
+  def test_cache_hit_with_an_empty_map_checks_every_test
+    ensure_coverage_running
+    Dir.mktmpdir do |root|
+      FileUtils.cp(Dir[File.join(SHARED, "*.rb")], root)
+      File.write(File.join(root, "gamma.rb"), "class SharedGamma\n  def self.triple(x)\n    x * 3\n  end\nend\n")
+      cache = File.join(root, "cache")
+      first = nil
+      capture_io { first = shared_map(%w[gamma.rb], cache, root: root) }
+      assert_empty first.map, "no test calls SharedGamma"
+
+      hits = sentinel_processes(root) { capture_io { shared_map(%w[gamma.rb], cache, root: root) } }
+      assert_equal [%w[alpha_test.rb], %w[alpha_test.rb beta_test.rb], %w[beta_test.rb]], hits
+    end
+  end
+
+  # A retried capture runs its test, so the hit does not run it alone again.
+  def test_cache_hit_runs_a_retried_capture_once
+    boot_shared
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      capture_io { shared_map(%w[alpha.rb], cache) }
+      file = File.join(cache, "coverage.json")
+      File.write(file, JSON.generate(JSON.parse(File.read(file)).merge("failed_test_files" => ["alpha_test.rb"])))
+
+      hit = nil
+      hits = sentinel_processes(dir) { capture_io { hit = shared_map(%w[alpha.rb], cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[alpha_test.rb]], hits
+      assert_empty hit.failed_test_files
+    end
+  end
+
+  # Every test a mutant can be given must be in the clean check.
+  def test_every_test_a_mutant_can_run_is_in_the_clean_check
+    boot_shared
+    Dir.mktmpdir do |dir|
+      map = nil
+      capture_io { map = shared_map(%w[alpha.rb beta.rb], dir) }
+      checked = map.send(:clean_check_test_paths).map { |t| map.send(:relativize, t) }
+      # A mutant lives in a source, so only source keys can give it tests.
+      keys = map.map.keys.select { |key| %w[alpha.rb beta.rb].include?(key.split(":").first) }
+      selectable = keys.flat_map { |key| map.tests_for(*key.split(":").then { |f, l| [f, l.to_i] }) }.uniq
+      refute_empty selectable
+      assert_equal selectable.sort, checked.sort, "the check runs exactly the tests a mutant can be given"
+    end
+  end
+
+  # Standalone capture also maps the other project files a test ran, its own
+  # file too. No mutant lives there, so those keys must not pick a test.
+  def test_the_clean_check_reads_only_source_keys
+    map = Mutineer::CoverageMap.new(source_paths: %w[price.rb], test_paths: %w[price_test.rb mail_test.rb],
+                                    project_root: Dir.pwd)
+    map.instance_variable_set(:@map, { "price.rb:3" => %w[price_test.rb], "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb], map.send(:clean_check_test_paths)
+
+    map.instance_variable_set(:@map, { "mail_test.rb:1" => %w[mail_test.rb] })
+    assert_equal %w[price_test.rb mail_test.rb], map.send(:clean_check_test_paths),
+                 "no source key: every test, as for an empty map"
+  end
+
+  # --- #426: standalone load lines are not coverage of every test ---------
+
+  # The source, the test that calls it, and a test that does not. Line numbers
+  # come from the source text so the assertions follow the credit rule.
+  STANDALONE_PRICE = <<~RUBY
+    class StandalonePrice
+      def self.called(n)
+        n * 2
+      end
+
+      def self.only_at_load(n)
+        n + 9
+      end
+
+      def self.both(n)
+        n * 4
+      end
+
+      def self.endless(n) = n * 3
+
+      LOADED = only_at_load(1)
+      BOTH = both(1)
+    end
+  RUBY
+
+  def write_standalone_price(dir)
+    FileUtils.mkdir_p(File.join(dir, "lib"))
+    File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+    FileUtils.mkdir_p(File.join(dir, "test"))
+    note = 'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)}\n", mode: "a") if ENV["MUTINEER_SENTINEL"]'
+    File.write(File.join(dir, "test/price_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{note}
+      class StandalonePriceTest < Minitest::Test
+        def test_called; assert_equal 4, StandalonePrice.called(2); end
+        def test_endless; assert_equal 6, StandalonePrice.endless(2); end
+        def test_both; assert_equal 8, StandalonePrice.both(2); end
+        def test_loaded; assert_equal 10, StandalonePrice::LOADED; end
+      end
+    RUBY
+    # Not the conventional pair. It calls the endless method, so that `def`
+    # line is credited from the call, not from pairing.
+    File.write(File.join(dir, "test/caller_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{note}
+      class StandaloneCallerTest < Minitest::Test
+        def test_endless; assert_equal 9, StandalonePrice.endless(3); end
+      end
+    RUBY
+    File.write(File.join(dir, "test/mail_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      #{note}
+      class StandaloneMailTest < Minitest::Test
+        def test_ok; assert_equal 1, 1; end
+      end
+    RUBY
+  end
+
+  def standalone_price_map(dir, cache, framework: "minitest", tests: nil)
+    tests ||= if framework == "rspec"
+                %w[spec/caller_spec.rb spec/price_spec.rb spec/mail_spec.rb]
+              else
+                %w[test/caller_test.rb test/price_test.rb test/mail_test.rb]
+              end
+    Mutineer::CoverageMap.new(source_paths: ["lib/price.rb"], test_paths: tests, cache_dir: cache,
+                              project_root: dir, framework: framework).build_or_load
+  end
+
+  def price_line(snippet)
+    STANDALONE_PRICE[0...STANDALONE_PRICE.index(snippet)].count("\n") + 1
+  end
+
+  # Class and `def` lines, and a body that runs only while the source loads,
+  # belong to the paired test. A test that never calls the source does not
+  # cover them, so a cache hit does not check it. A body the paired test
+  # runs, including one that also ran at load, stays credited to that test.
+  # An endless method stays credited because the test called it: Ruby does
+  # not count that line on the call.
+  def test_standalone_capture_does_not_credit_an_unrelated_test_with_load_lines
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_standalone_price(dir)
+      src = File.join(dir, "lib/price.rb")
+      map = nil
+      err = nil
+      misses = sentinel_processes(dir) { _, err = capture_io { map = standalone_price_map(dir, cache) } }
+
+      assert map.phase_a_ran
+      assert_empty map.failed_test_files
+      assert_equal [%w[caller_test.rb], %w[caller_test.rb price_test.rb], %w[mail_test.rb], %w[price_test.rb]], misses,
+                   "a miss captures each test, then the two that cover price.rb together"
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("class StandalonePrice"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n * 2"))
+      assert_equal %w[test/price_test.rb], map.tests_for(src, price_line("n * 4"))
+      assert_equal %w[test/caller_test.rb test/price_test.rb], map.tests_for(src, price_line("n * 3")).sort
+      assert map.ran_at_load?(src, price_line("class StandalonePrice"))
+      assert map.ran_at_load?(src, price_line("n + 9")), "only_at_load ran while the class loaded"
+      assert map.ran_at_load?(src, price_line("n * 4")), "both ran at load and in the test"
+      refute map.ran_at_load?(src, price_line("n * 2")), "called runs only in the test"
+      def_line = price_line("def self.only_at_load")
+      assert map.method_ran_at_load?(src, def_line, STANDALONE_PRICE.lines[def_line - 1].index("def"))
+      assert_includes err, "1 other test file ran alone only"
+
+      hit = nil
+      hits = sentinel_processes(dir) { _, err = capture_io { hit = standalone_price_map(dir, cache) } }
+      refute hit.phase_a_ran
+      assert_equal [%w[caller_test.rb], %w[caller_test.rb price_test.rb], %w[price_test.rb]], hits,
+                   "mail_test.rb covers no line a mutant of price.rb runs"
+      assert_equal map.load_lines, hit.load_lines
+      assert_includes err, "1 other test file never runs with a mutant and was not checked"
+    end
+  end
+
+  # No conventional pair in the run: any test may be the one that checks a
+  # value built at load, so both keep the load-only line and a hit checks both.
+  def test_standalone_load_lines_stay_on_every_test_when_none_pairs
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/widget.rb"), "class StandaloneWidget\n  def self.n\n    1\n  end\nend\n")
+      FileUtils.mkdir_p(File.join(dir, "test"))
+      %w[a_check b_check].each do |name|
+        File.write(File.join(dir, "test/#{name}_test.rb"), <<~RUBY)
+          require "minitest/autorun"
+          File.write(ENV["MUTINEER_SENTINEL"], "\#{Process.pid} \#{File.basename(__FILE__)}\\n", mode: "a") if ENV["MUTINEER_SENTINEL"]
+          class #{name.capitalize}CheckTest < Minitest::Test
+            def test_ok; assert_equal 1, 1; end
+          end
+        RUBY
+      end
+      cache = File.join(dir, "cache")
+      tests = %w[test/a_check_test.rb test/b_check_test.rb]
+      map = nil
+      capture_io do
+        map = Mutineer::CoverageMap.new(source_paths: ["lib/widget.rb"], test_paths: tests,
+                                        cache_dir: cache, project_root: dir).build_or_load
+      end
+      src = File.join(dir, "lib/widget.rb")
+      assert_equal tests, map.tests_for(src, 1).sort
+      hits = sentinel_processes(dir) do
+        capture_io do
+          Mutineer::CoverageMap.new(source_paths: ["lib/widget.rb"], test_paths: tests,
+                                    cache_dir: cache, project_root: dir).build_or_load
+        end
+      end
+      assert_equal [%w[a_check_test.rb], %w[a_check_test.rb b_check_test.rb], %w[b_check_test.rb]], hits
+    end
+  end
+
+  # The RSpec capture script clears the load snapshot the same way.
+  def test_rspec_standalone_capture_does_not_credit_an_unrelated_spec_with_load_lines
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      note = 'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)}\n", mode: "a") if ENV["MUTINEER_SENTINEL"]'
+      File.write(File.join(dir, "spec/price_spec.rb"), <<~RUBY)
+        require_relative "../lib/price"
+        #{note}
+        RSpec.describe StandalonePrice do
+          it("calls") { expect(StandalonePrice.called(2)).to eq(4) }
+          it("endless") { expect(StandalonePrice.endless(2)).to eq(6) }
+        end
+      RUBY
+      File.write(File.join(dir, "spec/caller_spec.rb"), <<~RUBY)
+        require_relative "../lib/price"
+        #{note}
+        RSpec.describe "caller" do
+          it("endless") { expect(StandalonePrice.endless(3)).to eq(9) }
+        end
+      RUBY
+      File.write(File.join(dir, "spec/mail_spec.rb"), <<~RUBY)
+        #{note}
+        RSpec.describe "mail" do
+          it("passes") { expect(1).to eq(1) }
+        end
+      RUBY
+      cache = File.join(dir, "cache")
+      map = nil
+      capture_io { map = standalone_price_map(dir, cache, framework: "rspec") }
+      assert_empty map.failed_test_files, "the specs ran"
+      src = File.join(dir, "lib/price.rb")
+      assert_equal %w[spec/price_spec.rb], map.tests_for(src, price_line("n * 2"))
+      assert_equal %w[spec/price_spec.rb], map.tests_for(src, price_line("n + 9"))
+      assert_equal %w[spec/caller_spec.rb spec/price_spec.rb], map.tests_for(src, price_line("n * 3")).sort
+      assert map.ran_at_load?(src, price_line("n + 9"))
+      hits = sentinel_processes(dir) { capture_io { standalone_price_map(dir, cache, framework: "rspec") } }
+      assert_equal [%w[caller_spec.rb], %w[caller_spec.rb price_spec.rb], %w[price_spec.rb]], hits
+    end
+  end
+
+  # A map saved before #426 still lists every test on the load lines. The
+  # missing key rebuilds it, and the rebuilt map keeps the new rule.
+  def test_standalone_cache_without_narrow_load_lines_rebuilds
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_standalone_price(dir)
+      capture_io { standalone_price_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      assert_equal true, saved["narrow_load_lines"]
+      saved.delete("narrow_load_lines")
+      saved["map"]["lib/price.rb:1"] = %w[test/price_test.rb test/mail_test.rb]
+      File.write(path, JSON.generate(saved))
+
+      rebuilt = nil
+      capture_io { rebuilt = standalone_price_map(dir, cache) }
+      assert rebuilt.phase_a_ran, "a cache from before load lines were narrowed must rebuild"
+      assert_equal %w[test/price_test.rb], rebuilt.tests_for(File.join(dir, "lib/price.rb"), 1)
+      third = nil
+      capture_io { third = standalone_price_map(dir, cache) }
+      refute third.phase_a_ran
+    end
+  end
+
+  # infer_tests drops split tests when an exact spec exists, even if the run
+  # did not select that spec. The content digest does not see it, so the saved
+  # pairing has to. A hit would otherwise keep the split test as the only
+  # owner of a load-only line.
+  def test_an_unselected_exact_spec_rebuilds_the_load_line_map
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(File.join(dir, "lib"))
+      FileUtils.mkdir_p(File.join(dir, "test"))
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      File.write(File.join(dir, "lib/price.rb"), "class SplitPrice\n  LOADED = 1\nend\n")
+      %w[price_unit mail].each do |name|
+        File.write(File.join(dir, "test/#{name}_test.rb"), <<~RUBY)
+          require "minitest/autorun"
+          class Split#{name.capitalize}Test < Minitest::Test
+            def test_ok; assert_equal 1, 1; end
+          end
+        RUBY
+      end
+      cache = File.join(dir, "cache")
+      tests = %w[test/price_unit_test.rb test/mail_test.rb]
+      src = File.join(dir, "lib/price.rb")
+      mk = lambda do
+        Mutineer::CoverageMap.new(source_paths: ["lib/price.rb"], test_paths: tests,
+                                  cache_dir: cache, project_root: dir).build_or_load
+      end
+
+      first = nil
+      capture_io { first = mk.call }
+      assert first.phase_a_ran
+      assert_equal %w[test/price_unit_test.rb], first.tests_for(src, 1)
+      second = nil
+      capture_io { second = mk.call }
+      refute second.phase_a_ran, "nothing on disk that pairing reads has changed"
+
+      File.write(File.join(dir, "spec/price_spec.rb"), "RSpec.describe(SplitPrice)\n")
+      rebuilt = nil
+      capture_io { rebuilt = mk.call }
+      assert rebuilt.phase_a_ran, "the spec replaces the split test, so the map must be captured again"
+      assert_equal tests.sort, rebuilt.tests_for(src, 1).sort,
+                   "no selected test pairs, so every test keeps the load-only line"
+    end
+  end
+
+  # --- #421: a method-body edit recaptures part of the map ------------
+
+  PARTIAL_TESTS = %w[test/caller_test.rb test/mail_test.rb test/price_test.rb test/shelf_test.rb].freeze
+  SHELF_SOURCE = <<~RUBY
+    class StandaloneShelf
+      def self.bump(n)
+        n + 1
+      end
+
+      MARK = 1
+    end
+  RUBY
+  PARTIAL_SENTINEL = 'if ENV["MUTINEER_SENTINEL"]; _mode = defined?(Coverage) && Coverage.running? ? "capture" : "clean"; ' \
+                     'File.write(ENV["MUTINEER_SENTINEL"], "#{Process.pid} #{File.basename(__FILE__)} #{_mode}\n", mode: "a"); end'
+
+  def write_partial_app(dir, mail_extra: nil)
+    FileUtils.mkdir_p(File.join(dir, "lib"))
+    File.write(File.join(dir, "lib/price.rb"), STANDALONE_PRICE)
+    File.write(File.join(dir, "lib/shelf.rb"), SHELF_SOURCE)
+    FileUtils.mkdir_p(File.join(dir, "test"))
+    File.write(File.join(dir, "test/price_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{PARTIAL_SENTINEL}
+      class StandalonePriceTest < Minitest::Test
+        def test_called; assert_equal 4, StandalonePrice.called(2); end
+        def test_endless; assert_equal 6, StandalonePrice.endless(2); end
+        def test_both; assert_equal 8, StandalonePrice.both(2); end
+        def test_loaded; assert_equal 10, StandalonePrice::LOADED; end
+        def test_flunk; refute ENV["MUTINEER_FLUNK"]; end
+      end
+    RUBY
+    File.write(File.join(dir, "test/caller_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/price"
+      #{PARTIAL_SENTINEL}
+      class StandaloneCallerTest < Minitest::Test
+        def test_endless; assert_equal 9, StandalonePrice.endless(3); end
+      end
+    RUBY
+    File.write(File.join(dir, "test/shelf_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      require_relative "../lib/shelf"
+      #{PARTIAL_SENTINEL}
+      class StandaloneShelfTest < Minitest::Test
+        def test_bump; assert_equal 2, StandaloneShelf.bump(1); end
+        def test_mark; assert_equal 1, StandaloneShelf::MARK; end
+      end
+    RUBY
+    File.write(File.join(dir, "test/mail_test.rb"), <<~RUBY)
+      require "minitest/autorun"
+      #{mail_extra}
+      #{PARTIAL_SENTINEL}
+      class StandaloneMailTest < Minitest::Test
+        def test_ok; assert_equal 1, 1; end
+      end
+    RUBY
+  end
+
+  def partial_map(dir, cache, tests: PARTIAL_TESTS, **options)
+    Mutineer::CoverageMap.new(source_paths: %w[lib/price.rb lib/shelf.rb], test_paths: tests,
+                              cache_dir: cache, project_root: dir, **options).build_or_load
+  end
+
+  def with_sentinel(dir)
+    sentinel = File.join(dir, "sentinel")
+    File.write(sentinel, "")
+    ENV["MUTINEER_SENTINEL"] = sentinel
+    yield
+    File.readlines(sentinel, chomp: true).map(&:split)
+  ensure
+    ENV.delete("MUTINEER_SENTINEL")
+  end
+
+  def captured_files(events)
+    events.select { |row| row[2] == "capture" }.map { |row| row[1] }.sort
+  end
+
+  def assert_same_map(actual, expected)
+    assert_equal expected.map, actual.map
+    assert_equal expected.load_lines, actual.load_lines
+    assert_equal expected.load_methods, actual.load_methods
+  end
+
+  # A same-line edit inside a method keeps the skeleton. The next run
+  # recaptures the tests already in that source's map, not a test that only
+  # loaded the file. The paired test still owns the load-only lines. An
+  # unrelated test that was recaptured does not take them, or the other
+  # source's load-only lines. The map matches a full capture.
+  def test_method_body_edit_recaptures_only_the_tests_in_the_source_map
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      src = File.join(dir, "lib/price.rb")
+      shelf = File.join(dir, "lib/shelf.rb")
+      capture_io { partial_map(dir, cache) }
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_equal saved["load_methods"].sort, saved["load_method_bodies"].keys.sort
+      refute_includes saved["load_method_bodies"].values, "missing"
+
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      partial = nil
+      err = nil
+      events = with_sentinel(dir) { _, err = capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb price_test.rb], captured_files(events)
+      assert_includes err, "[mutineer] coverage cache: recaptured 2 of 4 test files; kept 2."
+      assert partial.phase_a_ran
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      assert_same_map(partial, full)
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("class StandalonePrice"))
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/shelf_test.rb], partial.tests_for(shelf, 1)
+      refute_includes events.map { |row| row[1] }, "mail_test.rb"
+
+      third = nil
+      again = with_sentinel(dir) { capture_io { third = partial_map(dir, cache) } }
+      refute third.phase_a_ran, "the partial save is a hit on the next run"
+      assert_empty captured_files(again)
+    end
+  end
+
+  # Recapturing one new test must not credit it with a source's load-only
+  # lines. The paired test keeps them.
+  def test_recapturing_one_test_does_not_take_another_sources_load_lines
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      File.write(File.join(dir, "test/extra_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "../lib/price"
+        require_relative "../lib/shelf"
+        #{PARTIAL_SENTINEL}
+        class StandaloneExtraTest < Minitest::Test
+          def test_ok; assert_equal 1, 1; end
+        end
+      RUBY
+      tests = PARTIAL_TESTS + ["test/extra_test.rb"]
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache, tests: tests) } }
+      assert_equal %w[extra_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh"), tests: tests) }
+      assert_same_map(partial, full)
+      src = File.join(dir, "lib/price.rb")
+      assert_equal %w[test/price_test.rb], partial.tests_for(src, price_line("n + 9"))
+      assert_equal %w[test/shelf_test.rb], partial.tests_for(File.join(dir, "lib/shelf.rb"), 1)
+    end
+  end
+
+  # A class-body edit can change which lines run at load. Every test is
+  # captured again.
+  def test_class_body_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("class StandalonePrice", "class StandalonePrice # edited"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # A method that ran at load can change a value another test reads. Its body
+  # is not a partial recapture, even when the line numbers stay put.
+  def test_load_method_body_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n + 9", "n + 8 + 1"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # An added line moves every later line. The old map keys would be wrong,
+  # so the run captures every test.
+  def test_added_line_inside_a_method_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "_ = 0\n        n * 2"))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # Editing one test file recaptures that file. The paired test keeps the
+  # load-only lines, and the map matches a full capture.
+  def test_test_file_edit_recaptures_only_that_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      mail = File.join(dir, "test/mail_test.rb")
+      File.write(mail, File.read(mail) + "# note\n")
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[mail_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      assert_same_map(partial, full)
+      assert_equal %w[test/price_test.rb], partial.tests_for(File.join(dir, "lib/price.rb"), price_line("n + 9"))
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      fresh = JSON.parse(File.read(File.join(dir, "fresh", "coverage.json")))
+      assert_equal fresh["dependencies"].keys.sort, saved["dependencies"].keys.sort,
+                   "a recaptured test file is not a loaded dependency"
+
+      File.write(mail, File.read(mail) + "# second note\n")
+      again = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[mail_test.rb], captured_files(again), "a second edit of the same test is still partial"
+    end
+  end
+
+  # A project file outside the run's sources still recaptures every test.
+  # Per-test executed files are the rest of #421.
+  def test_loaded_helper_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      helper = File.join(dir, "test/mail_helper.rb")
+      write_partial_app(dir, mail_extra: 'require_relative "mail_helper"')
+      File.write(helper, "MAIL_HELPER = 1\n")
+      capture_io { partial_map(dir, cache) }
+      File.write(helper, "MAIL_HELPER = 2\n")
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # A kept test can load a file the run no longer selects. Dropping that
+  # test must keep the file's fingerprint, or a later edit to it reuses
+  # stale coverage on a cache hit.
+  def test_a_removed_test_file_that_a_kept_test_loads_stays_a_dependency
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir, mail_extra: 'require_relative "caller_test"')
+      kept = PARTIAL_TESTS - %w[test/caller_test.rb]
+      capture_io { partial_map(dir, cache) }
+      capture_io { partial_map(dir, cache, tests: kept) }
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_includes saved["dependencies"].keys, "test/caller_test.rb"
+
+      caller = File.join(dir, "test/caller_test.rb")
+      File.write(caller, "#{File.read(caller)}CALLER_EDIT = 1\n")
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache, tests: kept) } }
+      refute_empty captured_files(events), "an edit to a file a kept test loads must not be a cache hit"
+    end
+  end
+
+  # A `--require` file is a run input. Changing it captures every test.
+  def test_require_file_edit_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      setup = File.join(dir, "setup.rb")
+      File.write(setup, "PARTIAL_SETUP = 1\n")
+      build = -> { partial_map(dir, cache, require_paths: ["setup"]) }
+      capture_io { build.call }
+      File.write(setup, "PARTIAL_SETUP = 2\n")
+      events = with_sentinel(dir) { capture_io { build.call } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # Dropping the paired test changes who may keep a load-only line. The run
+  # captures every remaining test, and the map matches a full capture.
+  def test_removing_the_paired_test_recaptures_every_remaining_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      tests = PARTIAL_TESTS - ["test/price_test.rb"]
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache, tests: tests) } }
+      assert_equal %w[caller_test.rb mail_test.rb shelf_test.rb], captured_files(events)
+      full = nil
+      capture_io { full = partial_map(dir, File.join(dir, "fresh"), tests: tests) }
+      assert_same_map(partial, full)
+    end
+  end
+
+  # A red covering test is recorded on the partial recapture, which is what
+  # stops the run before any mutant.
+  def test_partial_recapture_records_a_red_covering_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      before = JSON.parse(File.read(File.join(cache, "coverage.json")))["digest"]
+      partial = nil
+      full = nil
+      with_env("MUTINEER_FLUNK" => "1") do
+        capture_io { partial = partial_map(dir, cache) }
+        capture_io { full = partial_map(dir, File.join(dir, "fresh")) }
+      end
+      assert_includes partial.failed_clean_tests, "test/price_test.rb"
+      assert_same_map(partial, full)
+      saved = JSON.parse(File.read(File.join(cache, "coverage.json")))
+      assert_equal before, saved["digest"], "a red suite does not replace the cache"
+    end
+  end
+
+  # A capture that failed last time (`failed_test_files`) is captured again
+  # on a partial run, even when it is not in the edited source's map, and
+  # the failure is cleared once it captures.
+  def test_partial_recapture_retries_a_previously_failed_capture
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      saved["failed_test_files"] = %w[test/mail_test.rb]
+      File.write(path, JSON.generate(saved))
+
+      src = File.join(dir, "lib/price.rb")
+      File.write(src, File.read(src).sub("n * 2", "n * 2 + 0"))
+      partial = nil
+      events = with_sentinel(dir) { capture_io { partial = partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb], captured_files(events)
+      assert_empty partial.failed_test_files
+      assert_empty JSON.parse(File.read(path))["failed_test_files"]
+    end
+  end
+
+  # A cache from before the partial-recapture keys is rebuilt once.
+  def test_cache_without_run_inputs_recaptures_every_test
+    Dir.mktmpdir do |dir|
+      cache = File.join(dir, "cache")
+      write_partial_app(dir)
+      capture_io { partial_map(dir, cache) }
+      path = File.join(cache, "coverage.json")
+      saved = JSON.parse(File.read(path))
+      saved.delete("run_inputs")
+      File.write(path, JSON.generate(saved))
+      events = with_sentinel(dir) { capture_io { partial_map(dir, cache) } }
+      assert_equal %w[caller_test.rb mail_test.rb price_test.rb shelf_test.rb], captured_files(events)
+    end
+  end
+
+  # The skeleton ignores a same-line body edit and changes when a line is
+  # added or the class body changes.
+  def test_source_skeleton_ignores_a_same_line_method_body
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "price.rb")
+      File.write(path, STANDALONE_PRICE)
+      map = Mutineer::CoverageMap.new(source_paths: [path], test_paths: [], cache_dir: dir, project_root: dir)
+      original = map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("n * 2", "n * 2 + 0"))
+      assert_equal original, map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("n * 2", "_ = 0\n        n * 2"))
+      refute_equal original, map.send(:source_skeleton_digest, path)
+      File.write(path, STANDALONE_PRICE.sub("class StandalonePrice", "class StandalonePrice # edited"))
+      refute_equal original, map.send(:source_skeleton_digest, path)
+    end
+  end
+
+  # The skeleton rule across real files, not one example: for defs in every
+  # `lib/` and fixture file, a same-line edit inside the body keeps the
+  # skeleton, a new line inside the body changes it, and so do an edit just
+  # before a `def` that is not inside another body and a same-line rename.
+  def test_source_skeleton_rule_holds_across_real_ruby_files
+    root = File.expand_path("..", __dir__)
+    files = Dir[File.join(root, "{lib,test/fixtures}/**/*.rb")].sort
+    checked = 0
+    skipped = 0
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "sample.rb")
+      map = Mutineer::CoverageMap.new(source_paths: [path], test_paths: [], cache_dir: dir, project_root: dir)
+      digest = lambda do |text|
+        File.binwrite(path, text)
+        map.send(:source_skeleton_digest, path)
+      end
+      files.each do |file|
+        source = File.binread(file)
+        result = Prism.parse(source)
+        next unless result.errors.empty?
+
+        defs = []
+        map.send(:each_def, result.value) { |node| defs << node }
+        sample = defs.reject { |node| node.equal_loc || node.body.nil? }
+        sample = sample.values_at(0, sample.size / 2, -1).compact.uniq
+        original = digest.call(source)
+        next skipped += 1 if original.nil?
+
+        sample.each do |node|
+          body = node.body
+          first = body.is_a?(Prism::BeginNode) ? body.statements&.location : body.location
+          next skipped += 1 if first.nil?
+
+          at = first.start_offset
+          same_line = source.byteslice(0, at) + "nil; " + source.byteslice(at..)
+          new_line = source.byteslice(0, at) + "nil\n" + source.byteslice(at..)
+          start = node.location.start_offset
+          nested = defs.any? do |other|
+            loc = other.body&.location
+            !other.equal?(node) && loc && loc.start_offset <= start && start < loc.end_offset
+          end
+          before_def = source.byteslice(0, start) + "nil; " + source.byteslice(start..)
+          name_end = node.name_loc.end_offset
+          renamed = source.byteslice(0, name_end) + "_x" + source.byteslice(name_end..)
+          edited = [same_line, new_line, before_def, renamed].map { |text| [text, Prism.parse(text).errors.empty?] }
+          next skipped += 1 unless edited.all?(&:last)
+
+          label = "#{file.delete_prefix("#{root}/")}:#{node.location.start_line}"
+          # A nested def on the edited line moves; its position is part of the skeleton.
+          shifts_def = defs.any? { |other| other.location.start_line == first.start_line && other.location.start_offset >= at }
+          assert_equal original, digest.call(same_line), "same-line body edit at #{label}" unless shifts_def
+          refute_equal original, digest.call(new_line), "added body line at #{label}"
+          refute_equal original, digest.call(before_def), "edit before def at #{label}" unless nested
+          refute_equal original, digest.call(renamed), "same-line rename at #{label}" unless nested
+          checked += 1
+        end
+      end
+    end
+    assert_operator checked, :>=, 200, "too few defs checked (#{checked}, skipped #{skipped})"
+    assert_operator skipped, :<=, checked / 10, "too many inputs skipped (#{skipped} of #{checked + skipped})"
+  end
+
+  # Boot mode clears coverage before each test. A method-body edit recaptures
+  # the test in the source's map, not the test that only saw the file at boot.
+  def test_boot_method_body_edit_recaptures_only_the_covering_test
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "alpha.rb"), <<~RUBY)
+        class BootPartialAlpha
+          def self.double(x)
+            x * 2
+          end
+
+          def self.widen(x)
+            x + 1
+          end
+        end
+      RUBY
+      File.write(File.join(dir, "beta.rb"), <<~RUBY)
+        require_relative "alpha"
+        class BootPartialBeta
+          WIDTH = BootPartialAlpha.widen(3)
+
+          def self.half(x)
+            x / 2
+          end
+        end
+      RUBY
+      File.write(File.join(dir, "boot.rb"), "require_relative \"alpha\"\nrequire_relative \"beta\"\n")
+      note = PARTIAL_SENTINEL
+      File.write(File.join(dir, "alpha_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "alpha"
+        #{note}
+        class BootPartialAlphaTest < Minitest::Test
+          def test_double; assert_equal 6, BootPartialAlpha.double(3); end
+        end
+      RUBY
+      File.write(File.join(dir, "beta_test.rb"), <<~RUBY)
+        require "minitest/autorun"
+        require_relative "beta"
+        #{note}
+        class BootPartialBetaTest < Minitest::Test
+          def test_half; assert_equal 2, BootPartialBeta.half(4); end
+          def test_width; assert_equal 4, BootPartialBeta::WIDTH; end
+        end
+      RUBY
+      cache = File.join(dir, "cache")
+      first = boot_partial_run(dir, cache)
+      assert first["phase_a_ran"], first["stderr"]
+      assert_empty first["failed"], first["stderr"]
+
+      alpha = File.read(File.join(dir, "alpha.rb"))
+      File.write(File.join(dir, "alpha.rb"), alpha.sub("x * 2", "x * 2 + 0"))
+      partial = boot_partial_run(dir, cache)
+      assert_equal %w[alpha_test.rb], partial["captures"], partial["stderr"]
+      assert_includes partial["stderr"], "recaptured 1 of 2 test files; kept 1."
+      full = boot_partial_run(dir, File.join(dir, "fresh"))
+      assert_equal full["map"], partial["map"]
+      assert_equal full["load_lines"], partial["load_lines"]
+      assert_equal full["load_methods"], partial["load_methods"]
+    end
+  end
+
+  def boot_partial_run(dir, cache)
+    require "open3"
+    script = <<~RUBY
+      require "coverage"
+      require "json"
+      require "mutineer"
+      dir, cache = ARGV
+      Coverage.start(lines: true, methods: true)
+      require File.join(dir, "boot.rb")
+      ENV["MUTINEER_SENTINEL"] = File.join(dir, "sentinel")
+      map = Mutineer::CoverageMap.new(source_paths: ["alpha.rb"], test_paths: ["alpha_test.rb", "beta_test.rb"],
+                                      cache_dir: cache, project_root: dir, boot_path: "boot.rb").build_via_fork
+      puts JSON.generate("phase_a_ran" => map.phase_a_ran, "map" => map.map,
+                         "load_lines" => map.load_lines.to_a.sort,
+                         "load_methods" => map.load_methods.to_a.sort,
+                         "failed" => map.failed_test_files, "clean" => map.failed_clean_tests)
+    RUBY
+    File.write(File.join(dir, "sentinel"), "")
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, "-I#{File.join(ROOT, "lib")}", "-e", script, dir, cache)
+    flunk("#{status.exitstatus}: #{stderr}") unless status.success?
+
+    result = JSON.parse(stdout.lines.grep(/\A\{/).last)
+    result["stderr"] = stderr
+    result["captures"] = File.readlines(File.join(dir, "sentinel"), chomp: true)
+                              .map(&:split).select { |row| row[2] == "capture" }.map { |row| row[1] }.sort
+    result
+  end
+
   # --- #187: lines that ran at load ---------------------------------------
 
   LOAD_ROOT = File.expand_path("fixtures/load_time", __dir__)
@@ -556,6 +1781,8 @@ class CoverageMapTest < Minitest::Test
     first = build_catalog(dir)
     assert first.phase_a_ran
     assert first.ran_at_load?(CATALOG, 7), "base * 2 ran at load"
+    assert_equal ["test/catalog_test.rb"], first.tests_for(CATALOG, 7),
+                 "the paired test keeps a line that ran only at load"
     refute first.ran_at_load?(File.join(LOAD_ROOT, "test/catalog_test.rb"), 8), "only source lines are kept"
 
     second = build_catalog(dir)
@@ -636,6 +1863,43 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # The seed sets the test order, so a map captured under another seed is not
+  # reused (#282). Minitest reads SEED. RSpec reads the pinned seed and SPEC_OPTS.
+  # The partial-recapture digest (#421) must see the same changes, or a seed
+  # change would keep the old map with nothing recaptured.
+  def test_digest_is_minitest_seed_sensitive
+    %i[compute_digest run_inputs_digest].each { |name| assert_seed_sensitive(name) }
+  end
+
+  def assert_seed_sensitive(name)
+    Dir.mktmpdir do |dir|
+      make = ->(framework) {
+        Mutineer::CoverageMap.new(source_paths: [], test_paths: [], cache_dir: dir, project_root: dir,
+                                  framework: framework)
+      }
+      digest = lambda do |seed, framework, spec_opts: nil|
+        prior = ENV.fetch("SEED", nil)
+        prior_opts = ENV.fetch("SPEC_OPTS", nil)
+        seed ? ENV["SEED"] = seed : ENV.delete("SEED")
+        spec_opts ? ENV["SPEC_OPTS"] = spec_opts : ENV.delete("SPEC_OPTS")
+        make.call(framework).send(name)
+      ensure
+        prior ? ENV["SEED"] = prior : ENV.delete("SEED")
+        prior_opts ? ENV["SPEC_OPTS"] = prior_opts : ENV.delete("SPEC_OPTS")
+      end
+      refute_equal digest.call(nil, "minitest"), digest.call("2", "minitest"), name
+      assert_equal digest.call(nil, "minitest"), digest.call("1", "minitest"), name
+      assert_equal digest.call(nil, "rspec"), digest.call("2", "rspec"), name
+      refute_equal digest.call(nil, "rspec"), digest.call(nil, "rspec", spec_opts: "--seed 2"), name
+      bare = digest.call(nil, "rspec")
+      File.write(File.join(dir, ".rspec"), "--seed 7\n")
+      with_file = make.call("rspec").send(name)
+      refute_equal bare, with_file, name
+      File.write(File.join(dir, ".rspec"), "--seed 8\n")
+      refute_equal with_file, make.call("rspec").send(name), name
+    end
+  end
+
   # `require` also finds a native extension without its suffix.
   def test_digest_reads_an_extensionless_native_require
     Dir.mktmpdir do |dir|
@@ -683,6 +1947,8 @@ class CoverageMapTest < Minitest::Test
     data = { lines: [0, 0, nil], methods: { [Object, :a, 1, 0, 1, 18] => 0, [Object, :b, 1, 20, 1, 38] => 1,
                                            [Object, :c, 2, 0, 2, 18] => 2 } }
     assert_equal [0, 2, nil], map.send(:lines_with_called_defs, data)
+    rows = { "lines" => [0, 0, nil], "methods" => [[1, 0, 0], [1, 20, 1], [2, 0, 2]] }
+    assert_equal [0, 2, nil], map.send(:lines_with_called_defs, rows), "the capture JSON uses the same rule"
   end
 
   def test_from_data_takes_load_lines
@@ -723,6 +1989,40 @@ class CoverageMapTest < Minitest::Test
     map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/crash_test.rb"], project_root: dir,
                                           timings: slow_start.merge("test/crash_test.rb" => 0.01))
     assert_equal expected, map.order_tests("lib/shop/cart.rb", tests)
+  end
+
+  # A concern's namespace split runs before a cheaper unrelated file.
+  def test_order_tests_puts_a_concern_namespace_split_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "app/models/concerns/storage/totaled.rb"
+    paired = "test/models/storage/totaled_bytes_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
+  end
+
+  # A concern's namespace test runs before a cheaper unrelated file.
+  def test_order_tests_puts_a_concern_namespace_test_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "app/models/concerns/storage/totaled.rb"
+    paired = "test/models/storage/totaled_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
   end
 
   def test_capture_records_a_timing_per_test_file_and_the_cache_keeps_them
@@ -846,7 +2146,7 @@ class CoverageMapTest < Minitest::Test
     payload = clean = nil
     out, = capture_subprocess_io do
       payload = map.send(:fork_capture, noisy, [CALC], nil)
-      clean = map.send(:fork_clean_pass?, [noisy], nil)
+      clean, = map.send(:fork_clean_pass?, [noisy], nil)
     end
     assert_kind_of Hash, payload
     assert payload["passed"]
@@ -1123,9 +2423,114 @@ class CoverageMapTest < Minitest::Test
       cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
     )
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    refute map.send(:fork_clean_pass?, [hang], nil)
+    ok, = map.send(:fork_clean_pass?, [hang], nil)
+    refute ok
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
     assert_operator elapsed, :<, 2.0
+  end
+
+  def test_clean_pass_reports_a_timeout_apart_from_a_failure
+    ensure_coverage_running
+    hang = File.join(Dir.mktmpdir, "hang_clean_test.rb")
+    File.write(hang, "sleep 5\n")
+    map = Mutineer::CoverageMap.new(
+      source_paths: [CALC], test_paths: [hang],
+      cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT, capture_timeout: 0.05
+    )
+    _ok, _report, timed_out = map.send(:fork_clean_pass?, [hang], nil)
+    assert timed_out, "fork clean check past its deadline"
+    _ok, _report, timed_out = map.send(:subprocess_clean_pass?, [hang])
+    assert timed_out, "subprocess clean check past its deadline"
+  end
+
+  # The combined check runs every file in one process, so its deadline follows
+  # the measured capture time, never below --capture-timeout.
+  def test_combined_clean_timeout_scales_with_capture_timings
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.timings.merge!("a_test.rb" => 70.0, "b_test.rb" => 50.2, "skipped_test.rb" => 500.0)
+    assert_equal 181, map.send(:combined_clean_timeout, %w[a_test.rb b_test.rb])
+    assert_equal 120, map.send(:combined_clean_timeout, %w[a_test.rb])
+    assert_equal 120, map.send(:combined_clean_timeout, %w[new_test.rb])
+  end
+
+  def test_combined_clean_check_records_a_timeout_not_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    used = nil
+    map.define_singleton_method(:subprocess_clean_pass?) do |_paths, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 120, used
+    assert_equal ["combined suite"], map.failed_clean_tests
+    assert_equal({ "combined suite" => 120 }, map.clean_timeouts)
+    assert_nil map.failed_clean_details["combined suite"]
+  end
+
+  # Summed timings above --capture-timeout: the check must get 1.5 times the
+  # sum, rounded up, so a wrong factor or a missing file's timing fails here.
+  def test_combined_clean_check_forwards_the_scaled_deadline
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.timings.merge!("a_test.rb" => 100.0, "b_test.rb" => 60.1)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    used = nil
+    map.define_singleton_method(:subprocess_clean_pass?) do |_paths, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 241, used
+    assert_equal({ "combined suite" => 241 }, map.clean_timeouts)
+  end
+
+  # Boot mode (--daemon builds through build_via_fork) runs the combined check
+  # in a fork, which must get the same scaled deadline.
+  def test_combined_clean_check_forwards_the_scaled_deadline_to_the_fork
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT,
+                                    capture_timeout: 120, boot_path: "boot.rb")
+    map.timings.merge!("a_test.rb" => 100.0, "b_test.rb" => 60.1)
+    map.define_singleton_method(:clean_check_test_paths) { %w[a_test.rb b_test.rb] }
+    map.define_singleton_method(:subprocess_clean_pass?) { |*, **| flunk "boot mode must fork" }
+    used = nil
+    map.define_singleton_method(:fork_clean_pass?) do |_abs, _after_fork, timeout:|
+      used = timeout
+      [false, "", true]
+    end
+    map.send(:verify_combined_clean)
+    assert_equal 241, used
+    assert_equal({ "combined suite" => 241 }, map.clean_timeouts)
+  end
+
+  # Every return of the clean-pass helpers has the documented three elements,
+  # with an explicit false when the deadline did not pass.
+  def test_clean_pass_helpers_return_three_elements_on_every_branch
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT)
+    status = Object.new
+    def status.success? = true
+    line = "not-json"
+    map.define_singleton_method(:spawn_script) { |*, **| [status, line] }
+    assert_equal [false, "", false], map.send(:subprocess_clean_pass?, [])
+    line = JSON.generate("passed" => true, "failure_report" => "")
+    assert_equal [true, "", false], map.send(:subprocess_clean_pass?, [])
+
+    payload = nil
+    map.define_singleton_method(:fork) { |*| 0 }
+    map.define_singleton_method(:await_child) { |*| [status, payload] }
+    assert_equal [false, "", false], map.send(:fork_clean_pass?, [], nil)
+    payload = [true, ""]
+    assert_equal [true, "", false], map.send(:fork_clean_pass?, [], nil)
+    map.define_singleton_method(:await_child) { |*| raise IOError, "pipe" }
+    assert_equal [false, "", false], map.send(:fork_clean_pass?, [], nil)
+  end
+
+  def test_cached_clean_check_records_a_timeout_not_a_failure
+    map = Mutineer::CoverageMap.new(source_paths: [], test_paths: [], project_root: ROOT, capture_timeout: 120)
+    map.define_singleton_method(:subprocess_clean_pass?) { |paths| paths == ["slow_test.rb"] ? [false, "", true] : [false, "boom", false] }
+    map.send(:verify_cached_clean, test_paths: %w[slow_test.rb red_test.rb])
+    assert_equal %w[slow_test.rb red_test.rb], map.failed_clean_tests
+    assert_equal({ "slow_test.rb" => 120 }, map.clean_timeouts)
+    assert_equal "boom", map.failed_clean_details["red_test.rb"]
   end
 
   # --- #101 / #129: one deadline for the whole capture ----------------------
@@ -1395,6 +2800,155 @@ class CoverageMapTest < Minitest::Test
     refute map.uncapturable_source?(other)
   end
 
+  # A failed exact namespace test marks the concern. A spec does the same.
+  def test_failing_namespace_test_marks_the_concern_uncapturable
+    [
+      "test/models/storage/totaled_test.rb",
+      "spec/models/storage/totaled_spec.rb"
+    ].each do |test_rel|
+      Dir.mktmpdir do |dir|
+        map, src = concern_namespace_capture(dir, test_rel)
+        assert map.uncapturable_source?(src), test_rel
+        assert map.method_uncapturable?(src, 3..5), test_rel
+      end
+    end
+  end
+
+  # The same name outside both mirrors does not mark the concern.
+  def test_failing_same_name_outside_both_mirrors_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/other/totaled_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A failed split name at the namespace path marks the concern.
+  def test_failing_split_name_at_the_namespace_path_marks_the_concern
+    Dir.mktmpdir do |dir|
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      assert map.uncapturable_source?(src)
+      assert map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # A longer model owns the namespace split, so the failed file does not mark
+  # the concern. The model is the source that pairs with the file.
+  def test_failing_namespace_split_owned_by_a_longer_model_does_not_taint_the_concern
+    Dir.mktmpdir do |dir|
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      FileUtils.mkdir_p(File.dirname(longer))
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+      assert map.uncapturable_source?(longer)
+    end
+  end
+
+  # A namespace spec leaves split names unpaired. A failed split must not
+  # mark the concern when that spec is the paired file.
+  def test_failing_namespace_split_does_not_taint_a_concern_paired_with_a_spec
+    Dir.mktmpdir do |dir|
+      spec = File.join(dir, "spec/models/storage/totaled_spec.rb")
+      FileUtils.mkdir_p(File.dirname(spec))
+      File.write(spec, "# spec\n")
+      map, src = concern_namespace_capture(dir, "test/models/storage/totaled_bytes_test.rb")
+      refute map.uncapturable_source?(src)
+      refute map.method_uncapturable?(src, 3..5)
+    end
+  end
+
+  # The longer concern already has a concerns-path test, so it does not run
+  # the namespace split. A failed copy marks the shorter concern, which does.
+  def test_failing_namespace_split_marks_the_shorter_concern_when_the_longer_one_has_its_own_test
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      own = "test/models/concerns/user_session_test.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, own].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "module M; def n; 1; end; end\n")
+      end
+      bad = File.join(dir, bad_rel)
+      FileUtils.mkdir_p(File.dirname(bad))
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [bad],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      assert map.uncapturable_source?(File.join(dir, shorter))
+      refute map.uncapturable_source?(File.join(dir, longer_rel))
+    end
+  end
+
+  # A longer concern owns the namespace split. The shorter concern stays a
+  # coverage gap. The longer concern is the one the failed file marks.
+  def test_failing_namespace_split_owned_by_a_longer_concern_marks_that_concern
+    Dir.mktmpdir do |dir|
+      shorter = "app/models/concerns/user.rb"
+      longer_rel = "app/models/concerns/user_session.rb"
+      bad_rel = "test/models/user_session_extra_test.rb"
+      [shorter, longer_rel, bad_rel].each do |rel|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, rel == bad_rel ? "require 'does/not/exist'\n" : "module M; def n; 1; end; end\n")
+      end
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(
+          source_paths: [File.join(dir, shorter), File.join(dir, longer_rel)],
+          test_paths: [File.join(dir, bad_rel)],
+          cache_dir: File.join(dir, "cache"), project_root: dir
+        ).build_or_load
+      end
+      refute map.uncapturable_source?(File.join(dir, shorter))
+      assert map.uncapturable_source?(File.join(dir, longer_rel))
+    end
+  end
+
+  # A test at the concerns path wins, so a failed namespace test does not
+  # mark the concern. Pairing would not run the namespace test for it.
+  # An exact name and a split name at the namespace path follow the same rule.
+  def test_failing_namespace_test_does_not_taint_a_concern_with_its_own_test
+    %w[test/models/storage/totaled_test.rb
+       test/models/storage/totaled_bytes_test.rb].each do |failed|
+      %w[test/models/concerns/storage/totaled_test.rb
+         test/models/concerns/storage/totaled_sum_test.rb].each do |own|
+        Dir.mktmpdir do |dir|
+          FileUtils.mkdir_p(File.join(dir, File.dirname(own)))
+          File.write(File.join(dir, own), "# exists\n")
+          map, src = concern_namespace_capture(dir, failed)
+          refute map.uncapturable_source?(src), "#{own} vs #{failed}"
+          refute map.method_uncapturable?(src, 3..5), "#{own} vs #{failed}"
+        end
+      end
+    end
+  end
+
+  # Build a concern whose named test fails to load.
+  def concern_namespace_capture(dir, test_rel)
+    source = "app/models/concerns/storage/totaled.rb"
+    src = File.join(dir, source)
+    bad = File.join(dir, test_rel)
+    FileUtils.mkdir_p(File.dirname(src))
+    FileUtils.mkdir_p(File.dirname(bad))
+    File.write(src, "module Storage\n  module Totaled\n    def total(a, b)\n      a + b\n    end\n  end\nend\n")
+    File.write(bad, "require 'does/not/exist'\n")
+    map = nil
+    capture_subprocess_io do
+      map = Mutineer::CoverageMap.new(source_paths: [src], test_paths: [bad],
+                                      cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+    end
+    [map, src]
+  end
+
   # A failed test in another directory shares a basename prefix only. It must
   # not fail the gate for app/models/user.rb.
   def test_failing_split_test_outside_the_mirror_does_not_taint_the_source
@@ -1496,6 +3050,41 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # A longer file in the namespace directory owns the concern's split name.
+  # Deleting it changes the digest, so the next run captures again.
+  def test_deleting_a_namespace_longer_source_rebuilds_a_concern
+    Dir.mktmpdir do |dir|
+      concern = File.join(dir, "app/models/concerns/storage/totaled.rb")
+      longer = File.join(dir, "app/models/storage/totaled_bytes.rb")
+      bad = File.join(dir, "test/models/storage/totaled_bytes_extra_test.rb")
+      [concern, longer, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(concern, "module Storage\n  module Totaled\n    def total(a, b)\n      a + b\n    end\n  end\nend\n")
+      File.write(longer, "class TotaledBytes; def n; 1; end; end\n")
+      File.write(bad, <<~RUBY)
+        sibling = File.expand_path("../../../app/models/storage/totaled_bytes.rb", __dir__)
+        raise "sibling present" if File.file?(sibling)
+      RUBY
+      first = nil
+      capture_subprocess_io do
+        first = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                          cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute_empty first.failed_test_files
+      refute first.uncapturable_source?(concern)
+
+      File.delete(longer)
+      refute first.uncapturable_source?(concern), "the stored blame stays with this map"
+
+      rebuilt = nil
+      capture_subprocess_io do
+        rebuilt = Mutineer::CoverageMap.new(source_paths: [concern], test_paths: [bad],
+                                            cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert rebuilt.phase_a_ran, "deleting the namespace owner must rebuild coverage"
+      refute rebuilt.uncapturable_source?(concern)
+    end
+  end
+
   # The daemon rebuilds the map with from_data, which has no @source_paths.
   # A failed exact test must still blame its source, and must not raise.
   def test_from_data_uncapturable_does_not_crash_without_source_paths
@@ -1516,7 +3105,7 @@ class CoverageMapTest < Minitest::Test
       File.write(src, "class Bar; def n; 1; end; end\n")
       map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: ["test/foo/bar_extra_test.rb"],
                                             project_root: dir)
-      assert map.method_uncapturable?(src, 1..3)
+      assert map.method_uncapturable?(src, 3..5)
     end
   end
 
@@ -1571,5 +3160,109 @@ class CoverageMapTest < Minitest::Test
         end
       end
     end
+  end
+
+  # --- #494 pack sources ------------------------------------------------------
+
+  # A failed split test inside a pack marks its pack source. A source of the
+  # same name in another directory of the pack (app/services/item.rb) does
+  # not take it: the split sits in the mirror of app/models only.
+  def test_failing_pack_split_test_marks_only_its_pack_source
+    Dir.mktmpdir do |dir|
+      src = File.join(dir, "packs/catalog/app/models/item.rb")
+      other = File.join(dir, "packs/catalog/app/services/item.rb")
+      bad = File.join(dir, "packs/catalog/test/models/item_upsert_test.rb")
+      [src, other, bad].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(src, "class Item; def n; 1; end; end\n")
+      File.write(other, "class ServiceItem; def n; 1; end; end\n")
+      File.write(bad, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [src, other], test_paths: [bad],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(src)
+      refute map.uncapturable_source?(other)
+    end
+  end
+
+  # cubic on #557 (#554 item 5): a failed exact test blames a pack source only
+  # when pairing gives it that test. A same-named test in another pack does
+  # not mark it.
+  def test_failing_exact_test_in_another_pack_does_not_mark_a_pack_source
+    Dir.mktmpdir do |dir|
+      mine = File.join(dir, "packs/catalog/app/models/item.rb")
+      own_test = File.join(dir, "packs/catalog/test/models/item_test.rb")
+      other = File.join(dir, "packs/billing/test/models/item_test.rb")
+      [mine, own_test, other].each { |path| FileUtils.mkdir_p(File.dirname(path)) }
+      File.write(mine, "class Item; def n; 1; end; end\n")
+      File.write(other, "require 'does/not/exist'\n")
+      map = nil
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [mine], test_paths: [other],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      refute map.uncapturable_source?(mine), "another pack's item_test.rb must not mark this pack's item.rb"
+
+      File.write(own_test, "require 'does/not/exist'\n")
+      FileUtils.rm_rf(File.join(dir, "cache"))
+      capture_subprocess_io do
+        map = Mutineer::CoverageMap.new(source_paths: [mine], test_paths: [own_test],
+                                        cache_dir: File.join(dir, "cache"), project_root: dir).build_or_load
+      end
+      assert map.uncapturable_source?(mine), "its own failed pack test still marks it"
+    end
+  end
+
+  # A longer file in another root of the pack can own a split name of a pack
+  # source, so its presence changes the digest. A source outside packs/ keeps
+  # the digest it had.
+  def test_digest_of_a_pack_source_sees_a_longer_file_in_its_pack
+    Dir.mktmpdir do |dir|
+      pack_src = "packs/catalog/app/models/item.rb"
+      plain_src = "app/models/item.rb"
+      [pack_src, plain_src].each do |rel|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, rel)))
+        File.write(File.join(dir, rel), "class Item; end\n")
+      end
+      digest = lambda do |src|
+        Mutineer::CoverageMap.new(source_paths: [src], test_paths: [], cache_dir: dir, project_root: dir)
+                             .send(:compute_digest)
+      end
+      before_pack = digest.call(pack_src)
+      before_plain = digest.call(plain_src)
+      longer = File.join(dir, "packs/catalog/lib/models/item_price.rb")
+      FileUtils.mkdir_p(File.dirname(longer))
+      File.write(longer, "class ItemPrice; end\n")
+      refute_equal before_pack, digest.call(pack_src)
+      assert_equal before_plain, digest.call(plain_src)
+
+      # A pack concern also sees a longer file at its namespace path in the pack.
+      concern = "packs/catalog/app/models/concerns/storage/totaled.rb"
+      FileUtils.mkdir_p(File.dirname(File.join(dir, concern)))
+      File.write(File.join(dir, concern), "module Totaled; end\n")
+      before_concern = digest.call(concern)
+      owner = File.join(dir, "packs/catalog/app/models/storage/totaled_bytes.rb")
+      FileUtils.mkdir_p(File.dirname(owner))
+      File.write(owner, "class TotaledBytes; end\n")
+      refute_equal before_concern, digest.call(concern)
+    end
+  end
+
+  # The pack test of a pack source runs first for its mutants.
+  def test_order_tests_puts_the_pack_test_first
+    dir = Dir.mktmpdir("mutineer-order")
+    source = "packs/catalog/app/models/item.rb"
+    paired = "packs/catalog/test/models/item_test.rb"
+    extra = "test/other_test.rb"
+    [source, paired, extra].each do |rel|
+      path = File.join(dir, rel)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "")
+    end
+    timings = { paired => 9.0, extra => 0.1 }
+    map = Mutineer::CoverageMap.from_data(map: {}, failed_test_files: [], project_root: dir, timings: timings)
+
+    assert_equal [paired, extra], map.order_tests(File.join(dir, source), [extra, paired])
   end
 end

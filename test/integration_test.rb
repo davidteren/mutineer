@@ -67,6 +67,51 @@ class IntegrationTest < Minitest::Test
                          operator: :range, subject: "upto", token: "..", replacement: "...")
   end
 
+  # #344: an endless range used as a Hash index is swapped, and the test that
+  # looks up the inclusive key is what kills it.
+  def test_endless_range_hash_index_is_killed_by_the_key_lookup
+    result = run_mutineer(sources: ["test/fixtures/range_key.rb"],
+                          tests: ["test/fixtures/range_key_test.rb"],
+                          operators: ["range"], matrix: true)
+    assert_equal 1, result.killed_count
+    assert_equal 0, result.survived_count
+    assert_equal 100.0, result.mutation_score
+
+    row = result.results.first
+    assert_equal "open?", row.subject.name.to_s
+    assert_equal :killed, row.status
+    assert_equal :range, row.mutation.operator
+    assert_equal "..", source_token(row)
+    assert_equal "...", row.mutation.replacement
+    killer = ["test/fixtures/range_key_test.rb",
+              "RangeKeyTest#test_open_matches_the_inclusive_range_key",
+              "RangeKeyTest#test_open_matches_the_inclusive_range_key"]
+    assert_equal [killer], row.kills.killed_by
+  end
+
+  # #469 repro: heredoc lines and `%(...)` parts are declined, so no mutant is
+  # skipped (invalid). The `"..."` part still mutates and its test kills it.
+  def test_unquoted_string_parts_are_declined_and_the_quoted_part_is_killed
+    config = Mutineer::Config.new(
+      sources: ["test/fixtures/prompt_text.rb"], tests: ["test/fixtures/prompt_text_test.rb"],
+      operators: ["literal_mutation"], matrix: true, cache_dir: Dir.mktmpdir("mutineer-cache"), project_root: ROOT
+    )
+    result, _, extras = Mutineer::Runner.execute(config)
+
+    assert_equal 4, extras[:declined].fetch("literal_mutation")
+    assert_equal 0, result.results.count { |r| r.status == :skipped }
+    assert_equal 1, result.results.size
+    row = result.results.first
+    assert_equal "greet", row.subject.name.to_s
+    assert_equal :killed, row.status
+    assert_equal "Hello, ", source_token(row)
+    assert_equal '""', row.mutation.replacement
+    killer = ["test/fixtures/prompt_text_test.rb",
+              "PromptTextTest#test_greet_says_hello",
+              "PromptTextTest#test_greet_says_hello"]
+    assert_equal [killer], row.kills.killed_by
+  end
+
   def test_negation_removal_survivor
     assert_sole_survivor(source: "test/fixtures/access.rb", test: "test/fixtures/access_test.rb",
                          operator: :negation_removal, subject: "guest?", token: "!", replacement: "")
@@ -134,6 +179,26 @@ class IntegrationTest < Minitest::Test
   def test_operator_assignment_survivor
     assert_sole_survivor(source: "test/fixtures/tally.rb", test: "test/fixtures/tally_test.rb",
                          operator: :operator_assignment, subject: "sum", token: "+=", replacement: "-=")
+  end
+
+  # #418: the Fizzy shape, a one-statement def-level rescue body.
+  def test_rescue_body_survivor
+    assert_sole_survivor(source: "test/fixtures/day_lookup.rb", test: "test/fixtures/day_lookup_test.rb",
+                         operator: :rescue_body, subject: "day", token: ":not_found", replacement: "nil")
+  end
+
+  # #418: return_nil reaches both final expressions of a def-level rescue. The
+  # test kills the body's and leaves the rescue clause's.
+  def test_return_nil_reaches_a_def_level_rescue
+    result = run_mutineer(sources: ["test/fixtures/day_lookup.rb"],
+                          tests: ["test/fixtures/day_lookup_test.rb"], operators: %w[return_nil])
+
+    assert_equal 1, result.killed_count
+    assert_equal 1, result.survived_count
+    s = result.surviving_mutants.first
+    assert_equal "day", s.subject.name.to_s
+    assert_equal :return_nil, s.mutation.operator
+    assert_equal ":not_found", source_token(s)
   end
 
   # Scenario B — calculator + strong, perfect score (R10)

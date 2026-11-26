@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+# CI runs the suite on Prism 2 with this Gemfile. Ruby 3.4 and 4.0 ship Prism 1
+# as a default gem, so without this pin Prism 2 runs only when another gem pulls
+# it in. test/prism_errors_test.rb skips on Prism 1 (#392, #400).
+source "https://rubygems.org"
+
+gemspec path: ".."
+
+gem "prism", "~> 2.0"
+
+group :test do
+  gem "minitest", "~> 5.0"
+  gem "rspec", "~> 3.0"
+end

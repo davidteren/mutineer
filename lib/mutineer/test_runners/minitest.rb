@@ -13,7 +13,8 @@ module Mutineer
       #   first failing test.
       # @param record_to [IO, nil] a `--matrix` run: send each test's outcome to
       #   this channel and run every test.
-      # @return [Integer] 0 on success, 1 on failure.
+      # @return [Integer] 0 on success, 1 on failure, 2 when the first failure
+      #   was an Active Record connection or lock error.
       def self.run(test_files, stop_at_first_failure: false, record_to: nil)
         MinitestIntegration.run(test_files, stop_at_first_failure: stop_at_first_failure, record_to: record_to)
       end

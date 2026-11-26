@@ -8,6 +8,17 @@ class ConfigTest < Minitest::Test
 
   # --- find_file (KTD4) ---
 
+  # #303: `migrate` and every run parse .mutineer.yml here first, so a
+  # non-ASCII reason must load under LANG unset (US-ASCII default external).
+  def test_from_file_reads_a_non_ascii_config_under_an_ascii_locale
+    Dir.mktmpdir do |dir|
+      yml = File.join(dir, ".mutineer.yml")
+      File.write(yml, "ignore:\n  - id: abc\n    reason: caf\u00e9\n")
+      raw = with_ascii_default_external { Mutineer::Config.from_file(yml) }
+      assert_equal "caf\u00e9", raw[:ignore_reasons]["abc"], "Psych reads YAML as UTF-8 whatever the locale"
+    end
+  end
+
   def test_find_file_walks_up_to_two_dirs
     Dir.mktmpdir do |root|
       deep = File.join(root, "a", "b", "c")
@@ -107,6 +118,49 @@ class ConfigTest < Minitest::Test
     end
     err = assert_raises(Mutineer::ConfigError) { Config.parse(:cache_dir, "", file: ".mutineer.yml") }
     assert_includes err.message, ".mutineer.yml: cache_dir must be a directory, not blank"
+  end
+
+  # #491: load_path is a directory or a list of directories. A blank entry
+  # and a value of any other shape are usage errors, never a guessed path.
+  def test_parse_load_path_shapes
+    assert_equal %w[test/support], Config.parse(:extra_load_paths, "test/support", file: ".mutineer.yml")
+    assert_equal %w[a /abs/b], Config.parse(:extra_load_paths, %w[a /abs/b], file: ".mutineer.yml")
+    assert_equal [], Config.parse(:extra_load_paths, [], file: ".mutineer.yml"), "load_path: [] means no directory"
+    assert_equal %w[x], Config.parse(:extra_load_paths, "x")
+
+    err = assert_raises(Mutineer::ConfigError) { Config.parse(:extra_load_paths, "") }
+    assert_equal '--load-path must name a directory, not blank (got: "")', err.message
+    { nil => "nil", [""] => '[""]', ["a", nil] => '["a", nil]', " " => '" "' }.each do |value, shown|
+      err = assert_raises(Mutineer::ConfigError) { Config.parse(:extra_load_paths, value, file: ".mutineer.yml") }
+      assert_equal ".mutineer.yml: load_path must name a directory, not blank (got: #{shown})", err.message
+    end
+    [true, false, 1, { "a" => "b" }, [%w[a b]], [1]].each do |value|
+      err = assert_raises(Mutineer::ConfigError, value.inspect) do
+        Config.parse(:extra_load_paths, value, file: ".mutineer.yml")
+      end
+      assert_equal ".mutineer.yml: load_path must be a directory or a list of directories (got: #{value.inspect})",
+                   err.message
+    end
+  end
+
+  def test_load_path_file_key_command_line_replaces_and_origin
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, ".mutineer.yml")
+      File.write(path, "load_path:\n  - test/support\n  - shared\n")
+      file_hash = Config.from_file(path)
+      assert_equal({ extra_load_paths: %w[test/support shared] }, file_hash)
+
+      from_file = Config.resolve({}, file_hash)
+      assert_equal %w[test/support shared], from_file.extra_load_paths
+      assert_equal "load_path in .mutineer.yml", from_file.origin(:extra_load_paths)
+
+      typed = Config.resolve({ extra_load_paths: %w[other] }, file_hash)
+      assert_equal %w[other], typed.extra_load_paths, "the command line replaces the file's list"
+      assert_equal "--load-path", typed.origin(:extra_load_paths)
+      assert_equal %w[lib], typed.load_paths, "the code-only lib default is a separate field"
+    end
+    assert_equal [], Config.new.extra_load_paths
+    assert_includes Mutineer::KNOWN_KEYS, "load_path"
   end
 
   def test_parse_rejects_a_blank_coverage_from
@@ -270,6 +324,109 @@ class ConfigTest < Minitest::Test
 
   def test_known_keys_come_from_the_schema
     assert_equal Mutineer::CONFIG_OPTIONS.filter_map(&:yaml_key), Mutineer::KNOWN_KEYS
+    assert_includes Mutineer::KNOWN_KEYS, "tests"
+  end
+
+  # --- tests: map (issue #382) ---
+
+  def test_tests_key_parses_entries
+    yaml = <<~YAML
+      tests:
+        - sources: app/controllers/concerns/**/*.rb
+          tests:
+            - test/controllers/**/*_test.rb
+            - test/integration/**/*_test.rb
+    YAML
+    with_config(yaml) do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal(
+        [{ sources: ["app/controllers/concerns/**/*.rb"],
+           tests: ["test/controllers/**/*_test.rb", "test/integration/**/*_test.rb"] }],
+        @hash[:test_map]
+      )
+      refute @hash.key?(:tests), "YAML tests: must not fill the CLI :tests field"
+    end
+  end
+
+  def test_tests_key_leaves_the_test_flag_field_alone
+    yaml = <<~YAML
+      tests:
+        - sources: lib/shared.rb
+          tests: test/shared_test.rb
+    YAML
+    with_config(yaml) do |path|
+      capture_io { @hash = Config.from_file(path) }
+      cfg = Config.resolve({}, @hash)
+      assert_equal [], cfg.tests
+      refute cfg.explicit?(:tests)
+      assert_equal(
+        [{ sources: ["lib/shared.rb"], tests: ["test/shared_test.rb"] }],
+        cfg.test_map
+      )
+      assert_equal "tests in .mutineer.yml", cfg.origin(:test_map)
+    end
+  end
+
+  def test_empty_tests_list_means_no_map
+    with_config("tests: []\n") do |path|
+      out, err = capture_io { @hash = Config.from_file(path) }
+      assert_empty out
+      assert_empty err
+      assert_equal({ test_map: [] }, @hash)
+    end
+  end
+
+  def test_config_new_defaults_test_map_to_empty
+    assert_equal [], Config.new.test_map
+  end
+
+  def test_malformed_tests_key_raises
+    [
+      "tests:\n",
+      "tests: plain\n",
+      "tests: [test/a_test.rb]\n",
+      "tests:\n  - sources: a.rb\n",
+      "tests:\n  - tests: a_test.rb\n",
+      "tests:\n  - sources: a.rb\n    tests: a_test.rb\n    test: typo\n",
+      "tests:\n  - sources: \"\"\n    tests: a_test.rb\n",
+      "tests:\n  - sources: []\n    tests: a_test.rb\n",
+      "tests:\n  - sources: 42\n    tests: a_test.rb\n",
+      "tests:\n  - sources: /abs/a_test.rb\n    tests: a_test.rb\n",
+      "tests:\n  - sources: ../outside.rb\n    tests: a_test.rb\n",
+      "tests:\n  - sources: a.rb\n    tests: ../outside_test.rb\n"
+    ].each do |yaml|
+      with_config(yaml) do |path|
+        err = assert_raises(Mutineer::ConfigError, yaml) { Config.from_file(path) }
+        assert_match(/\.mutineer\.yml: tests/, err.message, yaml)
+      end
+    end
+  end
+
+  def test_quoted_glob_patterns_parse
+    yaml = <<~YAML
+      tests:
+        - sources: lib/**/*.rb
+          tests: "**/*_test.rb"
+        - sources: app/**/*.rb
+          tests: ["test/{a,b}/**/*_test.rb"]
+    YAML
+    with_config(yaml) do |path|
+      capture_io { @hash = Config.from_file(path) }
+      assert_equal(
+        [
+          { sources: ["lib/**/*.rb"], tests: ["**/*_test.rb"] },
+          { sources: ["app/**/*.rb"], tests: ["test/{a,b}/**/*_test.rb"] }
+        ],
+        @hash[:test_map]
+      )
+    end
+
+    with_config("tests:\n  - sources: lib/a.rb\n    tests: *\n") do |path|
+      err = assert_raises(Mutineer::ConfigError) { Config.from_file(path) }
+      assert_match(/\.mutineer\.yml parse error:/, err.message)
+    end
   end
 
   def test_from_file_warns_on_unknown_operator_and_drops_it
@@ -386,6 +543,11 @@ class ConfigTest < Minitest::Test
     assert_equal({}, Config.new.ignore_reasons)
     assert_equal [], Config.resolve({}, {}).ignore
     assert_equal({}, Config.resolve({}, {}).ignore_reasons)
+  end
+
+  def test_unpaired_sources_defaults_to_empty
+    assert_equal [], Config.new.unpaired_sources
+    assert_equal [], Config.resolve({}, {}).unpaired_sources
   end
 
   # A mapping entry keeps its reason. A bare id in the same list does not.
@@ -613,11 +775,16 @@ class ConfigTest < Minitest::Test
     fail_fast: [false, true],
     matrix: [false, true],
     allow_empty: [false, true],
+    since_paired_tests: [false, true],
     test_command: ["a %{files}", "b %{files}"],
     daemon: [false, true],
     timeout: [30, 60],
     capture_timeout: [300, 600],
-    cache_dir: ["a", "b"]
+    cache_dir: ["a", "b"],
+    shared_databases: [%w[cable], %w[queue]],
+    extra_load_paths: [%w[test/support], %w[shared]],
+    test_map: [[{ sources: ["a.rb"], tests: ["a_test.rb"] }],
+               [{ sources: ["b.rb"], tests: ["b_test.rb"] }]]
   }.freeze
 
   def test_every_option_with_a_yaml_key_has_a_layer_sample

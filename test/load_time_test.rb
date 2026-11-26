@@ -18,9 +18,8 @@ class LoadTimeTest < Minitest::Test
   ROOT = File.expand_path("fixtures/load_time", __dir__)
   LIB = File.expand_path("../lib", __dir__)
 
-  # Runs Runner.execute in a child ruby and returns [[subject, status], ...],
-  # the score, and the subjects of the ran_at_load results whose covering
-  # tests ran and passed (#286).
+  # Runs Runner.execute in a child ruby and returns [[subject, status], ...]
+  # plus the score.
   def run_load_time(source, test, strategy:, boot: nil, requires: [], framework: "minitest")
     Dir.mktmpdir("mutineer-load-time") do |cache|
       script = <<~RUBY
@@ -32,13 +31,12 @@ class LoadTimeTest < Minitest::Test
                                       project_root: #{ROOT.inspect}, cache_dir: #{cache.inspect}, jobs: 1)
         agg = Mutineer::Runner.execute(config).first
         $stdout.puts JSON.generate("results" => agg.results.map { |r| [r.subject.qualified_name, r.status] },
-                                   "score" => agg.mutation_score,
-                                   "tested" => agg.results.select(&:tested_at_load?).map { |r| r.subject.qualified_name })
+                                   "score" => agg.mutation_score)
       RUBY
       out, err, status = Open3.capture3(RbConfig.ruby, "-I#{LIB}", "-e", script, chdir: ROOT)
       assert status.success?, "run failed: #{err}"
       doc = JSON.parse(out.lines.last)
-      [doc["results"], doc["score"], doc["tested"]]
+      [doc["results"], doc["score"]]
     end
   end
 
@@ -53,20 +51,16 @@ class LoadTimeTest < Minitest::Test
   end
 
   def test_standalone_redefine_reports_ran_at_load_not_survived
-    results, score, tested = catalog(strategy: "redefine")
+    results, score = catalog(strategy: "redefine")
     assert_equal [["Catalog.price", "ran_at_load"]], results
     assert_nil score
-    # Its covering test ran and passed: a survivor that may hide a test gap.
-    assert_equal ["Catalog.price"], tested
   end
 
   def test_boot_reports_ran_at_load_not_no_coverage
     %w[reload redefine].each do |strategy|
-      results, score, tested = catalog(strategy: strategy, boot: "boot.rb")
+      results, score = catalog(strategy: strategy, boot: "boot.rb")
       assert_equal [["Catalog.price", "ran_at_load"]], results, strategy
       assert_nil score, strategy
-      # No test covers the line in boot mode, so no test ran it.
-      assert_empty tested, strategy
     end
   end
 

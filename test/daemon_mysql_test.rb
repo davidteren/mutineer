@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require_relative "run_lock_helpers"
 require "mutineer/daemon_client"
 require "mutineer/rails_worker_db"
 require "mutineer/runner"
@@ -11,6 +12,8 @@ require "tmpdir"
 # MySQL worker databases. Skipped unless DB=mysql. The CI job sets that and
 # provides MySQL 8. These tests use the fixture app's mysql2 client.
 class DaemonMysqlTest < Minitest::Test
+  include RunLockHelpers
+
   APP = File.expand_path("fixtures/rails_app", __dir__)
   ROOT = File.expand_path("..", __dir__)
   ORDER = File.join(APP, "app/models/order.rb")
@@ -37,7 +40,6 @@ class DaemonMysqlTest < Minitest::Test
       source_dirs: [File.join(APP, "app/models")],
       framework: "minitest",
       rails: true,
-      schema: File.join(APP, "db/schema.rb"),
       require_paths: [File.join(APP, "test/support/seed_setup")],
       slots: slots
     }
@@ -88,6 +90,7 @@ class DaemonMysqlTest < Minitest::Test
       _out, err = capture_subprocess_io { aggregate = Mutineer::Runner.execute(config).first }
       assert_equal 100.0, aggregate.mutation_score
       assert_includes err, "provisioned 1 mysql worker database(s) from #{BASE}"
+      refute_match(/is not tested with --daemon|is not supported\. --daemon needs MySQL 8\.0|could not read the MySQL server version/, err)
     end
   end
 
@@ -334,6 +337,69 @@ class DaemonMysqlTest < Minitest::Test
     RUBY
   end
 
+  # #416, gap 3: a run whose first daemon did not boot takes the exclusive
+  # lock in its one worker daemon, so it stops beside another run.
+  def test_a_fallback_run_stops_while_another_run_holds_the_lock
+    holder = spawn_holder(<<~RUBY)
+      require "./config/environment"
+      require #{WORKER_DB.inspect}
+      Mutineer::RailsWorkerDb.prepare_worker!
+      $stdout.puts "READY"
+      $stdout.flush
+      sleep 180
+    RUBY
+    Dir.mktmpdir do |dir|
+      out, status = run_cli(1, boot: write_coverage_failing_boot(dir, APP))
+      assert_equal 1, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_includes out, "another Mutineer run is using #{BASE}"
+      refute_match(/mutation score/i, out)
+    end
+  ensure
+    stop_holder(holder)
+  end
+
+  # #416, gap 3: alone, the fallback run's one daemon boots as "solo" and
+  # copies its own worker database before any mutant runs.
+  def test_a_fallback_run_alone_copies_its_worker_database_in_a_solo_daemon
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      out, status = run_cli(1, boot: write_coverage_failing_boot(dir, APP),
+                               require_paths: [write_role_file(dir, roles)])
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "daemon coverage map unavailable"
+      assert_includes out, "provisioned 1 mysql worker database(s) from #{BASE}"
+      # A number, not "N/A": at least one mutant ran against the copied database.
+      assert_match(/Mutation score: \d/, out)
+      # The coverage daemon failed in its boot file, before the --require files.
+      assert_equal ["solo"], File.readlines(roles, chomp: true).map { |line| line.split(" ", 2).last }
+    end
+  end
+
+  # #416, gap 3: a respawn of the solo daemon asks for the exclusive lock
+  # and copies again. Nothing its dead daemon left behind may hold the lock.
+  def test_a_fallback_run_survives_a_respawn_of_its_solo_daemon
+    pid = nil
+    Dir.mktmpdir do |dir|
+      roles = File.join(dir, "roles.log")
+      log = File.join(dir, "run.log")
+      pid = spawn_fixture_run(log, app: APP, source: ORDER, test: TEST_FILE,
+                                   boot: write_coverage_failing_boot(dir, APP),
+                                   require_paths: [write_hold_file(dir), write_role_file(dir, roles)])
+      assert wait_for_mutant_phase(pid, log), "the run never reached its mutants\n#{File.read(log)}"
+      Process.kill("KILL", daemon_pids(roles, "solo").fetch(0))
+      status = wait_child(pid, timeout: 240)
+      out = File.read(log)
+      assert_equal 0, status.exitstatus, out
+      assert_includes out, "respawning (1/3)"
+      refute_includes out, "another Mutineer run"
+      assert_equal 2, out.scan("provisioned 1 mysql worker database(s)").size, out
+      assert_equal 2, daemon_pids(roles, "solo").size, "the respawn booted as solo\n#{File.read(roles)}"
+    end
+  ensure
+    stop_holder(pid, signal: "KILL")
+  end
+
   private
 
   def request(client, id, code)
@@ -372,19 +438,20 @@ class DaemonMysqlTest < Minitest::Test
     nil
   end
 
-  def run_cli(jobs, extra_env = {})
+  def run_cli(jobs, env: {}, boot: "config/environment", require_paths: [])
     script = <<~RUBY
       require "mutineer"
       config = Mutineer::Config.new(
         sources: [#{ORDER.inspect}],
         tests: [#{TEST_FILE.inspect}],
         project_root: #{APP.inspect},
-        boot: "config/environment",
+        boot: #{boot.inspect}, require_paths: #{require_paths.inspect},
         rails: true, daemon: true, strategy: "reload", framework: "minitest", jobs: #{jobs}
       )
       Mutineer::CLI.run(config)
     RUBY
-    Open3.capture2e(ENV.to_h.merge(extra_env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
+    Open3.capture2e(fixture_run_env(env), "bundle", "exec", "ruby", "-Ilib", "-e", script,
                     chdir: ROOT)
   end
+
 end

@@ -10,6 +10,20 @@ class JsonReporterTest < Minitest::Test
   SRC = "class Pricing\n  def total(price)\n    if price >= 100\n    end\n  end\nend\n"
   FILE = "pricing.rb"
 
+  # The encoded diff keys depend on configured credentials (#540), so each
+  # test starts with none and gets the caller's back after.
+  def setup
+    @saved_database_url = ENV.fetch("DATABASE_URL", nil)
+    @saved_extra_urls = Mutineer::Redaction.extra_urls
+    ENV.delete("DATABASE_URL")
+    Mutineer::Redaction.extra_urls = []
+  end
+
+  def teardown
+    @saved_database_url ? ENV["DATABASE_URL"] = @saved_database_url : ENV.delete("DATABASE_URL")
+    Mutineer::Redaction.extra_urls = @saved_extra_urls
+  end
+
   def mutation_at(token, replacement, operator)
     off = SRC.index(token)
     Mutineer::Mutation.new(start_offset: off, end_offset: off + token.length,
@@ -26,10 +40,22 @@ class JsonReporterTest < Minitest::Test
     Mutineer::Result.survived.with(subject: subject, mutation: mutation_at(">=", ">", :comparison))
   end
 
+  # A killed mutant with the fields lean lists need (subject, mutation, id).
+  def killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "killedid0001")
+    Mutineer::Result.killed.with(subject: subject, mutation: mutation_at(token, replacement, operator), id: id)
+  end
+
   def render(results)
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC })
                     .report(out: out, err: StringIO.new, format: "json")
+    JSON.parse(out.string)
+  end
+
+  def report_unpaired(results, unpaired)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC }, unpaired: unpaired)
+                      .report(out: out, err: StringIO.new, format: "json")
     JSON.parse(out.string)
   end
 
@@ -56,9 +82,286 @@ class JsonReporterTest < Minitest::Test
     end
   end
 
+  # #510: the JSON diff is UTF-8. For a source in another encoding the entry
+  # names that encoding in `diff_encoding`; a consumer transcodes the hunk
+  # lines (not the two path headers) back to it, and then git applies the
+  # patch to the file's own bytes.
+  NON_UTF8_SOURCES = [
+    ["EUC-JP", "\u3042\u3044"], ["Shift_JIS", "\u3042\u3044"], ["ISO-8859-1", "caf\u00e9"], ["ISO-8859-1", "cafe"]
+  ].freeze
+
+  # Renders the `>=` -> `>` survivor of `src` (a Foo#bar source) as JSON.
+  # @return [Array(Mutineer::Mutation, Hash)] the mutation and its survivors[] row.
+  def survivor_row_for(src)
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "foo.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    [mutation, JSON.parse(out.string)["survivors"].first]
+  end
+
+  def test_diff_applies_with_git_after_transcoding_to_diff_encoding
+    NON_UTF8_SOURCES.each do |name, text|
+      label = "#{name} #{text}"
+      enc = Encoding.find(name)
+      src = "# encoding: #{name}\nclass Foo\n  def bar(x) # #{text}\n    x >= 1 ? \"#{text}\" : 0\n  end\nend\n"
+      src = src.encode(enc, undef: :replace).force_encoding(enc)
+      mutation, row = survivor_row_for(src)
+      assert_equal name, row["diff_encoding"], label
+      header, hunk = row["diff"].split(/^(?=@@)/, 2)
+      assert row["diff"].valid_encoding?, label
+      patch = header.b + hunk.encode(enc).b
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, "foo.rb"), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, "git apply rejected #{label}: #{err}"
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
+      end
+    end
+  end
+
+  # #510 with #498 and #526: the lists that carry a diff name the source's encoding too.
+  def test_killed_unplaceable_and_ran_at_load_rows_have_diff_encoding
+    src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = %i[killed unplaceable ran_at_load].map.with_index do |status, i|
+      Mutineer::Result.public_send(status).with(subject: subj, mutation: mutation, id: "enc#{i}")
+    end
+    results << Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "enc3")
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    %w[killed unplaceable ran_at_load no_verdict].each do |list|
+      assert_equal "EUC-JP", doc[list].first["diff_encoding"], list
+    end
+  end
+
+  # Each list keeps its own key order. A survivors[] row has seconds before
+  # diff_encoding; a killed[] row has it after (#498). diff_base64 follows
+  # diff_encoding (#518).
+  def test_diff_key_order_of_each_list
+    src = "# encoding: EUC-JP\nclass Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n".encode("EUC-JP")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = [Mutineer::Result.survived.with(subject: subj, mutation: mutation, id: "ord0"),
+               Mutineer::Result.killed.with(subject: subj, mutation: mutation, id: "ord1"),
+               Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "ord2")]
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "ord2" => ["dup2"] })
+    doc = JSON.parse(out.string)
+    assert_equal %w[diff seconds diff_encoding diff_base64], doc["survivors"].first.keys.last(4)
+    assert_equal %w[diff diff_encoding diff_base64 seconds], doc["killed"].first.keys.last(4)
+    assert_equal %w[details diff diff_encoding diff_base64 seconds copies], doc["no_verdict"].first.keys.last(6)
+  end
+
+  # #518: the sources the rule covers. Each is a Foo#bar source whose
+  # changed line holds `text`, and whether the row carries diff_base64.
+  def diff_base64_sources
+    rows = NON_UTF8_SOURCES.map do |name, text|
+      src = "# encoding: #{name}\nclass Foo\n  def bar(x) = x >= 1 ? \"#{text}\" : 0\nend\n"
+      ["#{name} #{text}", src.encode(name).force_encoding(name), !text.ascii_only?]
+    end
+    rows + [
+      ["UTF-8 ASCII", "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n", false],
+      ["UTF-8 non-ASCII", "class Foo\n  def bar(x) = x >= 1 ? \"\u3042\" : 0\nend\n", false],
+      ["EUC-JP ASCII line", "# encoding: EUC-JP\n# \u3042\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n".encode("EUC-JP"), false],
+      ["Windows-31J 0xFA4A", "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J"), true],
+      ["binary UTF-8 bytes", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b, false],
+      ["binary FF FE", "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFF\xFE\" : 0\nend\n".b, true],
+      ["ISO-8859-3 unmappable comment",
+       "# encoding: ISO-8859-3\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0 # \xA5\nend\n".b.force_encoding("ISO-8859-3"), true],
+      ["UTF-8 invalid comment", "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8"), true],
+      ["UTF-8 invalid comment, CRLF, no final newline",
+       "class Foo\r\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\r\nend".b.force_encoding("UTF-8"), true]
+    ]
+  end
+
+  # #518, the consumer recipe steps 2 and 3: apply diff_base64 when present,
+  # else diff as it is. The file git writes equals the mutant's bytes, and
+  # diff_base64 is present exactly when diff alone would not give them.
+  def test_diff_base64_or_diff_applies_for_every_source
+    diff_base64_sources.each do |label, src, want_base64|
+      mutation, row = survivor_row_for(src)
+      assert_equal want_base64, row.key?("diff_base64"), label
+      patch = row["diff_base64"]&.unpack1("m") || row["diff"].b
+      Dir.mktmpdir do |dir|
+        File.binwrite(File.join(dir, "foo.rb"), src)
+        File.binwrite(File.join(dir, "m.patch"), patch)
+        _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+        assert status.success?, "git apply rejected #{label}: #{err}"
+        assert_equal mutation.apply(src).b, File.binread(File.join(dir, "foo.rb")), label
+      end
+    end
+  end
+
+  # A byte with no Unicode mapping (0xA5 in ISO-8859-3) on an errored
+  # mutant's line prints as \xNN, and no format raises.
+  def test_an_unmappable_byte_on_an_errored_line_renders_in_every_format
+    src = "# encoding: ISO-8859-3\nclass Foo\n  def bar(x) = x >= 1 ? 1 : 0 # \xA5\nend\n".b.force_encoding("ISO-8859-3")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    result = Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "unmap0000001")
+    %w[json html human].each do |format|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([result]), { "foo.rb" => src })
+                        .report(out: out, err: StringIO.new, format: format, verbose: true)
+      next unless format == "json"
+
+      row = JSON.parse(out.string)["no_verdict"].first
+      assert_includes row["diff"], "# \\xA5"
+      refute row.key?("diff_encoding")
+      assert_includes row["diff_base64"].unpack1("m"), "# \xA5".b
+    end
+  end
+
+  # Base64 would carry a password past the stdout redaction that hides it in
+  # `diff`, so a change line that redaction alters gets no diff_base64.
+  def test_no_diff_base64_when_the_change_holds_a_credential
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = "postgres://u:s3cretpw@db/app"
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"caf\u00e9 s3cretpw\" : 0\nend\n"
+    src = src.encode("ISO-8859-1").force_encoding("ISO-8859-1")
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_encoding")
+    refute row.key?("diff_base64")
+
+    # The bytes count too: a Latin-1 file that holds the UTF-8 bytes of the
+    # password shows mojibake in `diff`, which redaction does not match.
+    ENV["DATABASE_URL"] = "postgres://app:p\u00e4sswort9@db/prod"
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"p\u00e4sswort9\" : 0\nend\n".b.force_encoding("ISO-8859-1")
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_base64")
+    refute row.key?("diff_encoding"), "diff_encoding would let a consumer transcode the mojibake back (#540)"
+  ensure
+    saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
+  end
+
+  # Fail closed: bytes that are not valid UTF-8 cannot be checked against a
+  # configured credential, so both encoded keys stay out. With no credential
+  # configured they are present.
+  def test_no_encoded_keys_for_unreadable_bytes_when_a_credential_is_set
+    saved = ENV.fetch("DATABASE_URL", nil)
+    src = "# encoding: ISO-8859-1\nclass Foo\n  def bar(x) = x >= 1 ? \"p\u00e4sswort9\" : 0\nend\n"
+    src = src.encode("ISO-8859-1").force_encoding("ISO-8859-1")
+    ENV.delete("DATABASE_URL")
+    _, row = survivor_row_for(src)
+    assert_equal "ISO-8859-1", row["diff_encoding"]
+    assert row.key?("diff_base64")
+
+    ENV["DATABASE_URL"] = "postgres://app:p\xE4sswort9@db/prod".b
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_encoding")
+    refute row.key?("diff_base64")
+  ensure
+    saved ? ENV["DATABASE_URL"] = saved : ENV.delete("DATABASE_URL")
+  end
+
+  # diff_base64 is one line of standard base64, and diff keeps its text.
+  def test_diff_base64_is_one_line_of_standard_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    _, row = survivor_row_for(src)
+    encoded = row["diff_base64"]
+    refute_includes encoded, "\n"
+    assert_equal encoded, [encoded.unpack1("m")].pack("m0")
+    assert_includes row["diff"], "caf\\xE9"
+  end
+
+  # The header is bytes too: a UTF-8 path with a non-ASCII character and an
+  # invalid byte on the changed line render, and the patch applies.
+  def test_diff_base64_with_a_non_ascii_path_applies
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "caf\u00e9.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { "caf\u00e9.rb" => src }).report(out: out, err: StringIO.new, format: "json")
+    patch = JSON.parse(out.string)["survivors"].first["diff_base64"].unpack1("m")
+    Dir.mktmpdir do |dir|
+      File.binwrite(File.join(dir, "caf\u00e9.rb"), src)
+      File.binwrite(File.join(dir, "m.patch"), patch)
+      _, err, status = Open3.capture3("git", "apply", "--unidiff-zero", "m.patch", chdir: dir)
+      assert status.success?, err
+      assert_equal mutation.apply(src).b, File.binread(File.join(dir, "caf\u00e9.rb"))
+    end
+  end
+
+  # A path that is not UTF-8 prints as \xNN in both patches (#532), so a
+  # UTF-8 source with an ASCII change gets no diff_base64.
+  def test_a_non_utf8_path_alone_gives_no_diff_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0\nend\n"
+    path = "caf\xE9.rb".b
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: path, namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.survived.with(subject: subj, mutation: mutation)]),
+                           { path => src }).report(out: out, err: StringIO.new, format: "json")
+    row = JSON.parse(out.string)["survivors"].first
+    assert_includes row["diff"], "caf\\xE9.rb"
+    refute row.key?("diff_base64")
+  end
+
+  # Every list with a diff carries diff_base64; a stub row has neither.
+  def test_every_list_with_a_diff_has_diff_base64
+    src = "class Foo\n  def bar(x) = x >= 1 ? 1 : 0 # caf\xE9\nend\n".b.force_encoding("UTF-8")
+    tok = src.byteindex(">=")
+    mutation = Mutineer::Mutation.new(start_offset: tok, end_offset: tok + 2, replacement: ">", operator: :comparison)
+    subj = Mutineer::Subject.new(file: "foo.rb", namespace: ["Foo"], name: :bar, singleton: false,
+                                 def_node: Mutineer::Parser.parse_string(src).value.statements.body[0].body.body[0])
+    results = %i[killed unplaceable ran_at_load].map.with_index do |status, i|
+      Mutineer::Result.public_send(status).with(subject: subj, mutation: mutation, id: "b64#{i}")
+    end
+    results << Mutineer::Result.error("boom").with(subject: subj, mutation: mutation, id: "b643")
+    results << Mutineer::Result.error("boot failed")
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { "foo.rb" => src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    doc = JSON.parse(out.string)
+    %w[killed unplaceable ran_at_load].each { |list| assert doc[list].first.key?("diff_base64"), list }
+    stub, errored = doc["no_verdict"].partition { |e| e["file"].nil? }
+    assert errored.first.key?("diff_base64")
+    assert_nil stub.first["diff"]
+    refute stub.first.key?("diff_base64")
+  end
+
+  def test_utf8_source_has_no_diff_encoding
+    refute render([survivor])["survivors"].first.key?("diff_encoding")
+  end
+
+  def test_lossy_roundtrip_source_has_no_diff_encoding
+    src = "# encoding: Windows-31J\nclass Foo\n  def bar(x) = x >= 1 ? \"\xFA\x4A\" : 0\nend\n".b.force_encoding("Windows-31J")
+    refute survivor_row_for(src).last.key?("diff_encoding")
+    kana = src.b.sub("\xFA\x4A".b, "\x82\xA0".b).force_encoding("Windows-31J") # same source, a character that round-trips
+    assert_equal "Windows-31J", survivor_row_for(kana).last["diff_encoding"]
+  end
+
+  def test_binary_source_has_no_diff_encoding
+    src = "# encoding: binary\nclass Foo\n  def bar(x) = x >= 1 ? \"\xE3\x81\x82\" : 0\nend\n".b
+    _, row = survivor_row_for(src)
+    refute row.key?("diff_encoding")
+    assert_includes row["diff"], "\u3042" # read as UTF-8, so it applies as it is
+  end
+
   def test_valid_json_with_summary_and_score
-    doc = render([Mutineer::Result.killed, survivor])
-    assert_equal "2.0", doc["schema_version"] # 2.0 corrects baseline semantics and includes ran_at_load_tested.
+    doc = render([killed_mutant, survivor])
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 2.0 = baseline completeness, fixed_survivors corrected; 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -66,19 +369,219 @@ class JsonReporterTest < Minitest::Test
     assert_equal false, doc["summary"]["scoped"], "unscoped run records scoped: false"
   end
 
+  def test_summary_reports_unpaired_sources_and_mutants
+    doc = report_unpaired([Mutineer::Result.killed], { "lib/b.rb" => 2, "lib/a.rb" => 0 })
+    assert_equal 2, doc["summary"]["unpaired_sources"]
+    assert_equal 2, doc["summary"]["unpaired_mutants"]
+    assert_equal 1, doc["summary"]["total"]
+    assert_equal [
+      { "file" => "lib/a.rb", "mutants" => 0 },
+      { "file" => "lib/b.rb", "mutants" => 2 }
+    ], doc["unpaired_sources"]
+  end
+
+  def test_unpaired_defaults_to_zero_and_an_empty_list
+    doc = render([Mutineer::Result.killed])
+    assert_equal 0, doc["summary"]["unpaired_sources"]
+    assert_equal 0, doc["summary"]["unpaired_mutants"]
+    assert_equal [], doc["unpaired_sources"]
+  end
+
+  def test_unknown_unpaired_count_is_null_and_left_out_of_the_sum
+    doc = report_unpaired([Mutineer::Result.killed], { "a.rb" => nil, "b.rb" => 2 })
+    assert_nil doc["unpaired_sources"].find { |row| row["file"] == "a.rb" }["mutants"]
+    assert_equal 2, doc["summary"]["unpaired_sources"]
+    assert_equal 2, doc["summary"]["unpaired_mutants"]
+  end
+
+  # #361: killed[] lists every killed mutant so two runs can be joined by id
+  # without subtracting every unscored category from the full id set.
+  def test_killed_array_matches_summary_count_and_shape
+    a = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "killedlit0001")
+    b = killed_mutant(token: ">=", replacement: ">", operator: :comparison, id: "killedcmp0001")
+    doc = render([a, b, survivor])
+    assert_equal 2, doc["summary"]["killed"]
+    assert_equal 2, doc["killed"].size
+    assert_equal doc["summary"]["killed"], doc["killed"].size
+    entry = doc["killed"].find { |h| h["id"] == "killedlit0001" }
+    assert_equal ["Pricing#total", FILE, 3], entry.values_at("subject", "file", "line")
+    assert_equal %w[literal_mutation 100 killedlit0001], entry.values_at("operator", "token", "id")
+    assert_equal %w[subject file line operator token id diff seconds], entry.keys
+  end
+
+  # #498, #526: killed[], unplaceable[], ran_at_load[] and no_verdict[] carry
+  # the diff that the same mutant gets as a survivor. Checked for each
+  # mutation of each list, and for each no-verdict status.
+  def test_diff_lists_match_the_survivor_diff_of_the_same_mutant
+    mutations = [mutation_at("100", "0", :literal_mutation), mutation_at(">=", ">", :comparison),
+                 mutation_at("    if price >= 100\n    end\n", "", :statement_removal)]
+    [["killed", Mutineer::Result.killed], ["unplaceable", Mutineer::Result.unplaceable],
+     ["ran_at_load", Mutineer::Result.ran_at_load], ["no_verdict", Mutineer::Result.error("boom")],
+     ["no_verdict", Mutineer::Result.timeout], ["no_verdict", Mutineer::Result.uncapturable]].each do |list, base|
+      mutations.each_with_index do |m, i|
+        id = "id#{list}#{i}"
+        listed = render([base.with(subject: subject, mutation: m, id: id)])[list].first
+        survived = render([Mutineer::Result.survived.with(subject: subject, mutation: m, id: id)])["survivors"].first
+        assert_equal survived["diff"], listed["diff"], "#{list} #{m.operator}"
+        assert listed["diff"].start_with?("--- a/#{FILE}\n"), "#{list} #{m.operator}"
+      end
+    end
+  end
+
+  # A stub result with no subject keeps null fields, and its diff is null too.
+  def test_diff_is_null_for_a_result_with_no_subject
+    entry = render([Mutineer::Result.killed.with(id: "stub00000001")])["killed"].first
+    assert entry.key?("diff")
+    assert_nil entry["diff"]
+    assert_nil entry["file"]
+  end
+
+  # Renders one killed mutant with `callback_growth` rows (#505), as JSON text.
+  def render_growth(rows)
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", callback_growth: rows)
+    out.string
+  end
+
+  # #505: the key is present and null when the caller gives no rows.
+  def test_callback_growth_is_null_without_a_caller_value
+    summary = render([killed_mutant])["summary"]
+    assert summary.key?("callback_growth")
+    assert_nil summary["callback_growth"]
+    assert_equal [], JSON.parse(render_growth([]))["summary"]["callback_growth"]
+  end
+
+  # Sorted by file, then class, whatever order the workers logged them in.
+  # One class logged from two files gives two rows.
+  def test_callback_growth_rows_sort_by_file_then_class
+    rows = [%w[B z.rb], %w[A z.rb], %w[C a.rb], %w[A a.rb]]
+    text = render_growth(rows)
+    assert_equal [{ "class" => "A", "file" => "a.rb" }, { "class" => "C", "file" => "a.rb" },
+                  { "class" => "A", "file" => "z.rb" }, { "class" => "B", "file" => "z.rb" }],
+                 JSON.parse(text)["summary"]["callback_growth"]
+    assert_equal text, render_growth(rows.reverse)
+  end
+
+  # json_safe covers the key: a control character survives as itself, and a
+  # byte that is not UTF-8 still gives valid JSON.
+  def test_callback_growth_names_with_odd_bytes_render_as_valid_json
+    rows = JSON.parse(render_growth([["Once\e[2J", "a.rb"], ["Caf\xE9".b, "b.rb"]]))["summary"]["callback_growth"]
+    assert_equal "Once\e[2J", rows[0]["class"]
+    assert rows[1]["class"].valid_encoding?
+    assert_equal "b.rb", rows[1]["file"]
+  end
+
+  # #495: timing is null when the caller gives none, and each phase rounds to
+  # three decimals with a nil phase kept as null.
+  def test_timing_is_null_without_a_caller_value
+    doc = render([killed_mutant])
+    assert doc.key?("timing")
+    assert_nil doc["timing"]
+  end
+
+  def test_timing_rounds_and_keeps_null_phases
+    out = StringIO.new
+    timing = { total_seconds: 1.23456, boot_seconds: nil, coverage_seconds: 0.0004,
+               clean_check_seconds: 2.0, mutants_seconds: 0.5 }
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", timing: timing)
+    assert_equal({ "total_seconds" => 1.235, "boot_seconds" => nil, "coverage_seconds" => 0.0,
+                   "clean_check_seconds" => 2.0, "mutants_seconds" => 0.5 }, JSON.parse(out.string)["timing"])
+  end
+
+  # #495: seconds on survivors, killed and no_verdict entries, rounded; null
+  # when the result has none. Checked for each list.
+  def test_seconds_on_survivors_killed_and_no_verdict
+    m = mutation_at("100", "0", :literal_mutation)
+    { "survivors" => Mutineer::Result.survived, "killed" => Mutineer::Result.killed,
+      "no_verdict" => Mutineer::Result.timeout }.each do |list, base|
+      timed = render([base.with(subject: subject, mutation: m, id: "t1", seconds: 0.12345)])[list].first
+      assert_equal 0.123, timed["seconds"], list
+      untimed = render([base.with(subject: subject, mutation: m, id: "t2")])[list].first
+      assert untimed.key?("seconds"), list
+      assert_nil untimed["seconds"], list
+    end
+  end
+
+  # The other lists do not carry seconds (#495 names three).
+  def test_other_lists_have_no_seconds
+    m = mutation_at("100", "0", :literal_mutation)
+    rows = [Mutineer::Result.unplaceable, Mutineer::Result.ran_at_load, Mutineer::Result.no_coverage,
+            Mutineer::Result.ignored].each_with_index.map do |r, i|
+      r.with(subject: subject, mutation: m, id: "noseconds#{i}", seconds: 1.0)
+    end
+    doc = render(rows)
+    %w[unplaceable ran_at_load no_coverage ignored].each do |list|
+      refute_empty doc[list], list
+      doc[list].each { |entry| refute entry.key?("seconds"), list }
+    end
+  end
+
+  # #498 and #526 name four lists. The other lean lists keep their shape.
+  def test_other_lean_lists_have_no_diff
+    rows = [Mutineer::Result.no_coverage, Mutineer::Result.uncapturable,
+            Mutineer::Result.ignored].each_with_index.map do |r, i|
+      r.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation), id: "lean0000000#{i}")
+    end
+    doc = render(rows)
+    %w[no_coverage uncapturable ignored].each do |list|
+      refute_empty doc[list], list
+      doc[list].each { |entry| refute entry.key?("diff"), list }
+    end
+  end
+
+  # #526: an uncapturable mutant's no_verdict[] entry has the diff that its
+  # uncapturable[] entry lacks.
+  def test_uncapturable_mutant_has_the_diff_only_in_no_verdict
+    m = mutation_at("100", "0", :literal_mutation)
+    doc = render([Mutineer::Result.uncapturable.with(subject: subject, mutation: m, id: "uncap0000001")])
+    refute doc["uncapturable"].first.key?("diff")
+    assert doc["no_verdict"].first["diff"].start_with?("--- a/#{FILE}\n")
+  end
+
+  # copies stays the last key on a row that gains diff and seconds.
+  def test_copies_follow_the_diff_on_a_killed_row
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant(id: "kept00000003")]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000003" => ["drop00000003"] })
+    entry = JSON.parse(out.string)["killed"].first
+    assert_equal %w[diff seconds copies], entry.keys.last(3)
+    assert_equal ["drop00000003"], entry["copies"]
+  end
+
+  def test_killed_array_sorted_by_file_line_operator_id
+    zid = killed_mutant(token: "100", replacement: "0", operator: :literal_mutation, id: "zid")
+    aid = killed_mutant(token: "100", replacement: "1", operator: :literal_mutation, id: "aid")
+    # Same file/line/operator; input order is zid then aid — sort by id.
+    ids = render([zid, aid])["killed"].map { |h| h.values_at("operator", "id") }
+    assert_equal [%w[literal_mutation aid], %w[literal_mutation zid]], ids
+  end
+
   # #126: the report names its id format, so a later --baseline load knows its
   # ids include the file path. With no legacy data the two counts are zero.
   def test_summary_records_the_id_format_and_zero_legacy_matches
-    doc = render([Mutineer::Result.killed, survivor])
+    doc = render([killed_mutant, survivor])
     assert_equal 2, doc["summary"]["id_format"]
     assert_equal({ "ignore" => 0, "baseline" => 0 }, doc["summary"]["legacy_id_matches"])
+    assert_equal [], doc["summary"]["unmatched_ignores"]
+  end
+
+  # #377: the ids stay in the order the caller passed. File order is the CLI's job.
+  def test_summary_keeps_unmatched_ignore_ids_in_order
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              unmatched_ignores: %w[bbbbbbbbbbbb aaaaaaaaaaaa])
+    assert_equal %w[bbbbbbbbbbbb aaaaaaaaaaaa], JSON.parse(out.string)["summary"]["unmatched_ignores"]
   end
 
   # Each count needs a different fix (edit the ignore list vs regenerate the
   # baseline), so the report keeps them apart.
   def test_summary_carries_separate_legacy_id_match_counts
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json",
                               legacy_id_matches: { ignore: 2, baseline: 1 })
     doc = JSON.parse(out.string)
@@ -89,7 +592,7 @@ class JsonReporterTest < Minitest::Test
   # load) knows its score covers only the changed-line mutants.
   def test_scoped_run_records_scoped_true
     out = StringIO.new
-    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
                       .report(out: out, err: StringIO.new, format: "json", scoped: true)
     assert_equal true, JSON.parse(out.string)["summary"]["scoped"]
   end
@@ -98,7 +601,7 @@ class JsonReporterTest < Minitest::Test
   # daemon crash reached the user as nothing but a bump in the errored count.
   def test_no_verdict_entries_carry_their_cause
     doc = render([Mutineer::Result.error("daemon worker crashed: Errno::EPIPE"),
-                  Mutineer::Result.timeout, Mutineer::Result.killed])
+                  Mutineer::Result.timeout, killed_mutant])
     entries = doc["no_verdict"]
 
     assert_equal 2, entries.size
@@ -116,7 +619,36 @@ class JsonReporterTest < Minitest::Test
 
     assert_nil entry["file"]
     assert_nil entry["line"]
+    assert_nil entry["operator"]
+    assert_nil entry["token"]
+    assert entry.key?("diff")
+    assert_nil entry["diff"]
     assert_equal "boot failed", entry["details"]
+  end
+
+  # #388: an errored mutant is named like a no_coverage one, and its cause is
+  # redacted whatever produced it.
+  def test_no_verdict_entries_name_the_mutant_and_hide_the_password
+    url = "postgres://u:s3cret@ho st/db"
+    saved = ENV.fetch("DATABASE_URL", nil)
+    ENV["DATABASE_URL"] = url
+    error = Mutineer::Result.error("RuntimeError: no connection: #{url}")
+                            .with(subject: subject, mutation: mutation_at(">=", ">", :comparison), id: "abc")
+    timeout = Mutineer::Result.timeout.with(subject: subject, mutation: mutation_at("100", "0", :literal_mutation))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([error, timeout]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json")
+    entries = JSON.parse(out.string)["no_verdict"]
+    errored = entries.find { |e| e["status"] == "error" }
+
+    assert_equal "comparison", errored["operator"]
+    assert_equal ">=", errored["token"]
+    assert_equal "RuntimeError: no connection: postgres://u:[REDACTED]@ho st/db", errored["details"]
+    refute_includes out.string, "s3cret"
+    assert_equal "literal_mutation", entries.find { |e| e["status"] == "timeout" }["operator"]
+    assert_nil entries.find { |e| e["status"] == "timeout" }["details"]
+  ensure
+    ENV["DATABASE_URL"] = saved
   end
 
   # The gate counts uncapturable, and the docs send the user to no_verdict[] to see
@@ -124,7 +656,7 @@ class JsonReporterTest < Minitest::Test
   def test_no_verdict_includes_uncapturable_because_the_gate_counts_it
     unc = Mutineer::Result.uncapturable.with(subject: subject,
                                              mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([unc, Mutineer::Result.killed])
+    doc = render([unc, killed_mutant])
 
     assert_equal 1, doc["no_verdict"].size
     assert_equal "uncapturable", doc["no_verdict"].first["status"]
@@ -153,7 +685,7 @@ class JsonReporterTest < Minitest::Test
   def test_summary_carries_the_figures_the_gate_uses
     uncovered = Mutineer::Result.no_coverage.with(subject: subject,
                                                   mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.error("x"), Mutineer::Result.killed, uncovered])
+    doc = render([Mutineer::Result.error("x"), killed_mutant, uncovered])
 
     assert_equal 2, doc["summary"]["attempted"] # no_coverage was never attempted
     assert_equal 1, doc["summary"]["no_verdict"]
@@ -201,6 +733,72 @@ class JsonReporterTest < Minitest::Test
 
     ids = render([second, first, third])["no_coverage"].map { |e| [e["operator"], e["id"]] }
     assert_equal [%w[comparison aaaaaaaaaaaa], %w[comparison bbbbbbbbbbbb], %w[literal_mutation aaaaaaaaaaaa]], ids
+  end
+
+  # #374: a dropped repeat is listed on the kept mutant and counted. A mutant
+  # with none omits the key. A skipped mutant has no row, so its repeats
+  # are not counted.
+  def test_copies_are_listed_on_the_kept_mutant_and_counted
+    kept = survivor.with(id: "kept00000001")
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([kept]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000001" => ["drop00000001"] })
+    doc = JSON.parse(out.string)
+    assert_equal ["drop00000001"], doc["survivors"].first["copies"]
+    assert_equal 1, doc["summary"]["dropped"]
+    assert_equal 1, doc["summary"]["total"]
+    assert_equal 1, doc["summary"]["survived"]
+    assert_equal 0.0, doc["summary"]["score"]
+
+    plain = render([survivor.with(id: "kept00000002")])
+    refute plain["survivors"].first.key?("copies")
+    assert_equal 0, plain["summary"]["dropped"]
+
+    # A copy of a mutant this report does not list (an unscheduled --fail-fast
+    # mutant, for example) is not counted.
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([kept]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "kept00000001" => ["drop00000001"], "other0000001" => ["drop00000009"] })
+    assert_equal 1, JSON.parse(out.string)["summary"]["dropped"]
+
+    skipped = Mutineer::Result.skipped.with(subject: subject, id: "skip00000001",
+                                            mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([skipped]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "skip00000001" => ["drop00000002"] })
+    assert_equal 0, JSON.parse(out.string)["summary"]["dropped"]
+  end
+
+  # An uncapturable mutant is in two arrays. Both rows show the same copies.
+  # summary.dropped counts that copy once.
+  def test_uncapturable_copies_are_listed_twice_and_counted_once
+    row = Mutineer::Result.uncapturable.with(subject: subject, id: "uncap0000001",
+                                             mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([row]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "uncap0000001" => ["drop00000004"] })
+    doc = JSON.parse(out.string)
+    assert_equal ["drop00000004"], doc["uncapturable"].first["copies"]
+    assert_equal ["drop00000004"], doc["no_verdict"].first["copies"]
+    assert_equal 1, doc["summary"]["dropped"]
+  end
+
+  def test_ignored_row_lists_its_dropped_copies
+    ignored = Mutineer::Result.ignored.with(subject: subject, id: "ignr00000001", reason: "same edit",
+                                            mutation: mutation_at(">=", ">", :comparison))
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([ignored]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              copies: { "ignr00000001" => ["drop00000003"] })
+    doc = JSON.parse(out.string)
+    row = doc["ignored"].first
+    assert_equal ["drop00000003"], row["copies"]
+    assert_equal "same edit", row["reason"]
+    assert_equal 1, doc["summary"]["dropped"]
   end
 
   def test_survivor_entry_has_all_keys_and_diff
@@ -288,9 +886,10 @@ class JsonReporterTest < Minitest::Test
   end
 
   def test_empty_arrays_when_nothing_survives
-    doc = render([Mutineer::Result.killed])
+    doc = render([killed_mutant])
     assert_equal [], doc["survivors"]
     assert_equal [], doc["no_coverage"]
+    assert_equal 1, doc["killed"].size
     assert_equal 100.0, doc["summary"]["score"]
   end
 
@@ -320,7 +919,7 @@ class JsonReporterTest < Minitest::Test
   def test_uncapturable_summary_count_and_list
     unc = Mutineer::Result.uncapturable.with(subject: subject, id: "abc123def456",
                                              mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, unc])
+    doc = render([killed_mutant(id: "killedother01"), survivor, unc])
     assert_equal 1, doc["summary"]["uncapturable"]
     assert_equal 50.0, doc["summary"]["score"] # killed+survived only; uncapturable excluded
     entry = doc["uncapturable"].first
@@ -334,7 +933,7 @@ class JsonReporterTest < Minitest::Test
   def test_unplaceable_summary_count_and_list_stay_out_of_no_verdict
     unp = Mutineer::Result.unplaceable.with(subject: subject, id: "abc123def456",
                                             mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, unp])
+    doc = render([killed_mutant(id: "killedother01"), survivor, unp])
     assert_equal 1, doc["summary"]["unplaceable"]
     assert_equal [0, 0, 2, 50.0], doc["summary"].values_at("uncapturable", "no_verdict", "attempted", "score")
     entry = doc["unplaceable"].first
@@ -347,7 +946,7 @@ class JsonReporterTest < Minitest::Test
   def test_ran_at_load_summary_count_and_list_stay_out_of_no_verdict
     ral = Mutineer::Result.ran_at_load.with(subject: subject, id: "abc123def456",
                                             mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, survivor, ral])
+    doc = render([killed_mutant(id: "killedother01"), survivor, ral])
     assert_equal 1, doc["summary"]["ran_at_load"]
     assert_equal [0, 2, 50.0], doc["summary"].values_at("no_verdict", "attempted", "score")
     entry = doc["ran_at_load"].first
@@ -357,28 +956,22 @@ class JsonReporterTest < Minitest::Test
     assert_equal [], doc["no_verdict"]
   end
 
-  # #286: a ran_at_load mutant whose covering tests ran and passed is counted
-  # and marked, so a reader can see survivors that ran_at_load hides.
-  def test_ran_at_load_entries_say_which_ran_in_their_tests
-    tested = Mutineer::Result.survived.with(status: :ran_at_load, tested_at_load: true, subject: subject,
-                                            id: "aaa111", mutation: mutation_at(">=", ">", :comparison))
-    plain = Mutineer::Result.ran_at_load.with(subject: subject, id: "bbb222",
-                                              mutation: mutation_at("100", "0", :literal_mutation))
-    doc = render([Mutineer::Result.killed, plain, tested])
-    assert_equal [2, 1], doc["summary"].values_at("ran_at_load", "ran_at_load_tested")
-    assert_equal [["aaa111", true], ["bbb222", false]], doc["ran_at_load"].map { |h| h.values_at("id", "tested") }
-  end
-
   # #11: additive per_source array, sorted by file, with per-file counts + score.
   def test_per_source_array_sorted_with_scores
     other = Mutineer::Subject.new(file: "z.rb", namespace: ["Z"], name: :m,
                                   singleton: false, def_node: nil)
+    z_src = "class Z\n  def m\n    1 + 1\n  end\nend\n"
+    z_mut = Mutineer::Mutation.new(start_offset: z_src.index("+"), end_offset: z_src.index("+") + 1,
+                                   replacement: "-", operator: :arithmetic)
     results = [
-      Mutineer::Result.killed.with(subject: subject), # pricing.rb
-      survivor,                                        # pricing.rb survivor
-      Mutineer::Result.killed.with(subject: other)    # z.rb
+      killed_mutant, # pricing.rb
+      survivor,      # pricing.rb survivor
+      Mutineer::Result.killed.with(subject: other, mutation: z_mut, id: "zkilled000001")
     ]
-    per = render(results)["per_source"]
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new(results), { FILE => SRC, "z.rb" => z_src })
+                      .report(out: out, err: StringIO.new, format: "json")
+    per = JSON.parse(out.string)["per_source"]
     assert_equal [FILE, "z.rb"], per.map { |h| h["file"] }
     pricing = per.find { |h| h["file"] == FILE }
     assert_equal 2, pricing["total"]
@@ -459,4 +1052,63 @@ class JsonReporterTest < Minitest::Test
     assert_empty m["blind"]
   end
 
+  def test_summary_reports_declined_per_operator
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json",
+                              declined: { "array_literal" => 1, "range" => 2 })
+    summary = JSON.parse(out.string)["summary"]
+    assert_equal 3, summary["declined"]
+    assert_equal({ "array_literal" => 1, "range" => 2 }, summary["declined_by_operator"])
+  end
+
+  def test_summary_declined_defaults_to_zero
+    summary = render([killed_mutant])["summary"]
+    assert_equal 0, summary["declined"]
+    assert_equal({}, summary["declined_by_operator"])
+  end
+
+  def test_summary_reports_unmutated_subjects
+    out = StringIO.new
+    entry = { subject: "Day#day", file: FILE, line: 2 }
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", subjects: 2, unmutated_subjects: [entry])
+    doc = JSON.parse(out.string)
+    assert_equal 2, doc["summary"]["subjects"]
+    assert_equal 1, doc["summary"]["unmutated_subjects"]
+    assert_equal [{ "subject" => "Day#day", "file" => FILE, "line" => 2 }], doc["unmutated_subjects"]
+  end
+
+  # A caller that passes no method counts gets null, not a made-up 0 next to
+  # real mutants (unknown is nil, never 0).
+  def test_unmutated_subjects_are_null_when_not_supplied
+    doc = render([survivor])
+    assert_equal 1, doc["summary"]["total"]
+    %w[subjects unmutated_subjects].each { |key| assert doc["summary"].key?(key) }
+    assert_nil doc["summary"]["subjects"]
+    assert_nil doc["summary"]["unmutated_subjects"]
+    assert doc.key?("unmutated_subjects")
+    assert_nil doc["unmutated_subjects"]
+  end
+
+  def test_unmutated_subjects_report_zero_when_supplied_empty
+    out = StringIO.new
+    Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                      .report(out: out, err: StringIO.new, format: "json", subjects: 3, unmutated_subjects: [])
+    doc = JSON.parse(out.string)
+    assert_equal [3, 0, []], [doc["summary"]["subjects"], doc["summary"]["unmutated_subjects"], doc["unmutated_subjects"]]
+  end
+
+  # The two values are one unit: half of them is unknown, never a count next
+  # to a null.
+  def test_unmutated_subjects_are_null_when_only_half_is_supplied
+    entry = { subject: "Day#day", file: FILE, line: 2 }
+    [{ unmutated_subjects: [entry] }, { subjects: 2 }].each do |half|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([Mutineer::Result.killed]), { FILE => SRC })
+                        .report(out: out, err: StringIO.new, format: "json", **half)
+      doc = JSON.parse(out.string)
+      assert_equal [nil, nil, nil], [doc["summary"]["subjects"], doc["summary"]["unmutated_subjects"], doc["unmutated_subjects"]], half.inspect
+    end
+  end
 end
