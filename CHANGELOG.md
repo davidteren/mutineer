@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format is based on
   MySQL keeps a guard lock across that step, so it did not have this window.
   On SQLite a probe found no free moment on macOS and Linux, but the kernel does not promise one. Other systems are not checked (#416).
   The other run lock limits are unchanged (#416).
+- **MySQL worker database setup now reports the first error and closes the session when the session is lost during the copy (#571).**
+  The cleanup released the lock names with no guard, so a release that raised skipped the close and replaced the first error.
 
 ## [1.10.0] - 2026-11-24
 

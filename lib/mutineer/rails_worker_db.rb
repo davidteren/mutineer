@@ -1340,7 +1340,11 @@ module Mutineer
         end
         raise "another Mutineer run is using #{base}" unless downgrade_mysql_lock_to_shared(conn, base)
       rescue StandardError => e
-        release_held_mysql_locks(conn)
+        begin
+          release_held_mysql_locks(conn)
+        rescue StandardError
+          nil # A lost session holds no GET_LOCK name. Close it and report the first error (#571).
+        end
         conn.close
         raise e if provision_wrapped?(e)
 
@@ -1548,13 +1552,15 @@ module Mutineer
     end
 
     # Release the GET_LOCK names this session took for the current run.
+    # Clears the list even when a release raises, so a lost session leaves no stale names (#571).
     #
     # @param conn [Mysql2::Client, Trilogy]
     # @return [void]
     def self.release_held_mysql_locks(conn)
       Array(@mysql_held_locks).each { |name| mysql_release_lock(conn, name) }
-      @mysql_held_locks = []
       nil
+    ensure
+      @mysql_held_locks = []
     end
 
     # One GET_LOCK name per worker daemon. The digest keeps each name inside 64
