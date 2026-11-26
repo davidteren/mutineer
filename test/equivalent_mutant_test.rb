@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "json"
+require "fileutils"
 require "set"
 require "stringio"
 require "tmpdir"
@@ -32,6 +33,74 @@ class EquivalentMutantTest < Minitest::Test
     assert_nil map[1][:reason]
     assert_equal Set[:arithmetic, :comparison], map[2][:ops]
     assert_nil map[3]
+  end
+
+  # #538: an invalid byte in a comment is legal Ruby, so the marker still counts.
+  def test_suppress_map_reads_a_marker_beside_an_invalid_byte
+    src = "a + b # mutineer:disable-line arithmetic -- caf\xE9\n".b.force_encoding(Encoding::UTF_8)
+    refute_predicate src, :valid_encoding?
+    entry = Mutineer::JobPlan.suppress_map(src, "x.rb")[1]
+    assert_equal Set[:arithmetic], entry[:ops]
+    assert_predicate entry[:reason], :valid_encoding?
+  end
+
+  # An invalid byte in the marker part must not give a bare marker that silences every operator.
+  def test_suppress_map_ignores_a_marker_cut_by_an_invalid_byte
+    ["disable-line\xFF arithmetic", "disable-line \xFF arithmetic"].each do |marker|
+      src = "a + b # mutineer:#{marker}\n".b.force_encoding(Encoding::UTF_8)
+      map = nil
+      _, err = capture_io { map = Mutineer::JobPlan.suppress_map(src, "x.rb") }
+      assert_empty map, marker
+      assert_match(/invalid byte in the disable-line marker at x\.rb:1/, err)
+    end
+  end
+
+  # A marker after other text, or after an invalid byte before it, still counts.
+  def test_suppress_map_reads_a_marker_after_other_comment_text
+    src = "a # note -- # mutineer:disable-line arithmetic\nb # caf\xE9 # mutineer:disable-line comparison\n".b.force_encoding("UTF-8")
+    map = Mutineer::JobPlan.suppress_map(src, "x.rb")
+    assert_equal Set[:arithmetic], map[1][:ops]
+    assert_nil map[1][:reason]
+    assert_equal Set[:comparison], map[2][:ops]
+  end
+
+  # #538: a mutated span that holds a comment with an invalid byte still gives a token.
+  def test_the_token_of_a_span_with_an_invalid_byte_collapses_its_whitespace
+    src = "x = [1, # caf\xE9\n   2]\n".b.force_encoding(Encoding::UTF_8)
+    mutation = Mutineer::Mutation.new(start_offset: 4, end_offset: src.bytesize - 1, replacement: "[]", operator: :arithmetic)
+    assert_equal "[1, # caf\xE9 2]".b, Mutineer::MutantId.normalized_token(mutation, src).b
+  end
+
+  # The same guard holds in a source with a magic encoding other than UTF-8.
+  def test_suppress_map_handles_an_invalid_byte_in_an_euc_jp_source
+    bare = "# encoding: euc-jp\na + b # mutineer:disable-line\xFF arithmetic\n".b.force_encoding("EUC-JP")
+    _, err = capture_io { assert_empty Mutineer::JobPlan.suppress_map(bare, "x.rb") }
+    assert_match(/invalid byte in the disable-line marker/, err)
+    valid = "# encoding: euc-jp\na + b # mutineer:disable-line arithmetic -- \xA4\xA2\n".b.force_encoding("EUC-JP")
+    assert_equal Set[:arithmetic], Mutineer::JobPlan.suppress_map(valid, "x.rb")[2][:ops]
+  end
+
+  # #538 end to end: a UTF-8 source with an invalid byte in a comment above and
+  # beside the mutated line runs to a report.
+  def test_a_run_reports_a_source_with_an_invalid_byte_in_a_comment
+    Dir.mktmpdir do |dir|
+      FileUtils.mkdir_p(%w[lib test].map { |d| File.join(dir, d) })
+      File.binwrite(File.join(dir, "lib/calc.rb"), "# caf\xE9\ndef add(a, b)\n  a + # caf\xE9\n    b # caf\xE9\nend\n")
+      File.write(File.join(dir, "test/calc_test.rb"),
+                 "require \"minitest/autorun\"\nrequire_relative \"../lib/calc\"\n" \
+                 "class CalcTest < Minitest::Test\n  def test_add = assert_equal(3, add(1, 2))\nend\n")
+      config = Mutineer::Config.new(sources: [File.join(dir, "lib/calc.rb")], tests: [File.join(dir, "test/calc_test.rb")],
+                                    cache_dir: File.join(dir, ".cache"), project_root: dir)
+      agg = nil
+      capture_io { agg, = Mutineer::Runner.execute(config) }
+      assert_operator agg.results.count(&:killed?), :>=, 1
+      out = StringIO.new
+      Mutineer::Reporter.new(agg, { config.sources.first => File.binread(config.sources.first).force_encoding("UTF-8") })
+                        .report(out: out, err: StringIO.new, format: "json")
+      row = JSON.parse(out.string)["killed"].first
+      assert_equal 3, row["line"]
+      assert_includes row["diff"], "caf\\xE9"
+    end
   end
 
   def test_suppress_map_warns_on_an_unknown_operator

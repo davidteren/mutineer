@@ -127,7 +127,7 @@ module Mutineer
         end
         ids = MutantId.for_subject(subject, source, mutations, path: id_path, subject_ordinal: ordinal)
         legacy_ids = MutantId.legacy_for_subject(subject, source, mutations)
-        lines = mutations.map { |m| source.byteslice(0, m.start_offset).count("\n") + 1 }
+        lines = mutations.map { |m| Parser.line_at(source, m.start_offset) }
         keys = result_keys(mutations, source, lines)
         # A repeat of an earlier edit on the same line, from any operator, is
         # dropped (#159, #275), separately among the run and the ignored
@@ -618,7 +618,7 @@ module Mutineer
     # @return [Array(Symbol, Object)] `[:run, Array<String>]`, `[:maybe, Array<String>]`
     #   or `[:verdict, Result]`.
     def self.coverage_selection(source_file, mutation, subject, source, coverage_map)
-      line   = source.byteslice(0, mutation.start_offset).count("\n") + 1
+      line   = Parser.line_at(source, mutation.start_offset)
       chosen = coverage_map.tests_for(source_file, line)
       kind   = :run
       if chosen.empty? && subject
@@ -816,7 +816,18 @@ module Mutineer
       map = {}
       Parser.comments(source).grep(Prism::InlineComment).each do |comment|
         line = comment.location.start_line
-        next unless (m = comment.slice.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/))
+        raw = comment.slice # an invalid byte in a comment is legal Ruby (#538)
+        start = raw.b.index(/#\s*mutineer:disable-line/n)
+        next unless start
+
+        # The marker through the end of its operator list; an invalid byte after `--` is only the reason.
+        head = raw.b.byteslice(start..).split(/\s--/n, 2).first.force_encoding(raw.encoding)
+        unless head.valid_encoding?
+          # An invalid byte before the reason could hide an operator name or cut the list: silence nothing.
+          warn "mutineer: invalid byte in the disable-line marker at #{file}:#{line}; the marker is ignored"
+          next
+        end
+        m = head.match(/#\s*mutineer:disable-line(?:\s+([\w,\s]+))?/)
 
         ops = m[1]&.split(",")&.map(&:strip)&.reject(&:empty?)
         # Only spaces or commas after the marker (e.g. `disable-line  -- why`)
@@ -827,7 +838,7 @@ module Mutineer
           warn "mutineer: unknown operator #{o.inspect} in #{file}:#{line}#{Mutineer.did_you_mean(o, MutatorRegistry::ALL.keys)} " \
                "(known: #{MutatorRegistry::ALL.keys.join(', ')}); write a reason after --"
         end
-        reason = comment.slice[/\s--\s*(.*)\z/, 1]&.strip
+        reason = raw.byteslice(start..).scrub[/\s--\s*(.*)\z/, 1]&.strip
         reason = nil if reason.nil? || reason.empty?
         map[line] = { ops: ops ? ops.map(&:to_sym).to_set : :all, reason: reason }
       end
@@ -1157,7 +1168,7 @@ module Mutineer
                                    project_root: config.project_root)
       jobs.select do |subject, mutation|
         source = source_map[subject.file]
-        line = source.byteslice(0, mutation.start_offset).count("\n") + 1
+        line = Parser.line_at(source, mutation.start_offset)
         abs = FsPath.expand(subject.file, config.project_root)
         changed.fetch(abs, []).include?(line)
       end

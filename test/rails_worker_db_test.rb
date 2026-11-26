@@ -810,6 +810,62 @@ class RailsWorkerDbTest < Minitest::Test
     assert Mutineer::RailsWorkerDb.try_mysql_lock(LockMysql.new(box, :fifth), base, shared: false)
   end
 
+  # #556: the Postgres run lock is never free while provision moves from
+  # exclusive to shared, so no second run can start a copy in between.
+  def test_postgres_provision_never_frees_the_run_lock
+    box = PgLockBox.new
+    conn = LockPg.new(box, :first)
+    db = Mutineer::RailsWorkerDb
+    base = "app_test"
+    capture_io { provision_postgres_on(conn, base, slots: 2) }
+    refute box.went_free?, "the run lock was free between the exclusive and the shared lock"
+    assert_equal [{ exclusive: 1, shared: 0 }], conn.held_at_copy.uniq, "a copy statement ran without the exclusive lock"
+    assert_equal({ exclusive: 0, shared: 1 }, box.held_by(:first))
+    assert_same conn, db.instance_variable_get(:@lock_connection), "the lock session is not kept"
+    assert db.try_lock(LockPg.new(box, :worker), base, shared: true), "a worker daemon could not join"
+    refute db.try_lock(LockPg.new(box, :second_run), base, shared: false), "a second run got the lock"
+  ensure
+    db.instance_variable_set(:@lock_connection, nil)
+  end
+
+  # A shared request that is refused, or that raises, closes the session.
+  # That frees the exclusive lock, so the next run is not blocked. Postgres 16
+  # refuses the request while another session waits for the exclusive lock.
+  def test_postgres_provision_frees_the_lock_when_the_share_fails
+    db = Mutineer::RailsWorkerDb
+    { refuse: "another Mutineer run is using app_test",
+      raise: "could not provision app_test from app_test: the query was cancelled",
+      lose: "could not provision app_test from app_test: the connection was lost" }.each do |on_shared, message|
+      box = PgLockBox.new
+      conn = LockPg.new(box, :first, on_shared: on_shared)
+      db.instance_variable_set(:@lock_connection, nil)
+      error = assert_raises(RuntimeError) { provision_postgres_on(conn, "app_test", slots: 1) }
+      assert_equal message, error.message
+      assert conn.closed?, "#{on_shared}: the session stays open"
+      assert box.free?, "#{on_shared}: the failed run still holds the lock"
+      assert_nil db.instance_variable_get(:@lock_connection)
+    end
+  end
+
+  # The copy fails, then RELEASE_LOCK raises in the cleanup as on a lost session.
+  # The first error must win and the session must still close (#571).
+  def test_provision_mysql_closes_a_lost_session_and_reports_the_first_error
+    db = Mutineer::RailsWorkerDb
+    conn = LostSessionMysql.new
+    error = nil
+    db.stub(:routing_config_hash, { adapter: "trilogy", database: "app_test" }) do
+      db.stub(:open_mysql_connection, conn) do
+        db.stub(:disconnect_app!, nil) do
+          error = assert_raises(RuntimeError) { db.provision_mysql(1) }
+        end
+      end
+    end
+    assert_equal "could not provision app_test-mutineer-0 from app_test: the copy failed", error.message
+    assert conn.closed?
+    assert(conn.queries.any? { |sql| sql.include?("RELEASE_LOCK") }, "the cleanup never tried to release the locks")
+    assert_empty db.instance_variable_get(:@mysql_held_locks)
+  end
+
   def test_a_fork_child_forgets_mysql_lock_names_without_releasing_them
     conn = Object.new
     Mutineer::RailsWorkerDb.instance_variable_set(:@lock_connection, conn)
@@ -1522,6 +1578,130 @@ class RailsWorkerDbTest < Minitest::Test
     end
   end
 
+  # Run provision_postgres with `conn` as the maintenance session and no app.
+  def provision_postgres_on(conn, base, slots:)
+    db = Mutineer::RailsWorkerDb
+    db.stub(:current_config_hash, { adapter: "postgresql", database: base }) do
+      db.stub(:open_maintenance_connection, conn) do
+        db.stub(:disconnect_app!, nil) { db.provision_postgres(slots) }
+      end
+    end
+  end
+
+  # In-memory session advisory locks for one key, so two sessions can race
+  # without Postgres. It models sessions that never wait, as Mutineer's are:
+  # the locks one session holds do not conflict, and each unlock releases one
+  # lock of one mode.
+  class PgLockBox
+    def initialize
+      @held = Hash.new { |hash, session| hash[session] = { exclusive: 0, shared: 0 } }
+      @went_free = false
+    end
+
+    def try(session, mode)
+      others = @held.reject { |who, _counts| who == session }.values
+      return false if others.any? { |counts| counts[:exclusive].positive? }
+      return false if mode == :exclusive && others.any? { |counts| counts[:shared].positive? }
+
+      @held[session][mode] += 1
+      true
+    end
+
+    def unlock(session, mode)
+      return false unless @held[session][mode].positive?
+
+      @held[session][mode] -= 1
+      @went_free = true if free?
+      true
+    end
+
+    # A closed session loses its locks. This is not counted as a free moment.
+    def close(session)
+      @held.delete(session)
+    end
+
+    def held_by(session)
+      @held[session].dup
+    end
+
+    def free?
+      @held.values.all? { |counts| counts.values.sum.zero? }
+    end
+
+    def went_free?
+      @went_free
+    end
+  end
+
+  # One session against a {PgLockBox}. Answers the advisory lock calls of
+  # RailsWorkerDb and records the locks it holds at each copy statement.
+  # `on_shared` makes the shared request fail: `:refuse`, `:raise`, or `:lose`
+  # (the session is gone, so every later statement raises too).
+  class LockPg
+    attr_reader :held_at_copy
+
+    Row = Struct.new(:value) do
+      def getvalue(_row, _column)
+        value
+      end
+    end
+
+    def initialize(box, id, on_shared: nil)
+      @box = box
+      @id = id
+      @on_shared = on_shared
+      @closed = false
+      @held_at_copy = []
+    end
+
+    def exec_params(sql, _params)
+      raise "the connection was lost" if @lost
+
+      got =
+        case sql
+        when /pg_try_advisory_lock_shared\(/ then try_shared
+        when /pg_try_advisory_lock\(/ then @box.try(@id, :exclusive)
+        when /pg_advisory_unlock\(/ then @box.unlock(@id, :exclusive)
+        else raise "unexpected statement: #{sql}"
+        end
+      Row.new(got ? "t" : "f")
+    end
+
+    def exec(_sql)
+      @held_at_copy << @box.held_by(@id)
+      nil
+    end
+
+    def escape_literal(value)
+      "'#{value}'"
+    end
+
+    def close
+      @closed = true
+      @box.close(@id)
+    end
+
+    def closed?
+      @closed
+    end
+
+    private
+
+    def try_shared
+      raise "the query was cancelled" if @on_shared == :raise
+      lose_session if @on_shared == :lose
+
+      @on_shared != :refuse && @box.try(@id, :shared)
+    end
+
+    # A lost session holds no lock, as when the server ends it.
+    def lose_session
+      @lost = true
+      @box.close(@id)
+      raise "the connection was lost"
+    end
+  end
+
   # In-memory GET_LOCK / RELEASE_LOCK so two sessions can race without MySQL.
   class LockBox
     def initialize
@@ -1594,6 +1774,44 @@ class RailsWorkerDbTest < Minitest::Test
         HashRows.new([{ "version" => @version }])
       elsif sql.include?("GET_LOCK")
         HashRows.new([{ "got" => "0" }])
+      else
+        HashRows.new([])
+      end
+    end
+
+    def escape(value)
+      value.to_s.gsub("'", "''")
+    end
+
+    def close
+      @closed = true
+    end
+
+    def closed?
+      @closed
+    end
+  end
+
+  # Grants every GET_LOCK, fails the worker database copy, and raises on
+  # RELEASE_LOCK the way a lost MySQL session does. Records each query and whether it was closed.
+  class LostSessionMysql
+    attr_reader :queries
+
+    def initialize
+      @closed = false
+      @queries = []
+    end
+
+    def query(sql)
+      @queries << sql
+      if sql.include?("VERSION()")
+        HashRows.new([{ "version" => "8.0.36" }])
+      elsif sql.include?("GET_LOCK")
+        HashRows.new([{ "got" => "1" }])
+      elsif sql.include?("RELEASE_LOCK")
+        raise "Lost connection to MySQL server during query"
+      elsif sql.match?(/information_schema|DROP DATABASE|CREATE DATABASE/)
+        raise "the copy failed"
       else
         HashRows.new([])
       end
