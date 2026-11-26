@@ -69,7 +69,7 @@ module Mutineer
     # (`ORIGIN.class.class_eval { alias_method ... }`). A file that makes one
     # with a receiver keeps none of its constants ({reshaped_constant_names}).
     # `include` and `prepend` are left out: they are common on a hook's
-    # `base`, and would drop 81 more of 1,257 corpus constants (#585).
+    # `base`, and would drop 77 more of 1,257 corpus constants (#585).
     INDIRECT_RESHAPE_CALLS = %i[alias_method class_eval class_exec module_eval module_exec instance_eval
                                 instance_exec define_method const_get].freeze
 
@@ -116,23 +116,28 @@ module Mutineer
         when Prism::CallNode
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
-          indirect = true if node.receiver && INDIRECT_RESHAPE_CALLS.include?(sent_name(node))
+          if node.receiver
+            sent = sent_name(node)
+            indirect = true if sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent)
+          end
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end
       indirect ? names | written : names
     end
 
-    # The method a call runs: its own name, or the literal symbol it passes
-    # to `send`, `public_send` or `__send__` (`k.send(:alias_method, ...)`).
+    # The method a call runs: its own name, or the literal symbol or string
+    # it passes to `send`, `public_send` or `__send__`
+    # (`k.send(:alias_method, ...)`). A computed name gives nil, which may be
+    # any method, so the caller fails closed.
     #
     # @param call [Prism::CallNode]
-    # @return [Symbol]
+    # @return [Symbol, nil]
     def self.sent_name(call)
-      first = call.arguments&.arguments&.first
-      return call.name unless %i[send public_send __send__].include?(call.name) && first.is_a?(Prism::SymbolNode)
+      return call.name unless %i[send public_send __send__].include?(call.name)
 
-      first.unescaped.to_sym
+      first = call.arguments&.arguments&.first
+      first.unescaped.to_sym if first.is_a?(Prism::SymbolNode) || first.is_a?(Prism::StringNode)
     end
 
     # @param path [Prism::Node] a class or module statement's constant path.

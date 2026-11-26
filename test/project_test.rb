@@ -1863,6 +1863,8 @@ class ProjectTest < Minitest::Test
     "ORIGIN = P.new(0)\nORIGIN.class.class_eval { alias_method :raw_x, :x }\n" => true,
     "KLASS = Object.const_get(:P)\n" => true,
     "ORIGIN = P.new(0)\nORIGIN.class.send(:alias_method, :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(\"alias_method\", :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nm = :alias_method\nORIGIN.class.public_send(m, :raw_x, :x)\n" => true,
     "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false
   }.freeze
 
