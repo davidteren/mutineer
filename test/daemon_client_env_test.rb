@@ -254,7 +254,7 @@ class DaemonClientEnvTest < Minitest::Test
       assert noted.start_with?(cause)
       assert_includes noted, "does not pass RUBYOPT to the app"
       assert_equal "#{cause} (the daemon does not pass RUBYOPT to the app; if the missing file is in a directory " \
-                   "set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
+                   "set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
                    "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE})", noted
       assert Mutineer::DaemonClient::LOAD_PATH_GUIDE.end_with?("/docs/rails-setup.md#extra-load-paths")
       refute_includes noted, "secret-token-123"
@@ -301,7 +301,7 @@ class DaemonClientEnvTest < Minitest::Test
   def test_load_env_note_is_the_shared_note_text
     with_env("RUBYOPT" => nil, "BUNDLER_ORIG_RUBYOPT" => nil, "RUBYLIB" => "lib", "BUNDLER_ORIG_RUBYLIB" => nil) do
       assert_equal "the daemon does not pass RUBYLIB to the app; if the missing file is in a directory set there, " \
-                   "add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
+                   "add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
                    "see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}", Mutineer::DaemonClient.load_env_note
       assert Mutineer::DaemonClient.load_env_note(who: "--test-command", to: "the command")
                                    .start_with?("--test-command does not pass RUBYLIB to the command; ")

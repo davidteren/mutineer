@@ -565,7 +565,7 @@ class RunnerExternalTest < Minitest::Test
       assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
                              "--test-command does not pass RUBYLIB to the command; if the missing file is in a " \
                              "directory set there, add that directory to load_path: in .mutineer.yml, or pass " \
-                             "-I DIR (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}; " \
+                             "-I DIR to mutineer (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}; " \
                              "the unmutated suite is not green"
       refute_includes err, "test/support"
 
