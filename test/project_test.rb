@@ -1869,6 +1869,7 @@ class ProjectTest < Minitest::Test
     "ORIGIN = P.new(0)\nclass << ORIGIN.class\n  alias_method :raw_new, :new\nend\n" => true,
     "class << A::P\n  alias_method :raw_new, :new\nend\n" => true,
     "eval(\"1\")\n" => true,
+    "Kernel.send(:eval, \"1\")\n" => true,
     "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false
   }.freeze
 

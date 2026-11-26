@@ -121,11 +121,10 @@ module Mutineer
         when Prism::CallNode
           allowed << node.receiver if RESHAPE_SAFE_CALLS.include?(node.name)
           allowed.merge(node.arguments.arguments) if builder_call?(node) && node.arguments
-          if node.receiver
-            sent = sent_name(node)
-            indirect = true if sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent)
-          end
-          indirect = true if node.name == :eval # its string may name any class
+          sent = sent_name(node)
+          # `eval`'s string may name any class, with or without a receiver. A
+          # call without a receiver runs on `self`, which the body rule covers.
+          indirect = true if sent == :eval || (node.receiver && (sent.nil? || INDIRECT_RESHAPE_CALLS.include?(sent)))
         end
         names << node.name if constant_reference?(node) && !allowed.include?(node)
       end

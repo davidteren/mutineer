@@ -192,8 +192,8 @@ the class again on each load (#575):
   Any other use could change the class in a way that is not safe to repeat (`Point.freeze`,
   `Point.class_eval`, `Alias = Point`, or `alias_method` in a `class Point` or `class Point::Inner`
   statement). A file that calls `alias_method`, `class_eval`, `class_exec`, `module_eval`, `module_exec`,
-  `instance_eval`, `instance_exec`, `define_method` or `const_get` with a receiver, also through `send`, `public_send` or `__send__` (or a `send` with a computed method name), or that calls `eval`, or that has a `class << expr`
-  statement with an unsafe body, keeps none of its constants, because such code can reach the class without its name. A kept class would get that change a
+  `instance_eval`, `instance_exec`, `define_method` or `const_get` with a receiver, also through `send`, `public_send` or `__send__` (or a `send` with a computed method name), or that calls `eval` (also through `send`), or that has a `class << expr`
+  statement with an unsafe body whose expression is not a constant or `self`, keeps none of its constants, because such code can reach the class without its name. A kept class would get that change a
   second time: an `alias_method` chain would make the method call itself, a false kill. Names match by their
   last part. A change that another file makes, and an `include`, `prepend` or `extend` on another receiver, are not
   seen (#585). When a class statement of
