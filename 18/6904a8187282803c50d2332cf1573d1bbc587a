@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_d1e28437164ffb::t_a6578e8229dd0c 24-25
+action.yml
+  s_d1e28437164ffb::t_36e7d13bf0c77a 572
+docs/agentic-coding.html
+  s_d1e28437164ffb::t_e03d5c66a0f9b3 91
+docs/agentic-coding.md
+  s_d1e28437164ffb::t_39a083311a04b4 57
+skills/mutineer/SKILL.md
+  s_d1e28437164ffb::t_436196c287c5eb 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "186904a8187282803c50d2332cf1573d1bbc587a",
+  "prompts": {},
+  "sessions": {
+    "s_d1e28437164ffb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed7125bf-06d4-41e6-afe3-692b9b724933",
+        "model": "unknown"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
