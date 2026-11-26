@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A UTF-8 source with an invalid byte in a comment no longer stops the run (#538).**
+  `JobPlan.suppress_map` matched the `mutineer:disable-line` marker against the raw comment text and raised `invalid byte sequence in UTF-8`, so `mutineer run` exited 2 for a file that Ruby loads.
+  It now matches the marker on the comment's bytes, and the line counts of the run and the report read bytes.
+  A marker with an invalid byte after it, before a `--` reason or the end of the comment, is ignored, with a warning, so it cannot silence an operator the user did not name.
+- **A hand-edited run cache with a bad timing is a cache miss, not a backtrace (#546).**
+  A `coverage.json` in the cache directory with a string, infinite or negative timing raised in test ordering.
+  The run now captures again instead. `--coverage-from` also rejects a negative timing.
+  A failed test file with a timing far below the fastest one no longer raises `Math::DomainError` in test ordering either.
+- **A JSON entry for a source path that is not valid UTF-8 carries a `diff_base64` that applies (#532, partly).**
+  `diff` prints such a path as `\xNN`, so no patch named the real file. `diff_base64` now names it by its own bytes, and `git apply --unidiff-zero` finds it. With a credential configured, such an entry has no `diff_base64`, because the path bytes cannot be checked for it (#540).
+  A file with a `working-tree-encoding` Git attribute and an invalid byte on a changed line still has no patch that applies. The same holds for such a file whose path is not valid UTF-8. Those limits stay open in #532.
 - **The PostgreSQL run lock is never free while a run moves it from exclusive to shared (#556).**
   A `--rails --daemon` run on PostgreSQL takes the exclusive run lock, copies its worker databases, and then shares the lock.
   Before this fix it released the exclusive lock first and asked for the shared lock second.

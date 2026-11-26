@@ -123,7 +123,9 @@ module Mutineer
     # @param source [String] the source to byteslice (byte offsets, never char).
     # @return [String] the mutated token with runs of whitespace collapsed to one space.
     def normalized_token(mutation, source)
-      source.byteslice(mutation.start_offset...mutation.end_offset).gsub(/\s+/, " ").strip
+      token = source.byteslice(mutation.start_offset...mutation.end_offset)
+      # On bytes, so an invalid byte in a comment inside the span cannot raise (#538).
+      token.b.gsub(/\s+/n, " ").strip.force_encoding(token.encoding)
     end
   end
 end
