@@ -1649,7 +1649,7 @@ class ProjectTest < Minitest::Test
   # not `defined?` of a constant: each runs again on a second load.
   RELOADED_TEXTS = {
     n1: "unless defined?(Rails)\n  class Shim\n    def n1; end\n  end\nend\n",
-    n2: "unless defined?(X)\n  1\nelse\n  X2 = 1\n  def n2; end\nend\n",
+    n2: "unless defined?(X)\n  1\nelse\n  X = 1\n  def n2; end\nend\n",
     n3: "if defined?(X)\n  def n3; end\nend\n",
     n4: "X &&= Struct.new(:a) do def n4; end end\n",
     n5: "unless ready?\n  X = 1\n  def n5; end\nend\n",
