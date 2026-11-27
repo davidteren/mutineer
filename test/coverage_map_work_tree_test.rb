@@ -326,6 +326,73 @@ class CoverageMapWorkTreeTest < Minitest::Test
                   "project to see why; the check needs git 2.24 or later); capturing every test."], lines(run)
   end
 
+  # git older than 2.24 refuses --end-of-options. Each run captures every
+  # test with the line that names git 2.24; none raises or reuses the map.
+  def test_a_git_older_than_2_24_captures_every_test_with_a_line
+    write_app
+    real = Open3.capture2("sh", "-c", "command -v git").first.strip
+    bin = File.join(@scratch, "bin")
+    FileUtils.mkdir_p(bin)
+    File.write(File.join(bin, "git"), <<~SH)
+      #!/bin/sh
+      for arg in "$@"; do [ "$arg" = "--end-of-options" ] && { echo "unknown option" >&2; exit 129; }; done
+      exec "#{real}" "$@"
+    SH
+    File.chmod(0o755, File.join(bin, "git"))
+    path = ENV.fetch("PATH")
+    ENV["PATH"] = "#{bin}:#{path}"
+    build
+    2.times do
+      run = build
+      assert_equal :full, kind(run)
+      assert_equal ["[mutineer] coverage cache: git could not list the changed files (run git status in the " \
+                  "project to see why; the check needs git 2.24 or later); capturing every test."], lines(run)
+    end
+  ensure
+    ENV["PATH"] = path if path
+  end
+
+  # When git fails at every command, the line blames git, not a shallow clone.
+  def test_git_that_fails_after_the_record_does_not_blame_a_shallow_clone
+    write_app
+    build
+    record = Mutineer::WorkTree.record(@root)
+    run = Mutineer::WorkTree.stub(:changed_since, nil) do
+      Mutineer::WorkTree.stub(:commit?, false) do
+        Mutineer::WorkTree.stub(:head, nil) { build(work_tree: record) }
+      end
+    end
+    assert_equal :full, kind(run)
+    assert_equal ["[mutineer] coverage cache: git could not list the changed files (run git status in the " \
+                  "project to see why; the check needs git 2.24 or later); capturing every test."], lines(run)
+  end
+
+  # A view edited during the app boot, after the record: this run sees it.
+  def test_a_view_edited_during_the_boot_captures_every_test_in_that_run
+    write_app
+    build
+    record = Mutineer::WorkTree.record(@root)
+    write("app/views/show.html.erb", "strict\n")
+    run = build(work_tree: record)
+    assert_equal :full, kind(run)
+    assert_equal [format(CHANGED, "app/views/show.html.erb")], lines(run)
+    assert_equal ["test/page_test.rb"], run.map.map[STRICT_LINE]
+  end
+
+  # A saved path outside the root is a malformed cache: the check never reads it.
+  def test_a_saved_path_outside_the_root_is_a_malformed_cache
+    %w[../outside.yml /etc/hosts lib/../../outside.yml].each do |bad|
+      teardown
+      setup
+      write_app
+      build
+      edit_cache { |data| data["work_tree"]["dirty"][bad] = "x" }
+      run = build
+      assert_equal :full, kind(run), bad
+      assert_empty lines(run), bad
+    end
+  end
+
   # A listing that failed when the map was saved leaves a record with no
   # commit. While git still has one, the line blames the listing.
   def test_a_record_with_no_commit_while_git_has_one_says_git_could_not_list
@@ -522,6 +589,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
       ".mutineer.yml" => :hit, ".mutineer/baseline.json" => :hit,
       "lib/.mutineer/file-swap-locks/abc" => :hit, "report.json" => :hit,
       "lib/.mutineer_mutant20261127-1-abc.rb" => :hit, "lib/card.rb.mutineer-backup" => :hit,
+      "tmp2/mutineer-callback-growth20261127-1-abc.log" => :hit, "tmp2/mutineer-callback-growth.log" => :full,
       "app/.mutineer.yml" => :full, "test/.mutineer/options.yml" => :full
     }.each do |rel, expect|
       teardown
@@ -551,6 +619,26 @@ class CoverageMapWorkTreeTest < Minitest::Test
     assert_equal :hit, kind(build(own_paths: [report]))
     File.write(report, "{\"again\": 1}")
     assert_equal :hit, kind(build)
+  end
+
+  # The callback-growth log a reload or daemon run makes matches the own-file pattern.
+  def test_the_callback_growth_log_name_is_an_own_file_name
+    log = Mutineer::JobPlan.create_callback_growth_log
+    assert_match Mutineer::CoverageMap::WorkTreeCheck::CALLBACK_LOG, File.basename(log)
+  ensure
+    File.delete(log) if log
+  end
+
+  # A report whose name is not UTF-8 is saved as JSON can hold it, and a
+  # later listing of that name, in the same form, is still an own file.
+  def test_a_report_whose_name_is_not_utf8_is_saved_and_left_out
+    write_app
+    raw = path("report-\xFF.json").b
+    build(own_paths: [raw])
+    assert_includes JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["own"], "report-?.json"
+    listing = Mutineer::WorkTree.method(:changed_since)
+    with_report = ->(commit, root) { listing.call(commit, root)&.push("report-\xFF.json".b) }
+    assert_equal :hit, kind(Mutineer::WorkTree.stub(:changed_since, with_report) { build })
   end
 
   # The report does not exist yet when the first run saves its map. Through a

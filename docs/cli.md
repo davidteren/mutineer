@@ -220,7 +220,7 @@ capture uses `[mutineer] --coverage-from: ` for the no-git line, which says `cap
 
 | Line you see | What it means | What to do |
 |---|---|---|
-| `<path> changed since the saved map, and Mutineer cannot tell which tests it affects; capturing every test.` | A file changed that no other cache check covers. | Nothing. If a test or a tool writes this file on every run, add it to `.gitignore`, or every run captures every test ([#603](https://github.com/davidteren/mutineer/issues/603)). |
+| `<path> changed since the saved map, and Mutineer cannot tell which tests it affects; capturing every test.` | A file changed that no other cache check covers. | Nothing. If a test or a tool changes this file on every run, add it to `.gitignore`, or every run captures every test ([#603](https://github.com/davidteren/mutineer/issues/603)). |
 | `<path> changed while the last run was in progress; capturing every test.` | A source, a test or a loaded Ruby file changed while the last run captured coverage, so the saved map may hold its old text ([#604](https://github.com/davidteren/mutineer/issues/604)). | Nothing. The run captures it again. |
 | `<path> cannot be fingerprinted (a folder, a nested repository, a changed submodule, an unreadable file or a name that is not UTF-8): add it to .gitignore or remove it; capturing every test.` | Mutineer cannot compare this path with the saved map. | Add it to `.gitignore` or remove it. Until then every run captures every test. |
 | `the commit of the saved map is not in this clone (a shallow clone, or a commit that no branch holds now; fetch the full history, in GitHub Actions with fetch-depth: 0); capturing every test.` | Git cannot compare the files with the commit of the saved map. | Fetch the full history. |
@@ -243,15 +243,19 @@ path.
 These changes are not seen, and the map is reused ([#602](https://github.com/davidteren/mutineer/issues/602)):
 
 - a file that git ignores, such as `.env`, built assets or an ignored `Gemfile.lock`;
-- a file outside the project root, such as a data file in a `load_path` directory outside it
-  ([#548](https://github.com/davidteren/mutineer/issues/548));
+- a file outside the project root that is not Ruby, such as a data file in a `load_path` directory outside it
+  ([#548](https://github.com/davidteren/mutineer/issues/548)). A Ruby file in a `load_path` directory is part of the key, as the list above says;
 - a change that git does not report: line endings or a clean filter, a rename that changes only letter case,
   or a submodule that `git submodule deinit` empties;
 - any change to a file that is not Ruby, in a project where git gives no answer;
+- a file edited while a run captures coverage and changed back before that run saves its map
+  ([#606](https://github.com/davidteren/mutineer/issues/606));
 - Mutineer's own files: `.mutineer.yml` in the project root, any file below the `.mutineer/` folder in the
   project root (the cache, the baseline), the cache file in another `--cache-dir`, the `--output` report, the
-  `--baseline` file, the `--coverage-from` file, and the file-swap locks beside each source. A project whose
-  tests read one of these files keeps the gap for it.
+  `--baseline` file, the `--coverage-from` file, the file-swap locks and `.mutineer-backup` files beside each
+  source, the mutant temp files (`mutineer_mutant…` or `mutineer_daemon…`, ending in `.rb`) beside each source,
+  and the callback-growth log (`mutineer-callback-growth…`, ending in `.log`) when the temporary folder is in the project. A
+  project whose tests read one of these files keeps the gap for it.
 
 After such a change, if it changes which source lines a test reaches, delete `coverage.json` in the cache
 directory once. The next run captures every test again.

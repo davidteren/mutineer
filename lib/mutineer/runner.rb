@@ -174,10 +174,11 @@ module Mutineer
 
       # #495: phase seconds for the report; nil for a phase the run skips.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
-      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       # Before the boot and before any source loads: a file that changes from
       # here on is a changed file for the next run's coverage cache (#595).
+      # Taken before boot_started, so its git time is not boot time.
       work_tree = WorkTree.record(config.project_root)
+      boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       # The load_path directories go on $LOAD_PATH before the boot file, the
       # sources and the require: files load (#491). One splat keeps the
       # written order. Then the test-helper roots go in front of them (with

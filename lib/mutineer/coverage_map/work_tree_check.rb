@@ -29,7 +29,9 @@ module Mutineer
 
       # True when `record` has the shape {#save} writes. The commit must be a
       # full commit id ({WorkTree::COMMIT_ID}) or nil: the cache file can be
-      # edited, and the commit goes to git as an argument.
+      # edited, and the commit goes to git as an argument. Each `"dirty"` key
+      # must be a path inside the root, as git lists it: the check reads that
+      # file.
       #
       # @api private
       # @param record [Object] the `"work_tree"` entry of a parsed coverage.json.
@@ -38,14 +40,23 @@ module Mutineer
         commit = record.is_a?(Hash) ? record["commit"] : nil
         record.is_a?(Hash) && (commit.nil? || (commit.is_a?(String) && commit.match?(WorkTree::COMMIT_ID))) &&
           record["dirty"].is_a?(Hash) &&
-          record["dirty"].all? { |rel, print| rel.is_a?(String) && (print.nil? || print.is_a?(String)) } &&
+          record["dirty"].all? { |rel, print| inside_rel?(rel) && (print.nil? || print.is_a?(String)) } &&
           %w[own during_run].all? { |key| record[key].nil? || (record[key].is_a?(Array) && record[key].all?(String)) }
       end
 
+      # True when `rel` is a relative path with no `..` part.
+      #
+      # @api private
+      # @param rel [Object]
+      # @return [Boolean]
+      def inside_rel?(rel)
+        rel.is_a?(String) && !rel.empty? && !rel.start_with?("/") && !rel.split("/").include?("..")
+      end
+
       # Why the work tree does not allow a reuse of `cached`, and a note for a
-      # reuse that goes on. Compares the saved record with `@work_tree`, the
-      # record of this run, so the state it accepts is the state {#save}
-      # writes. Prints nothing.
+      # reuse that goes on. Compares the saved record with the work tree now,
+      # and with `@work_tree`, the record of this run, so a file edited after
+      # that record (during the app boot) counts as changed. Prints nothing.
       #
       # @api private
       # @param cached [Hash] parsed coverage.json with a well-formed `"work_tree"`.
@@ -72,12 +83,13 @@ module Mutineer
         end
         return [GIT_FAILED, nil] unless mine
 
-        now = mine == commit ? @work_tree["dirty"].keys : WorkTree.changed_since(commit, @project_root)
+        now = WorkTree.changed_since(commit, @project_root)
         if now
           changes = unscoped_changes(cached, now)
           return [changed_files_reason(changes, saved_name), nil, changes.keys]
         end
-        return [GIT_FAILED, nil] if WorkTree.commit?(commit, @project_root)
+        # A git that cannot give HEAD now fails for another reason than a missing commit.
+        return [GIT_FAILED, nil] if WorkTree.commit?(commit, @project_root) || !WorkTree.head(@project_root)
 
         ["the commit of #{saved_name} is not in this clone (a shallow clone, or a commit that no branch holds now; " \
          "fetch the full history, in GitHub Actions with fetch-depth: 0)", nil]
@@ -109,10 +121,12 @@ module Mutineer
       end
 
       # The changed paths that no other cache check handles, each with its
-      # cause. A source or a test of this run, and a Ruby file the saved map
-      # loaded, are left to their own checks, unless that check cannot see
-      # the change: the file changed while the last run was in progress, and
-      # the cache saved its new fingerprint (`:during_run`, #604).
+      # cause. A path is unchanged when its saved fingerprint equals the file
+      # now and the path did not change since this run's record. A source or
+      # a test of this run, and a Ruby file the saved map loaded, are left to
+      # their own checks, unless that check cannot see the change: the file
+      # changed while the last run was in progress, and the cache saved its
+      # new fingerprint (`:during_run`, #604).
       #
       # @api private
       # @param cached [Hash] parsed coverage.json.
@@ -123,15 +137,15 @@ module Mutineer
         saved_own = Array(cached["work_tree"]["own"])
         scoped = source_rels.to_set + test_fingerprints.keys
         scoped.merge(cached["dependencies"].keys) if cached["dependencies"].is_a?(Hash)
-        (now | saved.keys).sort.each_with_object({}) do |raw, changes|
+        candidates = (now | saved.keys | @work_tree["dirty"].keys).sort
+        # The record was taken before the app booted: these changed during the boot.
+        moved = changed_since_record(candidates.reject { |rel| scoped.include?(rel) }).to_set
+        candidates.each_with_object({}) do |raw, changes|
           rel = WorkTree.json_name(raw)
-          mine = @work_tree["dirty"]
           # A name that is not UTF-8 never matches (KTD9).
-          current = if !rel.equal?(raw) then nil
-                    elsif mine.key?(rel) then mine[rel]
-                    else WorkTree.fingerprint(@project_root, rel)
-                    end
-          next if (saved[rel] && saved[rel] == current) || own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)
+          current = rel.equal?(raw) ? WorkTree.fingerprint(@project_root, rel) : nil
+          next if (saved[rel] && saved[rel] == current && !moved.include?(rel)) ||
+                  own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)
 
           if scoped.include?(rel)
             changes[rel] = :during_run unless cache_sees_change?(cached, rel)
@@ -159,7 +173,7 @@ module Mutineer
       # The given paths whose git state differs now from this run's record,
       # which a caller that boots an app took before the boot. So an edit
       # during the boot counts too, which the start prints of {#cached_or}
-      # miss. It lists against the recorded commit, so a commit or checkout
+      # miss. {#unscoped_changes} uses it for the other files. It lists against the recorded commit, so a commit or checkout
       # during the run does not hide an edit. When git fails now, every path
       # counts as changed. Empty when the record has no commit.
       #
@@ -215,19 +229,24 @@ module Mutineer
       # concurrent run can leave one there while this run takes its record.
       MUTANT_TEMP = %r{(?:\A|/)\.?mutineer_(?:mutant|daemon)\d{8}-[^/]*\.rb\z}
 
+      # The callback-growth log of a reload or daemon run
+      # (JobPlan.create_callback_growth_log). It is in TMPDIR, which can be
+      # inside the project, and each run makes a new one.
+      CALLBACK_LOG = %r{(?:\A|/)mutineer-callback-growth\d{8}-[^/]*\.log\z}
+
       # True for a path in a place where Mutineer keeps its own state, which
       # the tests of a project do not read: the `.mutineer` folder of the
       # project root, `.mutineer.yml` in the project root (Config's file
       # name), a file-swap lock or backup beside a source
-      # (FileSwap::LOCK_DIR_NAME, FileSwap::BACKUP_SUFFIX), and a mutant temp
-      # file ({MUTANT_TEMP}).
+      # (FileSwap::LOCK_DIR_NAME, FileSwap::BACKUP_SUFFIX), a mutant temp
+      # file ({MUTANT_TEMP}), and the callback-growth log ({CALLBACK_LOG}).
       #
       # @api private
       # @param rel [String] path relative to the project root.
       # @return [Boolean]
       def own_path?(rel)
         rel == ".mutineer.yml" || rel.start_with?(".mutineer/") || "/#{rel}".include?("/.mutineer/file-swap-locks/") ||
-          rel.end_with?(".mutineer-backup") || rel.match?(MUTANT_TEMP)
+          rel.end_with?(".mutineer-backup") || rel.match?(MUTANT_TEMP) || rel.match?(CALLBACK_LOG)
       end
 
       # The files this run writes or reads for itself, relative to the project
@@ -238,14 +257,16 @@ module Mutineer
       #
       # A file that does not exist yet, such as the report before the run
       # writes it, is placed by the real path of its folder, so a folder
-      # reached through a symlink still gives the path git lists.
+      # reached through a symlink still gives the path git lists. A name that
+      # is not UTF-8 is kept as {WorkTree.json_name} gives it, as the cache
+      # file is JSON and the listing is matched in that form.
       #
       # @api private
       # @return [Array<String>]
       def own_rels
         @own_rels ||= ([cache_path, "#{cache_path}.tmp", @coverage_from] + @own_paths).compact.map do |path|
           abs = absolute(path)
-          relativize(File.join(ProjectPath.root_real(File.dirname(abs)), File.basename(abs)))
+          WorkTree.json_name(relativize(File.join(ProjectPath.root_real(File.dirname(abs)), File.basename(abs))))
         end
       end
     end

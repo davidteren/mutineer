@@ -112,6 +112,26 @@ class WorkTreeTest < Minitest::Test
     end
   end
 
+  # git prints a flagged row as a tag, a space and the name. A name that
+  # starts with a space keeps it.
+  def test_a_flagged_name_that_starts_with_a_space_is_listed_whole
+    with_repo do |dir, head|
+      File.write(File.join(dir, "  lead.yml"), "a\n")
+      git(dir, "add", "--", "  lead.yml")
+      git(dir, "commit", "-qm", "lead")
+      git(dir, "update-index", "--assume-unchanged", "--", "  lead.yml")
+      File.write(File.join(dir, "  lead.yml"), "b\n")
+      assert_includes changed(dir, head), "  lead.yml"
+      refute_includes changed(dir, head), "lead.yml"
+    end
+  end
+
+  def test_json_name_keeps_valid_utf8_and_replaces_invalid_bytes_in_either_encoding
+    assert_equal "café.yml", WT.json_name("café.yml")
+    assert_equal "bad?.yml", WT.json_name("bad\xFF.yml".b)
+    assert_equal "bad?.yml", WT.json_name((+"bad\xFF.yml").force_encoding(Encoding::UTF_8))
+  end
+
   def test_changed_since_lists_a_file_that_a_sparse_checkout_removes
     with_repo do |dir, head|
       git(dir, "sparse-checkout", "set", "--no-cone", "/*", "!/app/views/")

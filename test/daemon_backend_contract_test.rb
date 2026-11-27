@@ -179,6 +179,12 @@ class DaemonBackendContractTest < Minitest::Test
     config.baseline = "/abs/baseline.json"
     assert_equal [File.expand_path("out/report.json"), "/abs/baseline.json"],
                  Mutineer::DaemonBackend.boot_config(config, [])[:own_paths]
+
+    # A name that is not UTF-8 goes as JSON can hold it, so the boot line is written.
+    config.output = (+"/abs/report-\xFF.json").force_encoding(Encoding::UTF_8)
+    boot = Mutineer::DaemonBackend.boot_config(config, [])
+    assert_equal "/abs/report-?.json", boot[:own_paths].first
+    JSON.generate(boot)
   end
 
   # The daemon's database report, as RailsWorkerDb.database_names gives it.

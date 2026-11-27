@@ -46,15 +46,17 @@ module Mutineer
       { "commit" => commit, "dirty" => dirty }
     end
 
-    # `rel` in a form JSON can hold: `rel` itself when it is UTF-8 or ASCII,
-    # else a UTF-8 copy with each invalid byte as `?`. A caller that gets a
+    # `rel` in a form JSON can hold: `rel` itself when it is valid UTF-8 or
+    # ASCII, else a UTF-8 copy with each invalid byte as `?`. A caller that gets a
     # copy back treats the path as one that cannot be fingerprinted.
     # (`rel.b.scrub` would do nothing: every byte is valid in binary.)
     #
     # @param rel [String] a path as {changed_since} gives it.
     # @return [String]
     def json_name(rel)
-      rel.encoding == Encoding::UTF_8 || rel.ascii_only? ? rel : rel.dup.force_encoding(Encoding::UTF_8).scrub("?")
+      return rel if rel.ascii_only? || (rel.encoding == Encoding::UTF_8 && rel.valid_encoding?)
+
+      rel.dup.force_encoding(Encoding::UTF_8).scrub("?")
     end
 
     # Fingerprint of a work-tree path: its mode and content. It is not the
@@ -140,9 +142,11 @@ module Mutineer
       flagged = list(root, "ls-files", "-v", "-z")
       return nil unless tracked && untracked && flagged
 
+      # Each row is a one-letter tag, a space and the name. The name can
+      # start with a space, so it is cut by position, not split.
       unwatched = flagged.filter_map do |row|
-        tag, rel = row.split(" ", 2)
-        rel if rel && (tag == "S" || tag.match?(/\A[a-z]\z/))
+        rel = row[2..].to_s
+        rel if row[1] == " " && !rel.empty? && (row[0] == "S" || row[0].match?(/\A[a-z]\z/))
       end
       (tracked + untracked + unwatched).uniq
     end
