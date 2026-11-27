@@ -44,13 +44,13 @@ module Mutineer
           %w[own during_run].all? { |key| record[key].nil? || (record[key].is_a?(Array) && record[key].all?(String)) }
       end
 
-      # True when `rel` is a relative path with no `..` part.
+      # True when `rel` is a relative path with no `..` part and no NUL byte.
       #
       # @api private
       # @param rel [Object]
       # @return [Boolean]
       def inside_rel?(rel)
-        rel.is_a?(String) && !rel.empty? && !rel.start_with?("/") && !rel.split("/").include?("..")
+        rel.is_a?(String) && !rel.empty? && !rel.start_with?("/") && !rel.include?("\0") && !rel.split("/").include?("..")
       end
 
       # Why the work tree does not allow a reuse of `cached`, and a note for a
@@ -144,8 +144,9 @@ module Mutineer
           rel = WorkTree.json_name(raw)
           # A name that is not UTF-8 never matches (KTD9).
           current = rel.equal?(raw) ? WorkTree.fingerprint(@project_root, rel) : nil
+          # A converted name (not UTF-8) is never an own file: two names can convert alike.
           next if (saved[rel] && saved[rel] == current && !moved.include?(rel)) ||
-                  own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)
+                  (rel.equal?(raw) && (own_rels.include?(rel) || saved_own.include?(rel))) || own_path?(rel)
 
           if scoped.include?(rel)
             changes[rel] = :during_run unless cache_sees_change?(cached, rel)
@@ -258,8 +259,8 @@ module Mutineer
       # A file that does not exist yet, such as the report before the run
       # writes it, is placed by the real path of its folder, so a folder
       # reached through a symlink still gives the path git lists. A name that
-      # is not UTF-8 is kept as {WorkTree.json_name} gives it, as the cache
-      # file is JSON and the listing is matched in that form.
+      # is not UTF-8 is kept as {WorkTree.json_name} gives it, so the cache
+      # file (JSON) can hold it; {#unscoped_changes} never matches it.
       #
       # @api private
       # @return [Array<String>]

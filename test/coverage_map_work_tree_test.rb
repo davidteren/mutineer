@@ -381,7 +381,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
 
   # A saved path outside the root is a malformed cache: the check never reads it.
   def test_a_saved_path_outside_the_root_is_a_malformed_cache
-    %w[../outside.yml /etc/hosts lib/../../outside.yml].each do |bad|
+    ["../outside.yml", "/etc/hosts", "lib/../../outside.yml", "a\0b.yml"].each do |bad|
       teardown
       setup
       write_app
@@ -629,16 +629,19 @@ class CoverageMapWorkTreeTest < Minitest::Test
     File.delete(log) if log
   end
 
-  # A report whose name is not UTF-8 is saved as JSON can hold it, and a
-  # later listing of that name, in the same form, is still an own file.
-  def test_a_report_whose_name_is_not_utf8_is_saved_and_left_out
+  # A report whose name is not UTF-8 is saved as JSON can hold it. A listed
+  # name that is not UTF-8 never matches an own file, as another name can
+  # convert to the same text, so it cannot be fingerprinted.
+  def test_a_report_whose_name_is_not_utf8_is_saved_and_never_matches
     write_app
     raw = path("report-\xFF.json").b
     build(own_paths: [raw])
     assert_includes JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["own"], "report-?.json"
     listing = Mutineer::WorkTree.method(:changed_since)
     with_report = ->(commit, root) { listing.call(commit, root)&.push("report-\xFF.json".b) }
-    assert_equal :hit, kind(Mutineer::WorkTree.stub(:changed_since, with_report) { build })
+    run = Mutineer::WorkTree.stub(:changed_since, with_report) { build(own_paths: [raw]) }
+    assert_equal :full, kind(run)
+    assert_includes run.err, "report-?.json cannot be fingerprinted"
   end
 
   # The report does not exist yet when the first run saves its map. Through a
