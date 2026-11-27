@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_a38a13e2f43bf0 48,51-52
+docs/ci.md
+  s_2919199eb867b0::t_ddc88005934a1a 80
+lib/mutineer/cli.rb
+  s_2919199eb867b0::t_a34ab03d57a365 301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25f96f0a7a8aa36d3fcea8eb0f0ed6f063d445fc",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
