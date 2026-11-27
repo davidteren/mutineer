@@ -175,6 +175,9 @@ module Mutineer
       # #495: phase seconds for the report; nil for a phase the run skips.
       timing = { boot_seconds: nil, coverage_seconds: nil, clean_check_seconds: nil, mutants_seconds: nil }
       boot_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      # Before the boot and before any source loads: a file that changes from
+      # here on is a changed file for the next run's coverage cache (#595).
+      work_tree = WorkTree.record(config.project_root)
       # The load_path directories go on $LOAD_PATH before the boot file, the
       # sources and the require: files load (#491). One splat keeps the
       # written order. Then the test-helper roots go in front of them (with
@@ -252,6 +255,7 @@ module Mutineer
           require_paths: config.require_paths, # loaded above; here only for the cache digest
           verbose: config.verbose,
           coverage_from: config.coverage_from && File.expand_path(config.coverage_from, config.project_root),
+          own_paths: JobPlan.own_paths(config), work_tree: work_tree,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_via_fork(after_fork: (config.rails ? -> { reconnect_active_record } : nil))
         # Nothing reads Coverage once the map is built (cache hit or not), so
@@ -271,6 +275,7 @@ module Mutineer
           load_paths: config.load_paths + rel_roots + config.extra_load_paths, framework: config.framework,
           extra_load_paths: config.extra_load_paths, # cache key only (#536, #539, #544)
           require_paths: config.require_paths, verbose: config.verbose,
+          own_paths: JobPlan.own_paths(config), work_tree: work_tree,
           capture_timeout: config.capture_timeout || CoverageMap::DEFAULT_CAPTURE_TIMEOUT
         ).build_or_load
       end

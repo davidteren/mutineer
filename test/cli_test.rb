@@ -1025,7 +1025,12 @@ class CliTest < Minitest::Test
 
       _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_empty err
+      # The project has no git, and this run reuses the map: the one line is
+      # the note of what the coverage cache cannot see (#595).
+      assert_equal "[mutineer] coverage cache: git gives no answer for this project (no repository, git is not " \
+                   "installed, or git ignores or refuses the folder), so an edit to a view, a fixture or a lock " \
+                   "file is not seen; after such an edit, delete .mutineer/coverage.json " \
+                   "(https://github.com/davidteren/mutineer/issues/602).\n", err
 
       File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
       _, err, = mutineer(*args, chdir: proj)

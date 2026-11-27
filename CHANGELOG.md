@@ -35,11 +35,19 @@ All notable changes to this project are documented here. The format is based on
 - **The docs name a `min` / `max` comparator limit (#501).**
   `docs/equivalent-skips.md` now says that a `min` or `max` statement with no block is skipped even when its `<=>` has a side effect, which a test could see. No behaviour change.
 - **The docs now say what the coverage cache key holds (#548).**
-  `docs/cli.md` lists the key inputs and says that a data file a test reads, such as a YAML or JSON file, is not part of the key, in any directory.
-  After an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once to capture every test again. No behaviour change.
+  `docs/cli.md` lists the key inputs and the files the cache does not see. Since #595, a changed data file that git lists below the project root captures every test again (see Fixed). A data file that git ignores, or one outside the project root, such as in a `load_path` directory outside it, is still not seen: after an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once (#602).
+- **The coverage cache check of #595 changes these cases.**
+  A cache saved by an earlier version holds no git record, so the first run after the upgrade captures every test once, with no line.
+  A run in a project where git gives no answer (no repository, git not installed, a folder git ignores) prints one line on each run that reuses a map, with what it cannot see and the remedy (#602).
+  A file that a test or a tool writes on every run, and that git does not ignore, stops every reuse until it is added to `.gitignore` (#603). The same holds for an untracked nested repository, a changed submodule, a repository with no commit, and a clone that lacks the commit of the saved map (a shallow clone).
+  `--coverage-from` refuses a capture from an earlier version (exit 2, `it records no git state`), and refuses every capture while the project holds a path that cannot be fingerprinted.
 
 ### Fixed
 
+- **The coverage cache no longer reuses a map after an edit to a view, a fixture, a lock file or another file that is not Ruby (#595).**
+  The cache checked the sources, the tests and the Ruby files the tests load. An edit to any other project file kept the old map, in full or in a partial recapture. A test could then reach other source lines than the map says, so a mutant could run without a test that covers it and score `survived` or `no_coverage`, with no message.
+  Each run now records the git commit and a fingerprint of every file that differs from it, before the app loads, and the saved map keeps that record. When a file changed that no other cache check covers, the run captures every test and prints `[mutineer] coverage cache: <path> changed since the saved map, and Mutineer cannot tell which tests it affects; capturing every test.` `--verbose` lists every path. Under `--coverage-from` the run exits 2 with that reason.
+  Git lists the files: a tracked file that differs, an untracked file that git does not ignore, and a file with git's assume-unchanged or skip-worktree flag. Mutineer's own files (the root `.mutineer.yml`, the `.mutineer/` folder, the report, the baseline) do not count. Not seen: a file git ignores, a file outside the project root, and any such file in a project with no git (#602). `docs/cli.md` lists each line and what to do.
 - **A folder source no longer reads a test folder below it as sources (#554).**
   With `--test`, `mutineer run packs --test packs/catalog/test --format json` loaded the pack test file as a source and scored it.
   Its mutants were `no_coverage`, and Minitest output followed the JSON report on stdout, so the report did not parse.

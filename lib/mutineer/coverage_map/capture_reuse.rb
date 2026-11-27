@@ -26,9 +26,24 @@ module Mutineer
       # @return [Mutineer::CoverageMap] self.
       def cached_or(after_fork: nil)
         @digest = compute_digest
+        # The record of this run (#595). A caller that boots an app passes one
+        # it took before the boot; a file that changes after it is a changed
+        # file for the next run.
+        @work_tree ||= WorkTree.record(@project_root)
         return reuse_capture(after_fork) if @coverage_from
 
         cached = read_cache
+        # A cache from before the work-tree record (#595) rebuilds once.
+        cached = nil unless cached.is_a?(Hash) && well_formed_work_tree?(cached["work_tree"])
+        reason, note, paths = cached ? work_tree_refusal(cached) : nil
+        if reason
+          warn "[mutineer] coverage cache: #{reason}; capturing every test."
+          # The line names three paths at most; --verbose lists every one.
+          if @verbose && paths && paths.size > WorkTreeCheck::WORK_TREE_NAMES
+            paths.each { |rel| warn "[mutineer] coverage cache:   #{printable_path(rel)}" }
+          end
+          cached = nil
+        end
         # A cache from before load methods (#209), test timings (#203), the
         # standalone load-line narrowing (#426), or partial recapture (#421)
         # rebuilds once. A cache that does not record this process's
@@ -39,6 +54,7 @@ module Mutineer
         # its map from before #209 lacks the `def` lines of the methods each
         # test called.
         if cache_hit?(cached)
+          warn "[mutineer] coverage cache: #{note}." if note
           apply_cache(cached)
           recaptured = retry_failed_captures(after_fork)
           warn_incomplete unless @failed_test_files.empty?
@@ -53,7 +69,10 @@ module Mutineer
         end
 
         plan = partial_plan(cached)
-        return self if plan && apply_partial(plan, cached, after_fork)
+        if plan && apply_partial(plan, cached, after_fork)
+          warn "[mutineer] coverage cache: #{note}." if note
+          return self
+        end
 
         yield
         verify_combined_clean(after_fork: after_fork)
@@ -124,6 +143,7 @@ module Mutineer
       # @raise [Mutineer::CoverageFromError] when the capture does not fit.
       def reuse_capture(after_fork)
         cached = accepted_capture
+        warn "[mutineer] --coverage-from: #{@work_tree_note}." if @work_tree_note
         sources = source_fingerprints.keys.to_set
         @map = cached["map"].select { |key, _| sources.include?(key_source(key)) }
         @timings = cached["timings"] || {}
@@ -189,6 +209,10 @@ module Mutineer
         return "#{gone.join(', ')} disappeared since the capture and could own a split test" if gone.any?
 
         return "a file its tests loaded changed since the capture" unless dependencies_match?(cached)
+        return "it records no git state: an older Mutineer made it; capture it again with this version" unless cached.key?("work_tree")
+
+        tree_reason, @work_tree_note = work_tree_refusal(cached, "the capture")
+        return "#{tree_reason}; capture it again" if tree_reason
         unless parallel_workers_match?(cached)
           return "it was captured with PARALLEL_WORKERS=#{cached['parallel_workers'].inspect}, " \
                  "this run has #{ENV.fetch('PARALLEL_WORKERS', nil).inspect}"
@@ -216,7 +240,8 @@ module Mutineer
           cached["sources"].is_a?(Hash) && cached["sources"].all? { |k, v| k.is_a?(String) && v.is_a?(String) } &&
           cached["map"].all? { |k, v| k.is_a?(String) && strings.(v) } &&
           %w[load_lines load_methods].all? { |key| cached[key].nil? || strings.(cached[key]) } &&
-          well_formed_timings?(cached["timings"])
+          well_formed_timings?(cached["timings"]) &&
+          (!cached.key?("work_tree") || well_formed_work_tree?(cached["work_tree"]))
       end
 
       # This run's sources whose load lines or load methods differ in the capture.

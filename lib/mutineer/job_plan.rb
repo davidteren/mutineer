@@ -1265,6 +1265,17 @@ module Mutineer
       config.extra_load_paths.map { |dir| ProjectPath.absolute(dir, config.project_root) }
     end
 
+    # The files a run reads or writes that no test reads: the report of
+    # `--output` and the baseline. The coverage cache does not count a change
+    # to one of them as a changed project file (#595). Both resolve against
+    # the working directory, as {Reporter} and {Baseline} read them.
+    #
+    # @param config [Mutineer::Config] run configuration.
+    # @return [Array<String>] absolute paths; [] when neither is set.
+    def self.own_paths(config)
+      [config.output, config.baseline].compact.map { |path| File.expand_path(path) }
+    end
+
     # For each test file, the directory to add to $LOAD_PATH so its
     # `require "test_helper"` (or spec_helper) resolves: the nearest ancestor
     # holding that helper, plus the file's own dir as a fallback. A test under

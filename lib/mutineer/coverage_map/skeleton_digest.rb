@@ -424,7 +424,8 @@ module Mutineer
                  "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil),
                  NARROW_LOAD_LINES => true, "run_inputs" => run_inputs_digest,
                  "sources" => source_fingerprints, "skeletons" => source_skeletons,
-                 "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies }
+                 "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies,
+                 "work_tree" => @work_tree&.merge("own" => own_rels) }
         data[LOAD_LINE_PAIRS] = load_line_pairs unless @boot_path
         if @boot_path
           data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,

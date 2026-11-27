@@ -600,6 +600,8 @@ module Mutineer
         # The same directories in the written order, for the coverage cache key.
         extra_load_paths: extra_dirs,
         cache_dir: File.expand_path(config.cache_dir, config.project_root),
+        # The report and the baseline: the coverage cache does not count them as changed files (#595).
+        own_paths: JobPlan.own_paths(config),
         source_dirs: JobPlan.source_dirs(config), # so the daemon can sweep orphan mutant temps
         framework: config.framework,
         rails: config.rails,

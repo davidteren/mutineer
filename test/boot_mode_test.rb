@@ -2,6 +2,7 @@
 
 require_relative "test_helper"
 require "tmpdir"
+require "open3"
 
 # Proves boot mode end to end WITHOUT Rails/DB: the parent starts Coverage,
 # requires a plain boot file once (loading Widget), captures per-test coverage by
@@ -131,5 +132,31 @@ class BootModeTest < Minitest::Test
   def test_reconnect_active_record_is_noop_without_active_record
     refute defined?(ActiveRecord::Base), "this test assumes AR is not loaded"
     Mutineer::Runner.send(:reconnect_active_record) # must not raise
+  end
+
+  # #595: Runner.execute takes the work-tree record before the boot file
+  # loads. This boot file rewrites a tracked data file each time it loads, so
+  # the next run sees that file changed and captures every test. A record
+  # taken after the boot would match the file and reuse a stale map.
+  def test_the_work_tree_record_is_taken_before_the_boot_file_loads
+    Dir.mktmpdir("mutineer-boot-595") do |tmp|
+      root = File.realpath(tmp)
+      FileUtils.cp([SRC, STRONG], root)
+      File.write(File.join(root, "data.yml"), "plain\n")
+      File.write(File.join(root, "app_boot.rb"), "File.write(File.join(__dir__, \"data.yml\"), \"booted\\n\")\nrequire_relative \"widget\"\n")
+      File.write(File.join(root, ".gitignore"), "/.mutineer/\n")
+      [%w[init -q], %w[add -A], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", root, "-c", "user.email=t@t", "-c", "user.name=t", *args, out: File::NULL, err: File::NULL)
+      end
+      run = lambda do
+        Open3.capture3(RbConfig.ruby, "-I#{File.expand_path('../lib', __dir__)}", File.expand_path("../bin/mutineer", __dir__),
+                       "run", "widget.rb", "--test", "widget_strong_test.rb", "--boot", "app_boot.rb", chdir: root)
+      end
+      _out, err, status = run.call
+      assert_equal 0, status.exitstatus, err
+      _out, err, status = run.call
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] coverage cache: data.yml changed since the saved map"
+    end
   end
 end

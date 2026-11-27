@@ -168,6 +168,19 @@ class DaemonBackendContractTest < Minitest::Test
     assert_empty Mutineer::DaemonBackend.boot_config(config, [], coverage: true)[:shared_databases]
   end
 
+  # #595: the report and the baseline reach the daemon's coverage map, so its
+  # cache does not count them as changed project files. Both resolve against
+  # the working directory, as Reporter and Baseline read them.
+  def test_boot_config_sends_the_report_and_the_baseline_as_own_paths
+    config = Mutineer::Config.new(sources: [], tests: [], project_root: Dir.pwd, framework: "minitest")
+    assert_equal [], Mutineer::DaemonBackend.boot_config(config, [])[:own_paths]
+
+    config.output = "out/report.json"
+    config.baseline = "/abs/baseline.json"
+    assert_equal [File.expand_path("out/report.json"), "/abs/baseline.json"],
+                 Mutineer::DaemonBackend.boot_config(config, [])[:own_paths]
+  end
+
   # The daemon's database report, as RailsWorkerDb.database_names gives it.
   TWO_DATABASES = { "names" => %w[primary cable], "primary" => "primary" }.freeze
 

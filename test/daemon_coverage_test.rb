@@ -179,6 +179,34 @@ class DaemonCoverageTest < Minitest::Test
     end
   end
 
+  # #595: a new project file that git lists (here a YAML file the app could
+  # read) refuses the saved map on the daemon path. The run captures every
+  # test, so the red price_list_test.rb runs and is caught, where a cache hit
+  # would skip it. The fixture app is a folder below the git root.
+  def test_a_new_project_file_captures_every_test_on_the_daemon_path
+    probe = File.join(APP, "config/probe_595.yml")
+    Dir.mktmpdir("mutineer-daemon-595") do |dir|
+      tests = %w[billing/fee_test.rb price_list_test.rb].map { |t| File.join(APP, "test/models", t) }
+      boot = boot_config("order_test.rb").merge(sources: [File.join(APP, "app/models/billing/fee.rb")], tests: tests,
+                                                cache_dir: File.join(dir, "cache"))
+      build = lambda do
+        client = Mutineer::DaemonClient.new(boot: boot, app_root: APP).start
+        begin
+          client.coverage
+        ensure
+          client.quit
+        end
+      end
+      build.call
+      File.write(probe, "probe: 1\n")
+      ENV["MUTINEER_FLUNK_PRICE_LIST"] = "1"
+      assert_equal %w[test/models/price_list_test.rb], build.call["failed_clean_tests"]
+    ensure
+      ENV.delete("MUTINEER_FLUNK_PRICE_LIST")
+      FileUtils.rm_f(probe)
+    end
+  end
+
   def test_daemon_writes_the_coverage_cache_to_cache_dir
     Dir.mktmpdir("mutineer-daemon-cache") do |dir|
       config = config_for("order_subtotal_only_test.rb")

@@ -39,7 +39,8 @@ module Mutineer
   #              ("load_paths" holds the test-helper roots and the user's
   #               load_path directories; boot! unshifts each in turn, #491;
   #               "extra_load_paths" repeats those directories in order for
-  #               the coverage cache key)
+  #               the coverage cache key; "own_paths" holds the report and the
+  #               baseline, which the cache does not count as changed files, #595)
   #   ready out: {"ready":true,"ruby":"3.3.6","databases":{"names":["primary"],"primary":"primary"}}
   #              ("databases" is null with no worker-DB adapter, {"error":"...","primary":"primary"|null} when the lookup fails)
   #              (or {"ready":false,"error":"..."} then exit)
@@ -205,6 +206,13 @@ module Mutineer
         # is hidden from Zeitwerk instead.
         sweep_temps
         install_zeitwerk_ignore! if cfg["rails"]
+        # After the sweep and before the app boots: a file that changes from
+        # here on is a changed file for the next run's coverage cache (#595).
+        # work_tree.rb needs only the standard library.
+        if cfg["coverage"]
+          require_relative "work_tree"
+          @work_tree = WorkTree.record(Dir.pwd)
+        end
         require File.expand_path(cfg["boot"]) if cfg["boot"]
         @zeitwerk_trace&.disable
         # The --require files, after the boot as in-process (Runner.execute), so
@@ -333,6 +341,7 @@ module Mutineer
           source_paths: Array(@cfg["sources"]), test_paths: Array(@cfg["tests"]),
           load_paths: Array(@cfg["load_paths"]), project_root: root,
           extra_load_paths: Array(@cfg["extra_load_paths"]),
+          own_paths: Array(@cfg["own_paths"]), work_tree: @work_tree, # #595
           boot_path: @cfg["boot"], require_paths: Array(@cfg["require_paths"]),
           framework: @framework, cache_dir: @cfg["cache_dir"] || File.join(root, ".mutineer"),
           capture_timeout: @cfg["capture_timeout"] || CoverageMap::DEFAULT_CAPTURE_TIMEOUT,
