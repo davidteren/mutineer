@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format is based on
   An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
   When the clean run cannot load a file, the smoke error now names the file first, then the generic hint. With a `load_path`, or a `RUBYLIB` or `RUBYOPT -I` of yours, it also names the likely cause: a wrapper that unsets `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
 
+- **The JSON report marks a run that `since_paired_tests` narrowed (#552).**
+  `summary.tests_narrowed` is `true` when `since_paired_tests` gave the run fewer test files than pairing found.
+  A saved report can now tell a narrowed `--since` run from a full one, so a tool does not compare its score with a full run's.
+  It is `false` in every other run, also when the setting is on and has no effect, and for `--test-command`. The dry-run document does not have it.
+  `schema_version` is now `1.12`.
+
 ### Changed
 
 - **A failed coverage capture names its error without `--verbose` (#537).**
@@ -26,11 +32,25 @@ All notable changes to this project are documented here. The format is based on
   The note now says `does not pass your RUBYLIB` (or `RUBYOPT`) and `pass -I DIR to mutineer`, so it is not read as the `-I` of a test command.
   A capture child that exits with no result says `child wrote no result (exit status N)`.
   `--verbose` adds the full message and the first backtrace frame. Verdicts and the coverage cache do not change.
+- **The docs name a `min` / `max` comparator limit (#501).**
+  `docs/equivalent-skips.md` now says that a `min` or `max` statement with no block is skipped even when its `<=>` has a side effect, which a test could see. No behaviour change.
 - **The docs now say what the coverage cache key holds (#548).**
   `docs/cli.md` lists the key inputs and says that a data file a test reads, such as a YAML or JSON file, is not part of the key, in any directory.
   After an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once to capture every test again. No behaviour change.
 
 ### Fixed
+
+- **A folder source no longer reads a test folder below it as sources (#554).**
+  With `--test`, `mutineer run packs --test packs/catalog/test --format json` loaded the pack test file as a source and scored it.
+  Its mutants were `no_coverage`, and Minitest output followed the JSON report on stdout, so the report did not parse.
+  The same happened for any folder with a test folder below it, such as `gems` or the project root `.`, and for a test beside its source in the `--test` list.
+  Now, in `mutineer run`, a folder source leaves out a `test` or `spec` folder that sits beside an `app` or `lib` folder, and each file of an explicit `--test` list that was not typed as a source.
+  Stderr prints one line: `[mutineer] folder sources: left out N files, such as <path> (...)`. To keep the files of such a test folder, type that folder too. A file of the `--test` list that a folder source yields is always left out.
+  Without `--test`, `summary.unpaired_sources` and `summary.unpaired_mutants` fall, because those test files are no longer listed as unpaired sources.
+  A run whose folder sources held only such files now exits 2 with `run requires at least one source file`; before, it exited 0 with a wrong report.
+  An `ignore:` entry for a mutant of such a test file now shows as unmatched; delete it.
+  With `--test`, the test-file guard now also refuses a typed `test_*.rb` file inside such a test folder, such as `packs/catalog/test/models/test_item.rb`.
+  A test in another place, such as `tests/` or a test folder inside `lib/`, is still read as a source, and so is a file of a `--test` folder under `--test-command`. A folder outside the project root, such as `../other/lib`, is not filtered (#599).
 
 - **Reload no longer scores a method `survived` when a second load skips its definition (#529).**
   A constant set with `||=` (`Cell ||= Struct.new(:x) do ... end`), or defined under `unless defined?(Cell)` or `if !defined?(Cell)`, does not run again when `--strategy reload` or `--daemon` loads the mutant file.

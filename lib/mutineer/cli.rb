@@ -284,7 +284,29 @@ module Mutineer
         end
         # A directory source expands to its **/*.rb files; a file inside the
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
-        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        # A test folder below a typed folder, and a file of an explicit --test
+        # list, is not a source (#554).
+        left_out = []
+        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root, left_out: left_out)
+        in_test_folders = left_out.size
+        if config.explicit?(:tests)
+          # Real paths, so a symlink or another spelling of a test file still matches.
+          abs = lambda do |path|
+            full = File.expand_path(path, config.project_root)
+            File.exist?(full) ? File.realpath(full) : full
+          end
+          tests = config.tests.to_set(&abs)
+          typed = argv[1..].to_set(&abs)
+          dropped, config.sources = config.sources.partition { |s| tests.include?(abs.call(s)) && !typed.include?(abs.call(s)) }
+          left_out.concat(dropped)
+        end
+        unless left_out.empty?
+          noun = left_out.size == 1 ? "file" : "files"
+          # Typing a folder keeps a test folder's files, not a --test list file.
+          hint = in_test_folders.positive? ? "; type a test folder to keep its files" : ""
+          warn "[mutineer] folder sources: left out #{left_out.size} #{noun}, such as #{left_out.first} " \
+               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source#{hint})"
+        end
         # Direct writes from the app, a fork, or a subprocess inherit these
         # pipes (#341). Dotenv files are merged with any URLs the caller
         # already set, and that list is restored when start returns.
@@ -1130,7 +1152,8 @@ module Mutineer
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
                       copies: extras.fetch(:copies, {}), timing: timing,
-                      callback_growth: growth_rows, verbose: config.verbose)
+                      callback_growth: growth_rows, verbose: config.verbose,
+                      tests_narrowed: extras.fetch(:tests_narrowed, false))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
       # nil: the run could not create its log, and a stderr line said so.
       warn_callback_growth(growth_rows || [])

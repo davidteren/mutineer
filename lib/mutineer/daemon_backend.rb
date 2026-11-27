@@ -67,6 +67,7 @@ module Mutineer
       # that have a job (#496). The daemon still gets every source.
       narrowed_config = JobPlan.narrow_tests_for_since(config, jobs)
       narrowed = !narrowed_config.equal?(config)
+      extras[:tests_narrowed] = narrowed
       config = narrowed_config
       abs_tests = config.tests.map { |t| File.expand_path(t, config.project_root) }
 

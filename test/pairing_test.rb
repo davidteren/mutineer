@@ -1008,4 +1008,137 @@ class PairingTest < Minitest::Test
       end
     end
   end
+
+  # --- #554 a folder source leaves out test folders ---------------------------
+
+  # The tree of the rule table in the 11-E plan (AE10).
+  RULE_TREE = %w[lib/x.rb test/a_test.rb packs/catalog/app/models/item.rb packs/catalog/test/models/item_test.rb
+                 packs/catalog/test/lib/x_test.rb packs/catalog/spec/support/x.rb packs/a/test/app/models/x.rb
+                 packs/b/app/y.rb packs/b/test/app/models/x.rb gems/calc/lib/calc.rb gems/calc/test/calc_test.rb
+                 lib/foo/test/test_app.rb lib/foo/lib/z.rb lib/cmd/app/a.rb lib/cmd/test/test_command.rb
+                 app/a.rb app/lib/b.rb app/test/runner.rb app/models/test/result.rb test.rb].freeze
+
+  # AE10: one row per case of the rule, with the folder the search starts under.
+  def test_test_folder_path_follows_the_rule_table
+    rows = {
+      ["test/a_test.rb", ""] => true,
+      ["test/a_test.rb", "test"] => false,
+      ["packs/catalog/test/models/item_test.rb", "packs"] => true,
+      ["packs/catalog/spec/support/x.rb", "packs/catalog"] => true,
+      ["packs/catalog/test/lib/x_test.rb", "packs"] => true,
+      ["packs/catalog/test/models/item_test.rb", "packs/catalog/test"] => false,
+      ["packs/catalog/app/models/item.rb", "packs"] => false,
+      ["packs/a/test/app/models/x.rb", "packs"] => false,
+      ["packs/b/test/app/models/x.rb", "packs"] => true,
+      ["gems/calc/test/calc_test.rb", "gems"] => true,
+      ["lib/foo/test/test_app.rb", "lib"] => false,
+      ["lib/cmd/test/test_command.rb", "lib"] => false,
+      ["app/test/runner.rb", "app"] => false,
+      ["app/models/test/result.rb", "app"] => false,
+      ["test.rb", ""] => false
+    }
+    with_tree(*RULE_TREE) do |root|
+      rows.each do |(rel, below), want|
+        assert_equal want, Mutineer::Pairing.test_folder_path?(rel, root, below: below), "#{rel} below #{below.inspect}"
+      end
+    end
+  end
+
+  def packs_fixture = File.expand_path("fixtures/packs_layout", __dir__)
+
+  # AE6, AE8, AE14, AE16 on the repository fixture.
+  def test_expand_sources_leaves_out_a_pack_test_folder_only_with_left_out
+    root = packs_fixture
+    out = []
+    got = Mutineer::Pairing.expand_sources(["packs"], project_root: root, left_out: out)
+    assert_equal %w[packs/billing/app/models/invoice.rb packs/catalog/app/models/item.rb], got
+    assert_equal ["packs/catalog/test/models/item_test.rb"], out
+
+    out = []
+    assert_equal ["packs/catalog/test/models/item_test.rb"],
+                 Mutineer::Pairing.expand_sources(["packs/catalog/test"], project_root: root, left_out: out)
+    assert_empty out, "a typed test folder keeps its files (AE8)"
+
+    out = []
+    got = Mutineer::Pairing.expand_sources(["packs", "packs/catalog/test"], project_root: root, left_out: out)
+    assert_includes got, "packs/catalog/test/models/item_test.rb"
+    assert_empty out, "a file a later argument kept is not left out (AE14)"
+
+    out = []
+    Mutineer::Pairing.expand_sources(["packs", "packs/catalog"], project_root: root, left_out: out)
+    assert_equal ["packs/catalog/test/models/item_test.rb"], out, "each left-out file is named once (AE14)"
+
+    assert_includes Mutineer::Pairing.expand_sources(["packs"], project_root: root),
+                    "packs/catalog/test/models/item_test.rb", "without left_out: the list of 1.10.0 (AE16)"
+  end
+
+  # The project root in each spelling, and through a symlink, leaves out its
+  # top-level test folder. A typed file inside a test folder stays.
+  def test_expand_sources_leaves_out_the_root_test_folder_in_every_spelling
+    with_tree("lib/calc.rb", "test/calc_test.rb") do |root|
+      File.symlink(root, "#{root}-link")
+      begin
+        [".", root, File.realpath(root), "lib/..", "#{root}-link"].each do |arg|
+          out = []
+          assert_equal ["lib/calc.rb"], Mutineer::Pairing.expand_sources([arg], project_root: root, left_out: out), arg
+          assert_equal ["test/calc_test.rb"], out, arg
+        end
+        out = []
+        assert_equal ["test/calc_test.rb"],
+                     Mutineer::Pairing.expand_sources(["test/calc_test.rb"], project_root: root, left_out: out)
+        assert_empty out
+      ensure
+        File.unlink("#{root}-link")
+      end
+    end
+  end
+
+  # A folder typed through a symlinked parent is filtered. A folder outside
+  # the root is not.
+  def test_expand_sources_filters_a_symlinked_parent_but_not_a_folder_outside_the_root
+    with_tree("real/proj/gems/c/lib/c.rb", "real/proj/gems/c/test/c_test.rb",
+              "other/lib/o.rb", "other/test/o_test.rb") do |dir|
+      File.symlink(File.join(dir, "real"), File.join(dir, "link"))
+      root = File.join(File.realpath(dir), "real/proj")
+      out = []
+      got = Mutineer::Pairing.expand_sources([File.join(dir, "link/proj/gems")], project_root: root, left_out: out)
+      assert_equal ["gems/c/lib/c.rb"], got
+      assert_equal ["gems/c/test/c_test.rb"], out
+
+      out = []
+      got = Mutineer::Pairing.expand_sources([File.join(dir, "other")], project_root: root, left_out: out)
+      assert_equal 2, got.size, got.inspect
+      assert_empty out
+    end
+  end
+
+  # "Test the rule, not the example": over every fixture project with an app
+  # or lib folder at its top, the rule leaves out only files under a test or
+  # spec segment, and keeps no file of the top-level test or spec folder.
+  def test_expand_sources_rule_over_every_fixture_project
+    projects = Dir[File.expand_path("fixtures/*/", __dir__)].select do |dir|
+      %w[app lib].any? { |d| File.directory?(File.join(dir, d)) }
+    end
+    refute_empty projects
+    projects.each do |root|
+      out = []
+      got = Mutineer::Pairing.expand_sources(["."], project_root: root, left_out: out)
+      assert out.all? { |rel| rel.split("/")[0...-1].intersect?(%w[test spec]) }, "#{root}: #{out.inspect}"
+      refute got.any? { |rel| rel.match?(%r{\A(test|spec)/}) }, "#{root}: #{got.inspect}"
+    end
+  end
+
+  # U4: the guard flags a test_*.rb file inside a test folder, inside the root only.
+  def test_given_as_source_flags_a_test_prefixed_file_in_a_test_folder
+    with_tree(*RULE_TREE, "packs/catalog/test/models/test_item.rb", "packs/b/test/app/models/test_runner.rb") do |root|
+      assert flagged?("packs/catalog/test/models/test_item.rb", [], root: root)
+      assert flagged?("packs/b/test/app/models/test_runner.rb", [], root: root)
+      refute flagged?("lib/foo/test/test_app.rb", [], root: root)
+    end
+    with_tree("proj/lib/a.rb", "other/lib/b.rb", "other/test/test_a.rb") do |dir|
+      root = File.join(dir, "proj")
+      refute flagged?("../other/test/test_a.rb", [], root: root)
+      refute flagged?(File.join(dir, "other/test/test_a.rb"), [], root: root)
+    end
+  end
 end

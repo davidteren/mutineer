@@ -198,7 +198,9 @@ Minitest seed, or for RSpec the pinned seed, `SPEC_OPTS`, and the project's `.rs
 A data file that a test reads, such as a YAML or JSON file, is not part of the key, in a `load_path` directory
 or in any other. After an edit to such a file that changes which source lines a test reaches, delete
 `coverage.json` in the cache directory once. The next run captures every test again
-([#548](https://github.com/davidteren/mutineer/issues/548)).
+([#548](https://github.com/davidteren/mutineer/issues/548)). Apart from `.rspec` and `.rspec-local`, a file that is not
+Ruby, such as a view, a fixture, an asset or a lock file, is not part of the key either: after an edit to such a
+file that changes which source lines a test reaches, delete `coverage.json` once in the same way ([#595](https://github.com/davidteren/mutineer/issues/595)).
 
 The test list is part of the cache key, so a run with `since_paired_tests` under `--since` that narrows its
 test list never gets a full cache hit on a full-run map. Partial recapture can still reuse the entries of the
@@ -244,6 +246,8 @@ source that another source loads keeps working. Stderr prints one line with the 
 ```text
 [mutineer] --since: running 14 of 281 test files, the ones paired with the 8 of 120 paired sources that have a mutant on a changed line. A mutant that only another test reaches shows as survived or no_coverage, so a kill or a survivor can be missed. no_coverage is outside the score, so a --threshold gate can pass where a full run fails: gate on a full run, or add --baseline, which keeps every test.
 ```
+
+In a JSON report, `summary.tests_narrowed` is `true` for such a run.
 
 The run keeps its full test list when you give `--test`, `--test-command`, `--coverage-from` on an in-process
 `--rails` or `--boot` run, or `--baseline` (flag or `baseline` key), and stderr says the setting has no

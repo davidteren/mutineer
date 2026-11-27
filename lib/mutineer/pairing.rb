@@ -7,6 +7,8 @@ module Mutineer
   # no Rails, no class loading, no process. Six jobs:
   #   * expand_sources — a directory argument becomes its sorted **/*.rb files;
   #                     a file inside the root becomes its root-relative path.
+  #                     For `mutineer run`, a test folder below a directory
+  #                     argument is left out (#554).
   #   * expand_test: one --test value (#380). A directory becomes the test
   #                     files under it. A glob becomes the files it matches.
   #                     An existing file stays as typed.
@@ -43,16 +45,22 @@ module Mutineer
     # -> its path relative to project_root, so `./lib/x.rb` and an absolute
     # path pair like `lib/x.rb` (#104). A missing file, or one outside the
     # root, stays as typed. Flattened, deduped, order-stable.
+    # With `left_out:`, a directory does not yield a file inside a test folder
+    # below it ({test_folder_path?}, #554); `mutineer run` passes it, while
+    # `migrate` and the `tests:` map do not, so they read folders as before.
     #
     # @param args [Array<String>] source paths or directories.
     # @param project_root [String] repository root for relative expansion.
+    # @param left_out [Array<String>, nil] when given, receives each file a
+    #   directory left out, once, and no file that another argument kept.
     # @return [Array<String>] flattened, deduped source file list.
-    def expand_sources(args, project_root:)
+    def expand_sources(args, project_root:, left_out: nil)
       root = FsPath.read(File.expand_path(project_root))
       # The root as typed and as its real path (macOS `/var` vs `/private/var`),
       # resolved once for every file below.
       roots = [root, ProjectPath.root_real(root)].uniq
-      Array(args).flat_map do |arg|
+      dropped = []
+      sources = Array(args).flat_map do |arg|
         arg = FsPath.read(arg)
         abs = File.expand_path(arg, root)
         if File.directory?(abs)
@@ -63,15 +71,28 @@ module Mutineer
                    else
                      fs_glob(File.join(glob_literal(abs), "**", "*.rb"))
                    end
-          listed.sort_by(&:b).map do |f|
+          found = listed.sort_by(&:b).map do |f|
             full = File.absolute_path?(f) ? f : File.expand_path(f, root)
             existing_relative(full, roots) || full
           end
+          # A test folder below the typed folder holds tests, not sources (#554).
+          next found unless left_out
+
+          # The typed folder as the files are named: also through a symlink.
+          real = File.realpath(abs)
+          below = rel || existing_relative(abs, roots) || root_relative(real, roots)
+          below ||= "" if roots.include?(abs) || roots.include?(real)
+          tests, found = found.partition { |path| below && test_folder_path?(path, root, below: below) }
+          dropped.concat(tests)
+          found
         else
           # `..` resolves as text, as FileSwap and the daemon already read it.
           [(existing_relative(abs, roots) if File.exist?(abs)) || arg]
         end
       end.map { |path| FsPath.read(path) }.uniq
+      # A second argument can keep a file that the first one left out.
+      left_out&.concat(dropped.map { |path| FsPath.read(path) }.uniq - sources)
+      sources
     end
 
     # Characters that make a --test value a glob when no path has that name.
@@ -431,6 +452,26 @@ module Mutineer
       pack_tests(source_rel, root, prefer)
     end
 
+    # Whether a project-relative path is inside a test folder: a `test` or
+    # `spec` folder that sits beside an `app` or `lib` folder, as in a project
+    # root, a pack, an engine or a gem (#554). A `test` folder inside an `app`
+    # or `lib` folder is a namespace, not a test folder
+    # (`lib/rails/commands/test/` beside `lib/rails/commands/app/`). Folders at
+    # or above `below` do not count, so a test folder the user typed keeps its files.
+    #
+    # @param rel [String] project-relative path of a file.
+    # @param root [String] expanded project root.
+    # @param below [String] project-relative folder the search starts under.
+    # @return [Boolean]
+    def test_folder_path?(rel, root, below: "")
+      segments = rel.split("/")
+      first = below.split("/").reject { |s| s.empty? || s == "." }.size
+      (first...(segments.size - 1)).any? do |i|
+        %w[test spec].include?(segments[i]) && !segments[0...i].intersect?(%w[app lib]) &&
+          %w[app lib].any? { |dir| File.directory?(File.join(root, *segments[0...i], dir)) }
+      end
+    end
+
     # A source in a Packwerk pack: `packs/<pack path>/app/...` or
     # `packs/<pack path>/lib/...` (#494). The shortest pack path wins.
     PACK_SOURCE = %r{\A(packs/.+?)/((?:app|lib)/.+\.rb)\z}
@@ -562,15 +603,17 @@ module Mutineer
     # `spec/` segment (the guard's original rule), or when it sits in the same
     # directory as a given test, which catches root-level tests. A
     # `test_*.rb` path is flagged only under the
-    # project's top-level `test/` or `spec/`, because real sources use the
-    # prefix (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). A
+    # project's top-level `test/` or `spec/`, or inside a test folder of
+    # {test_folder_path?} (#554), because real sources use the prefix
+    # (`lib/mutineer/test_runners.rb`, `lib/foo/test/test_app.rb`). That one
+    # check reads the disk, and only for a path inside the root. A
     # source whose own test (`<stem>_test.rb`, `test_<stem>.rb`,
     # `<stem>_spec.rb`, or a split `<stem>_*_test.rb` not claimed by a longer
     # source on disk) sits beside it in the test set is not flagged. Paths
     # compare relative to the root, as in
     # {expand_sources} (the root's real path counts too, for macOS `/var` vs
     # `/private/var`), so `./a_test.rb` and `a_test.rb` match. No file content
-    # is read.
+    # is read; folders are checked to exist.
     #
     # @param path [String] positional argument as typed.
     # @param project_root [String] repository root for relative expansion.
@@ -590,9 +633,11 @@ module Mutineer
       # Outside the root, read segments from a relative path as typed
       # (`../test/b_test.rb`) and not from an absolute one, so a `test/`
       # folder above the root never counts.
-      segments = root_relative(File.expand_path(path, root), roots)
-      segments ||= path.start_with?(File::SEPARATOR) ? "" : path
-      return segments.match?(%r{\A(test|spec)/}) unless name.match?(/_(test|spec)\.rb\z/)
+      inside = root_relative(File.expand_path(path, root), roots)
+      segments = inside || (path.start_with?(File::SEPARATOR) ? "" : path)
+      unless name.match?(/_(test|spec)\.rb\z/)
+        return segments.match?(%r{\A(test|spec)/}) || (!inside.nil? && test_folder_path?(inside, root))
+      end
       return true if segments.match?(%r{(\A|/)(test|spec)/})
 
       dir = File.dirname(rel)
