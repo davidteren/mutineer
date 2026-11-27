@@ -565,10 +565,31 @@ class DaemonBackendContractTest < Minitest::Test
     assert_includes code, "(base = ::Mutineer::ReloadGuards.kept_superclass(::Module.nesting.first, :Quad) {"
   end
 
-  # #503: the payload keeps a superclass constant the file assigns, as in process.
+  # #503, #528: the payload keeps a builder constant the file assigns, and runs
+  # its block again on the live class, as in process.
   def test_the_payload_keeps_a_superclass_constant_the_file_assigns
     code = payload_code("const_superclass.rb", "Row#three?")
-    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.kept_constant(::Module.nesting.first, :BaseRow) {"
+    assert_includes code, "BaseRow = ::Mutineer::ReloadGuards.reopened_constant(::Module.nesting.first, :BaseRow, " \
+                          "-> { Struct.new(:v) }) do"
+  end
+
+  # #529: the daemon reloads like the in-process child, so a def in the value
+  # of a constant `||=` is unplaceable there too, and never reaches the daemon.
+  def test_a_def_in_an_or_constant_is_unplaceable_without_a_request
+    path = File.expand_path("fixtures/or_constant.rb", __dir__)
+    source = File.binread(path)
+    subject = Mutineer::Project.discover([path], only: "OrCell#one?").first
+    mutation = Mutineer::Mutators::Comparison.new.mutations_for(subject, source).first
+    config = Mutineer::Config.new(sources: [path], tests: [], project_root: File.dirname(path), framework: "minitest")
+    client = Object.new
+    def client.start = self
+    def client.quit = nil
+    def client.request(**) = raise("an unplaceable mutant must not reach the daemon")
+    results = Mutineer::DaemonClient.stub(:new, ->(**) { client }) do
+      Mutineer::DaemonBackend.send(:run_serial, [[subject, mutation, "id-0"]], config, [], nil, { path => source })
+    end
+    assert_equal %i[unplaceable], results.map(&:status)
+    assert results.first.subject.not_reloaded, "the cause is the #529 mark"
   end
 
   # #187: the daemon's map ships the lines that ran at boot, and a survivor on

@@ -10,14 +10,17 @@ module Mutineer
   #
   # - `enum` raises because the enum's methods already exist (#378).
   # - `skip_callback` (and `skip_before_action`, which calls it) raises because
-  #   the first run already removed the callback (#384).
+  #   the first run already removed the callback (#384). A conditional skip
+  #   (`if:` or `unless:`, also `only:` and `except:`) does not raise: it adds
+  #   its condition to the callback a second time (#543).
   # - `define_callbacks` (and `define_model_callbacks`, which calls it) gives
   #   the class and every subclass a new empty chain, so a callback that an
   #   included concern or a subclass in another file added is lost (#504).
   #
   # While {.during_load} runs, an `enum` the class had before the load skips
   # its conflict check, `skip_callback` does not raise for a callback the
-  # first run already removed (see {CallbackReskipping}), and
+  # first run already removed, and drops a conditional skip the first run
+  # already applied (see {CallbackReskipping}), and
   # `define_callbacks` skips a chain the class defined before the load (see
   # {CallbackRedefinition}).
   # The original file ran the same macros once with the full checks, so the
@@ -64,6 +67,15 @@ module Mutineer
     # parent or an included concern installed) or a callback the parent still
     # has. A skip that names neither keeps Rails' check and still raises
     # (scored `error`), so a typo is not hidden.
+    #
+    # A conditional skip (`if:` or `unless:`, with no block) does not remove
+    # the callback: Rails adds the condition to it. A repeat would add the
+    # condition a second time, so the condition would run twice (#543). Such a
+    # filter is dropped when the class, and each descendant that has the
+    # callback, still has the callback object from before the load: the first
+    # load's skip already made that entry what it is
+    # ({ReloadGuards.fresh_conditional_skips}). When one of them has a new
+    # entry, the load added the callback again, so Rails runs the skip.
     module CallbackReskipping
       # @param name [Symbol] the callback chain, such as `:save`.
       # @param filter_list [Array] the kind, the filters, and options.
@@ -72,6 +84,10 @@ module Mutineer
         return super unless ReloadGuards.loading?
 
         options = filter_list.last.is_a?(Hash) ? filter_list.pop : {}
+        if block.nil? && (options.key?(:if) || options.key?(:unless))
+          filter_list = ReloadGuards.fresh_conditional_skips(self, name, filter_list)
+          return if filter_list.nil?
+        end
         options = { raise: false }.merge(options) if ReloadGuards.repeated_skip?(self, name, *filter_list)
         super(name, *filter_list, options, &block)
       end
@@ -125,15 +141,16 @@ module Mutineer
       yield
     end
 
-    # The value a reloaded constant assignment keeps (#503).
+    # The value a reloaded constant assignment keeps (#503, #528).
     #
-    # `BaseRow = Struct.new(:v)` builds a new class each time Ruby runs it, so
-    # a class statement in the same file that inherits from `BaseRow` raised
-    # "superclass mismatch" on a second load. The reload text wraps such a
-    # value in a call to this method ({JobPlan.keep_live_superclasses}). When
-    # `scope` already has a class `name`, this returns it, so every class,
-    # subclass and instance keeps pointing at one class. Otherwise it runs the
-    # block, as the original text would.
+    # `Point = Struct.new(:x)` builds a new class each time Ruby runs it, so a
+    # class statement in the same file that inherits from `Point` raised
+    # "superclass mismatch" on a second load, and a subclass or an instance in
+    # another file kept the old class. The reload text wraps such a value in a
+    # call to this method ({JobPlan.keep_live_superclasses}). When `scope`
+    # already has a class `name`, this returns it, so every class, subclass
+    # and instance keeps pointing at one class. Otherwise it runs the block, as
+    # the original text would.
     #
     # @param scope [Module, nil] the module the constant is assigned in; nil
     #   at the top level.
@@ -147,6 +164,140 @@ module Mutineer
         return value if value.is_a?(Class)
       end
       yield
+    end
+
+    # The class a reloaded builder constant keeps, with its builder block run
+    # again on it (#528).
+    #
+    # The reload text turns `Point = Struct.new(:x) do ... end` into a call to
+    # this method when the block is safe to run again
+    # ({Project.rerunnable_block?}): `builder` is the builder call, and the
+    # block stays where it was, so line numbers do not move. It takes the class
+    # from {kept_constant}, runs the block on it with `class_exec`, and returns
+    # it, so the mutated methods land on the class that other files hold.
+    # `Struct.new`, `Data.define` and `Class.new` also run their block on the
+    # new class after they build it, so with no live class this gives what the
+    # original text gives.
+    #
+    # Another file can change the live class (`class Point` with
+    # `alias_method :raw_y, :y` and a new `def y`). A second run of the block
+    # undoes that change, and a test that expects it would fail for every
+    # mutant, a false kill (#585). So when the run replaces a method from
+    # another file or an alias, or adds back a method another file removed
+    # ({lost_changes}), in the class, a class or module statement in the
+    # block, or the singleton class of either, this raises, and the mutant scores
+    # `error`. A visibility the run changed is checked once the whole file
+    # has loaded ({check_reruns!}), because a later line of the same file may
+    # set it again (`class Point; private :y; end`).
+    #
+    # @param scope [Module, nil] the module the constant is assigned in; nil
+    #   at the top level.
+    # @param name [Symbol] the constant name.
+    # @param builder [Proc] builds the class, as the original text would.
+    # @yield the builder block, run on the class.
+    # @raise [RuntimeError] naming each lost change.
+    # @return [Class]
+    def self.reopened_constant(scope, name, builder, &body)
+      owner = scope || Object
+      live = owner.const_get(name, false) if owner.const_defined?(name, false)
+      klass = kept_constant(scope, name, &builder)
+      # A new class has no method from another file; outside a load there is no source file to compare.
+      return klass.tap { |k| k.class_exec(&body) } unless loading? && klass.equal?(live)
+
+      before = [klass, klass.singleton_class].to_h { |mod| [mod, method_states(mod)] }
+      # The first load ran this block, so each class statement in it opens a
+      # module that exists. A file that the block autoloads is not traced.
+      # `class << X` fires no event, so each module's singleton class is noted with it.
+      opened = TracePoint.new(:class) do |trace|
+        next unless trace.path && @load_files.include?(RepeatedCallbacks.real_path(trace.path))
+
+        [trace.self, trace.self.singleton_class].each { |mod| before[mod] ||= method_states(mod) }
+      end
+      opened.enable { klass.class_exec(&body) }
+      lost = []
+      before.each do |mod, states|
+        after = method_states(mod)
+        lost.concat(lost_changes(mod, states, after))
+        states.each do |method, (_, _, visibility)|
+          @rerun_checks&.push([name, mod, method, visibility]) if after[method] && after[method][2] != visibility
+        end
+      end
+      raise_lost(name, lost) unless lost.empty?
+      klass
+    end
+
+    # Raises when a builder block that ran again during this load changed a
+    # visibility that the rest of the file did not set back ({reopened_constant}),
+    # now that the whole mutant file has loaded. Another file set it (#585).
+    #
+    # @raise [RuntimeError] naming each lost visibility, so the mutant scores `error`.
+    # @return [void]
+    def self.check_reruns!
+      lost = @rerun_checks.to_a.select { |_, mod, method, visibility| (now = method_states(mod)[method]) && now[2] != visibility }
+      return if lost.empty?
+
+      raise_lost(lost.first.first, lost.map { |_, mod, method, visibility| "#{mod.inspect}##{method} (#{visibility})" })
+    end
+
+    # @param name [Symbol] the kept constant.
+    # @param lost [Array<String>] each lost change.
+    # @raise [RuntimeError] always, so the mutant scores `error`.
+    # @return [void]
+    def self.raise_lost(name, lost)
+      raise "[mutineer] reloading #{name} ran its block again over a change another file made: " \
+            "#{lost.join(", ")}. That change would be lost, so this mutant cannot run under reload " \
+            "(#585). Run this file with --strategy redefine or --test-command."
+    end
+
+    # Each method of `mod` itself, by name: the real path of the file that
+    # defines its code (nil for a method with no Ruby source, such as a
+    # `Struct` member), its original name, which differs for an alias, and its
+    # visibility.
+    #
+    # @param mod [Module]
+    # @return [Hash{Symbol => Array(String, Symbol, Symbol)}]
+    def self.method_states(mod)
+      { public: mod.public_instance_methods(false), protected: mod.protected_instance_methods(false),
+        private: mod.private_instance_methods(false) }.each_with_object({}) do |(visibility, names), states|
+        names.each do |method|
+          code = mod.instance_method(method)
+          file = code.source_location&.first
+          states[method] = [file && RepeatedCallbacks.real_path(file), code.original_name, visibility]
+        end
+      end
+    end
+
+    # The changes from another file that a second run of a builder block
+    # undid on `mod` (#585). The block's own defs come from the source or
+    # the mutant file and keep their names, and a mutant adds no method. So a
+    # replaced method whose file is another file's or that was an alias, and
+    # a method the run added again (another file removed it), each count.
+    #
+    # @param mod [Module]
+    # @param before [Hash] {method_states} before the run.
+    # @param after [Hash] {method_states} after the run.
+    # @return [Array<String>] one description for each lost change.
+    def self.lost_changes(mod, before, after)
+      changed = before.filter_map do |method, (file, original, _)|
+        now = after[method]
+        next if now.nil? || now[0..1] == [file, original]
+
+        if original != method
+          "#{mod.inspect}##{method} (alias of #{original})"
+        elsif foreign_file?(file)
+          "#{mod.inspect}##{method} (#{file})"
+        end
+      end
+      changed + (after.keys - before.keys).map { |method| "#{mod.inspect}##{method} (removed)" }
+    end
+
+    # Whether a method's file is neither the source file nor the mutant file
+    # of the current load. A nil file (no Ruby source) is not foreign.
+    #
+    # @param file [String, nil] a real path from {method_states}.
+    # @return [Boolean]
+    def self.foreign_file?(file)
+      !file.nil? && !@load_files.to_a.include?(file)
     end
 
     # True while a mutant file loads.
@@ -171,13 +322,20 @@ module Mutineer
       sizes = callback_growth_log && growth_check { RepeatedCallbacks.sizes(before) }
       @enums_before_load = {}
       @chains_before_load = {}
+      @callbacks_before_load = before
+      @load_files = [source_file, mutant_path].compact.map { |path| RepeatedCallbacks.real_path(path) }
+      @rerun_checks = []
       @loading = true
       result = yield
+      check_reruns!
       RepeatedCallbacks.remove(before, [source_file, mutant_path].compact)
       growth_check { log_callback_growth(RepeatedCallbacks.grown_classes(sizes), source_file) } if sizes
       result
     ensure
       @loading = false
+      @callbacks_before_load = nil
+      @load_files = nil
+      @rerun_checks = nil
     end
 
     # Runs one step of the callback-growth check (#479). The check only
@@ -1119,6 +1277,56 @@ module Mutineer
         (filter.is_a?(Symbol) && (klass.method_defined?(filter) || klass.private_method_defined?(filter))) ||
           chain&.any? { |callback| callback.kind == kind && callback.filter == filter }
       end
+    end
+
+    # The kind and filters of a conditional skip, less each filter that the
+    # first load already applied (#543), or nil when no filter is left. A
+    # filter is dropped when {skipped_before_load?} is true for the class and
+    # is not false for any of its descendants. A filter with no such callback
+    # in the class stays, so Rails still raises for a wrong name. A class that
+    # did not exist before the load, a call with no filter, and a load with no
+    # ActiveSupport snapshot give `args` back as it is.
+    #
+    # @param klass [Class] the class calling `skip_callback`.
+    # @param name [Symbol, String] the callback chain, such as `:save`.
+    # @param args [Array] the optional kind, then the filters.
+    # @return [Array, nil] the kind and the filters left, or nil.
+    def self.fresh_conditional_skips(klass, name, args)
+      return args unless @callbacks_before_load && @callbacks_before_load[klass]
+
+      kinded = CALLBACK_KINDS.include?(args.first)
+      kind = kinded ? args.first : :before
+      filters = kinded ? args.drop(1) : args
+      targets = klass.respond_to?(:descendants) ? klass.descendants : []
+      fresh = filters.reject do |filter|
+        skipped_before_load?(klass, name.to_sym, kind, filter) == true &&
+          targets.none? { |target| skipped_before_load?(target, name.to_sym, kind, filter) == false }
+      end
+      return args if fresh.size == filters.size
+      return nil if fresh.empty?
+
+      # The kind stays explicit: a first filter named `:after` would be read
+      # as the kind if the default `:before` were left implicit.
+      [kind, *fresh]
+    end
+
+    # Whether `target`'s callback of this kind and filter is the same object
+    # as an entry of its chain from before the load: true when it is, false
+    # when it is another object (the load added it again), and nil when the
+    # target has no such callback.
+    #
+    # @param target [Class] the class or a descendant.
+    # @param name [Symbol] the callback chain.
+    # @param kind [Symbol] `:before`, `:after` or `:around`.
+    # @param filter [Object] the callback's filter.
+    # @return [Boolean, nil]
+    def self.skipped_before_load?(target, name, kind, filter)
+      chain = target.respond_to?(:__callbacks) ? target.__callbacks[name] : nil
+      entry = chain&.find { |callback| callback.kind == kind && callback.filter == filter }
+      return nil unless entry
+
+      old = @callbacks_before_load[target] && @callbacks_before_load[target][name]
+      !old.nil? && old.any? { |callback| callback.equal?(entry) }
     end
 
     # Prepends the guards once, onto the Rails modules this process has loaded.

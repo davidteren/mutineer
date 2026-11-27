@@ -32,6 +32,40 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Reload no longer scores a method `survived` when a second load skips its definition (#529).**
+  A constant set with `||=` (`Cell ||= Struct.new(:x) do ... end`), or defined under `unless defined?(Cell)` or `if !defined?(Cell)`, does not run again when `--strategy reload` or `--daemon` loads the mutant file.
+  A mutant in a method there was never loaded and scored `survived`.
+  Such a method is now `unplaceable` under reload, counted in `summary.unplaceable`. `--strategy redefine` and `--test-command` run it.
+  The guard rule applies only when the guarded code writes the tested constant or opens that class or module. Names match by their last part.
+  After the upgrade, `survived` can fall and `unplaceable` can rise for such a file, so a score and a `--threshold` result can change.
+  The shapes are in 0 of 47,030 Ruby files of 744 gems and in 0 of 482 files of the Fizzy sample app and Mutineer's `lib/`.
+  Still open: other guards, such as `return if defined?(Cell)` at the top of a file (#573).
+- **Reload no longer adds the condition of a conditional `skip_callback` a second time (#543).**
+  A class body that skips a callback from a concern or a parent with `if:` or `unless:`, such as `skip_callback :save, :before, :stamp, if: :quiet?` or `skip_before_action :check, only: :index`, ran that skip again on each mutant load.
+  The callback then carried the condition twice, so the condition ran twice, and a test that counts its calls failed for every mutant of the file.
+  The reload now drops a conditional skip when the class and its subclasses still have the callback they had before the load. Checked with ActiveSupport 7.2, 8.0 and 8.1.
+  When a file runs such a skip through its own method while it loads, each method of that file that makes a skip, or that gives the skip its filter or condition, is now `unplaceable` under reload, because the dropped call would not carry its mutant. `--strategy redefine` runs it.
+  After the upgrade, `killed` can fall and `survived` can rise for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
+  The gem corpus has 26 skip calls in 47,030 files, 2 with a literal condition. Fizzy has 8, 1 with `only:`. No method of Fizzy or Mutineer gets the new mark.
+  Still open: a subclass in the same file that adds the callback again before the skip, and a skip made through `send` (#578).
+- **Reload keeps the class of every constant that a literal class builder sets, such as `Point = Struct.new(:x) do ... end` (#528).**
+  `--strategy reload` and `--daemon` built a new class on each mutant load. A subclass or an instance in another file kept the old class, so a mutant in the block survived falsely, and a test that compared classes failed for every mutant.
+  Now the reload keeps the class that the constant already has, for `Struct.new`, `Data.define` and `Class.new` with literal arguments.
+  A block with no parameter, made of method definitions on the class or `self` (not `def Other.m`, and not a hook such as `method_added` or `inherited`), constant assignments that read nothing of the class and build no new object, `attr_reader`, `attr_writer`, `attr_accessor`, visibility calls and nested `class` or `module` statements, runs again on that class, so its methods get real verdicts. This includes the methods that 1.10.0 marked `unplaceable` for a superclass constant (#503).
+  A block with any other statement, such as `alias_method`, `include` or `delegate`, does not run again, and its methods are `unplaceable` under reload (#576). `--strategy redefine` runs them.
+  A constant is not kept when the file assigns it twice, or may change it in a way that is not safe to repeat. That holds when the file names it anywhere other than in `Point.new`, `Point[...]`, `Point::NAME`, `Class.new(Point)`, a superclass, or a `class Point` statement whose body the block rule above accepts. So `Point.freeze`, `Alias = Point`, or a `class Point` or `class Point::Inner` statement with `alias_method` stop the reload from keeping it, and so does, anywhere in the file, a call such as `x.class_eval`, `x.alias_method`, `x.define_method`, `x.include`, `x.prepend` or `x.extend`, a `send` with a computed method name, an `eval`, `instance_eval`, `class_eval` or `module_eval` with a string, or a `class << expr` statement with an unsafe body whose expression is not a constant or `self`, because a kept class would get that change a second time and an `alias_method` chain would make the method call itself. Reload then builds that class again on each load, as before #528.
+  When a class statement of the same file inherits from such a constant, which 1.10.0 kept (#503), each mutant of the file that loads now scores `error` with "superclass mismatch" (#527, #575). In the gem corpus, 16 files have this shape, in two gems (RuboCop's `variable_force/branch.rb` calls `Base.classes`).
+  After the upgrade, `survived`, `killed` and `unplaceable` can each rise or fall for such a file, so a score, a `--threshold` result and a `--baseline` new-survivor list can change.
+  858 such constants are kept in 47,030 Ruby files of 744 gems, and 303 of their 330 blocks run again. Reload does not keep 399 other such constants, which the same files may change.
+  When another file changed a kept class (a method it defined or aliased, such as `class Point` with `alias_method` and a new `def y`, a visibility it set, or a method it removed), a second run of the block would undo that change, so that mutant scores `error` instead of a false kill (#585). A `method(:alias_method)` call with a receiver, or a `method` call with a computed name, stops the reload from keeping the file's constants, as `send` does.
+  Still open: a builder with an argument that is not a literal, such as `Class.new(Base)`, and `Module.new` (#575).
+- **Reload leaves a superclass as written when it can name a stale class (#533).**
+  A superclass call that reads a variable, a constant that the same file builds again, or a method that the same file defines (also through `send(:name)` or `method(:name)`, or a `send` or `method` call with a computed name in a file that defines a method), such as `class Row < Class.new(base)` or `class Point < point_base`, kept the old parent while the file built a new class. A mutant in that class survived falsely.
+  Such a superclass now keeps its text. When the call builds a new class, every mutant of the file that loads scores `error` with "superclass mismatch" (#527). An errored mutant is in `no_verdict`, so a `--threshold` gate that passed on false survivors can now fail.
+  What to do: run that file with `--strategy redefine`, or assign the class to a constant with a literal builder (`Fields = Struct.new(:v)`), which reload keeps (#528).
+  A constant that holds only literals, such as `FIELDS = %i[a b].freeze`, does not count. A local variable does count, also when it holds only literals. A method call counts by name, with any receiver, except the `Struct.new`, `Data.define` or `Class.new` call itself.
+  The rule matches 0 of 2,064 call superclasses in 47,030 Ruby files of 744 gems.
+  Still open: a superclass that reaches a rebuilt class through another file or a registry (#574).
 - **A UTF-8 source with an invalid byte in a comment no longer stops the run (#538).**
   `JobPlan.suppress_map` matched the `mutineer:disable-line` marker against the raw comment text and raised `invalid byte sequence in UTF-8`, so `mutineer run` exited 2 for a file that Ruby loads.
   It now matches the marker on the comment's bytes, and the line counts of the run and the report read bytes.

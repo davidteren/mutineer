@@ -7,9 +7,11 @@ require "active_support"
 require "active_support/callbacks"
 require "active_support/concern"
 require "active_model"
+require "abstract_controller"
 require "tmpdir"
 require "mutineer/reload_guards"
 require "mutineer/concern_blocks"
+require "mutineer/job_plan"
 
 # A class ActiveSupport can hang a :save callback chain on.
 class CallbackHost
@@ -46,6 +48,30 @@ module OwnModelStampsProbe
   included do
     before_create :stamp
   end
+end
+
+# #543: a concern that adds a callback, outside the reloaded file, as in an app.
+module QuietStamping
+  extend ActiveSupport::Concern
+  included { set_callback :save, :before, :stamp }
+end
+
+# #543: a parent that adds the callback, outside the reloaded file.
+class QuietBase
+  include ActiveSupport::Callbacks
+  define_callbacks :save
+  set_callback :save, :before, :stamp
+  def calls = (@calls ||= [])
+  def quiet? = (calls << :quiet?) && false
+  def stamp = calls << :stamp
+  def save = run_callbacks(:save) { calls }
+end
+
+# #543: a controller parent with a `before_action`, outside the reloaded file.
+class ProbeBase < AbstractController::Base
+  include AbstractController::Callbacks
+  before_action :check
+  def check = nil
 end
 
 module RailsCallbackRestoreProbe
@@ -119,6 +145,93 @@ module RailsCallbackRestoreProbe
     end
   end
 
+  # The classes of probe P8 in the #543 plan. Each body skips a callback that
+  # a concern or a parent added, under a condition.
+  CONDITIONAL_SKIP_FILE = <<~RUBY
+    class QuietConcern
+      include ActiveSupport::Callbacks
+      define_callbacks :save
+      include QuietStamping
+      skip_callback :save, :before, :stamp, if: :quiet?
+      def calls = (@calls ||= [])
+      def quiet? = (calls << :quiet?) && false
+      def stamp = calls << :stamp
+      def save = run_callbacks(:save) { calls }
+    end
+
+    class QuietChild < QuietBase
+      skip_callback :save, :before, :stamp, if: :quiet?
+    end
+
+    class QuietLambda < QuietBase
+      skip_callback :save, :before, :stamp, if: -> { quiet? }
+    end
+
+    class QuietOwn < QuietBase
+      set_callback :save, :before, :stamp, unless: :quiet?
+      skip_callback :save, :before, :stamp, if: :quiet?
+    end
+
+    class ChildNote < QuietBase; end
+
+    class GrandNote < ChildNote
+      set_callback :save, :before, :stamp
+    end
+    ChildNote.skip_callback :save, :before, :stamp, if: :quiet?
+
+    class ProbeChild < ProbeBase
+      skip_before_action :check, only: :index
+      def index = nil
+    end
+
+    # #528: a block that calls `define_callbacks` and `set_callback` does not
+    # run again, so reload keeps the class and its one callback.
+    BuiltNote = Class.new do
+      include ActiveSupport::Callbacks
+      define_callbacks :save
+      set_callback(:save, :before) { nil }
+    end
+  RUBY
+
+  # The number of `unless` conditions on each class's callback, and the
+  # `save` log of the three `Quiet` classes, before and after one mutant load
+  # of the same text. Also whether a conditional skip of a name with no
+  # callback still raises during a load.
+  def conditional_skips
+    Dir.mktmpdir do |dir|
+      file = File.join(dir, "quiet.rb")
+      File.write(file, CONDITIONAL_SKIP_FILE)
+      load file
+      counts = lambda do
+        saves = %w[QuietConcern QuietChild QuietLambda QuietOwn ChildNote GrandNote].to_h do |name|
+          entry = Object.const_get(name).__callbacks[:save].find { |callback| callback.filter == :stamp }
+          [name, entry.instance_variable_get(:@unless).size]
+        end
+        check = ProbeChild.__callbacks[:process_action].find { |callback| callback.filter == :check }
+        saves.merge("ProbeChild" => check.instance_variable_get(:@unless).size,
+                    "BuiltNote" => BuiltNote.__callbacks[:save].to_a.size)
+      end
+      logs = -> { %w[QuietConcern QuietChild QuietLambda].to_h { |name| [name, Object.const_get(name).new.save.map(&:to_s)] } }
+      before = counts.call
+      logs_before = logs.call
+      built = BuiltNote
+      built_entries = BuiltNote.__callbacks[:save].to_a
+      # The child loads the reload text, which keeps BuiltNote (#528).
+      mutant = File.join(dir, "quiet_mutant.rb")
+      File.write(mutant, Mutineer::JobPlan.keep_live_superclasses(CONDITIONAL_SKIP_FILE))
+      Mutineer::ConcernBlocks.load_mutant(file, mutant)
+      raised = begin
+        Mutineer::ReloadGuards.during_load(file) { QuietChild.skip_callback(:save, :before, :not_defined, if: :quiet?) }
+        false
+      rescue ArgumentError
+        true
+      end
+      { "before" => before, "after" => counts.call, "logs_before" => logs_before, "logs_after" => logs.call,
+        "typo_raises" => raised, "built_kept" => BuiltNote.equal?(built),
+        "built_same_entry" => BuiltNote.__callbacks[:save].to_a.zip(built_entries).all? { |now, was| now.equal?(was) } }
+    end
+  end
+
   def conditions(callback)
     [callback.instance_variable_get(:@if).to_a, callback.instance_variable_get(:@unless).to_a]
   end
@@ -173,7 +286,8 @@ module RailsCallbackRestoreProbe
   end
 
   def run
-    puts JSON.generate("proc_skip" => proc_skip, "independent_symbol" => independent_symbol, "own_chains" => own_chains)
+    puts JSON.generate("proc_skip" => proc_skip, "independent_symbol" => independent_symbol, "own_chains" => own_chains,
+                      "conditional_skips" => conditional_skips)
   end
 end
 

@@ -1587,37 +1587,92 @@ class ProjectTest < Minitest::Test
       refute by_name[:outer].unplaceable?("reload")
       refute by_name[:built].in_superclass_block, "the assignment form reloads its block"
       refute by_name[:built].unplaceable?("reload")
-      refute by_name[:built].in_kept_constant, "no class statement names Y"
+      refute by_name[:built].not_reloaded, "the block runs again"
     end
   end
 
-  # #503: reload keeps the value of a constant that a class statement in the
-  # same file names as its superclass, so a def inside that value cannot be
-  # placed under reload. Redefine still places it.
-  def test_a_def_in_a_kept_superclass_constant_is_unplaceable_under_reload_only
+  # #503, #528: reload keeps the class of every literal builder constant. A
+  # block it can run again runs again on that class, so its defs are
+  # placeable. A block with a statement it cannot run again is kept and not
+  # run, so each def in it is unplaceable under reload (R9). Redefine places
+  # both.
+  def test_a_def_in_a_kept_block_is_unplaceable_under_reload_only_when_the_block_does_not_run_again
     src = "BaseRow = Struct.new(:v) do\n  def in_block?; end\nend\n" \
           "class Row < BaseRow\n  def three?; end\nend\n" \
           "module Ledger\n  Ledger::Entry = Data.define(:c) do\n    def path_block; end\n  end\n" \
           "  Other = Struct.new(:o) do\n    def other; end\n  end\nend\n" \
+          "Aliased = Struct.new(:a) do\n  alias_method :b, :a\n  def aliased; end\nend\n" \
           "class Ledger::Credit < Ledger::Entry\nend\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      assert by_name[:in_block?].in_kept_constant
-      assert by_name[:in_block?].unplaceable?("reload")
-      refute by_name[:in_block?].unplaceable?("redefine")
-      assert by_name[:path_block].in_kept_constant, "a path write matches a path superclass spelled the same"
-      refute by_name[:three?].in_kept_constant
-      refute by_name[:three?].unplaceable?("reload")
-      refute by_name[:other].in_kept_constant, "no class statement names Other"
+      %i[in_block? path_block other three?].each do |name|
+        refute by_name[name].not_reloaded, name
+        refute by_name[name].unplaceable?("reload"), name
+      end
+      assert by_name[:aliased].not_reloaded
+      assert by_name[:aliased].unplaceable?("reload")
+      refute by_name[:aliased].unplaceable?("redefine")
     end
-    # Discovery keeps the same writes as the reload text: a path write does not
-    # match a bare superclass, and a builder method's value is not kept.
+    # A path write is kept and reopened with no class statement for it, and a
+    # builder method's value is not a literal builder, so it is built again.
     src = "Other::Base = Struct.new(:v) do\n  def path_write; end\nend\nclass User < Base\nend\n" \
-          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n"
+          "Row2Base = build_base do\n  def built; end\nend\nclass Row2 < Row2Base\nend\n" \
+          "Twice = Struct.new(:v) do\n  alias_method :b, :v\n  def twice; end\nend\nTwice = 1\n"
     with_source(src) do |path|
       by_name = Mutineer::Project.discover([path]).to_h { |s| [s.name, s] }
-      refute by_name[:path_write].in_kept_constant
-      refute by_name[:built].in_kept_constant
+      refute by_name[:path_write].not_reloaded
+      refute by_name[:built].not_reloaded
+      refute by_name[:twice].not_reloaded, "a name the file writes twice is not kept (R22)"
+    end
+  end
+
+  # #529, test the rule: a second load does not run the value of a constant
+  # `||=`, nor the statements of `unless defined?(X)` or `if !defined?(X)`
+  # that define `X`, so each def there is unplaceable under reload only.
+  # Names match by their last segment (R2 of the plan), which fails closed.
+  NOT_RELOADED_TEXTS = {
+    m1: "X ||= Struct.new(:a) do def m1; end end\n",
+    m2: "A::X ||= Class.new do def m2; end end\n",
+    m3: "X ||= lambda { def m3; end }\n",
+    m4: "X = Struct.new(:a) do def m4; end end unless defined?(X)\n",
+    m5: "unless defined?(X)\n  class X\n    def m5; end\n  end\nend\n",
+    m6: "if !defined?(X)\n  module X\n    def m6; end\n  end\nend\n",
+    m7: "if not defined?(::X)\n  ::X = Class.new do def m7; end end\nend\n",
+    m8: "unless (defined?(X))\n  X = 1\n  def m8; end\nend\n",
+    m9: "unless defined?(X)\n  X ||= 1\n  class Worker\n    def m9; end\n  end\nend\n",
+    m10: "unless defined?(B)\n  A, B = 1, 2\n  def m10; end\nend\n",
+    m11: "unless defined?(A::X)\n  B::X = 1\n  def m11; end\nend\n"
+  }.freeze
+
+  # The guard does not define the tested name, the def is in the `else`
+  # branch, the guard is not negated, the write is `&&=`, or the predicate is
+  # not `defined?` of a constant: each runs again on a second load.
+  RELOADED_TEXTS = {
+    n1: "unless defined?(Rails)\n  class Shim\n    def n1; end\n  end\nend\n",
+    n2: "unless defined?(X)\n  1\nelse\n  X = 1\n  def n2; end\nend\n",
+    n3: "if defined?(X)\n  def n3; end\nend\n",
+    n4: "X &&= Struct.new(:a) do def n4; end end\n",
+    n5: "unless ready?\n  X = 1\n  def n5; end\nend\n",
+    n6: "unless defined?(@x)\n  def n6; end\nend\n"
+  }.freeze
+
+  def test_a_def_that_a_second_load_skips_is_unplaceable_under_reload_only
+    NOT_RELOADED_TEXTS.each do |name, src|
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).find { |s| s.name == name }
+        refute_nil subject, src
+        assert subject.not_reloaded, src
+        assert subject.unplaceable?("reload"), src
+        refute subject.unplaceable?("redefine"), src
+      end
+    end
+    RELOADED_TEXTS.each do |name, src|
+      with_source(src) do |path|
+        subject = Mutineer::Project.discover([path]).find { |s| s.name == name }
+        refute_nil subject, src
+        refute subject.not_reloaded, src
+        refute subject.unplaceable?("reload"), src
+      end
     end
   end
 
@@ -1673,10 +1728,186 @@ class ProjectTest < Minitest::Test
     end
   end
 
-  def test_superclass_constant_names_reads_each_constant_superclass
-    program = Mutineer::Parser.parse_string("class A < B\nend\nclass C < D::E\nend\n" \
-                                            "class F < Struct.new(:a)\nend\nclass G\nend\nclass H < ((I))\nend\n" \
-                                            "class J < ::K\nend\n").value
-    assert_equal Set[:B, "D::E", :I, :K, "::K"], Mutineer::Project.superclass_constant_names(program)
+  # #543, R21 of the plan (AE16): the reload drops a conditional skip the first
+  # load applied, so a def that makes a skip the file runs at load, or that
+  # gives a load-time skip its filter or condition, is unplaceable under
+  # reload only. A file with no load-time skip call marks none.
+  def test_a_def_that_makes_a_load_time_skip_is_unplaceable_under_reload_only
+    src = <<~RUBY
+      class Note < Base
+        def self.quieten = skip_callback(:save, :before, :stamp, if: :quiet?)
+        def self.louder = quieten
+        def self.allow(**options) = skip_before_action(:check, **options)
+        def self.helper_only = 1
+        def self.inner = (def self.deep = quieten)
+        def self.hush = skip_callback(:save, :before, :stamp, if: hush_condition)
+        def self.hush_condition = :quiet?
+        def stamp_filter = :stamp
+        def quiet_condition = :quiet?
+        def quiet? = true
+
+        quieten
+        hush
+        skip_callback :save, :before, stamp_filter, if: quiet_condition
+        skip_callback :save, :after, :stamp, if: -> { quiet? }
+      end
+    RUBY
+    with_source(src) do |path|
+      by_name = Mutineer::Project.discover([path]).to_h { |s| [s.qualified_name, s] }
+      %w[Note.quieten Note.louder Note.allow Note.inner Note.deep Note.hush Note.hush_condition Note#stamp_filter
+         Note#quiet_condition].each do |name|
+        assert by_name.fetch(name).makes_load_time_skip, name
+        assert by_name.fetch(name).unplaceable?("reload"), name
+        refute by_name.fetch(name).unplaceable?("redefine"), name
+      end
+      %w[Note.helper_only Note#quiet?].each do |name|
+        refute by_name.fetch(name).makes_load_time_skip, name
+        refute by_name.fetch(name).unplaceable?("reload"), name
+      end
+    end
+    # No load of this file calls a skip def, as for a concern's
+    # `allow_unauthenticated_access`; a call inside another def is not a load-time call.
+    src = <<~RUBY
+      module Authentication
+        def self.allow(**options) = skip_before_action(:check, **options)
+        def self.setup = allow(only: :index)
+        def self.hush = skip_callback(:save, :before, :stamp, if: gate)
+        def self.gate = :quiet?
+      end
+    RUBY
+    with_source(src) do |path|
+      subjects = Mutineer::Project.discover([path])
+      refute(subjects.any?(&:makes_load_time_skip), subjects.map(&:qualified_name).inspect)
+      refute(subjects.any? { |subject| subject.unplaceable?("reload") })
+    end
+    src = "class Controller < Base\n  def self.open_up = skip_before_action(:check)\n  open_up\nend\n"
+    with_source(src) do |path|
+      assert Mutineer::Project.discover([path]).first.makes_load_time_skip, "an unconditional skip def is marked too"
+    end
+  end
+
+  # #533: a constant whose value holds only data names the same data on each
+  # load, so a superclass that reads it is not stale.
+  def test_data_literal_accepts_only_values_that_hold_no_class
+    data = ["1", ":a", "\"s\"", "nil", "true", "1.5", "%i[a b]", "[1, [2, :c]]", "{ a: 1, \"b\" => [2] }",
+            "%i[a b].freeze", "{ k: 1 }.freeze", "[]"]
+    other = ["Foo", "build", "Struct.new(:a)", "x.freeze", "[Foo]", "{ a: Foo }", "\"\#{x}\"", "[1].map(&:to_s)",
+             "%i[a].freeze(1)", "{ **opts }"]
+    (data.map { |text| [text, true] } + other.map { |text| [text, false] }).each do |text, expected|
+      value = Mutineer::Parser.parse_string("X = #{text}\n").value.statements.body.first.value
+      assert_equal expected, Mutineer::Project.data_literal?(value), text
+    end
+  end
+
+  # #533: the names a load of the file can build again: its defs, and the
+  # constants it writes with a value that is neither data nor kept by reload.
+  def test_rebuilt_names_reads_defs_and_constants_reload_does_not_keep
+    program = Mutineer::Parser.parse_string(<<~RUBY).value
+      def self.build_base = 1
+      class Row
+        def total = 1
+      end
+      DATA_ONLY = %i[a].freeze
+      Kept = Struct.new(:v)
+      Called = build_base
+      A, Multi = 1, 2
+      Billing::Path = make
+      Or ||= Struct.new(:v)
+      Twice = Struct.new(:v)
+      Twice = Struct.new(:w)
+    RUBY
+    defs, constants = Mutineer::Project.rebuilt_names(program)
+    assert_equal Set[:build_base, :total], defs
+    assert_equal Set[:Called, :A, :Multi, :Path, :Or, :Twice], constants
+  end
+
+  # #528, R22: the last names of the constants the file writes more than
+  # once, with any kind of write, a path write or a multiple-assignment target.
+  def test_repeated_constant_names_counts_every_kind_of_write
+    program = Mutineer::Parser.parse_string("A = 1\nA = 2\nB = 1\nB ||= 2\nC = 1\nX::C = 2\nD = 1\nE, D = 1, 2\n" \
+                                            "F = 1\nclass F; end\nmodule G; end\nG = 1\nH += 1\n").value
+    assert_equal Set[:A, :B, :C, :D], Mutineer::Project.repeated_constant_names(program)
+  end
+
+  # #528, P1 and P2 of the self-check, test the rule: a constant the file
+  # changes at load in a way that is not safe to run again on a kept class is
+  # not kept. A class statement with a safe body, `new` and `[]` are safe.
+  RESHAPED = {
+    "class P\n  alias_method :raw_x, :x\nend\n" => true,
+    "class P\n  undef_method :to_a\nend\n" => true,
+    "class P\n  remove_method :to_a\nend\n" => true,
+    "class P\n  include Comparable\nend\n" => true,
+    "module A\n  class P\n    alias b a\n  end\nend\n" => true,
+    "module P\n  extend self\nend\n" => true,
+    "class << P\n  alias_method :b, :a\nend\n" => true,
+    "P.freeze\n" => true,
+    "P.class_eval { def y = 1 }\n" => true,
+    "A::P.send(:remove_method, :to_a)\n" => true,
+    "P.include(Comparable)\n" => true,
+    "class P\n  def y = 1\n  attr_reader :z\nend\n" => false,
+    "class << P\n  def s = 1\nend\n" => false,
+    "ORIGIN = P.new(0)\n" => false,
+    "ORIGIN = P[0]\n" => false,
+    "def self.seal = P.freeze\n" => true,
+    "Alias = P\nAlias.class_eval { alias_method :raw_x, :x }\n" => true,
+    "[P].each { |k| k.class_eval { alias_method :raw_x, :x } }\n" => true,
+    "def self.patch(k) = k.alias_method(:raw_x, :x)\npatch(P)\n" => true,
+    "def p?(v) = v.is_a?(P)\n" => true,
+    "class Q\n  alias_method :b, :a\nend\n" => false,
+    "class Row < P\nend\n" => false,
+    "class Row < (P)\nend\n" => false,
+    "class Row < Class.new(P)\nend\n" => false,
+    "ORIGIN = P::ZERO\n" => false,
+    "A::ORIGIN = A::P.new(0)\n" => false,
+    "class P::Q\n  alias_method :b, :a\nend\n" => true,
+    "class P::Q\n  def b = 1\nend\n" => false,
+    "ORIGIN = P.new(0)\nORIGIN.class.class_eval { alias_method :raw_x, :x }\n" => true,
+    "KLASS = Object.const_get(:P)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(:alias_method, :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(\"alias_method\", :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nm = :alias_method\nORIGIN.class.public_send(m, :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(:send, :alias_method, :raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nclass << ORIGIN.class\n  alias_method :raw_new, :new\nend\n" => true,
+    "class << A::P\n  alias_method :raw_new, :new\nend\n" => true,
+    "eval(\"1\")\n" => true,
+    "Kernel.send(:eval, \"1\")\n" => true,
+    "instance_eval(\"1\")\n" => true,
+    "m = :eval\n__send__(m, \"1\")\n" => true,
+    "send(:send, :eval, \"1\")\n" => true,
+    "class Row < P\n  def attrs = members.map { |m| public_send(m) }\nend\n" => true,
+    "def run(m, s) = send(m, s)\nrun(:eval, \"1\")\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.include(Comparable)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.send(:x)\n" => false,
+    "ORIGIN = P.new(0)\nORIGIN.class.method(:alias_method).call(:raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.instance_method(:x)\n" => false,
+    "ORIGIN = P.new(0)\nm = :alias_method\nORIGIN.class.method(m).call(:raw_x, :x)\n" => true,
+    "ORIGIN = P.new(0)\nORIGIN.class.send(:method, :alias_method).call(:raw_x, :x)\n" => true,
+    "def verb(request) = request.method\n" => false
+  }.freeze
+
+  def test_unkept_constant_names_holds_a_constant_the_file_may_change
+    RESHAPED.each do |text, unkept|
+      ["P = Struct.new(:x)\n", "A::P = Struct.new(:x)\n"].each do |write_text|
+        program = Mutineer::Parser.parse_string(write_text + text).value
+        names = Mutineer::Project.unkept_constant_names(program)
+        assert_equal unkept, names.include?(:P), write_text + text
+        assert_equal !unkept, Mutineer::Project.kept_constant_write?(program.statements.body.first, names), write_text + text
+      end
+    end
+  end
+
+  # #528, P1 of the pre-PR review: the reload text reads the kept constants
+  # from the original text. A mutant that removes the only `Point.members`
+  # call inside a def must not make the reload keep a class whose block does
+  # not run again: the mutated def would never load, a false survivor.
+  def test_the_reload_text_keeps_the_constants_the_original_text_keeps
+    source = "Point = Struct.new(:x) do\n  alias_method :raw_x, :x\n  def self.fields\n    Point.members\n  end\nend\n"
+    mutated = source.sub("Point.members", "nil")
+    assert_includes Mutineer::JobPlan.keep_live_superclasses(mutated), "kept_constant"
+    assert_equal mutated, Mutineer::JobPlan.reload_code(mutated, nil, nil, source).first
+    with_source(source) do |path|
+      subject = Mutineer::Project.discover([path]).find { |s| s.qualified_name == "Point.fields" }
+      refute subject.unplaceable?("reload")
+    end
   end
 end

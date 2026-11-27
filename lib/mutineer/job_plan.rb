@@ -364,8 +364,8 @@ module Mutineer
     # def in a concern's hook block gets {hook_mutant}; any other mutant gets
     # the reach probe of a `:maybe` selection ({ReachProbe.wrap_mutation}).
     # Then each class statement whose superclass {kept_target} wraps keeps its
-    # live superclass, and each superclass constant the file assigns keeps
-    # its class ({keep_live_superclasses}, #492, #512, #503).
+    # live superclass, and each literal class builder constant keeps its class
+    # ({keep_live_superclasses}, #492, #512, #503, #528).
     #
     # @param mutated [String] the mutated source text.
     # @param mutation [Mutineer::Mutation] the mutation.
@@ -381,7 +381,9 @@ module Mutineer
       else
         code = ReachProbe.wrap_mutation(mutated, mutation, reach_path, reach_key)
       end
-      [keep_live_superclasses(code), hook_def]
+      # The names come from the original text: a mutant inside a def can
+      # change a call there, and discovery read the original text.
+      [keep_live_superclasses(code, Project.unkept_constant_names(Parser.parse_string(source).value)), hook_def]
     end
 
     # A new empty file for {ReloadGuards.callback_growth_log} (#479). The
@@ -428,63 +430,95 @@ module Mutineer
     # mismatch" (#492). For a superclass that sets a local
     # (`class Q < (base = Struct.new(:a))`), only the written value is wrapped,
     # so the local is still set, to the live superclass (#512). See
-    # {kept_target} for the superclasses it leaves as written. It also wraps
-    # the value of a constant that a class statement in the file inherits from
-    # in {ReloadGuards.kept_constant} ({kept_constant_splice}, #503). The
-    # wrapped text stays as it is, inside the block, and on its own lines, so
-    # line numbers do not move. A wrap puts one expression in a block, and a
-    # class inside a wrapped superclass or a kept value is not wrapped again. A bad wrap is not
-    # checked here: the child's `load` raises `SyntaxError`, and the mutant
-    # scores `error`. Text with no such class comes back unchanged.
+    # {kept_target} for the superclasses it leaves as written. It also keeps
+    # the class of each literal class builder constant ({kept_constant_splice},
+    # #503, #528): a builder block that can run again runs again on that class
+    # ({ReloadGuards.reopened_constant}), and the walk goes on inside it; any
+    # other kept value is wrapped whole in {ReloadGuards.kept_constant}, and
+    # nothing inside it is wrapped. The wrapped text stays as it is and on its
+    # own lines, so line numbers do not move. A class inside a wrapped
+    # superclass or a kept value that does not run again is not wrapped again.
+    # A bad wrap is not checked here: the child's `load` raises `SyntaxError`,
+    # and the mutant scores `error`. Text with no such class or constant comes
+    # back unchanged.
     #
     # @param code [String] the reload text.
+    # @param unkept [Set<Symbol>, nil] {Project.unkept_constant_names} of the
+    #   original text, as discovery reads it; nil reads them from `code`.
     # @return [String]
-    def self.keep_live_superclasses(code)
+    def self.keep_live_superclasses(code, unkept = nil)
       program = Parser.parse_string(code).value
-      names = Project.superclass_constant_names(program)
+      unkept ||= Project.unkept_constant_names(program)
+      rebuilt = Project.rebuilt_names(program, unkept)
       splices = []
       queue = [program]
       while (node = queue.shift)
-        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass))
-          splices << [target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name]
+        if node.is_a?(Prism::ClassNode) && (target = kept_target(node.superclass, rebuilt))
+          splices << wrap_splice(target, "kept_superclass", superclass_scope(node.constant_path), node.constant_path.name)
           # The wrap skips the whole superclass expression, so a class inside it
           # is not wrapped again: two splices in one range would not parse.
           queue.concat([node.constant_path, node.body].compact)
-        elsif (splice = kept_constant_splice(node, names))
-          # A kept value does not run again, so nothing inside it is wrapped.
+        elsif (splice = kept_constant_splice(node, unkept))
           splices << splice
+          # A reopened block runs again on the live class, so the walk goes on
+          # inside it. Any other kept value does not run again.
+          queue << node.value.block if Project.reopened_write?(node, unkept)
         else
           queue.concat(node.compact_child_nodes)
         end
       end
       return code if splices.empty?
 
-      splices.sort_by { |target, *| -target.location.start_offset }.reduce(code) do |text, (target, guard, scope, name)|
-        loc = target.location
-        inner = text.byteslice(loc.start_offset, loc.length)
-        wrapped = "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { #{inner} }"
-        text.byteslice(0, loc.start_offset) + wrapped + text.byteslice(loc.end_offset..)
+      splices.sort_by { |start, *| -start }.reduce(code) do |text, (start, length, head, tail)|
+        text.byteslice(0, start) + head + text.byteslice(start, length) + tail + text.byteslice((start + length)..)
       end
     end
 
-    # The splice that keeps a constant's value on reload (#503): a constant
-    # write that {Project.kept_constant_write?} keeps, a class builder call
-    # with literal arguments. `BaseRow = Struct.new(:v)` with
-    # `class Row < BaseRow` keeps `BaseRow`'s class, so `Row` reopens with the
-    # same parent. A `||=` write keeps its text (#529).
+    # A splice that wraps a whole node in a guard call's block:
+    # `GUARD(scope, :Name) { node }`.
+    #
+    # @param target [Prism::Node] the node to wrap.
+    # @param guard [String] `"kept_superclass"` or `"kept_constant"`.
+    # @param scope [String] the scope text.
+    # @param name [Symbol] the class or constant name.
+    # @return [Array(Integer, Integer, String, String)] the byte offset and
+    #   length of the text kept as it is, and the text before and after it.
+    def self.wrap_splice(target, guard, scope, name)
+      loc = target.location
+      [loc.start_offset, loc.length, "::Mutineer::ReloadGuards.#{guard}(#{scope}, #{name.inspect}) { ", " }"]
+    end
+
+    # The splice that keeps a constant's class on reload (#503, #528): a
+    # constant write that {Project.kept_constant_write?} keeps, a class builder
+    # call with literal arguments. `Point = Struct.new(:x)` keeps `Point`'s
+    # class, so a subclass, an instance and a constant in another file still
+    # point at it. When {Project.reopened_write?} accepts its block,
+    # `Point = Struct.new(:x) do ... end` becomes
+    # `Point = ::Mutineer::ReloadGuards.reopened_constant(scope, :Point, -> { Struct.new(:x) }) do ... end`:
+    # the block stays where it is, and runs again on the live class. Any other
+    # kept value is wrapped whole in {ReloadGuards.kept_constant}, and its
+    # block does not run again. A `||=` write keeps its text: a second load
+    # skips its value, so discovery marks each def there `unplaceable` (#529).
     #
     # @param node [Prism::Node]
-    # @param names [Set<Symbol, String>] {Project.superclass_constant_names} of the file.
-    # @return [Array(Prism::Node, String, String, Symbol), nil] the node to
-    #   wrap, the guard, the scope text and the name; nil for any other node.
-    def self.kept_constant_splice(node, names)
-      return nil unless Project.kept_constant_write?(node, names)
+    # @param unkept [Set<Symbol>] {Project.unkept_constant_names} of the file.
+    # @return [Array(Integer, Integer, String, String), nil] a splice, as
+    #   {wrap_splice} gives, or nil for any other node.
+    def self.kept_constant_splice(node, unkept)
+      return nil unless Project.kept_constant_write?(node, unkept)
 
-      if node.is_a?(Prism::ConstantPathWriteNode)
-        [node.value, "kept_constant", superclass_scope(node.target), node.target.name]
-      else
-        [node.value, "kept_constant", "::Module.nesting.first", node.name]
-      end
+      scope, name = if node.is_a?(Prism::ConstantPathWriteNode)
+                      [superclass_scope(node.target), node.target.name]
+                    else
+                      ["::Module.nesting.first", node.name]
+                    end
+      return wrap_splice(node.value, "kept_constant", scope, name) unless Project.reopened_write?(node, unkept)
+
+      # The text from the builder call to its block, trailing space and any
+      # `\` line continuation included, goes between the lambda's braces.
+      start = node.value.location.start_offset
+      length = node.value.block.location.start_offset - start
+      [start, length, "::Mutineer::ReloadGuards.reopened_constant(#{scope}, #{name.inspect}, -> { ", "}) "]
     end
 
     # The part of a class statement's superclass that the reload text wraps,
@@ -492,9 +526,11 @@ module Mutineer
     # names the same class on each load. A bare variable read is left alone
     # too: an earlier line set it, that line runs again, and a kept parent
     # would differ from what the variable then holds, a silent false verdict
-    # (#512). Both hold inside any number of parentheses (`(base)`). A read
-    # deeper in the expression (`Class.new(base)`) is still wrapped (#533).
-    # A plain local write (`base = v`, or `(base = v)` alone in
+    # (#512). Both hold inside any number of parentheses (`(base)`). A
+    # superclass that can name a class the file builds again is left alone
+    # too ({reads_rebuilt?}, #533), so the file errors visibly with
+    # "superclass mismatch" when that class is new (#527), instead of keeping
+    # a stale parent. A plain local write (`base = v`, or `(base = v)` alone in
     # parentheses, or a chain `a = b = v`) gives the target of its value, so
     # the write stays outside the block and still sets the local (#512).
     # Any other superclass that sets a local is left alone, because the block
@@ -502,20 +538,66 @@ module Mutineer
     # wrapped whole.
     #
     # @param node [Prism::Node, nil] a class statement's superclass.
+    # @param rebuilt [Array(Set<Symbol>, Set<Symbol>)] {Project.rebuilt_names} of the file.
     # @return [Prism::Node, nil]
-    def self.kept_target(node)
+    def self.kept_target(node, rebuilt)
       return nil if node.nil?
 
       inner = node
       inner = inner.body.body.first while Project.sole_statement_parentheses?(inner)
       return nil if LEFT_AS_WRITTEN.any? { |type| inner.is_a?(type) }
       return nil if outer_block_parameter?(node)
+      return nil if reads_rebuilt?(node, rebuilt)
 
       write = plain_local_write(node)
-      return kept_target(write.value) if write
+      return kept_target(write.value, rebuilt) if write
 
       writes_local?(node) ? nil : node
     end
+
+    # Whether a superclass expression can name a class that a load of the file
+    # builds again (#533), outside any def in it (a def's body runs later):
+    #
+    # - a read of a local variable that is not a parameter of a block in the
+    #   expression (one set earlier in the expression counts too, which fails
+    #   closed), or any use of an instance, class or global
+    #   variable, a write too, because `$base ||= Object` reads it with no
+    #   read node;
+    # - a read of a constant in the second Set of `rebuilt`;
+    # - a call of a method named in the first Set of `rebuilt`, with any
+    #   receiver, which fails closed, also through a literal `send(:name)` or
+    #   `method(:name)`, and a `send` or `method` with a computed name when the
+    #   file defines a method. The `Struct.new`, `Data.define` or
+    #   `Class.new` call itself does not count, so `class Point < Struct.new(:x)`
+    #   beside a `def self.new` is still wrapped.
+    #
+    # @param node [Prism::Node]
+    # @param rebuilt [Array(Set<Symbol>, Set<Symbol>)] {Project.rebuilt_names} of the file.
+    # @param level [Integer] the blocks and lambdas between `node` and the superclass.
+    # @return [Boolean]
+    def self.reads_rebuilt?(node, rebuilt, level = 0)
+      return false if node.is_a?(Prism::DefNode)
+      return node.depth >= level if node.is_a?(Prism::LocalVariableReadNode)
+      return true if OUTER_VARIABLES.any? { |type| node.is_a?(type) }
+
+      defs, constants = rebuilt
+      return true if (node.is_a?(Prism::ConstantReadNode) || node.is_a?(Prism::ConstantPathNode)) && constants.include?(node.name)
+      if node.is_a?(Prism::CallNode) && !Project.builder_call?(node)
+        # `send(:build)` and `method(:build)` run `build`; a computed `send` or
+        # `method` may run any method of the file.
+        sent = Project.sent_name(node)
+        return true if sent.nil? ? !defs.empty? : defs.include?(sent)
+      end
+
+      inner = node.is_a?(Prism::BlockNode) || node.is_a?(Prism::LambdaNode) ? level + 1 : level
+      node.compact_child_nodes.any? { |child| reads_rebuilt?(child, rebuilt, inner) }
+    end
+
+    # The Prism nodes that read or write an instance, class or global
+    # variable, in every form. {reads_rebuilt?} counts each of them.
+    OUTER_VARIABLES = %w[InstanceVariable ClassVariable GlobalVariable].flat_map do |kind|
+      %w[Read Write OrWrite AndWrite OperatorWrite Target].map { |form| Prism.const_get(:"#{kind}#{form}Node") }
+    end.freeze
 
     # The local write `node` is, alone or as the one statement of one pair of
     # parentheses, or nil.
@@ -544,10 +626,10 @@ module Mutineer
     end
 
     # The superclass nodes {kept_target} leaves as written: a constant, and a
-    # read of a variable an earlier statement set (#512).
-    LEFT_AS_WRITTEN = [Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
-                       Prism::InstanceVariableReadNode, Prism::ClassVariableReadNode,
-                       Prism::GlobalVariableReadNode].freeze
+    # read of a variable an earlier statement set (#512). The variable reads
+    # come from {OUTER_VARIABLES}, so the two lists cannot differ.
+    LEFT_AS_WRITTEN = ([Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode] +
+                       OUTER_VARIABLES.select { |type| type.name.end_with?("ReadNode") }).freeze
 
     # Whether `node` sets a local variable of the scope it runs in. A block or
     # lambda can set an outer local, so the walk enters it and counts only
