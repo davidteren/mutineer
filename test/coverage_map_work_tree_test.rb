@@ -694,6 +694,15 @@ class CoverageMapWorkTreeTest < Minitest::Test
     assert_equal ["lib/shelf.rb"], JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["during_run"]
   end
 
+  # When git cannot list the changed files at save, the save cannot tell
+  # which source changed during the run, so it lists every one.
+  def test_a_git_failure_at_save_lists_every_source_and_test_as_changed_during_the_run
+    write_app
+    record = Mutineer::WorkTree.record(@root)
+    Mutineer::WorkTree.stub(:changed_since, nil) { build(work_tree: record) }
+    assert_equal (SOURCES + TESTS).sort, JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["during_run"]
+  end
+
   def test_a_test_edited_while_the_capture_runs_captures_every_test_next_run
     write_app
     write_editor("test/card_test.rb", "class CardTest", "# edited\nclass CardTest")
