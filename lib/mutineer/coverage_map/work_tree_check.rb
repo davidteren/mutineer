@@ -159,7 +159,9 @@ module Mutineer
       # The given paths whose git state differs now from this run's record,
       # which a caller that boots an app took before the boot. So an edit
       # during the boot counts too, which the start prints of {#cached_or}
-      # miss. Empty with no commit, or when HEAD moved during the run.
+      # miss. It lists against the recorded commit, so a commit or checkout
+      # during the run does not hide an edit. When git fails now, every path
+      # counts as changed. Empty when the record has no commit.
       #
       # @api private
       # @param rels [Array<String>] project-relative paths of the sources and tests.
@@ -167,12 +169,15 @@ module Mutineer
       def changed_since_record(rels)
         return [] unless @work_tree && @work_tree["commit"]
 
-        later = WorkTree.record(@project_root)
-        return [] unless later["commit"] == @work_tree["commit"]
+        listed = WorkTree.changed_since(@work_tree["commit"], @project_root)
+        return rels unless listed
 
+        listed = listed.to_set
         before = @work_tree["dirty"]
-        after = later["dirty"]
-        rels.select { |rel| before.key?(rel) != after.key?(rel) || before[rel] != after[rel] }
+        rels.select do |rel|
+          now = listed.include?(rel) ? WorkTree.fingerprint(@project_root, rel) : nil
+          before.key?(rel) != listed.include?(rel) || before[rel] != now
+        end
       end
 
       # True when no fingerprint the cache saved for `rel` equals the file

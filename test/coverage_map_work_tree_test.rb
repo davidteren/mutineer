@@ -682,6 +682,18 @@ class CoverageMapWorkTreeTest < Minitest::Test
                  lines(run)
   end
 
+  # The same with a commit during the run: the save lists against the
+  # recorded commit, so the move of HEAD does not hide the edit.
+  def test_a_source_edited_during_the_boot_is_listed_when_head_moves_during_the_run
+    write_app
+    record = Mutineer::WorkTree.record(@root)
+    write("lib/shelf.rb", File.read(path("lib/shelf.rb")).sub("    3\n", "    2 + 1\n"))
+    write("README.md", "moved\n")
+    git(@root, "commit", "-qm", "docs", "--", "README.md")
+    build(work_tree: record)
+    assert_equal ["lib/shelf.rb"], JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["during_run"]
+  end
+
   def test_a_test_edited_while_the_capture_runs_captures_every_test_next_run
     write_app
     write_editor("test/card_test.rb", "class CardTest", "# edited\nclass CardTest")
