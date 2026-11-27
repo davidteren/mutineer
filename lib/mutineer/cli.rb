@@ -284,7 +284,22 @@ module Mutineer
         end
         # A directory source expands to its **/*.rb files; a file inside the
         # project becomes its root-relative path (#104). Test inference (when --test is omitted) happens in validate!.
-        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root)
+        # A test folder below a typed folder, and a file of an explicit --test
+        # list, is not a source (#554).
+        left_out = []
+        config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root, left_out: left_out)
+        if config.explicit?(:tests)
+          abs = ->(path) { File.expand_path(path, config.project_root) }
+          tests = config.tests.to_set(&abs)
+          typed = argv[1..].to_set(&abs)
+          dropped, config.sources = config.sources.partition { |s| tests.include?(abs.call(s)) && !typed.include?(abs.call(s)) }
+          left_out.concat(dropped)
+        end
+        unless left_out.empty?
+          noun = left_out.size == 1 ? "file" : "files"
+          warn "[mutineer] folder sources: left out #{left_out.size} #{noun}, such as #{left_out.first} " \
+               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source)"
+        end
         # Direct writes from the app, a fork, or a subprocess inherit these
         # pipes (#341). Dotenv files are merged with any URLs the caller
         # already set, and that list is restored when start returns.

@@ -3808,18 +3808,114 @@ class CliTest < Minitest::Test
     end
   end
 
-  # A directory source of the whole `packs` folder lists the pack test file
-  # as a source too (1.9.0 Pairing.expand_sources behavior), so it is
-  # reported unpaired. The docs say to pass `packs/*/app` (#554).
-  def test_packs_directory_source_lists_the_pack_test_as_unpaired
+  LEFT_OUT_ITEM = "[mutineer] folder sources: left out 1 file, such as packs/catalog/test/models/item_test.rb"
+
+  # AE6 (#554): `run packs` leaves out the pack test folder and says so once.
+  # Only the pack source with no test is unpaired.
+  def test_packs_directory_source_leaves_out_the_pack_test_folder
     with_packs_project do |proj|
       out, err, status = mutineer("run", "packs", "--format", "json", "--operators", "arithmetic", chdir: proj)
       assert_equal 0, status.exitstatus, err
       doc = JSON.parse(out)
-      assert_equal %w[packs/billing/app/models/invoice.rb packs/catalog/test/models/item_test.rb],
-                   doc["unpaired_sources"].map { |row| row["file"] }
-      assert_equal 2, err.scan("no test found by convention").size, err
+      assert_equal %w[packs/billing/app/models/invoice.rb], doc["unpaired_sources"].map { |row| row["file"] }
+      assert_equal 1, err.scan("no test found by convention").size, err
+      assert_equal 1, err.scan(LEFT_OUT_ITEM).size, err
       assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
+    end
+  end
+
+  # AE7 (P5): with --test, the pack test is no longer scored as a source, and
+  # stdout is one JSON document (no Minitest output after it).
+  def test_packs_directory_source_with_test_folder_reports_one_json_document
+    with_packs_project do |proj|
+      out, err, status = mutineer("run", "packs", "--test", "packs/catalog/test", "--format", "json",
+                                  "--operators", "arithmetic", chdir: proj)
+      assert_equal 0, status.exitstatus, err
+      doc = JSON.parse(out)
+      refute doc["per_source"].any? { |row| row["file"].start_with?("packs/catalog/test") }, doc["per_source"].inspect
+      item = doc["per_source"].find { |row| row["file"] == "packs/catalog/app/models/item.rb" }
+      assert item["killed"].positive?, item.inspect
+      assert_equal 0, item["survived"], item.inspect
+    end
+  end
+
+  # AE14, AE15: a typed test folder keeps its file; a typed pack folder does
+  # not; a run whose only source is in the --test list exits 2.
+  def test_typed_folders_and_the_test_list_decide_the_left_out_count
+    with_packs_project do |proj|
+      dry = ["--dry-run", "--operators", "arithmetic"]
+      _out, err, = mutineer("run", "packs", "packs/catalog/test", *dry, chdir: proj)
+      refute_includes err, "left out", err
+      _out, err, = mutineer("run", "packs", "packs/catalog", *dry, chdir: proj)
+      assert_equal 1, err.scan(LEFT_OUT_ITEM).size, err
+
+      _out, err, status = mutineer("run", "packs/catalog/test", "--test", "packs/catalog/test", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_operator err.index(LEFT_OUT_ITEM), :<, err.index("run requires at least one source file"), err
+    end
+  end
+
+  # AE9 (U4): a test_*.rb file typed as a source inside a pack test folder is
+  # caught by the guard.
+  def test_test_prefixed_file_in_a_pack_test_folder_is_refused_as_a_source
+    with_packs_project do |proj|
+      File.write(File.join(proj, "packs/catalog/test/models/test_item_extra.rb"), "# a test\n")
+      _out, err, status = mutineer("run", "packs/catalog/test/models/test_item_extra.rb",
+                                   "--test", "packs/catalog/test/models/item_test.rb", chdir: proj)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "looks like a test file, not a source"
+    end
+  end
+
+  # A gem-shaped project: lib/calc.rb, a killing test at <test_dir>/<test_name>.
+  def with_calc_gem(lib_dir, test_rel)
+    Dir.mktmpdir("mutineer-gem") do |proj|
+      FileUtils.mkdir_p(File.join(proj, lib_dir))
+      File.write(File.join(proj, lib_dir, "calc.rb"), "class Calc\n  def add(a, b) = a + b\nend\n")
+      test_abs = File.join(proj, test_rel)
+      FileUtils.mkdir_p(File.dirname(test_abs))
+      calc = Pathname(File.join(proj, lib_dir, "calc.rb")).relative_path_from(File.dirname(test_abs))
+      File.write(test_abs, <<~RUBY)
+        require "minitest/autorun"
+        require_relative "#{calc.to_s.delete_suffix('.rb')}"
+        class CalcTest < Minitest::Test
+          def test_add = assert_equal(5, Calc.new.add(2, 3))
+        end
+      RUBY
+      yield proj
+    end
+  end
+
+  # One JSON document on stdout, and the files of its per_source[].
+  def json_sources(*args, chdir:)
+    out, err, status = mutineer(*args, "--format", "json", "--operators", "arithmetic", chdir: chdir)
+    assert_equal 0, status.exitstatus, err
+    doc = JSON.parse(out)
+    assert doc["per_source"].all? { |row| row["survived"].zero? && row["killed"].positive? }, doc["per_source"].inspect
+    [doc["per_source"].map { |row| row["file"] }, err]
+  end
+
+  # AE11 (P6, P10): the same rule outside packs/, and at the project root.
+  def test_gem_and_root_folder_sources_leave_out_their_test_folder
+    with_calc_gem("gems/calc/lib", "gems/calc/test/calc_test.rb") do |proj|
+      files, = json_sources("run", "gems", "--test", "gems/calc/test", chdir: proj)
+      assert_equal ["gems/calc/lib/calc.rb"], files
+      files, = json_sources("run", ".", "--test", "test", chdir: File.join(proj, "gems/calc"))
+      assert_equal ["lib/calc.rb"], files
+    end
+  end
+
+  # AE12 (P9), AE13: a test beside its source leaves through the --test list,
+  # and a run with nothing to leave out prints no line.
+  def test_a_test_beside_its_source_leaves_through_the_test_list
+    with_calc_gem("lib", "lib/calc_test.rb") do |proj|
+      files, err = json_sources("run", "lib", "--test", "lib", chdir: proj)
+      assert_equal ["lib/calc.rb"], files
+      assert_equal 1, err.scan("[mutineer] folder sources: left out 1 file, such as lib/calc_test.rb").size, err
+    end
+    with_calc_gem("lib", "test/calc_test.rb") do |proj|
+      _files, err = json_sources("run", "lib", chdir: proj)
+      refute_includes err, "left out"
     end
   end
 end
