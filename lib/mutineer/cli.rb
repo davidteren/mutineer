@@ -102,8 +102,8 @@ module Mutineer
                              not with --test-command)
         --load-path DIR, -I DIR  Put DIR on $LOAD_PATH before the boot file, the sources
                              and the tests (repeat for more; relative to the project
-                             root; replaces load_path: in .mutineer.yml; not with
-                             --test-command)
+                             root; replaces load_path: in .mutineer.yml;
+                             --test-command gets them in RUBYLIB)
         --coverage-from FILE Reuse the coverage.json of a --rails/--boot capture over
                              these sources or more; runs alone only the tests that
                              cover these sources
@@ -590,7 +590,7 @@ module Mutineer
              "(surgical redefine needs a shared VM; the subprocess has its own)"
         exit 2
       end
-      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir extra_load_paths])
+      warn_unused_settings(config, "--test-command", %i[timeout capture_timeout cache_dir])
       return unless config.jobs > 1
 
       warn "[mutineer] --test-command runs serially (no per-worker DB isolation yet); forcing --jobs 1."
@@ -651,8 +651,7 @@ module Mutineer
       timeout: "in-process runs only",
       capture_timeout: "in-process and --daemon coverage capture",
       cache_dir: "the in-process and --daemon coverage cache",
-      coverage_from: "in-process --rails/--boot runs",
-      extra_load_paths: "in-process and --daemon runs"
+      coverage_from: "in-process --rails/--boot runs"
     }.freeze
 
     # Warns when `--coverage-from` is set on a run that captures no coverage.
@@ -791,9 +790,10 @@ module Mutineer
     # Validate path existence up front so a typo is a clean usage error (exit 2),
     # not an Errno::ENOENT backtrace from deep in the run. Flag checks run first
     # so a bad flag still reports the flag, not the missing file. A `load_path`
-    # entry must be a directory (#491). --test-command skips that check: it
-    # does not use the directories and only warns. Config.parse has already
-    # checked the value's shape in every mode.
+    # entry must be a directory (#491). Under --test-command an entry must
+    # also have no path separator, as it goes in RUBYLIB; there an entry that
+    # fails either check only warns and is skipped, until 2.0 (#535).
+    # Config.parse has already checked the value's shape in every mode.
     #
     # @api private
     # @param config [Mutineer::Config] run configuration.
@@ -805,7 +805,16 @@ module Mutineer
         warn "mutineer: no such file: #{missing.join(', ')}"
         exit 2
       end
-      return if config.test_command
+      if config.test_command
+        _usable, skipped = ExternalBackend.split_load_dirs(config)
+        unless skipped.empty?
+          warn "[mutineer] --test-command skips these load_path entries: #{skipped.join(', ')} " \
+               "(#{config.origin(:extra_load_paths)}). Each must be a directory with no \"#{File::PATH_SEPARATOR}\" " \
+               "in its path: fix a mistyped path, and pass -I inside the test command for a path RUBYLIB cannot hold. " \
+               "Mutineer 2.0 exits 2 here."
+        end
+        return
+      end
 
       not_dirs = JobPlan.extra_load_dirs(config).reject { |dir| File.directory?(dir) }
       return if not_dirs.empty?

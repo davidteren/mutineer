@@ -1734,7 +1734,7 @@ class CliTest < Minitest::Test
     out, _, status = mutineer("--help")
     assert_equal 0, status.exitstatus
     entry = out[/^  --load-path DIR, -I DIR.*?(?=^  --)/m].to_s
-    %w[$LOAD_PATH replaces --test-command].each { |word| assert_includes entry, word }
+    %w[$LOAD_PATH replaces --test-command RUBYLIB].each { |word| assert_includes entry, word }
   end
 
   # #8: --verbose is documented and both it and its --debug alias are accepted

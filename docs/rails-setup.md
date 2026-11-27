@@ -141,7 +141,7 @@ RAILS_ENV=test bundle exec mutineer run \
 | Mutant run | Stops at the first failing test, as the in-process run does. |
 | Coverage | Runs only covering tests. Uncovered lines receive `no_coverage`, keeping scores comparable with in-process `--rails`. If coverage is unavailable, each mutant runs the full test set and the score is not comparable. |
 | Worker databases | Separate databases prevent fixture interference. Only single-database apps run in parallel; more than one database forces one worker, unless `shared_databases` lists the other ones ([More than one database](#more-than-one-database)). Initial copies include rows written during boot by initializers or `require:` files. |
-| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. Set `load_path:` or `-I DIR` instead; see [Extra load paths](#extra-load-paths). When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. Under `--verbose`, so does the first `coverage skipped for <file>` warning for a test file that could not load a file; without `--verbose` that warning has no error text and no note ([#537](https://github.com/davidteren/mutineer/issues/537)). |
+| Load paths | Does not pass `RUBYOPT` or `RUBYLIB` to the app, so a `-I` path set there is missing. Set `load_path:` or `-I DIR` instead; see [Extra load paths](#extra-load-paths). When you set `RUBYLIB`, or a `RUBYOPT` with `-I`, a mutant that errors on a missing file says so in the JSON report's `no_verdict[].details`. The coverage build and the clean check add the same note to their message when they fail that way. So does the first `coverage skipped for <file>` warning for a test file that could not load a file ([#537](https://github.com/davidteren/mutineer/issues/537)). `--verbose` adds the full message and the first backtrace frame. |
 | Backend choice | Requires `--rails` or `--boot`. Cannot combine with `--test-command`. |
 
 For SQLite, Mutineer compares the copied database with the app's Ruby schema.
@@ -200,7 +200,7 @@ When a run stops with `another Mutineer run is using <base>`, wait for the other
 #### Extra load paths
 
 Mutineer 1.10.0 and later put the directories you name on `$LOAD_PATH` before the boot file, the sources and the tests.
-This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. `--test-command` ignores it ([#535](https://github.com/davidteren/mutineer/issues/535)).
+This works in-process and under `--daemon`, which runs Minitest only; with RSpec, use `--rails -I DIR` without `--daemon`. In Mutineer 1.11.0 and later, `--test-command` gets the directories in `RUBYLIB` ([#535](https://github.com/davidteren/mutineer/issues/535)). It skips an entry that is not a directory, or that has the path separator in its path, with a warning; 2.0 exits 2 there ([#581](https://github.com/davidteren/mutineer/issues/581)).
 Use it for a test helper outside the test folder, such as `test/support`:
 
 ```yaml
@@ -272,7 +272,7 @@ RAILS_ENV=test mutineer run app/models/order.rb \
 | --- | --- |
 | `%{files}` | Required. Expands `--test` paths into separate arguments. Paths containing spaces remain single arguments. No shell runs. |
 | Environment | Inherits variables such as `RAILS_ENV` and `DATABASE_URL`. |
-| Removed variables | Unsets `BUNDLE_*`, `GEM_*`, `RUBY*`, `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` so Mutineer's Ruby cannot pin the suite. |
+| Removed variables | Unsets `BUNDLE_*`, `GEM_*`, `RUBY*`, `RBENV_VERSION`, `ASDF_RUBY_VERSION`, and `RBENV_DIR` so Mutineer's Ruby cannot pin the suite. Then sets `RUBYLIB` to the `load_path` directories, when there are any. |
 | `PATH` | Removes version-manager version bins, such as `~/.rbenv/versions/3.4.x/bin`. Prepends rbenv/asdf shims when a pin was removed. |
 | App Ruby selection | Use `.ruby-version` or a wrapper. Do not rely on `RBENV_VERSION=…` on the Mutineer command. |
 | `KEY=val` inside `--test-command` | Unsupported. Without a shell, it becomes the program name. |
@@ -293,12 +293,14 @@ Example rbenv wrapper, saved as `bin/mutineer-test`:
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-unset GEM_HOME GEM_PATH RUBYLIB RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
+unset GEM_HOME GEM_PATH RUBYOPT BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION
 export RBENV_VERSION="$(cat .ruby-version 2>/dev/null || true)"
 export RAILS_ENV="${RAILS_ENV:-test}"
 export PATH="${HOME}/.rbenv/shims:${PATH}"
 exec bundle exec rails test "$@"
 ```
+
+Mutineer clears the tool's `RUBYLIB` itself. A wrapper that unsets `RUBYLIB` also drops the `load_path` directories.
 
 Make it executable:
 
@@ -322,6 +324,7 @@ When Bundler prints `RubyVersionMismatch`, Mutineer reports that cause instead o
 | Parallelism | Runs serially by default and forces `--jobs` to 1; a wrapper can reset `PARALLEL_WORKERS` to re-enable Rails test workers. |
 | Strategy | Supports only `reload`. Rejects `--strategy redefine`. |
 | Smoke check | Aborts before mutation if the unmutated suite fails. |
+| Load paths | Gets the `load_path` directories in `RUBYLIB`, and not your own `RUBYOPT` or `RUBYLIB`. When the clean run cannot load a file, the smoke check names the file. With a `load_path`, or a load variable of yours, it also names the likely cause: a wrapper that unsets `RUBYLIB`, a Ruby that the command starts in a container, or a load variable that Mutineer did not pass. |
 | Score comparison | Uncovered mutants count as survivors. Do not compare with in-process scores. Mutineer prints this warning every run. |
 
 | Subprocess result | Verdict |

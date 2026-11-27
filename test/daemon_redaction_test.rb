@@ -293,14 +293,14 @@ class DaemonRedactionTest < Minitest::Test
     first, second = out.lines
 
     assert first.start_with?(missing.chomp), first
-    assert_includes first, "(the daemon does not pass RUBYOPT or RUBYLIB to the app;"
+    assert_includes first, "(the daemon does not pass your RUBYOPT or RUBYLIB to the app;"
     assert_equal missing, second, "one note for each daemon: a later warning has no note"
     refute_includes out, "test/support", "the note names the variable, never its value"
     refute_includes out, "secret/opt"
   end
 
   def test_drain_leaves_other_capture_and_child_lines_alone
-    generic = capture_warning("fork capture produced no result (re-run with --verbose for the error)")
+    generic = capture_warning("fork capture produced no result") + capture_warning("fork capture failed: RuntimeError: boom")
     child = "[daemon-child] LoadError: cannot load such file -- x\n"
     missing = capture_warning("fork capture failed: LoadError: cannot load such file -- test_helper")
 
@@ -322,7 +322,7 @@ class DaemonRedactionTest < Minitest::Test
       first, second = noted.split("\n")
 
       assert_equal "app line", first
-      assert_includes second, "does not pass RUBYLIB to the app"
+      assert_includes second, "does not pass your RUBYLIB to the app"
     end
   end
 

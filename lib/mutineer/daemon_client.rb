@@ -66,7 +66,8 @@ module Mutineer
     RUBYOPT_LOAD_PATH = /(?:\A|\s)-?[dvwWU]*I/
     # Start of the daemon's warning for a test file whose coverage capture
     # failed. CoverageMap::Capture#fail_test writes it. The stderr drain adds
-    # the load note to the first such line (#517).
+    # the load note to the first such line (#517). The line carries the
+    # error without --verbose since #537.
     COVERAGE_SKIPPED = "[mutineer] coverage skipped for "
     # Published guide to the load_path setting, for an installed gem's users.
     LOAD_PATH_GUIDE = "https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#extra-load-paths"
@@ -277,15 +278,30 @@ module Mutineer
     def self.with_load_env_hint(cause)
       return cause unless cause&.match?(MISSING_FILE_CAUSE)
 
+      note = load_env_note
+      note ? "#{cause} (#{note})" : cause
+    end
+
+    # Says which load variables the user set that +who+ does not pass to
+    # +to+, and how to replace them with `load_path`. The daemon puts it in
+    # parentheses after a missing-file cause ({.with_load_env_hint}); the
+    # `--test-command` smoke check puts it in its missing-file hint (#535).
+    # Names only the variables, never their values: RUBYOPT can hold a secret.
+    #
+    # @api private
+    # @param who [String] what drops the variables.
+    # @param to [String] what does not get them.
+    # @return [String, nil] nil when the user set no load variable.
+    def self.load_env_note(who: "the daemon", to: "the app")
       names = LOAD_ENV.select do |key|
         value = user_value(key).to_s
         key == "RUBYOPT" ? value.match?(RUBYOPT_LOAD_PATH) : !value.strip.empty?
       end
-      return cause if names.empty?
+      return nil if names.empty?
 
-      "#{cause} (the daemon does not pass #{names.join(' or ')} to the app; if the missing file is in a " \
-        "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR (it replaces that list), " \
-        "see #{LOAD_PATH_GUIDE})"
+      "#{who} does not pass your #{names.join(' or ')} to #{to}; if the missing file is in a " \
+        "directory set there, add that directory to load_path: in .mutineer.yml, or pass -I DIR to mutineer (it replaces that list), " \
+        "see #{LOAD_PATH_GUIDE}"
     end
 
     # The value the user set for +key+, before Bundler changed it.
@@ -593,7 +609,9 @@ module Mutineer
     # the app, which cannot see the dropped variables; the drain runs here,
     # which can. Later warnings stay as they are, so one note does not repeat
     # on every line of a suite that cannot load its helper. A piece holds
-    # more than one line when a password form spans a newline.
+    # more than one line when a password form spans a newline. The warning
+    # names the error without --verbose since #537, so the note shows in the
+    # first run.
     #
     # @api private
     # @param text [String] redacted daemon stderr, without its last newline.

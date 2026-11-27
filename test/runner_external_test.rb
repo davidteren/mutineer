@@ -386,22 +386,240 @@ class RunnerExternalTest < Minitest::Test
     end
   end
 
-  # #491: --test-command ignores load_path and says so. It does not check the
-  # directories, so a missing one does not exit 2 there (#535 tracks support).
-  def test_load_path_warns_that_it_has_no_effect_and_is_not_checked
-    with_project("calculator_strong_test.rb") do |proj|
-      File.write(File.join(proj, ".mutineer.yml"), "load_path: no/such/dir\n")
-      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
-                                   "--test-command", "#{RUBY} %{files}", chdir: proj)
-      assert_equal 0, status.exitstatus, err
-      assert_includes err, "[mutineer] load_path in .mutineer.yml has no effect with --test-command " \
-                           "(it applies to in-process and --daemon runs); ignoring it."
-      refute_includes err, "not a directory"
+  # The environment of a `mutineer` command where the user set no load
+  # variable. Under `bundle exec rake`, Bundler's own values are in ENV.
+  NO_LOAD_ENV = { "RUBYLIB" => nil, "RUBYOPT" => nil, "BUNDLER_ORIG_RUBYLIB" => nil,
+                  "BUNDLER_ORIG_RUBYOPT" => nil }.freeze
 
-      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "-I", "test/support",
-                                   "--test-command", "#{RUBY} %{files}", chdir: proj)
+  # A project whose test requires `probe_helper`, a file only in support/.
+  # The test appends its RUBYLIB to rubylib.log on every spawn (#535).
+  def with_load_path_project
+    with_project("calculator_strong_test.rb") do |proj|
+      FileUtils.mkdir_p(File.join(proj, "support"))
+      File.write(File.join(proj, "support", "probe_helper.rb"), "PROBE_HELPER = true\n")
+      log = File.join(proj, "rubylib.log")
+      test = File.join(proj, "calculator_strong_test.rb")
+      File.write(test, "File.open(#{log.dump}, \"a\") { |f| f.puts(ENV[\"RUBYLIB\"].to_s) }\n" \
+                       "require \"probe_helper\"\n#{File.read(test)}")
+      yield proj, log
+    end
+  end
+
+  # The RUBYLIB entries each spawn saw, one list per spawn.
+  def rubylib_entries(log)
+    File.readlines(log).map { |line| line.chomp.split(File::PATH_SEPARATOR) }
+  end
+
+  # #535: --test-command gets the load_path directories in RUBYLIB, for the
+  # smoke run and every mutant run, from the flag and from the file key.
+  def test_load_path_reaches_the_test_command_in_rubylib
+    [["-I", "support"], []].each do |flag|
+      with_load_path_project do |proj, log|
+        File.write(File.join(proj, ".mutineer.yml"), "load_path: support\n") if flag.empty?
+        out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", *flag,
+                                    "--format", "json", "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                    env: NO_LOAD_ENV)
+        assert_equal 0, status.exitstatus, err
+        refute_includes err, "has no effect with --test-command"
+        doc = JSON.parse(out)
+        assert_equal 6, doc.dig("summary", "killed"), err
+        assert_equal 0, doc.dig("summary", "survived"), err
+        spawns = rubylib_entries(log)
+        assert_equal 7, spawns.size, "the smoke run and six mutant runs"
+        support = File.realpath(File.join(proj, "support"))
+        spawns.each do |entries|
+          assert(entries.any? { |e| File.realpath(e) == support }, entries.inspect)
+        end
+      end
+    end
+  end
+
+  # #535: the first directory written wins, as with -I.
+  def test_load_path_order_is_kept_in_rubylib
+    with_project("calculator_strong_test.rb") do |proj|
+      %w[a b].each do |dir|
+        FileUtils.mkdir_p(File.join(proj, dir))
+        File.write(File.join(proj, dir, "shared_name.rb"), "SHARED_FROM = #{dir.dump}\n")
+      end
+      log = File.join(proj, "from.log")
+      test = File.join(proj, "calculator_strong_test.rb")
+      File.write(test, "require \"shared_name\"\nFile.write(#{log.dump}, SHARED_FROM)\n#{File.read(test)}")
+      [%w[a b], %w[b a]].each do |first, second|
+        _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                     "-I", first, "-I", second, "--test-command", "#{RUBY} %{files}",
+                                     chdir: proj, env: NO_LOAD_ENV)
+        assert_equal 0, status.exitstatus, err
+        assert_equal first, File.read(log)
+      end
+    end
+  end
+
+  # #535: RUBYLIB takes a directory with a space in its name.
+  def test_load_path_with_a_space_reaches_the_test_command
+    with_load_path_project do |proj, log|
+      FileUtils.mv(File.join(proj, "support"), File.join(proj, "my support"))
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "-I", "my support",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
       assert_equal 0, status.exitstatus, err
-      assert_includes err, "[mutineer] --load-path has no effect with --test-command"
+      assert(rubylib_entries(log).all? { |entries| entries.any? { |e| e.end_with?("/my support") } })
+    end
+  end
+
+  # #535, #100: the tool's and the user's RUBYLIB and RUBYOPT never reach the
+  # command, with and without load_path.
+  def test_parent_load_variables_do_not_reach_the_test_command
+    with_load_path_project do |proj, log|
+      opt_log = File.join(proj, "rubyopt.log")
+      test = File.join(proj, "calculator_strong_test.rb")
+      File.write(test, "File.open(#{opt_log.dump}, \"a\") { |f| f.puts(ENV[\"RUBYOPT\"].to_s) }\n#{File.read(test)}")
+      env = NO_LOAD_ENV.merge("RUBYLIB" => "/tool/lib", "RUBYOPT" => "-I/tool/opt")
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "-I", "support",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: env)
+      assert_equal 0, status.exitstatus, err
+      rubylib_entries(log).each do |entries|
+        assert(entries.any? { |e| e.end_with?("/support") }, entries.inspect)
+        refute_includes entries, "/tool/lib"
+      end
+      File.readlines(opt_log).each { |line| refute_includes line, "/tool/opt" }
+
+      File.write(log, "")
+      File.write(test,
+                 File.read(test).sub("require \"probe_helper\"\n", ""))
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: env)
+      assert_equal 0, status.exitstatus, err
+      rubylib_entries(log).each { |entries| refute_includes entries, "/tool/lib" }
+    end
+  end
+
+  # #535: an entry --test-command cannot use warns and is skipped, and the
+  # run goes on. The other backends still exit 2 for a missing directory.
+  def test_unusable_load_path_entry_warns_and_is_skipped
+    with_load_path_project do |proj, log|
+      File.write(File.join(proj, ".mutineer.yml"), "load_path: [no/such/dir, support]\n")
+      missing = File.join(File.realpath(proj), "no/such/dir")
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test-command skips these load_path entries: #{missing} " \
+                           "(load_path in .mutineer.yml). Each must be a directory with no \"#{File::PATH_SEPARATOR}\" " \
+                           "in its path: fix a mistyped path, and pass -I inside the test command for a path " \
+                           "RUBYLIB cannot hold. Mutineer 2.0 exits 2 here."
+      rubylib_entries(log).each do |entries|
+        assert(entries.any? { |e| e.end_with?("/support") }, entries.inspect)
+        refute(entries.any? { |e| e.include?("no/such") }, entries.inspect)
+      end
+
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--dry-run",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test-command skips these load_path entries: #{missing} "
+
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", chdir: proj,
+                                   env: NO_LOAD_ENV)
+      assert_equal 2, status.exitstatus, err
+      assert_includes err, "mutineer: not a directory: #{missing}"
+    end
+  end
+
+  # #535: RUBYLIB cannot hold a path with the separator in it.
+  def test_load_path_with_the_path_separator_is_skipped
+    with_load_path_project do |proj, log|
+      odd = "a#{File::PATH_SEPARATOR}b"
+      FileUtils.mkdir_p(File.join(proj, odd))
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "-I", "support", "-I", odd,
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 0, status.exitstatus, err
+      assert_includes err, "[mutineer] --test-command skips these load_path entries: " \
+                           "#{File.join(File.realpath(proj), odd)} (--load-path)."
+      rubylib_entries(log).each do |entries|
+        refute(entries.any? { |e| e.end_with?("/a") || e == "b" }, entries.inspect)
+      end
+
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "--dry-run",
+                                   "-I", odd, chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "skips these load_path entries"
+    end
+  end
+
+  # A test file that requires a missing file, for the smoke-check hints.
+  def with_missing_file_project(body = "require \"nope_535\"\n")
+    with_project("calculator_strong_test.rb") do |proj|
+      test = File.join(proj, "calculator_strong_test.rb")
+      File.write(test, body + File.read(test))
+      yield proj
+    end
+  end
+
+  # #535: a missing file names the dropped load variable in the first
+  # sentence of the smoke error, never its value.
+  def test_smoke_check_names_a_missing_file_and_a_dropped_rubylib
+    with_missing_file_project do |proj|
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                   env: NO_LOAD_ENV.merge("RUBYLIB" => "test/support"))
+      assert_equal 1, status.exitstatus, err
+      first = err.split("--- last output ---").first
+      assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
+                             "--test-command does not pass your RUBYLIB to the command; if the missing file is in a " \
+                             "directory set there, add that directory to load_path: in .mutineer.yml, or pass " \
+                             "-I DIR to mutineer (it replaces that list), see #{Mutineer::DaemonClient::LOAD_PATH_GUIDE}; " \
+                             "the unmutated suite is not green"
+      refute_includes err, "test/support"
+
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "UNMUTATED source — the suite could not load a file (cannot load such file -- nope_535); " \
+                           "the unmutated suite is not green"
+    end
+  end
+
+  # #535: a red smoke check for another reason keeps the generic hint.
+  def test_smoke_check_without_a_missing_file_keeps_the_generic_hint
+    with_project("calculator_strong_test.rb") do |proj|
+      test = File.join(proj, "calculator_strong_test.rb")
+      File.write(test, File.read(test).sub("assert_equal 5,", "assert_equal 6,"))
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                   env: NO_LOAD_ENV.merge("RUBYLIB" => "test/support"))
+      assert_equal 1, status.exitstatus, err
+      assert_includes err, "the unmutated suite is not green"
+      refute_includes err, "could not load a file"
+    end
+  end
+
+  # #535: the check reads the full output, so a LoadError above the last
+  # 40 output lines still names the file.
+  def test_smoke_check_finds_a_missing_file_above_the_output_tail
+    deep = "def deep_535(n) = n.zero? ? require(\"nope_535\") : deep_535(n - 1)\ndeep_535(60)\n"
+    with_missing_file_project(deep) do |proj|
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb",
+                                   "--test-command", "#{RUBY} %{files}", chdir: proj,
+                                   env: NO_LOAD_ENV.merge("RUBYLIB" => "test/support"))
+      assert_equal 1, status.exitstatus, err
+      first, tail = err.split("--- last output ---")
+      refute_includes tail, "cannot load such file", "the LoadError line must be above the tail"
+      assert_includes first, "the suite could not load a file (cannot load such file -- nope_535); " \
+                             "--test-command does not pass your RUBYLIB to the command;"
+    end
+  end
+
+  # #535: a wrapper that unsets RUBYLIB drops the load_path directories, and
+  # the smoke error says so.
+  def test_smoke_check_names_a_wrapper_that_drops_rubylib
+    with_load_path_project do |proj, _log|
+      wrapper = "sh -c #{Shellwords.escape("unset RUBYLIB; exec #{RUBY} \"$@\"")} sh %{files}"
+      _out, err, status = mutineer("run", "calculator.rb", "--test", "calculator_strong_test.rb", "-I", "support",
+                                   "--test-command", wrapper, chdir: proj, env: NO_LOAD_ENV)
+      assert_equal 1, status.exitstatus, err
+      first = err.split("--- last output ---").first
+      assert_includes first, "the suite could not load a file (cannot load such file -- probe_helper); " \
+                             "if it is in a load_path directory: Mutineer passes those directories to the command " \
+                             "in RUBYLIB, and a wrapper that unsets RUBYLIB, or a Ruby that the command starts in a " \
+                             "container, does not get them (pass -I inside the test command there); the unmutated suite is not green"
     end
   end
 
