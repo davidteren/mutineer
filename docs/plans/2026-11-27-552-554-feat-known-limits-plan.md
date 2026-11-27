@@ -13,7 +13,7 @@ issues: [552, 554, 501, 467]
 
 Planned by: Fable 5.2, effort high, 2026-11-27
 
-- **What:** A triage of the 20 limits in #501, #552, #554 and #467. Three limits get a small build. One gets a docs sentence. The others stay as documented or move.
+- **What:** A triage of the 21 limits in #501, #552, #554 and #467. Three limits get a small build. One gets a docs sentence. The others stay as documented or move.
 - **Why:** Each issue is a list of limits that an earlier pull request left on purpose. One of them gives a wrong result with no message today (see "Reproductions", P5, P6, P9 and P10).
 - **How:** One pull request with three commits. The JSON report marks a run that `since_paired_tests` narrowed (#552). A folder source leaves out test files and says so (#554). The docs name one limit they did not name (#501). #467 moves to 2.0 with no build.
 

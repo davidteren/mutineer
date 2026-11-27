@@ -200,7 +200,7 @@ or in any other. After an edit to such a file that changes which source lines a 
 `coverage.json` in the cache directory once. The next run captures every test again
 ([#548](https://github.com/davidteren/mutineer/issues/548)). Apart from `.rspec` and `.rspec-local`, a file that is not
 Ruby, such as a view, a fixture, an asset or a lock file, is not part of the key either: after an edit to such a
-file, delete `coverage.json` once in the same way ([#595](https://github.com/davidteren/mutineer/issues/595)).
+file that changes which source lines a test reaches, delete `coverage.json` once in the same way ([#595](https://github.com/davidteren/mutineer/issues/595)).
 
 The test list is part of the cache key, so a run with `since_paired_tests` under `--since` that narrows its
 test list never gets a full cache hit on a full-run map. Partial recapture can still reuse the entries of the

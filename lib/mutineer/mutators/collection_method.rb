@@ -13,9 +13,9 @@ module Mutineer
     # discarded as a statement of its own (a `min` / `max` with a block and a
     # `select` / `reject` with arguments stay). `each` returns its receiver and `map` a new array. `select`
     # and `reject` walk every element. `first` / `last` and `min` / `max`
-    # differ only in the value they return. No test can tell such a mutant
-    # from the original. A `<=>` with a side effect can, for a `min` or `max`
-    # with no block (#501). `all?` and `any?` stop on different elements, so a
+    # differ only in the value they return, so no test can tell such a mutant
+    # from the original. The one known exception is a `min` or `max` with no
+    # block whose `<=>` has a side effect; the swap is still declined (#501). `all?` and `any?` stop on different elements, so a
     # block can show the change even when the boolean is discarded. A
     # truthiness-only read of `each`, `map`, or a `select` or `reject` with an
     # inline block and no arguments is declined too (#468, #501).

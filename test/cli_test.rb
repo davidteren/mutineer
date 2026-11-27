@@ -3820,6 +3820,7 @@ class CliTest < Minitest::Test
       assert_equal %w[packs/billing/app/models/invoice.rb], doc["unpaired_sources"].map { |row| row["file"] }
       assert_equal 1, err.scan("no test found by convention").size, err
       assert_equal 1, err.scan(LEFT_OUT_ITEM).size, err
+      assert_includes err, "; type a test folder to keep its files)"
       assert_equal ["packs/catalog/app/models/item.rb"], doc["per_source"].map { |row| row["file"] }
     end
   end
@@ -3912,6 +3913,7 @@ class CliTest < Minitest::Test
       files, err = json_sources("run", "lib", "--test", "lib", chdir: proj)
       assert_equal ["lib/calc.rb"], files
       assert_equal 1, err.scan("[mutineer] folder sources: left out 1 file, such as lib/calc_test.rb").size, err
+      refute_includes err, "type a test folder", "typing a folder does not keep a --test list file"
     end
     # Another spelling of the test, and a symlink to its folder, still match (Devin on #601).
     with_calc_gem("lib", "lib/calc_test.rb") do |proj|

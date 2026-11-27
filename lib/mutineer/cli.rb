@@ -288,6 +288,7 @@ module Mutineer
         # list, is not a source (#554).
         left_out = []
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root, left_out: left_out)
+        in_test_folders = left_out.size
         if config.explicit?(:tests)
           # Real paths, so a symlink or another spelling of a test file still matches.
           abs = lambda do |path|
@@ -301,8 +302,10 @@ module Mutineer
         end
         unless left_out.empty?
           noun = left_out.size == 1 ? "file" : "files"
+          # Typing a folder keeps a test folder's files, not a --test list file.
+          hint = in_test_folders.positive? ? "; type a test folder to keep its files" : ""
           warn "[mutineer] folder sources: left out #{left_out.size} #{noun}, such as #{left_out.first} " \
-               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source; type a test folder to keep its files)"
+               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source#{hint})"
         end
         # Direct writes from the app, a fork, or a subprocess inherit these
         # pipes (#341). Dotenv files are merged with any URLs the caller
