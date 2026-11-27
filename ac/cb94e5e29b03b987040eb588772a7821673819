@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_6bf0fc03de3a7c 48,52
+docs/ci.md
+  s_2919199eb867b0::t_120ebbc23ca34e 80
+docs/cli.md
+  s_2919199eb867b0::t_b6a6eafed4d72a 201-202
+docs/equivalent-skips.html
+  s_2919199eb867b0::t_09911bd6c45539 133
+docs/equivalent-skips.md
+  s_2919199eb867b0::t_c8133cd1513474 184
+docs/getting-started.md
+  s_2919199eb867b0::t_da3fbb95e9932d 79
+docs/json-schema.md
+  s_2919199eb867b0::t_8ff1125480b173 86,577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "accb94e5e29b03b987040eb588772a7821673819",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
