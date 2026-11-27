@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`--test-command` gets the `load_path` directories in `RUBYLIB` (#535).**
+  `load_path:` in `.mutineer.yml` and `--load-path DIR` (`-I DIR`) now apply to a `--test-command` run.
+  Mutineer sets `RUBYLIB` for the command to those directories, for the clean run and every mutant run.
+  It still clears the tool's and your own `RUBYOPT` and `RUBYLIB`, as before (#100).
+  1.10.0 ignored the setting there and printed `... has no effect with --test-command`; that warning is gone.
+  If you use `load_path` for `--daemon` runs and also run `--test-command`, the command now gets those directories too.
+  An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
+  When the clean run cannot load a file, the smoke error now names the file first, then the generic hint. With a `load_path`, or a `RUBYLIB` or `RUBYOPT -I` of yours, it also names the likely cause: a wrapper that unsets `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
+
+### Changed
+
+- **A failed coverage capture names its error without `--verbose` (#537).**
+  In-process `--rails` or `--boot`, and `--daemon`, print `coverage skipped for <file>: fork capture failed: <Class>: <first message line>`.
+  Before, the line said only `fork capture produced no result (re-run with --verbose for the error)`.
+  Under `--daemon`, the load note for a dropped `RUBYOPT` or `RUBYLIB` now shows in the first run.
+  The note now says `does not pass your RUBYLIB` (or `RUBYOPT`) and `pass -I DIR to mutineer`, so it is not read as the `-I` of a test command.
+  A capture child that exits with no result says `child wrote no result (exit status N)`.
+  `--verbose` adds the full message and the first backtrace frame. Verdicts and the coverage cache do not change.
+- **The docs now say what the coverage cache key holds (#548).**
+  `docs/cli.md` lists the key inputs and says that a data file a test reads, such as a YAML or JSON file, is not part of the key, in any directory.
+  After an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once to capture every test again. No behaviour change.
+
 ### Fixed
 
 - **Reload no longer scores a method `survived` when a second load skips its definition (#529).**

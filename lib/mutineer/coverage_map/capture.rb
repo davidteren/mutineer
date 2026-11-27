@@ -77,7 +77,8 @@ module Mutineer
       # Records a {#fork_capture} result. Hash = capture result, String = error
       # diagnostic from the child, :timeout = the capture deadline passed, nil =
       # pipe gone / empty. The String diagnostic is what becomes an
-      # :uncapturable status.
+      # :uncapturable status. It is printed with or without `--verbose` (#537):
+      # one line without it, the full message and the first frame with it.
       #
       # @api private
       # @param test_path [String] test file path.
@@ -87,9 +88,7 @@ module Mutineer
         case payload
         when Hash then accept_capture_payload(test_path, payload)
         when :timeout then fail_test(test_path, "timed out after #{@capture_timeout}s")
-        when String
-          fail_test(test_path, @verbose ? "fork capture failed: #{payload}" :
-            "fork capture produced no result (re-run with --verbose for the error)")
+        when String then fail_test(test_path, "fork capture failed: #{payload}")
         else fail_test(test_path, "fork capture produced no result")
         end
       end
@@ -133,9 +132,16 @@ module Mutineer
                 "failure_report" => passed ? nil : report,
                 "loaded_files" => capture_loaded_files }
             rescue Exception => e # rubocop:disable Lint/RescueException
-              # Stringify (an arbitrary Exception may not marshal); the parent
-              # surfaces this under --verbose. A String marshals safely over the pipe.
-              "#{e.class}: #{e.message}#{e.backtrace&.first ? " @ #{e.backtrace.first}" : ''}"
+              # Stringify (an arbitrary Exception may not marshal); a String
+              # marshals safely over the pipe. Without --verbose it is one
+              # redacted, cut line (#537); with it, the full message and the
+              # first frame. A value, not a `return`: a `return` here raises in
+              # the fork block, and the child then sends no payload.
+              if @verbose
+                "#{e.class}: #{e.message}#{e.backtrace&.first ? " @ #{e.backtrace.first}" : ''}"
+              else
+                ChildCause.line(e)
+              end
             end
           begin
             wr.write(Marshal.dump(payload))

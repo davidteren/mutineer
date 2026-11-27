@@ -690,7 +690,7 @@ class DaemonBackendContractTest < Minitest::Test
         err = with_env(load_env) do
           assert_raises(Mutineer::SmokeCheckError) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
         end
-        assert_includes err.message, "does not pass RUBYLIB to the app", kind
+        assert_includes err.message, "does not pass your RUBYLIB to the app", kind
         refute_includes err.message, "test/support", kind
       end
 
@@ -699,7 +699,7 @@ class DaemonBackendContractTest < Minitest::Test
       _out, warned = capture_io do
         with_env(load_env) { Mutineer::DaemonBackend.send(:coverage_map_from_client, cov, config) }
       end
-      assert_match(/cannot load such file -- helpers \(the daemon does not pass RUBYLIB/, warned)
+      assert_match(/cannot load such file -- helpers \(the daemon does not pass your RUBYLIB/, warned)
 
       # A boot failure wraps the LoadError after its own class name.
       _out, warned = capture_io do
@@ -708,7 +708,7 @@ class DaemonBackendContractTest < Minitest::Test
                                        "Mutineer::DaemonBootError: boot failed: LoadError: cannot load such file -- x")
         end
       end
-      assert_includes warned, "does not pass RUBYLIB to the app"
+      assert_includes warned, "does not pass your RUBYLIB to the app"
     end
   end
 
