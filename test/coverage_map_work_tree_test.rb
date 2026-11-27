@@ -644,8 +644,8 @@ class CoverageMapWorkTreeTest < Minitest::Test
   end
 
   # An own path that is not UTF-8 converts to the text of another name. The
-  # other file is still a project file, and a non-UTF-8 name that converts to
-  # an own-file pattern is not an own file.
+  # other file is still a project file. An own-file pattern matches a name
+  # that is not UTF-8 as it matches the raw bytes.
   def test_a_file_whose_name_equals_a_converted_own_name_or_pattern_is_still_seen
     write_app
     write("x?", "a\n")
@@ -661,9 +661,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
     build
     listing = Mutineer::WorkTree.method(:changed_since)
     fake = ->(commit, root) { listing.call(commit, root)&.push("tmp2/mutineer-callback-growth20261127-1-\xFF.log".b) }
-    run = Mutineer::WorkTree.stub(:changed_since, fake) { build }
-    assert_equal :full, kind(run)
-    assert_includes run.err, "mutineer-callback-growth20261127-1-?.log cannot be fingerprinted"
+    assert_equal :hit, kind(Mutineer::WorkTree.stub(:changed_since, fake) { build })
   ensure
     ENV.delete("MUTINEER_READS")
   end

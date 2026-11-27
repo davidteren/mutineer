@@ -144,9 +144,11 @@ module Mutineer
           rel = WorkTree.json_name(raw)
           # A name that is not UTF-8 never matches (KTD9).
           current = rel.equal?(raw) ? WorkTree.fingerprint(@project_root, rel) : nil
-          # A converted name (not UTF-8) is never an own file: two names can convert alike.
+          # A converted name (not UTF-8) never equals an own path: two names can
+          # convert alike. {#own_path?} reads only ASCII parts with no `?`, so it
+          # gives the converted name the answer of the raw one.
           next if (saved[rel] && saved[rel] == current && !moved.include?(rel)) ||
-                  (rel.equal?(raw) && (own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)))
+                  (rel.equal?(raw) && (own_rels.include?(rel) || saved_own.include?(rel))) || own_path?(rel)
 
           if scoped.include?(rel)
             changes[rel] = :during_run unless cache_sees_change?(cached, rel)
