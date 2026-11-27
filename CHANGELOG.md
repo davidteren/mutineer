@@ -45,10 +45,11 @@ All notable changes to this project are documented here. The format is based on
   Its mutants were `no_coverage`, and Minitest output followed the JSON report on stdout, so the report did not parse.
   The same happened for any folder with a test folder below it, such as `gems` or the project root `.`, and for a test beside its source in the `--test` list.
   Now, in `mutineer run`, a folder source leaves out a `test` or `spec` folder that sits beside an `app` or `lib` folder, and each file of an explicit `--test` list that was not typed as a source.
-  Stderr prints one line: `[mutineer] folder sources: left out N files, such as <path> (...)`. To keep the files of such a test folder, type that folder too. A file of the `--test` list stays a source only when that file is typed.
+  Stderr prints one line: `[mutineer] folder sources: left out N files, such as <path> (...)`. To keep the files of such a test folder, type that folder too. A file of the `--test` list that a folder source yields is always left out.
   Without `--test`, `summary.unpaired_sources` and `summary.unpaired_mutants` fall, because those test files are no longer listed as unpaired sources.
   A run whose folder sources held only such files now exits 2 with `run requires at least one source file`; before, it exited 0 with a wrong report.
-  The test-file guard now also refuses a typed `test_*.rb` file inside such a test folder, such as `packs/catalog/test/models/test_item.rb`.
+  An `ignore:` entry for a mutant of such a test file now shows as unmatched; delete it.
+  With `--test`, the test-file guard now also refuses a typed `test_*.rb` file inside such a test folder, such as `packs/catalog/test/models/test_item.rb`.
   A test in another place, such as `tests/` or a test folder inside `lib/`, is still read as a source, and so is a file of a `--test` folder under `--test-command` (#599).
 
 - **Reload no longer scores a method `survived` when a second load skips its definition (#529).**
