@@ -198,8 +198,8 @@ Minitest seed, or for RSpec the pinned seed, `SPEC_OPTS`, and the project's `.rs
 A data file that a test reads, such as a YAML or JSON file, is not part of the key, in a `load_path` directory
 or in any other. After an edit to such a file that changes which source lines a test reaches, delete
 `coverage.json` in the cache directory once. The next run captures every test again
-([#548](https://github.com/davidteren/mutineer/issues/548)). A file that is not Ruby, such as a view, a fixture, an
-asset or a lock file, is not part of the key either: after an edit to such a file, delete `coverage.json` once in
+([#548](https://github.com/davidteren/mutineer/issues/548)). Other files that are not Ruby, such as a view, a fixture,
+an asset or a lock file, are not part of the key either: after an edit to such a file, delete `coverage.json` once in
 the same way ([#595](https://github.com/davidteren/mutineer/issues/595)).
 
 The test list is part of the cache key, so a run with `since_paired_tests` under `--since` that narrows its

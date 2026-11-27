@@ -76,7 +76,7 @@ RAILS_ENV=test bundle exec mutineer run app/models/order.rb --rails
 
 Mutineer pairs `app/models/order.rb` with `test/models/order_test.rb` or `spec/models/order_spec.rb`.
 In a `packs/` layout, a source under a pack's `app/` or `lib/` folder with no test found by the rules above, such as `packs/catalog/app/models/item.rb`, pairs by the same rules inside its pack, such as `packs/catalog/test/models/item_test.rb`.
-`mutineer run packs` leaves out each pack's `test/` and `spec/` folder, so only the pack sources are mutated.
+`mutineer run packs` leaves out each pack's `test/` and `spec/` folder that sits beside the pack's `app/` or `lib/` folder, so only the pack sources are mutated.
 Override with `--test` per file:
 
 ```sh
