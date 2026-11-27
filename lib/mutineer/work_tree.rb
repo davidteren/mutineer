@@ -12,8 +12,8 @@ module Mutineer
   # before the app boots.
   module WorkTree
     # Variables that point git at another repository, work tree or index.
-    # Every git command here runs without them, so the answer is about the
-    # project root and nothing else.
+    # Every git command here runs without them (unset), so the answer is
+    # about the project root and nothing else.
     # GIT_OPTIONAL_LOCKS=0 keeps `git diff` from taking the index lock, so a
     # git command the user runs at the same time does not fail.
     GIT_ENV = %w[GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
@@ -159,7 +159,8 @@ module Mutineer
       out.split("\0").map { |path| FsPath.read(path) }
     end
 
-    # Runs git in `root` without the variables of {GIT_ENV}.
+    # Runs git in `root` with {GIT_ENV}: the repository variables unset and
+    # optional locks off.
     #
     # @param root [String] project root.
     # @param args [Array<String>] git arguments.

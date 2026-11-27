@@ -323,7 +323,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
     run = Mutineer::WorkTree.stub(:git, ["", nil]) { build }
     assert_equal :full, kind(run)
     assert_equal ["[mutineer] coverage cache: git could not list the changed files (run git status in the " \
-                  "project to see why); capturing every test."], lines(run)
+                  "project to see why; the check needs git 2.24 or later); capturing every test."], lines(run)
   end
 
   # A listing that failed when the map was saved leaves a record with no
@@ -334,7 +334,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
     run = Mutineer::WorkTree.stub(:changed_since, nil) { build }
     assert_equal :full, kind(run)
     assert_equal ["[mutineer] coverage cache: git could not list the changed files (run git status in the " \
-                  "project to see why); capturing every test."], lines(run)
+                  "project to see why; the check needs git 2.24 or later); capturing every test."], lines(run)
   end
 
   # A name that is not UTF-8, after HEAD moved, beside a UTF-8 name that is
@@ -664,6 +664,22 @@ class CoverageMapWorkTreeTest < Minitest::Test
     assert_equal ["[mutineer] coverage cache: lib/shelf.rb changed while the last run was in progress; capturing every test."],
                  lines(run)
     assert_equal build(cache: ".mutineer/fresh", tests: tests).map.map, run.map.map
+  end
+
+  # A boot can edit a source after the caller took the record and before
+  # cached_or starts. The record taken again at save sees it; an edit
+  # before the next run then cannot reach the partial recapture.
+  def test_a_source_edited_during_the_boot_and_again_after_the_run_captures_every_test
+    write_app
+    record = Mutineer::WorkTree.record(@root)
+    write("lib/shelf.rb", File.read(path("lib/shelf.rb")).sub("    3\n", "    2 + 1\n"))
+    build(work_tree: record)
+    assert_equal ["lib/shelf.rb"], JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["during_run"]
+    write("lib/shelf.rb", File.read(path("lib/shelf.rb")).sub("    2 + 1\n", "    1 + 2\n"))
+    run = build
+    assert_equal :full, kind(run)
+    assert_equal ["[mutineer] coverage cache: lib/shelf.rb changed while the last run was in progress; capturing every test."],
+                 lines(run)
   end
 
   def test_a_test_edited_while_the_capture_runs_captures_every_test_next_run

@@ -25,7 +25,7 @@ module Mutineer
                     "an edit, %<remedy>s (https://github.com/davidteren/mutineer/issues/602)"
 
       # The reason when git cannot give the list of changed files.
-      GIT_FAILED = "git could not list the changed files (run git status in the project to see why)"
+      GIT_FAILED = "git could not list the changed files (run git status in the project to see why; the check needs git 2.24 or later)"
 
       # True when `record` has the shape {#save} writes. The commit must be a
       # full commit id ({WorkTree::COMMIT_ID}) or nil: the cache file can be
@@ -142,8 +142,8 @@ module Mutineer
       end
 
       # The sources and tests whose fingerprint at save time differs from the
-      # one at the start of {#cached_or}: they changed while this run was in
-      # progress, so the map may hold their old text (#604). {#save} keeps
+      # one at the start of {#cached_or}, or whose git state differs from this
+      # run's record: they changed while this run was in progress, so the map may hold their old text (#604). {#save} keeps
       # the list, and the next run captures every test. Catches a file that
       # is edited again before the next run, which {#cache_sees_change?}
       # cannot.
@@ -152,9 +152,27 @@ module Mutineer
       # @param now [Hash{String => String}] fingerprints of the sources and tests at save time.
       # @return [Array<String>] sorted project-relative paths.
       def during_run_rels(now)
-        return [] unless @start_prints
+        rels = @start_prints ? (now.keys | @start_prints.keys).reject { |rel| now[rel] == @start_prints[rel] } : []
+        (rels | changed_since_record(now.keys)).sort
+      end
 
-        (now.keys | @start_prints.keys).reject { |rel| now[rel] == @start_prints[rel] }.sort
+      # The given paths whose git state differs now from this run's record,
+      # which a caller that boots an app took before the boot. So an edit
+      # during the boot counts too, which the start prints of {#cached_or}
+      # miss. Empty with no commit, or when HEAD moved during the run.
+      #
+      # @api private
+      # @param rels [Array<String>] project-relative paths of the sources and tests.
+      # @return [Array<String>]
+      def changed_since_record(rels)
+        return [] unless @work_tree && @work_tree["commit"]
+
+        later = WorkTree.record(@project_root)
+        return [] unless later["commit"] == @work_tree["commit"]
+
+        before = @work_tree["dirty"]
+        after = later["dirty"]
+        rels.select { |rel| before.key?(rel) != after.key?(rel) || before[rel] != after[rel] }
       end
 
       # True when no fingerprint the cache saved for `rel` equals the file
