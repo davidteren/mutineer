@@ -16,7 +16,24 @@ Conventions for any agent or contributor changing this repo. (Usage docs for
   suggest a release. Cut it only after a maintainer agrees to that release,
   and then do only steps 1 to 4 of the release procedure in "Releasing".
 
-## Before every commit (local gate)
+## Local gate
+
+The gate has three levels. Each level proves that the work is ready for the
+next step.
+
+| Level | When | What runs |
+|---|---|---|
+| Commit | Each commit | The test files for the code you changed, and the load smoke |
+| Push | Before each push | The full gate below, on the commit you push |
+| Ready | Before you mark the pull request ready for review | The diff review in "PR review gate", once, on the head commit |
+
+Never push with a red suite. To run one test file at the commit level:
+
+```sh
+bundle exec ruby -Ilib -Itest test/cli_test.rb
+```
+
+The full gate, for the push level:
 
 ```sh
 bundle exec rake test                          # zero-dep suite
@@ -43,7 +60,8 @@ MUTINEER_REQUIRE_PRISM_ERRORS=1 BUNDLE_GEMFILE=gemfiles/prism2.gemfile bundle ex
 
 - **`yard:strict` requires 100% documentation, including private methods AND
   constants.** Every new method and constant needs a YARD docstring / `#` comment
-  or CI fails.
+  or CI fails. The task reads the source and writes no files. `bundle exec rake yard`
+  writes the HTML to `doc/` when you want to read it.
 - **Rails-dependent tests run via `bundle exec rake test:daemon`**, never the
   zero-dep default. The gem's own suite stays Rails-free; `test/fixtures/rails_app`
   has its OWN bundle. `rake test:daemon` runs in the rails-integration CI job.
@@ -90,13 +108,14 @@ ruleset is applied, a maintainer re-applies the JSON before the merge (see the d
 Every pull request must meet this gate on its current head, including stacks, docs-only, and "small" changes.
 Only a maintainer may waive a step, in writing on that pull request.
 
-### Before opening a new pull request
+### Before a pull request is ready for review
 
-On the exact pull request head commit:
+On the exact pull request head commit, before you mark the pull request ready
+or open it ready:
 
-1. Run "Before every commit" checks, plus website checks for site changes.
-2. Review your diff against the pull request base (`main`, or the lower pull
-   request in a stack). Verify every claim and number against its source.
+1. Run the full gate (the push level of "Local gate"), plus website checks for site changes.
+2. Review your diff against the pull request base (`main`, `integration/v2.0`,
+   or the lower pull request in a stack). Verify every claim and number against its source.
 3. Never push or open a pull request with a red suite.
 4. Before the first push, run the author self-check skill
    (`.claude/skills/author-self-check/SKILL.md`; Codex and Grok see the same
@@ -104,12 +123,53 @@ On the exact pull request head commit:
    kinds review bots found most often here, such as doc sentences that hold
    only in the common case and doc copies left stale.
 
-After another commit, run the test checks again in full, and review only the
+After another commit, run the full gate again before the push, and review only the
 new commits. Review all of the pull request again when the new commits touch a
 code file the first review did not see, change more than about 50 lines of
 code, change a public contract (a CLI flag, a config key, the JSON schema, an
 exit code or an Action input), or rewrite the branch history. A full review
 again after a small fix only reviews lines that did not change.
+
+### Open as a draft, then mark it ready
+
+Each push to a ready pull request starts CI. It also starts a cubic review,
+unless `cubic.yaml` ignores the pull request (its `ignore` list has labels such
+as `docs-only`). So open a draft first, and let CI and cubic run when the pull
+request is ready.
+
+1. Open the pull request as a draft. `ci.yml` starts no job on a draft, and
+   cubic does not review one (`check_drafts: false` in `cubic.yaml`).
+2. Do the review rounds on your machine. `cubic review` is free there.
+3. Mark the pull request ready (`gh pr ready`) when the full gate and the diff
+   review pass on the head commit. CI starts then, for a pull request into
+   `main` or `integration/v2.0`. `ci.yml` does not run for another base, such
+   as the lower pull request of a stack. Use the command in step 6 there.
+   A breaking change that targets `main` stays a draft ("Releasing", item 5).
+4. After that, each push starts CI again and cancels the run for the old
+   commit. Fix the findings of one review round in one push.
+5. A draft has no CI result. GitHub shows a skipped job as passed, but that
+   job ran nothing. A skipped matrix job shows one check without its matrix
+   values, so its real check names stay "expected". Merge only a pull request
+   that is ready and has green checks from a run that ran the jobs for its
+   current head. A pull request run tests GitHub's merge of the head into
+   the base. The local gate, and a run that step 6 starts by hand, test the
+   head alone.
+6. For CI on a pull request that stays a draft, or that has another base, run
+   `gh workflow run ci.yml --ref <branch>`. The command works only for a
+   branch in this repository. A pull request from a fork gets CI only when it
+   is ready and its base is `main` or `integration/v2.0`, and GitHub can hold
+   that run until a maintainer approves it. When a pull request from a fork
+   must stay a draft, or has another base, the contributor asks a maintainer
+   for a CI run. The maintainer pushes that branch to this repository and
+   runs the command on it.
+7. When a ready pull request from a branch in this repository goes back to a
+   draft, its CI run in progress is cancelled. Do not use that to pause a
+   review round: unless `cubic.yaml` ignores the pull request, a change to
+   ready starts a new cubic review of the whole pull request (seen on #565),
+   not a review of the new lines only.
+
+A pull request that is opened ready is not a draft, so nothing changes for
+it. That includes the release pull request and a Dependabot pull request.
 
 ### Labels
 
@@ -160,17 +220,40 @@ issue for something a pull request found, ask what caused it:
 
 ### After the pull request is open
 
-1. Wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
+1. Mark the pull request ready if it is a draft, unless it is a breaking change that targets `main` ("Releasing", item 5). Then wait for CI, review bots (cubic and Qodo), and other required checks to finish on the head commit.
 2. Read every human and bot review comment. Fix valid findings or explain why they are wrong.
 3. Reply before resolving each thread. Name the fix commit, explain a decline, or name the GitHub issue tracking a deferral. Create that issue if needed, with its labels. Do not defer a silent wrong result from this pull request's own code unless a maintainer accepts it in writing on the pull request (see "Fix it in the pull request, or file an issue?").
 4. After fixes, push and check the new lines again.
 5. Require green GitHub checks on the head commit.
-6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing").
+6. A person merges. Never merge your own pull request unless a maintainer asks. A maintainer's yes to a release covers that release's pull request (see "Releasing"). The one standing exception is a pull request into `integration/v2.0` (see "The 2.0 integration branch").
 
 Agents use a person's GitHub account. Start every agent comment or reply with its bold name, such as `**Codex:**`.
 Post findings on the relevant code line, never in a separate summary comment.
 
 **Stacked pull requests:** start at the bottom. When a lower pull request changes, update those above it and recheck new lines.
+
+## The 2.0 integration branch
+
+2.0 work goes to the long-lived branch `integration/v2.0`, not to `main`
+(decided by a maintainer on 2026-11-24). It holds changes that
+`main` cannot take before 2.0, such as a changed default. The branch is
+created from `main` when the 2.0 work starts. Until it is on origin, its
+entries in `ci.yml` match nothing.
+
+- A pull request for 2.0 targets `integration/v2.0`. Label it `v2.0`, and
+  `breaking change` when it is one. The whole PR review gate above applies.
+- `ci.yml` runs on pull requests into `integration/v2.0` and on pushes to it.
+  Branch protection does not cover it, so the agent checks the gate itself.
+- An agent may merge its own pull request into `integration/v2.0` when the
+  pull request is ready (not a draft), the GitHub checks ran and are green on
+  the head commit, and every review thread has a reply. An agent never
+  merges into `main`.
+- After each merge to `main`, merge `main` into `integration/v2.0`. Never
+  merge `integration/v2.0` into `main` before the 2.0 release.
+- 2.0 reaches `main` in one pull request, after the checklist in issue #284
+  is complete. A maintainer merges that pull request.
+- Nothing is released from `integration/v2.0`. The release rules below
+  apply without change.
 
 ## Releasing (manual, a maintainer approves each release)
 
@@ -212,8 +295,11 @@ check uses `user.permissions.maintain`, `user.permissions.admin`, and
    not release without that answer.
 4. Other work waits for the next batch. Label each pull request with the next
    version label, such as `v1.8.0` (see "Labels" above).
-5. A breaking change stays a **draft** pull request. Label it
-   `breaking change` and the possible major version, such as `v2.0`.
+5. A breaking change stays a **draft** pull request while it targets
+   `main`. Label it `breaking change` and the possible major version, such as
+   `v2.0`. Better: target `integration/v2.0`, where it can merge (see "The
+   2.0 integration branch"). The one exception is the pull request that
+   brings 2.0 to `main`: a maintainer marks it ready and merges it.
 
 A schedule is not a substitute: GitHub records a cron run's actor as the
 last person who edited the workflow, and that person may be a maintainer, so

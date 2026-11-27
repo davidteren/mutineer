@@ -10,7 +10,7 @@ You need Ruby 3.4 or later, on Linux or macOS.
 ```sh
 bundle install
 bundle exec rake test          # the zero-dependency suite, about 6 minutes
-bundle exec rake yard:strict   # documentation check, about 15 seconds
+bundle exec rake yard:strict   # documentation check, about 5 seconds, writes no files
 ```
 
 To run one test file, or one test in it:
@@ -63,11 +63,15 @@ against `main`.
   access or higher set labels. Without that access, a maintainer adds them.
 - **The release rules** at the end of this file and in [AGENTS.md](AGENTS.md).
 - **The extra local checks** in AGENTS.md (Minitest 6, Prism 2, the Rails
-  daemon tests, the website checks). CI runs all of them on your pull request.
+  daemon tests, the website checks). CI runs all of them when your pull
+  request is ready for review.
   Run one locally only when you change that area.
 
 ## After you open the pull request
 
+- CI starts when the pull request is ready for review. A draft pull request
+  starts no CI job. Mark it ready when you want CI and a review: use the
+  "Ready for review" button on the pull request, or `gh pr ready`.
 - GitHub can hold CI on a pull request from a fork until a maintainer
   approves the run. You do not need to do anything.
 - Review bots (cubic and Qodo) comment on the code. Fix a finding that is

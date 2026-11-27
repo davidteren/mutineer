@@ -53,10 +53,12 @@ begin
   end
 
   namespace :yard do
-    desc "Generate YARD docs and fail unless every object (incl. private) is documented"
-    task strict: :yard do
+    desc "Fail unless every object (incl. private) is documented. Writes no files"
+    # No dependency on :yard, and --no-save: the check reads the source and
+    # leaves no doc/ and no .yardoc/ behind. `rake yard` still writes the HTML.
+    task :strict do
       require "open3"
-      out, = Open3.capture2("yard", "stats", "--list-undoc", "--private", "--protected")
+      out, = Open3.capture2("yard", "stats", "--list-undoc", "--private", "--protected", "--no-save")
       puts out
       coverage = out[/([\d.]+)% documented/, 1]&.to_f
       abort "yard:strict could not parse coverage from `yard stats` output" if coverage.nil?

@@ -13,6 +13,14 @@ class MergeGateRulesetTest < Minitest::Test
   # The GitHub Actions app. Its id pins each CI check to the app that reports it.
   ACTIONS_APP_ID = 15_368
 
+  # The condition each CI job has, so a draft pull request starts no job.
+  DRAFT_SKIP = "github.event_name != 'pull_request' || !github.event.pull_request.draft"
+
+  # @return [Hash] the parsed CI workflow
+  def ci
+    YAML.load_file(File.join(ROOT, ".github/workflows/ci.yml"))
+  end
+
   # @return [Hash] the parsed ruleset file
   def ruleset
     JSON.parse(File.read(File.join(ROOT, ".github/rulesets/main-merge-gate.json")))
@@ -27,8 +35,7 @@ class MergeGateRulesetTest < Minitest::Test
   # Every check name ci.yml reports on a pull request, with matrix values filled in.
   # @return [Array<String>]
   def ci_check_names
-    jobs = YAML.load_file(File.join(ROOT, ".github/workflows/ci.yml"))["jobs"]
-    jobs.flat_map do |id, job|
+    ci["jobs"].flat_map do |id, job|
       name = job["name"] || id
       matrix_rows(job.dig("strategy", "matrix")).map do |row|
         name.gsub(/\$\{\{\s*matrix\.(\w+)\s*\}\}/) { row.fetch(Regexp.last_match(1)).to_s }
@@ -77,5 +84,34 @@ class MergeGateRulesetTest < Minitest::Test
     assert_empty ruleset["bypass_actors"], "branch protection lets an admin merge past it today; the ruleset must not"
     assert_equal ["~DEFAULT_BRANCH"], ruleset.dig("conditions", "ref_name", "include")
     assert_equal "active", ruleset["enforcement"]
+  end
+
+  # A draft pull request starts no job, and "ready for review" starts the run.
+  # A change back to a draft starts a run too, so the group cancels the old one.
+  # The condition is on each job, not on the workflow trigger: a ready pull
+  # request then always starts the workflow, so its required checks report.
+  def test_every_ci_job_skips_a_draft_and_ready_for_review_starts_the_run
+    ci["jobs"].each { |id, job| assert_equal DRAFT_SKIP, job["if"], "job #{id} must skip a draft pull request" }
+    # YAML reads the key `on` as true.
+    types = (ci[true] || ci["on"]).dig("pull_request", "types")
+    assert_equal %w[converted_to_draft opened ready_for_review reopened synchronize], types.sort, "the three defaults, and both draft changes"
+  end
+
+  # CI runs for a pull request into main or the 2.0 integration branch, and for
+  # a push to either. Drop integration/v2.0 here when that branch is deleted
+  # (AGENTS.md, "The 2.0 integration branch").
+  def test_ci_runs_for_main_and_the_2_0_integration_branch
+    on = ci[true] || ci["on"]
+    assert_equal %w[main integration/v2.0], on.dig("push", "branches")
+    assert_equal %w[main integration/v2.0], on.dig("pull_request", "branches")
+  end
+
+  # A push to a pull request cancels the run for its old commit. Every other run
+  # (a push to main, the release dispatch) has no pull request number, so its
+  # group is its own run id and no other run can cancel it. The event name is
+  # in the group, so a run id can never equal a pull request number there.
+  def test_a_new_push_cancels_only_the_run_of_the_same_pull_request
+    assert_equal "ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}", ci.dig("concurrency", "group")
+    assert_equal true, ci.dig("concurrency", "cancel-in-progress")
   end
 end

@@ -1,19 +1,40 @@
 name: CI
 
 on:
+  # integration/v2.0 is the long-lived 2.0 branch (AGENTS.md, "The 2.0
+  # integration branch"). Remove it from
+  # both lists when 2.0 is released and the branch is deleted.
   push:
-    branches: [main]
+    branches: [main, integration/v2.0]
   pull_request:
-    branches: [main]
+    branches: [main, integration/v2.0]
+    # The first three are the defaults. ready_for_review starts the run when a
+    # draft becomes ready: every job below skips a draft pull request.
+    # converted_to_draft starts a run that skips every job. Its only effect is
+    # that the concurrency group cancels the run in progress.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # release-pr.yml dispatches this on the release branch: its GITHUB_TOKEN push
   # starts no CI. The dispatched run is an early signal only; the release PR's
   # required checks come from its pull_request run once a maintainer approves it
   # (#234). This dispatch runs CI only. It does not tag or publish.
   workflow_dispatch:
 
+# A new push to a pull request cancels the run for the old commit. A run that
+# is not from a pull request (a push to main or integration/v2.0, the release
+# dispatch) gets its own group from run_id, so nothing cancels it. The event
+# name keeps a run id apart from a pull request number.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+# Each job has the same `if`: a draft pull request starts no job. It is on the
+# job, not on the workflow, so the checks of a ready pull request always
+# report. To run CI on a draft: gh workflow run ci.yml --ref <branch>.
+# test/merge_gate_ruleset_test.rb fails when a job has no such `if`.
 jobs:
   test:
     name: test (ruby ${{ matrix.ruby }} on ${{ matrix.os }})
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,6 +59,7 @@ jobs:
 
   test-minitest6:
     name: test (ruby 3.4, minitest 6)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     # The default Gemfile keeps Minitest 5. The stop at the first failure has
     # separate hooks for Minitest 5 and 6, so each major version needs a run.
@@ -58,6 +80,7 @@ jobs:
 
   test-prism2:
     name: test (ruby 3.4, prism 2)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     # Ruby 3.4 ships Prism 1. This job pins Prism 2, so the Prism 2 tests in
     # test/prism_errors_test.rb run. MUTINEER_REQUIRE_PRISM_ERRORS turns their
@@ -80,6 +103,7 @@ jobs:
 
   docs:
     name: yard strict (ruby 3.4)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -92,6 +116,7 @@ jobs:
 
   rails-integration:
     name: rails dogfood (ruby 3.4)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -114,6 +139,7 @@ jobs:
 
   rails-postgres:
     name: rails daemon postgres 16 (ruby 3.4)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -153,6 +179,7 @@ jobs:
 
   rails-mysql:
     name: rails daemon mysql 8 (${{ matrix.adapter }}, ruby 3.4)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -202,6 +229,7 @@ jobs:
 
   site:
     name: website browser tests
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -238,6 +266,7 @@ jobs:
   # The unit tests are not on the lib/ mirror path, so this job passes --test.
   self-dogfood:
     name: self-dogfood (threshold 85)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
