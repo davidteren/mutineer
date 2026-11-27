@@ -650,6 +650,22 @@ class CoverageMapWorkTreeTest < Minitest::Test
     assert_equal build(cache: ".mutineer/fresh", tests: tests).map.map, run.map.map
   end
 
+  # Edited during the run (A to B), then again before the next run (B to C):
+  # no saved print equals C, so only the list that save keeps sees it.
+  def test_a_source_edited_during_the_run_and_again_after_it_captures_every_test
+    write_app
+    write_editor("lib/shelf.rb", "    3\n", "    2 + 1\n")
+    tests = TESTS + ["test/z_test.rb"]
+    build_with_edit(tests)
+    assert_equal ["lib/shelf.rb"], JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["during_run"]
+    write("lib/shelf.rb", File.read(path("lib/shelf.rb")).sub("    2 + 1\n", "    1 + 2\n"))
+    run = build(tests: tests)
+    assert_equal :full, kind(run, tests)
+    assert_equal ["[mutineer] coverage cache: lib/shelf.rb changed while the last run was in progress; capturing every test."],
+                 lines(run)
+    assert_equal build(cache: ".mutineer/fresh", tests: tests).map.map, run.map.map
+  end
+
   def test_a_test_edited_while_the_capture_runs_captures_every_test_next_run
     write_app
     write_editor("test/card_test.rb", "class CardTest", "# edited\nclass CardTest")

@@ -215,7 +215,7 @@ progress counts as changed for the next run.
 
 When a file of the last item, a file that changed during the last run, or a git problem captures every test,
 Mutineer prints one line on stderr that says why. With more than three paths, the line names three and counts the rest; `--verbose` then adds one
-line for each path. Each line starts with `[mutineer] coverage cache: ` (an accepted `--coverage-from`
+line for each path (not for a `--coverage-from` refusal). Each line starts with `[mutineer] coverage cache: ` (an accepted `--coverage-from`
 capture uses `[mutineer] --coverage-from: ` for the no-git line, which says `capture it again`).
 
 | Line you see | What it means | What to do |

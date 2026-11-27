@@ -30,6 +30,9 @@ module Mutineer
         # it took before the boot; a file that changes after it is a changed
         # file for the next run.
         @work_tree ||= WorkTree.record(@project_root)
+        # The sources and tests as this run starts: {#save} lists each one
+        # that differs by then, so the next run does not trust its map (#604).
+        @start_prints = source_fingerprints.merge(test_fingerprints)
         return reuse_capture(after_fork) if @coverage_from
 
         cached = read_cache

@@ -39,7 +39,7 @@ module Mutineer
         record.is_a?(Hash) && (commit.nil? || (commit.is_a?(String) && commit.match?(WorkTree::COMMIT_ID))) &&
           record["dirty"].is_a?(Hash) &&
           record["dirty"].all? { |rel, print| rel.is_a?(String) && (print.nil? || print.is_a?(String)) } &&
-          (record["own"].nil? || (record["own"].is_a?(Array) && record["own"].all?(String)))
+          %w[own during_run].all? { |key| record[key].nil? || (record[key].is_a?(Array) && record[key].all?(String)) }
       end
 
       # Why the work tree does not allow a reuse of `cached`, and a note for a
@@ -53,6 +53,9 @@ module Mutineer
       # @return [Array] the reason or nil, the note or nil, and for changed
       #   files the full sorted path list (absent otherwise), for `--verbose`.
       def work_tree_refusal(cached, saved_name = "the saved map")
+        during = Array(cached["work_tree"]["during_run"]).sort
+        return [changed_files_reason(during.to_h { |rel| [rel, :during_run] }, saved_name), nil, during] if during.any?
+
         commit = cached["work_tree"]["commit"]
         mine = @work_tree["commit"]
         if commit.nil?
@@ -136,6 +139,22 @@ module Mutineer
             changes[rel] = current.nil? || (saved.key?(rel) && saved[rel].nil?) ? :no_print : :changed
           end
         end
+      end
+
+      # The sources and tests whose fingerprint at save time differs from the
+      # one at the start of {#cached_or}: they changed while this run was in
+      # progress, so the map may hold their old text (#604). {#save} keeps
+      # the list, and the next run captures every test. Catches a file that
+      # is edited again before the next run, which {#cache_sees_change?}
+      # cannot.
+      #
+      # @api private
+      # @param now [Hash{String => String}] fingerprints of the sources and tests at save time.
+      # @return [Array<String>] sorted project-relative paths.
+      def during_run_rels(now)
+        return [] unless @start_prints
+
+        (now.keys | @start_prints.keys).reject { |rel| now[rel] == @start_prints[rel] }.sort
       end
 
       # True when no fingerprint the cache saved for `rel` equals the file
