@@ -16,10 +16,12 @@ require_relative "redaction"
 require_relative "child_cause"
 require_relative "project_path"
 require_relative "pairing"
+require_relative "work_tree"
 require_relative "coverage_map/failed_test_blame"
 require_relative "coverage_map/capture_reuse"
 require_relative "coverage_map/capture"
 require_relative "coverage_map/cache"
+require_relative "coverage_map/work_tree_check"
 require_relative "coverage_map/skeleton_digest"
 require_relative "coverage_map/recording"
 require_relative "coverage_map/clean_check"
@@ -44,6 +46,7 @@ module Mutineer
     include CaptureReuse
     include Capture
     include Cache
+    include WorkTreeCheck
     include SkeletonDigest
     include Recording
     include CleanCheck
@@ -176,7 +179,11 @@ module Mutineer
                    load_paths: ["lib"], project_root: Dir.pwd,
                    capture_timeout: DEFAULT_CAPTURE_TIMEOUT, boot_path: nil,
                    framework: "minitest", verbose: false, require_paths: [], coverage_from: nil,
-                   extra_load_paths: [])
+                   extra_load_paths: [], own_paths: [], work_tree: nil)
+      # Files of this run that no test reads: the report and the baseline (#595).
+      @own_paths = Array(own_paths).compact.map { |path| FsPath.read(path) }
+      # The work-tree record of this run (#595), taken before the app booted.
+      @work_tree = work_tree
       @source_paths = Array(source_paths).map { |path| FsPath.read(path) }
       @require_paths = Array(require_paths).map { |path| FsPath.read(path) }
       @test_paths   = Array(test_paths).map { |path| FsPath.read(path) }

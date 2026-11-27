@@ -114,7 +114,7 @@ Pass sources as positional arguments and tests with `--test`.
 | `timeout` | Positive integer; seconds per mutant (default 10) |
 | `capture_timeout` | Positive integer; coverage capture and clean-run seconds (default 120); `--test-command` ignores it. The combined clean check gets the larger of this and 1.5 times its files' summed capture time, rounded up |
 | `cache_dir` | Coverage cache directory (default `.mutineer`) |
-| `load_path` | Directory or list of directories, relative to the project root or absolute. Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require` files and the tests, in-process and under `--daemon` (the daemon does not pass `RUBYOPT` or `RUBYLIB` to the app), and passes them to `--test-command`. Ruby searches them in the written order, after the test-helper directories Mutineer finds itself; with no boot file, `lib` comes first. `--load-path DIR` or `-I DIR` replaces the list. With `--test-command`, Mutineer sets `RUBYLIB` for the command to these directories (1.11.0, [#535](https://github.com/davidteren/mutineer/issues/535)), in place of your own `RUBYLIB`; it does not pass your `RUBYOPT` either (#100). It skips an entry that is not a directory, that cannot be resolved (such as `~nosuchuser/lib`), or that has the path separator in its path, with a warning; Mutineer 2.0 exits 2 there ([#581](https://github.com/davidteren/mutineer/issues/581)). Ruby searches them after any `-I` the command passes and after a path the app puts in front itself, and before its gems. A wrapper that unsets `RUBYLIB`, or a command that starts Ruby in a container, does not get them: pass `-I` inside the command there ([#580](https://github.com/davidteren/mutineer/issues/580)). The coverage cache key holds these directories in order and every `.rb` file under them (not the run's sources and tests), so a reorder, a new file or an edit there captures every test again. Mutineer reads and hashes those files on every run, also on a cache hit, so a large directory adds read time. Other files there, such as YAML or JSON data, are not part of the key, as in every directory; see the coverage cache paragraph under [Extra tests for a source](#extra-tests-for-a-source) ([#548](https://github.com/davidteren/mutineer/issues/548)) |
+| `load_path` | Directory or list of directories, relative to the project root or absolute. Mutineer puts them on `$LOAD_PATH` before it loads the boot file, the sources, the `require` files and the tests, in-process and under `--daemon` (the daemon does not pass `RUBYOPT` or `RUBYLIB` to the app), and passes them to `--test-command`. Ruby searches them in the written order, after the test-helper directories Mutineer finds itself; with no boot file, `lib` comes first. `--load-path DIR` or `-I DIR` replaces the list. With `--test-command`, Mutineer sets `RUBYLIB` for the command to these directories (1.11.0, [#535](https://github.com/davidteren/mutineer/issues/535)), in place of your own `RUBYLIB`; it does not pass your `RUBYOPT` either (#100). It skips an entry that is not a directory, that cannot be resolved (such as `~nosuchuser/lib`), or that has the path separator in its path, with a warning; Mutineer 2.0 exits 2 there ([#581](https://github.com/davidteren/mutineer/issues/581)). Ruby searches them after any `-I` the command passes and after a path the app puts in front itself, and before its gems. A wrapper that unsets `RUBYLIB`, or a command that starts Ruby in a container, does not get them: pass `-I` inside the command there ([#580](https://github.com/davidteren/mutineer/issues/580)). The coverage cache key holds these directories in order and every `.rb` file under them (not the run's sources and tests), so a reorder, a new file or an edit there captures every test again. Mutineer reads and hashes those files on every run, also on a cache hit, so a large directory adds read time. A change to another file there, such as YAML or JSON data, captures every test again when git lists it and the directory is below the project root; a `load_path` directory outside the project root is not checked for such files. See [Coverage cache: what captures every test again](#coverage-cache-what-captures-every-test-again) ([#548](https://github.com/davidteren/mutineer/issues/548), [#602](https://github.com/davidteren/mutineer/issues/602)) |
 | `matrix` | Boolean; runs every covering test per mutant; adds report kill matrix |
 | `allow_empty` | Boolean; suppresses warnings for expected runs without mutants |
 | `shared_databases` | File only. Test database names that parallel `--daemon` workers may share; needs Rails 7.1 or later (on Rails 7.0 every parallel mutant scores `error`). Listing the primary database exits 2. If the test environment registers a pool for a listed database, every parallel mutant scores `error`. See [More than one database](https://github.com/davidteren/mutineer/blob/main/docs/rails-setup.md#more-than-one-database) |
@@ -186,6 +186,8 @@ Quote a pattern that starts with `*`.
 Quote a pattern with braces inside a `[...]` list.
 `--test` replaces pairing and the map.
 
+### Coverage cache: what captures every test again
+
 Coverage uses a digest-keyed cache at `.mutineer/coverage.json`. A change inside a method body, with no
 added or removed line and no change to a method that ran while the file loaded, recaptures the tests that
 cover that source, plus any test file that was added or edited. The map matches a full capture. A class-body
@@ -195,12 +197,71 @@ edit, an added or removed source line, a load-time method, a change to which tes
 The cache key holds, among other inputs, the sources, the tests, the boot file, the `--require` files, the project's Ruby files
 that the tests load, and the Ruby files under each `load_path` directory. It also holds the test seed: the
 Minitest seed, or for RSpec the pinned seed, `SPEC_OPTS`, and the project's `.rspec` and `.rspec-local` files.
-A data file that a test reads, such as a YAML or JSON file, is not part of the key, in a `load_path` directory
-or in any other. After an edit to such a file that changes which source lines a test reaches, delete
-`coverage.json` in the cache directory once. The next run captures every test again
-([#548](https://github.com/davidteren/mutineer/issues/548)). Apart from `.rspec` and `.rspec-local`, a file that is not
-Ruby, such as a view, a fixture, an asset or a lock file, is not part of the key either: after an edit to such a
-file that changes which source lines a test reaches, delete `coverage.json` once in the same way ([#595](https://github.com/davidteren/mutineer/issues/595)).
+
+A run does not reuse the saved map, in full or in part, and captures every test, when one of these changed
+since the run that saved it:
+
+- a source, other than the method-body edit above (an added or edited test recaptures only that test);
+- the boot file, a `--require` file, or a Ruby file that the tests loaded;
+- a Ruby file under a `load_path` directory, or the order of those directories;
+- the test seed;
+- any other file below the project root that git lists: a tracked file that differs from the commit, or an
+  untracked file that git does not ignore. Examples are a view, a fixture, a data file and a lock file
+  (1.11.0, [#595](https://github.com/davidteren/mutineer/issues/595)).
+
+Git compares each file with the commit of the run that saved the map. An edit that was already there when
+the map was saved does not capture every test again when you commit it. A file that changes while a run is in
+progress counts as changed for the next run.
+
+When a file of the last item, a file that changed during the last run, or a git problem captures every test,
+Mutineer prints one line on stderr that says why. With more than three paths, the line names three and counts the rest; `--verbose` then adds one
+line for each path (not for a `--coverage-from` refusal). Each line starts with `[mutineer] coverage cache: ` (an accepted `--coverage-from`
+capture uses `[mutineer] --coverage-from: ` for the no-git line, which says `capture it again`).
+
+| Line you see | What it means | What to do |
+|---|---|---|
+| `<path> changed since the saved map, and Mutineer cannot tell which tests it affects; capturing every test.` | A file changed that no other cache check covers. | Nothing. If a test or a tool changes this file on every run, add it to `.gitignore`, or every run captures every test ([#603](https://github.com/davidteren/mutineer/issues/603)). |
+| `<path> changed while the last run was in progress; capturing every test.` | A source, a test or a loaded Ruby file changed while the last run captured coverage, so the saved map may hold its old text ([#604](https://github.com/davidteren/mutineer/issues/604)). | Nothing. The run captures it again. |
+| `<path> cannot be fingerprinted (a folder, a nested repository, a changed submodule, an unreadable file or a name that is not UTF-8): add it to .gitignore or remove it; capturing every test.` | Mutineer cannot compare this path with the saved map. | Add it to `.gitignore` or remove it. Until then every run captures every test. |
+| `the commit of the saved map is not in this clone (a shallow clone, or a commit that no branch holds now; fetch the full history, in GitHub Actions with fetch-depth: 0); capturing every test.` | Git cannot compare the files with the commit of the saved map. | Fetch the full history. |
+| `git could not list the changed files (run git status in the project to see why; the check needs git 2.24 or later); capturing every test.` | A git command failed, or git is older than 2.24, which this check needs. | Run `git status` in the project. |
+| `the saved map records no git commit, and the project has one now; capturing every test.` | The map was saved before the first commit, or where git gave no answer. | Nothing. The next run reuses the new map. |
+| `git gives no commit for this project (it has no commit yet, or git failed), so the changed files cannot be listed; capturing every test.` | The repository has no commit yet. | Make the first commit. Until then every run captures every test. |
+| `git gives no answer for this project (no repository, git is not installed, or git ignores or refuses the folder), so an edit to a view, a fixture or a lock file is not seen; after such an edit, delete .mutineer/coverage.json (https://github.com/davidteren/mutineer/issues/602).` | The map is reused, but only the other checks ran. This line prints on each run that reuses a map. | After an edit to a file that is not Ruby, delete `coverage.json` in the cache directory once. |
+
+A map saved by a Mutineer older than 1.11.0 holds no git record. The first run after the upgrade captures
+every test once, with no line. A changed Ruby file that the tests loaded also captures every test with no line.
+
+For an in-process `--rails` or `--boot` run, `--coverage-from` applies the same checks to the capture.
+Instead of a capture of every test, the run exits 2
+with `mutineer: --coverage-from <file> cannot be reused: <reason>; capture it again`, where the reason is
+one of the texts above with `the capture` in place of `the saved map`. A capture from a Mutineer older than
+1.11.0 is refused with `it records no git state: an older Mutineer made it; capture it again with this version`.
+While the project holds a path that cannot be fingerprinted, every capture is refused: ignore or remove the
+path.
+
+These changes are not seen, and the map is reused ([#602](https://github.com/davidteren/mutineer/issues/602)):
+
+- a file that git ignores, such as `.env`, built assets or an ignored `Gemfile.lock`;
+- a file outside the project root that is not Ruby, such as a data file in a `load_path` directory outside it
+  ([#548](https://github.com/davidteren/mutineer/issues/548)). A Ruby file in a `load_path` directory is part of the key, as the list above says;
+- a change that git does not report: line endings or a clean filter, a rename that changes only letter case,
+  or a submodule that `git submodule deinit` empties;
+- any change to a file that is not Ruby, in a project where git gives no answer;
+- a file edited while a run captures coverage and changed back before that run saves its map
+  ([#606](https://github.com/davidteren/mutineer/issues/606));
+- Mutineer's own files: `.mutineer.yml` in the project root, any file below the `.mutineer/` folder in the
+  project root (the cache, the baseline), the cache file in another `--cache-dir`, the `--output` report, the
+  `--baseline` file, the `--coverage-from` file, the file-swap locks and `.mutineer-backup` files beside each
+  source, the mutant temp files (`mutineer_mutant…` or `mutineer_daemon…`, ending in `.rb`) beside each source,
+  and the callback-growth log (`mutineer-callback-growth…`, ending in `.log`) when the temporary folder is in the project. A
+  project whose tests read one of these files keeps the gap for it. The exception is such a file outside the
+  root `.mutineer/` folder (the report, the baseline, the `--coverage-from` file, or the cache file in another
+  `--cache-dir`) whose path is not UTF-8: git lists it and it cannot be fingerprinted, so every run captures
+  every test, and `--coverage-from` refuses the capture. Give it a UTF-8 name or add it to `.gitignore`.
+
+After such a change, if it changes which source lines a test reaches, delete `coverage.json` in the cache
+directory once. The next run captures every test again.
 
 The test list is part of the cache key, so a run with `since_paired_tests` under `--since` that narrows its
 test list never gets a full cache hit on a full-run map. Partial recapture can still reuse the entries of the
@@ -225,6 +286,8 @@ Before the mutants run, Mutineer checks that the unchanged tests pass:
   together, so a red test outside them does not stop the run. Mutineer prints how many files it did not check.
   The capture's test list must equal this run's, so `since_paired_tests` does not narrow a run with
   `--coverage-from`. A capture saved by a narrowed run does not fit a later full `--coverage-from` run (#552).
+  A capture from a Mutineer older than 1.11.0, or one whose project files changed since, is refused with a
+  reason (exit 2; see the coverage cache section above, #595).
 - **`--test-command`.** No coverage map is built. The clean run runs every `--test` file.
 
 Add `.mutineer/` and any in-project `--cache-dir` directory to `.gitignore`:

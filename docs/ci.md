@@ -109,6 +109,8 @@ The Action fetches the commit for shallow checkouts, falling back to the base br
 | `none` | Full scan |
 | Explicit ref | Changed lines against that ref; the ref must be in the checkout (fetch it, or use `fetch-depth: 0`) |
 
+A coverage cache (`.mutineer/`) that CI restores from an earlier run is reused only when the commit of that run is in the checkout, so use `fetch-depth: 0`. A map that a `pull_request` run saved at its merge commit is not reused by a later run: that commit is not in the next checkout, and the run captures every test with a line that says so ([#603](https://github.com/davidteren/mutineer/issues/603)).
+
 | Default JSON output | Result |
 |---------------------|--------|
 | Step summary | Score table, then, when they apply, a `Dropped:` line for dropped repeats, an `Unpaired:` line for sources with no paired test (absent for a report from a CLI older than 1.9.0), the baseline line, a note when no mutant was in scope for the diff, and up to 20 survivors |

@@ -823,6 +823,52 @@ class CoverageMapTest < Minitest::Test
     end
   end
 
+  # #595: a capture is refused when a project file changed that no other check
+  # covers, or when it holds no git state. The capture run's own report is
+  # not a change.
+  def test_coverage_from_refuses_a_capture_after_a_change_to_a_project_file
+    ensure_coverage_running
+    git = ->(root, *args) { assert system("git", "-C", root, "-c", "user.email=t@t", "-c", "user.name=t", *args, out: File::NULL, err: File::NULL) }
+    edit_cache = ->(file, &change) { File.write(file, JSON.generate(JSON.parse(File.read(file)).tap(&change))) }
+    cases = {
+      "a changed view" => [->(root, _cache) { File.write(File.join(root, "show.html.erb"), "strict\n") },
+                           "--coverage-from #{'%s'} cannot be reused: show.html.erb changed since the capture, " \
+                           "and Mutineer cannot tell which tests it affects; capture it again"],
+      "a capture with no git state" => [->(_root, cache) { edit_cache.(cache) { |c| c.delete("work_tree") } },
+                                        /it records no git state: an older Mutineer made it; capture it again with this version/],
+      "a malformed git state" => [->(_root, cache) { edit_cache.(cache) { |c| c["work_tree"] = "abc" } },
+                                  /not the shape a coverage cache saves/],
+      "a saved commit that is not a commit id" => [->(_root, cache) { edit_cache.(cache) { |c| c["work_tree"]["commit"] = "--output=x" } },
+                                                   /not the shape a coverage cache saves/],
+      "an untracked nested repository" => [->(root, _cache) { FileUtils.mkdir_p(File.join(root, "vendor/x")); git.(File.join(root, "vendor/x"), "init", "-q") },
+                                           %r{vendor/x/ cannot be fingerprinted .*: add it to \.gitignore or remove it; capture it again}],
+      "the capture run's report" => [->(root, _cache) { File.write(File.join(root, "capture-report.json"), "{}") }, nil]
+    }
+    cases.each do |name, (change, error)|
+      Dir.mktmpdir do |tmp|
+        root = File.realpath(tmp)
+        FileUtils.cp(Dir[File.join(SHARED, "*.rb")], root)
+        File.write(File.join(root, "show.html.erb"), "plain\n")
+        File.write(File.join(root, ".gitignore"), "/capture/\n/shard/\n")
+        git.(root, "init", "-q")
+        git.(root, "add", "-A")
+        git.(root, "commit", "-qm", "base")
+        cache = File.join(root, "capture", "coverage.json")
+        capture_io { shared_map(%w[alpha.rb beta.rb], File.dirname(cache), root: root, own_paths: [File.join(root, "capture-report.json")]) }
+        change.(root, cache)
+        shard = -> { shared_map(%w[alpha.rb], File.join(root, "shard"), root: root, coverage_from: cache) }
+        if error
+          err = assert_raises(Mutineer::CoverageFromError, name) { capture_io { shard.call } }
+          error.is_a?(String) ? assert_includes(err.message, format(error, cache), name) : assert_match(error, err.message, name)
+        else
+          map = nil
+          capture_io { map = shard.call }
+          refute map.phase_a_ran, name
+        end
+      end
+    end
+  end
+
   def test_coverage_from_with_one_test_still_runs_it_clean
     ensure_coverage_running
     Dir.mktmpdir do |dir|

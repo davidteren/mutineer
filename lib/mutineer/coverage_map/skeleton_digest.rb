@@ -418,16 +418,19 @@ module Mutineer
         return unless @failed_clean_tests.empty?
 
         FileUtils.mkdir_p(@cache_dir)
+        sources = source_fingerprints
+        tests = test_fingerprints
         data = { "digest" => @digest, "failed_test_files" => @failed_test_files,
                  "dependencies" => @loaded_dependencies, "map" => @map,
                  "load_lines" => @load_lines.to_a.sort, "load_methods" => @load_methods.to_a.sort,
                  "timings" => @timings, "parallel_workers" => ENV.fetch("PARALLEL_WORKERS", nil),
                  NARROW_LOAD_LINES => true, "run_inputs" => run_inputs_digest,
-                 "sources" => source_fingerprints, "skeletons" => source_skeletons,
-                 "tests" => test_fingerprints, "load_method_bodies" => current_load_method_bodies }
+                 "sources" => sources, "skeletons" => source_skeletons,
+                 "tests" => tests, "load_method_bodies" => current_load_method_bodies,
+                 "work_tree" => @work_tree&.merge("own" => own_rels, "during_run" => during_run_rels(sources.merge(tests))) }
         data[LOAD_LINE_PAIRS] = load_line_pairs unless @boot_path
         if @boot_path
-          data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => source_fingerprints,
+          data.merge!("inputs" => compute_digest(inputs_only: true), "sources" => sources,
                       "owners" => ownership_paths)
         end
         tmp = "#{cache_path}.tmp"

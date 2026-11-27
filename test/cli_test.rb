@@ -1025,13 +1025,46 @@ class CliTest < Minitest::Test
 
       _, err, status = mutineer(*args, "--allow-empty", chdir: proj)
       assert_equal 0, status.exitstatus, err
-      assert_empty err
+      # The project has no git, and this run reuses the map: the one line is
+      # the note of what the coverage cache cannot see (#595).
+      assert_equal "[mutineer] coverage cache: git gives no answer for this project (no repository, git is not " \
+                   "installed, or git ignores or refuses the folder), so an edit to a view, a fixture or a lock " \
+                   "file is not seen; after such an edit, delete .mutineer/coverage.json " \
+                   "(https://github.com/davidteren/mutineer/issues/602).\n", err
 
       File.write(File.join(proj, ".mutineer.yml"), "allow_empty: true\n")
       _, err, = mutineer(*args, chdir: proj)
       refute_includes err, Mutineer::BECOMES_ERROR_IN_2_0
       _, err, = mutineer(*args, "--no-allow-empty", chdir: proj)
       assert_includes err, Mutineer::BECOMES_ERROR_IN_2_0
+    end
+  end
+
+  # #604: a reload run writes each mutant beside the source and restores it.
+  # The next run of the unchanged git project still reuses the map: no test
+  # file is captured again.
+  def test_a_reload_run_leaves_the_coverage_map_reusable
+    Dir.mktmpdir do |tmp|
+      proj = File.join(tmp, "proj")
+      FileUtils.mkdir_p(proj)
+      FileUtils.cp(File.join(FIXTURES, "calculator.rb"), proj)
+      sentinel = File.join(tmp, "sentinel")
+      File.write(File.join(proj, "calculator_strong_test.rb"),
+                 File.read(File.join(FIXTURES, "calculator_strong_test.rb")) +
+                 "\nFile.write(ENV[\"MUTINEER_SENTINEL\"], \"x\\n\", mode: \"a\") if ENV[\"MUTINEER_SENTINEL\"] && defined?(Coverage) && Coverage.running?\n")
+      [%w[init -q], %w[add -A], %w[commit -qm base]].each do |args|
+        assert system("git", "-C", proj, "-c", "user.email=t@t", "-c", "user.name=t", *args, out: File::NULL, err: File::NULL)
+      end
+      args = ["run", "calculator.rb", "--test", "calculator_strong_test.rb", "--strategy", "reload"]
+      env = { "MUTINEER_SENTINEL" => sentinel }
+      _, err, status = mutineer(*args, chdir: proj, env: env)
+      assert_equal 0, status.exitstatus, err
+      refute_empty File.read(sentinel), "the first run captures"
+      File.write(sentinel, "")
+      _, err, status = mutineer(*args, chdir: proj, env: env)
+      assert_equal 0, status.exitstatus, err
+      refute_includes err, "coverage cache:"
+      assert_empty File.read(sentinel), "the second run reuses the map"
     end
   end
 
