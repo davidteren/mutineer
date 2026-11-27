@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_83d83e4539da04::t_ec6e7a2a4fda6c 53
+docs/ci.md
+  s_83d83e4539da04::t_7d1ed24afd95c8 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9eac0a2cb1602733f7d8a334f97403c91a5aa6da",
+  "prompts": {},
+  "sessions": {
+    "s_83d83e4539da04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ec068f8-8634-4ddc-82ad-6637cb5d1e3d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
