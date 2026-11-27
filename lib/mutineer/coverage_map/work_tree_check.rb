@@ -27,13 +27,17 @@ module Mutineer
       # The reason when git cannot give the list of changed files.
       GIT_FAILED = "git could not list the changed files (run git status in the project to see why)"
 
-      # True when `record` has the shape {#save} writes.
+      # True when `record` has the shape {#save} writes. The commit must be a
+      # full commit id ({WorkTree::COMMIT_ID}) or nil: the cache file can be
+      # edited, and the commit goes to git as an argument.
       #
       # @api private
       # @param record [Object] the `"work_tree"` entry of a parsed coverage.json.
       # @return [Boolean]
       def well_formed_work_tree?(record)
-        record.is_a?(Hash) && (record["commit"].nil? || record["commit"].is_a?(String)) && record["dirty"].is_a?(Hash) &&
+        commit = record.is_a?(Hash) ? record["commit"] : nil
+        record.is_a?(Hash) && (commit.nil? || (commit.is_a?(String) && commit.match?(WorkTree::COMMIT_ID))) &&
+          record["dirty"].is_a?(Hash) &&
           record["dirty"].all? { |rel, print| rel.is_a?(String) && (print.nil? || print.is_a?(String)) } &&
           (record["own"].nil? || (record["own"].is_a?(Array) && record["own"].all?(String)))
       end

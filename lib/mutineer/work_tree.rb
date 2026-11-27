@@ -17,6 +17,11 @@ module Mutineer
     GIT_ENV = %w[GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
                  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE].to_h { |name| [name, nil] }.freeze
 
+    # A full commit id (SHA-1 or SHA-256). A saved record is read from a file
+    # a person can edit, so any other value, such as `--output=<path>`, never
+    # reaches git as an argument.
+    COMMIT_ID = /\A\h{40,64}\z/
+
     module_function
 
     # The work-tree record the coverage cache saves: the commit that is
@@ -68,7 +73,7 @@ module Mutineer
 
       out, status = git(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
       id = out.to_s.strip
-      status&.success? && id.match?(/\A\h{40,64}\z/) ? id : nil
+      status&.success? && id.match?(COMMIT_ID) ? id : nil
     end
 
     # True when `root` is in a git work tree and git does not ignore it.
@@ -83,13 +88,16 @@ module Mutineer
       !ignored&.success?
     end
 
-    # True when `commit` is a commit in the clone of `root`.
+    # True when `commit` is a full commit id ({COMMIT_ID}) of a commit in
+    # the clone of `root`.
     #
     # @param commit [String] commit id.
     # @param root [String] project root.
     # @return [Boolean]
     def commit?(commit, root)
-      _out, status = git(root, "cat-file", "-e", "#{commit}^{commit}")
+      return false unless commit.is_a?(String) && commit.match?(COMMIT_ID)
+
+      _out, status = git(root, "cat-file", "-e", "--end-of-options", "#{commit}^{commit}")
       status&.success? == true
     end
 
@@ -102,9 +110,15 @@ module Mutineer
     #
     # @param commit [String] commit id.
     # @param root [String] project root.
-    # @return [Array<String>, nil] paths relative to `root`, or nil when git fails.
+    # @return [Array<String>, nil] paths relative to `root`, or nil when git
+    #   fails or `commit` is not a full commit id ({COMMIT_ID}).
     def changed_since(commit, root)
-      tracked = list(root, "diff", "--name-only", "--no-renames", "--ignore-submodules=none", "--relative", "-z", commit, "--")
+      return nil unless commit.is_a?(String) && commit.match?(COMMIT_ID)
+
+      # --end-of-options (git 2.24) is a second guard. An older git reads it
+      # as a revision and fails, so the run captures every test and says why.
+      tracked = list(root, "diff", "--name-only", "--no-renames", "--ignore-submodules=none", "--relative", "-z",
+                     "--end-of-options", commit, "--")
       untracked = list(root, "ls-files", "--others", "--exclude-standard", "-z")
       flagged = list(root, "ls-files", "-v", "-z")
       return nil unless tracked && untracked && flagged

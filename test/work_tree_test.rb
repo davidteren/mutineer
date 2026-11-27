@@ -129,6 +129,16 @@ class WorkTreeTest < Minitest::Test
     end
   end
 
+  def test_a_value_that_is_not_a_commit_id_never_reaches_git
+    with_repo do |dir, _head|
+      pwned = File.join(dir, "..", "#{File.basename(dir)}-pwned")
+      assert_nil WT.changed_since("--output=#{pwned}", dir)
+      refute WT.commit?("--output=#{pwned}", dir)
+      assert_nil WT.changed_since("HEAD", dir), "a full commit id only"
+      refute_path_exists pwned
+    end
+  end
+
   def test_an_inherited_git_dir_does_not_change_the_answer
     with_repo do |dir, head|
       Dir.mktmpdir do |other|

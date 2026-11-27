@@ -304,6 +304,19 @@ class CoverageMapWorkTreeTest < Minitest::Test
                   "fetch-depth: 0); capturing every test."], lines(run)
   end
 
+  # The cache file is a trust boundary: a saved commit that is not a full
+  # commit id is a malformed cache. It never reaches git as an option.
+  def test_a_hostile_saved_commit_is_a_malformed_cache_and_reaches_no_git_command
+    write_app
+    build
+    pwned = File.join(@scratch, "pwned")
+    edit_cache { |data| data["work_tree"]["commit"] = "--output=#{pwned}" }
+    run = build
+    assert_equal :full, kind(run)
+    assert_empty lines(run)
+    refute_path_exists pwned
+  end
+
   def test_git_that_cannot_list_the_changed_files_captures_every_test
     write_app
     build

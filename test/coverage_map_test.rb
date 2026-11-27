@@ -838,6 +838,8 @@ class CoverageMapTest < Minitest::Test
                                         /it records no git state: an older Mutineer made it; capture it again with this version/],
       "a malformed git state" => [->(_root, cache) { edit_cache.(cache) { |c| c["work_tree"] = "abc" } },
                                   /not the shape a coverage cache saves/],
+      "a saved commit that is not a commit id" => [->(_root, cache) { edit_cache.(cache) { |c| c["work_tree"]["commit"] = "--output=x" } },
+                                                   /not the shape a coverage cache saves/],
       "an untracked nested repository" => [->(root, _cache) { FileUtils.mkdir_p(File.join(root, "vendor/x")); git.(File.join(root, "vendor/x"), "init", "-q") },
                                            %r{vendor/x/ cannot be fingerprinted .*: add it to \.gitignore or remove it; capture it again}],
       "the capture run's report" => [->(root, _cache) { File.write(File.join(root, "capture-report.json"), "{}") }, nil]
