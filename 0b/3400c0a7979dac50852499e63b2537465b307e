@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_2919199eb867b0::t_41e776fd79796a 50
+docs/plans/2026-11-27-595-fix-stale-coverage-map-plan.md
+  s_2919199eb867b0::t_2c8c6ad1237c61 23
+lib/mutineer/coverage_map/work_tree_check.rb
+  s_2919199eb867b0::t_654332d57eda0c 149,262-264,269,271-272
+lib/mutineer/daemon_backend.rb
+  s_2919199eb867b0::t_b3d538ea0c23ae 604-605
+test/coverage_map_work_tree_test.rb
+  s_2919199eb867b0::t_d77bb512bb86a0 632-634,638,646-670
+test/daemon_backend_contract_test.rb
+  s_2919199eb867b0::t_22c8567aacc848 183-184,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b3400c0a7979dac50852499e63b2537465b307e",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
