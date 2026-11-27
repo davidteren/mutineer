@@ -255,7 +255,9 @@ These changes are not seen, and the map is reused ([#602](https://github.com/dav
   `--baseline` file, the `--coverage-from` file, the file-swap locks and `.mutineer-backup` files beside each
   source, the mutant temp files (`mutineer_mutant…` or `mutineer_daemon…`, ending in `.rb`) beside each source,
   and the callback-growth log (`mutineer-callback-growth…`, ending in `.log`) when the temporary folder is in the project. A
-  project whose tests read one of these files keeps the gap for it.
+  project whose tests read one of these files keeps the gap for it. A report, baseline or `--coverage-from`
+  file whose name is not UTF-8 is the exception: git lists it, it cannot be fingerprinted, and every run
+  captures every test. Give it a UTF-8 name or add it to `.gitignore`.
 
 After such a change, if it changes which source lines a test reaches, delete `coverage.json` in the cache
 directory once. The next run captures every test again.
