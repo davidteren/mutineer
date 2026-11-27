@@ -1,0 +1,33 @@
+.expectation-fit/decisions/pairing-of-sources-and-tests.md
+  s_2919199eb867b0::t_969d4560065745 12
+CHANGELOG.md
+  s_2919199eb867b0::t_6da187f76bb6b1 41-51
+docs/ci.md
+  s_2919199eb867b0::t_36458430418b51 80
+docs/getting-started.md
+  s_2919199eb867b0::t_892b1bf07670dc 79
+lib/mutineer/cli.rb
+  s_2919199eb867b0::t_f48b8daf871bad 287-302
+lib/mutineer/pairing.rb
+  s_2919199eb867b0::t_ded9b4147ff24a 10-11,48-50,54-55,57,62-63,74,78-87,93-95,455-474,606-609,616,636-640
+test/cli_test.rb
+  s_2919199eb867b0::t_ffe62c44fb9127 3811-3815,3820-3822,3826-3920
+test/pairing_test.rb
+  s_2919199eb867b0::t_fbcc72defa9b3e 1011-1143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a87be303220550f53ce3d0ce3e80ab0b61f83bc",
+  "prompts": {},
+  "sessions": {
+    "s_2919199eb867b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dab45e12-6f56-4ec4-968c-8f92f1c6a12d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "davidteren <drteren@gmail.com>"
+    }
+  }
+}
