@@ -217,6 +217,9 @@ class CoverageMapWorkTreeTest < Minitest::Test
                                                 t.write("lib/shelf.rb", "class Shelf\n  def self.size\n    2 + 1\n  end\nend\n")
                                                 t.commit_all
                                               }],
+    "a run source edited before the first run, committed after" => [:hit, nil,
+                                                                     ->(t) { t.write("lib/shelf.rb", "class Shelf\n  def self.size\n    2 + 1\n  end\nend\n") },
+                                                                     ->(t) { t.commit_all }],
     "a run test is edited" => [:partial, nil, nil, ->(t) { t.write("test/shelf_test.rb", "#{File.read(t.path('test/shelf_test.rb'))}# c\n") }],
     # A loaded Ruby file is left to the dependency check: it captures every
     # test with no reason line, as before #595 (limit #603).
@@ -564,5 +567,63 @@ class CoverageMapWorkTreeTest < Minitest::Test
     map, err = boot.call
     assert map.phase_a_ran
     assert_includes err, format(CHANGED, "data.yml")
+  end
+
+  # #604: a file that a test rewrites while the capture runs. The cache saves
+  # its fingerprints after the tests ran, so only the record from before the
+  # run sees the change. The next run captures every test.
+  def write_editor(rel, from, to)
+    write("test/z_test.rb", <<~RUBY)
+      require "minitest/autorun"
+      #{SENTINEL}
+      if ENV["PROBE_EDIT"]
+        path = File.expand_path(#{"../#{rel}".inspect}, __dir__)
+        File.write(path, File.read(path).sub(#{from.inspect}, #{to.inspect}))
+      end
+      class ZTest < Minitest::Test
+        def test_ok; assert true; end
+      end
+    RUBY
+    commit_all
+  end
+
+  def build_with_edit(tests)
+    ENV["PROBE_EDIT"] = "1"
+    build(tests: tests)
+  ensure
+    ENV.delete("PROBE_EDIT")
+  end
+
+  def test_a_source_edited_while_the_capture_runs_captures_every_test_next_run
+    write_app
+    write_editor("lib/shelf.rb", "    3\n", "    2 + 1\n")
+    tests = TESTS + ["test/z_test.rb"]
+    build_with_edit(tests)
+    run = build(tests: tests)
+    assert_equal :full, kind(run, tests)
+    assert_equal ["[mutineer] coverage cache: lib/shelf.rb changed while the last run was in progress; capturing every test."],
+                 lines(run)
+    assert_equal build(cache: ".mutineer/fresh", tests: tests).map.map, run.map.map
+  end
+
+  def test_a_test_edited_while_the_capture_runs_captures_every_test_next_run
+    write_app
+    write_editor("test/card_test.rb", "class CardTest", "# edited\nclass CardTest")
+    tests = TESTS + ["test/z_test.rb"]
+    build_with_edit(tests)
+    run = build(tests: tests)
+    assert_equal :full, kind(run, tests)
+    assert_equal ["[mutineer] coverage cache: test/card_test.rb changed while the last run was in progress; capturing every test."],
+                 lines(run)
+  end
+
+  # The loaded-file check saved the helper's fingerprint when the test that
+  # loads it ran, before the edit, so that check already sees the change.
+  def test_a_loaded_helper_edited_while_the_capture_runs_captures_every_test_next_run
+    write_app
+    write_editor("lib/util.rb", "= 1\n", "= 2 - 1\n")
+    tests = TESTS + ["test/z_test.rb"]
+    build_with_edit(tests)
+    assert_equal :full, kind(build(tests: tests), tests)
   end
 end

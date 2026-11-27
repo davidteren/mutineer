@@ -220,6 +220,7 @@ line for each path. Each line starts with `[mutineer] coverage cache: `.
 | Line you see | What it means | What to do |
 |---|---|---|
 | `<path> changed since the saved map, and Mutineer cannot tell which tests it affects; capturing every test.` | A file changed that no other cache check covers. | Nothing. If a test or a tool writes this file on every run, add it to `.gitignore`, or every run captures every test ([#603](https://github.com/davidteren/mutineer/issues/603)). |
+| `<path> changed while the last run was in progress; capturing every test.` | A source, a test or a loaded Ruby file changed while the last run captured coverage, so the saved map may hold its old text ([#604](https://github.com/davidteren/mutineer/issues/604)). | Nothing. The run captures it again. |
 | `<path> cannot be fingerprinted (a folder, a nested repository, a changed submodule, an unreadable file or a name that is not UTF-8): add it to .gitignore or remove it; capturing every test.` | Mutineer cannot compare this path with the saved map. | Add it to `.gitignore` or remove it. Until then every run captures every test. |
 | `the commit of the saved map is not in this clone (a shallow clone, or a commit that no branch holds now; fetch the full history, in GitHub Actions with fetch-depth: 0); capturing every test.` | Git cannot compare the files with the commit of the saved map. | Fetch the full history. |
 | `git could not list the changed files (run git status in the project to see why); capturing every test.` | A git command failed. | Run `git status` in the project. |

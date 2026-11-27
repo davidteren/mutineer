@@ -77,7 +77,7 @@ module Mutineer
       # {WORK_TREE_NAMES} paths. Nil when nothing changed.
       #
       # @api private
-      # @param changes [Hash{String => Symbol}] path => `:changed` or `:no_print`, sorted by path.
+      # @param changes [Hash{String => Symbol}] path => `:changed`, `:no_print` or `:during_run`, sorted by path.
       # @param saved_name [String] "the saved map" or "the capture".
       # @return [String, nil]
       def changed_files_reason(changes, saved_name)
@@ -91,6 +91,8 @@ module Mutineer
         if causes == [:no_print]
           "#{what} cannot be fingerprinted (a folder, a nested repository, a changed submodule, an unreadable file " \
             "or a name that is not UTF-8): add #{one ? 'it' : 'them'} to .gitignore or remove #{one ? 'it' : 'them'}"
+        elsif causes == [:during_run]
+          "#{what} changed while the last run was in progress"
         else
           "#{what} changed since #{saved_name}, and Mutineer cannot tell which tests #{one ? 'it affects' : 'they affect'}"
         end
@@ -98,7 +100,9 @@ module Mutineer
 
       # The changed paths that no other cache check handles, each with its
       # cause. A source or a test of this run, and a Ruby file the saved map
-      # loaded, are left to their own checks.
+      # loaded, are left to their own checks, unless that check cannot see
+      # the change: the file changed while the last run was in progress, and
+      # the cache saved its new fingerprint (`:during_run`, #604).
       #
       # @api private
       # @param cached [Hash] parsed coverage.json.
@@ -113,10 +117,33 @@ module Mutineer
           mine = @work_tree["dirty"]
           current = mine.key?(rel) ? mine[rel] : WorkTree.fingerprint(@project_root, rel)
           next if (saved[rel] && saved[rel] == current) || own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)
-          next if scoped.include?(rel)
 
-          changes[rel] = current.nil? || (saved.key?(rel) && saved[rel].nil?) ? :no_print : :changed
+          if scoped.include?(rel)
+            changes[rel] = :during_run unless cache_sees_change?(cached, rel)
+          else
+            changes[rel] = current.nil? || (saved.key?(rel) && saved[rel].nil?) ? :no_print : :changed
+          end
         end
+      end
+
+      # True when the cache's own fingerprint of `rel` differs from the file
+      # now, or the cache holds none, so the digest, {Cache#partial_plan} or
+      # {Cache#dependencies_match?} handles the change. False when the cache
+      # saved the file as it is now, after the tests ran (#604).
+      #
+      # @api private
+      # @param cached [Hash] parsed coverage.json.
+      # @param rel [String] path relative to the project root.
+      # @return [Boolean]
+      def cache_sees_change?(cached, rel)
+        prints = %w[sources tests dependencies].filter_map { |key| cached[key][rel] if cached[key].is_a?(Hash) }
+        abs = absolute(rel)
+        return true if prints.empty? || !File.file?(abs)
+
+        current = file_fingerprint(abs)
+        prints.any? { |print| print != current }
+      rescue SystemCallError
+        true
       end
 
       # `rel` with each control character as `?`: a file name can hold a
