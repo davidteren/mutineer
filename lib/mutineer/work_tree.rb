@@ -116,7 +116,8 @@ module Mutineer
       return nil unless commit.is_a?(String) && commit.match?(COMMIT_ID)
 
       # --end-of-options (git 2.24) is a second guard. An older git reads it
-      # as a revision and fails, so the run captures every test and says why.
+      # as a revision and fails, so the run captures every test, with a line
+      # that blames the clone (commit? fails the same way).
       tracked = list(root, "diff", "--name-only", "--no-renames", "--ignore-submodules=none", "--relative", "-z",
                      "--end-of-options", commit, "--")
       untracked = list(root, "ls-files", "--others", "--exclude-standard", "-z")

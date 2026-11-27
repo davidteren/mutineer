@@ -130,10 +130,13 @@ module Mutineer
         end
       end
 
-      # True when the cache's own fingerprint of `rel` differs from the file
-      # now, or the cache holds none, so the digest, {Cache#partial_plan} or
-      # {Cache#dependencies_match?} handles the change. False when the cache
-      # saved the file as it is now, after the tests ran (#604).
+      # True when no fingerprint the cache saved for `rel` equals the file
+      # now, so the digest, {Cache#partial_plan} or {Cache#dependencies_match?}
+      # handles the change. False when one of them equals it: the record of
+      # the last run says the file changed, so the cache took that print
+      # during the run (#604). One differing print is not enough: a source's
+      # loaded-file print is taken at its capture, its source print at save,
+      # and {Cache#partial_plan} reads only the second.
       #
       # @api private
       # @param cached [Hash] parsed coverage.json.
@@ -145,7 +148,7 @@ module Mutineer
         return true if prints.empty? || !File.file?(abs)
 
         current = file_fingerprint(abs)
-        prints.any? { |print| print != current }
+        prints.none?(current)
       rescue SystemCallError
         true
       end
@@ -158,16 +161,23 @@ module Mutineer
       # @return [String]
       def printable_path(rel) = rel.gsub(/[[:cntrl:]]/, "?")
 
+      # A mutant temp file beside a source (OrphanGuard::TEMP_BASENAME). A
+      # concurrent run can leave one there while this run takes its record.
+      MUTANT_TEMP = %r{(?:\A|/)\.?mutineer_(?:mutant|daemon)\d{8}-[^/]*\.rb\z}
+
       # True for a path in a place where Mutineer keeps its own state, which
       # the tests of a project do not read: the `.mutineer` folder of the
       # project root, `.mutineer.yml` in the project root (Config's file
-      # name), and a file-swap lock beside a source (FileSwap::LOCK_DIR_NAME).
+      # name), a file-swap lock or backup beside a source
+      # (FileSwap::LOCK_DIR_NAME, FileSwap::BACKUP_SUFFIX), and a mutant temp
+      # file ({MUTANT_TEMP}).
       #
       # @api private
       # @param rel [String] path relative to the project root.
       # @return [Boolean]
       def own_path?(rel)
-        rel == ".mutineer.yml" || rel.start_with?(".mutineer/") || "/#{rel}".include?("/.mutineer/file-swap-locks/")
+        rel == ".mutineer.yml" || rel.start_with?(".mutineer/") || "/#{rel}".include?("/.mutineer/file-swap-locks/") ||
+          rel.end_with?(".mutineer-backup") || rel.match?(MUTANT_TEMP)
       end
 
       # The files this run writes or reads for itself, relative to the project

@@ -491,6 +491,7 @@ class CoverageMapWorkTreeTest < Minitest::Test
     {
       ".mutineer.yml" => :hit, ".mutineer/baseline.json" => :hit,
       "lib/.mutineer/file-swap-locks/abc" => :hit, "report.json" => :hit,
+      "lib/.mutineer_mutant20261127-1-abc.rb" => :hit, "lib/card.rb.mutineer-backup" => :hit,
       "app/.mutineer.yml" => :full, "test/.mutineer/options.yml" => :full
     }.each do |rel, expect|
       teardown
@@ -628,6 +629,34 @@ class CoverageMapWorkTreeTest < Minitest::Test
     assert_equal :full, kind(run, tests)
     assert_equal ["[mutineer] coverage cache: test/card_test.rb changed while the last run was in progress; capturing every test."],
                  lines(run)
+  end
+
+  # A source edited after its last capture, during the clean check: the
+  # cache's loaded-file print is old and its source print is new, and the
+  # partial recapture reads only the source print. The record still sees it.
+  def test_a_source_edited_during_the_clean_check_captures_every_test_next_run
+    write_app
+    write("test/z_test.rb", <<~RUBY)
+      require "minitest/autorun"
+      #{SENTINEL}
+      if ENV["PROBE_EDIT"] && !(defined?(Coverage) && Coverage.running?)
+        path = File.expand_path("../lib/card.rb", __dir__)
+        File.write(path, File.read(path).sub('mode == "strict"', 'mode == "plain"'))
+      end
+      require_relative "../lib/shelf"
+      # It covers a source, so the together check runs it.
+      class ZTest < Minitest::Test
+        def test_ok; assert_equal 3, Shelf.size; end
+      end
+    RUBY
+    commit_all
+    tests = TESTS + ["test/z_test.rb"]
+    build_with_edit(tests)
+    run = build(tests: tests)
+    assert_equal :full, kind(run, tests)
+    assert_equal ["[mutineer] coverage cache: lib/card.rb changed while the last run was in progress; capturing every test."],
+                 lines(run)
+    assert_equal build(cache: ".mutineer/fresh", tests: tests).map.map, run.map.map
   end
 
   # The loaded-file check saved the helper's fingerprint when the test that

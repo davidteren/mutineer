@@ -201,7 +201,7 @@ Minitest seed, or for RSpec the pinned seed, `SPEC_OPTS`, and the project's `.rs
 A run does not reuse the saved map, in full or in part, and captures every test, when one of these changed
 since the run that saved it:
 
-- a source or a test, other than the method-body edit above;
+- a source, other than the method-body edit above (an added or edited test recaptures only that test);
 - the boot file, a `--require` file, or a Ruby file that the tests loaded;
 - a Ruby file under a `load_path` directory, or the order of those directories;
 - the test seed;
@@ -213,9 +213,10 @@ Git compares each file with the commit of the run that saved the map. An edit th
 the map was saved does not capture every test again when you commit it. A file that changes while a run is in
 progress counts as changed for the next run.
 
-When a file of the last item, or a git problem, captures every test, Mutineer prints one line on stderr that
-says why. With more than three paths, the line names three and counts the rest; `--verbose` then adds one
-line for each path. Each line starts with `[mutineer] coverage cache: `.
+When a file of the last item, a file that changed during the last run, or a git problem captures every test,
+Mutineer prints one line on stderr that says why. With more than three paths, the line names three and counts the rest; `--verbose` then adds one
+line for each path. Each line starts with `[mutineer] coverage cache: ` (an accepted `--coverage-from`
+capture uses `[mutineer] --coverage-from: ` for the no-git line, which says `capture it again`).
 
 | Line you see | What it means | What to do |
 |---|---|---|
@@ -231,7 +232,8 @@ line for each path. Each line starts with `[mutineer] coverage cache: `.
 A map saved by a Mutineer older than 1.11.0 holds no git record. The first run after the upgrade captures
 every test once, with no line. A changed Ruby file that the tests loaded also captures every test with no line.
 
-`--coverage-from` applies the same checks to the capture. Instead of a capture of every test, the run exits 2
+For an in-process `--rails` or `--boot` run, `--coverage-from` applies the same checks to the capture.
+Instead of a capture of every test, the run exits 2
 with `mutineer: --coverage-from <file> cannot be reused: <reason>; capture it again`, where the reason is
 one of the texts above with `the capture` in place of `the saved map`. A capture from a Mutineer older than
 1.11.0 is refused with `it records no git state: an older Mutineer made it; capture it again with this version`.

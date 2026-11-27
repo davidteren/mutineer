@@ -208,7 +208,7 @@ Commit: `fix: the coverage cache captures every test after a change to a file it
 
 Do the steps in this order.
 
-**Step 0. File the three follow-up issues** (texts in "Limits left open"). The code and the docs need the numbers of N1 and N2. U2 closes N3.
+**Step 0. File the three follow-up issues** (texts in "Limits left open"). The code and the docs need the numbers of N1 and N2. U2 closes N3. (Filed as #602, #603 and #604.)
 
 **Step 1. New file `lib/mutineer/work_tree.rb`: module `Mutineer::WorkTree`** (`module_function`, as `ChangedLines`). It requires `open3`, `digest` and `fs_path` only.
 
