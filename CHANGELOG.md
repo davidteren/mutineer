@@ -32,6 +32,8 @@ All notable changes to this project are documented here. The format is based on
   The note now says `does not pass your RUBYLIB` (or `RUBYOPT`) and `pass -I DIR to mutineer`, so it is not read as the `-I` of a test command.
   A capture child that exits with no result says `child wrote no result (exit status N)`.
   `--verbose` adds the full message and the first backtrace frame. Verdicts and the coverage cache do not change.
+- **The docs name a `min` / `max` comparator limit (#501).**
+  `docs/equivalent-skips.md` now says that a `min` or `max` statement with no block is skipped even when its `<=>` has a side effect, which a test could see. No behaviour change.
 - **The docs now say what the coverage cache key holds (#548).**
   `docs/cli.md` lists the key inputs and says that a data file a test reads, such as a YAML or JSON file, is not part of the key, in any directory.
   After an edit to such a file that changes which source lines a test reaches, delete `coverage.json` in the cache directory once to capture every test again. No behaviour change.
