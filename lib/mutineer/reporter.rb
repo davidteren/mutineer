@@ -36,7 +36,7 @@ module Mutineer
     UNRUN_SHARE_LIMIT = 0.10
 
     # The JSON report's `schema_version` (see docs/json-schema.md).
-    SCHEMA_VERSION = "1.11"
+    SCHEMA_VERSION = "1.12"
 
     # The unrun-share hint for mutants in sources with no paired test.
     # The CLI keeps a shorter copy for the empty-run message.
@@ -100,12 +100,17 @@ module Mutineer
     # grew after a reload, from {Runner.execute}. Only the JSON report records
     # it (`summary.callback_growth`, sorted). Left out, or nil when the run made
     # no log, JSON has `callback_growth: null`.
+    # `tests_narrowed` (#552) is true when `since_paired_tests` gave the run
+    # fewer test files than pairing found, from {Runner.execute} or
+    # {DaemonBackend.execute}. Only the JSON report records it
+    # (`summary.tests_narrowed`). Left out, it is false.
     def report(out: $stdout, err: $stderr, threshold: 0.0, format: "human", output: nil,
                baseline: nil, scoped: false, legacy_id_matches: { ignore: 0, baseline: 0 },
                unmatched_ignores: [], declined: {},
                subjects: nil, unmutated_subjects: nil, copies: {}, timing: nil,
-               callback_growth: nil, verbose: false)
+               callback_growth: nil, verbose: false, tests_narrowed: false)
       @copies = copies || {}
+      @tests_narrowed = tests_narrowed
       @timing = timing
       @callback_growth = callback_growth
       subjects = unmutated_subjects = nil if subjects.nil? || unmutated_subjects.nil?
@@ -316,6 +321,8 @@ module Mutineer
           # covers only the changed-line mutants, so it is not comparable to a
           # full-run score; Baseline#diff reads this to skip the score-drop gate.
           scoped: scoped,
+          # Additive (1.12, #552): true when since_paired_tests cut the test list.
+          tests_narrowed: @tests_narrowed == true,
           # Additive (1.4, #126): ids hash the project-relative file path. A
           # baseline without this key stores old-format ids; Baseline#diff then
           # also matches on old ids.

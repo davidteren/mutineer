@@ -15,7 +15,7 @@ wall-clock values `timing` and each entry's `seconds` change from run to run (sc
 
 ## Versioning contract
 
-The top-level `schema_version` (a string, e.g. `"1.11"`) follows these rules:
+The top-level `schema_version` (a string, e.g. `"1.12"`) follows these rules:
 
 - **Additive changes** (new keys on existing objects, new top-level keys) bump the **minor** version
   (`1.0` → `1.1`). Existing keys keep their meaning. Consumers MUST ignore unknown keys.
@@ -40,7 +40,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 
 ```jsonc
 {
-  "schema_version": "1.11",
+  "schema_version": "1.12",
   "summary":      { /* run totals, see below */ },
   "survivors":    [ /* mutants the suite failed to catch; review for test gaps or equivalent behaviour */ ],
   "killed":       [ /* mutants a test caught; ids for joining runs (#361) and the diff (#498) */ ],
@@ -83,6 +83,7 @@ See [STABILITY.md](https://github.com/davidteren/mutineer/blob/main/STABILITY.md
 | `no_verdict` | int | Attempted mutants that produced no verdict: `errored + timeout + uncapturable`. The completeness gate is `no_verdict / attempted`. |
 | `score` | float \| null | `killed / (killed + survived) * 100`, rounded. **`null`** when the denominator is empty (no covered mutants) — never `0.0`. |
 | `scoped` | bool | `true` when the run was diff-scoped (`--since`): the score covers only the changed-line mutants, so it is not comparable to a full-run score. A scoped CURRENT run skips `--baseline`'s score-drop check (new-survivor detection still applies); a scoped report is REFUSED as a baseline (exit 2) because survivors outside its diff would read as new regressions. Additive key (absent in reports from older versions; treat absent as `false`). |
+| `tests_narrowed` | bool | `true` when `since_paired_tests` gave this run fewer test files than pairing found (see "Tests of the changed sources" in `cli.md`). A mutant that only a dropped test reaches shows as `survived` or `no_coverage`, so do not compare the score with a full run's. It marks only this cut of the test file list. It is `false` for an explicit `--test` list, for `--only`, for `--test-command`, and for the choice of covering tests for each mutant. It is `true` only in a run where `scoped` is also `true`. Absent in older reports: treat absent as `false`. Additive key (schema `1.12`, #552). |
 | `id_format` | int | The mutant id format. `2` means ids include the project-relative file path (1.3 and later). **Read this key, not `schema_version`, to learn the id format.** Absent in older reports: treat absent as the old format, whose ids did not include the path and can collide across files. Additive key (schema `1.4`). |
 | `legacy_id_matches` | object | `{ ignore, baseline }`, two ints. `ignore` counts `.mutineer.yml` `ignore:` entries in the old id format that matched this run (replace them with the new ids the run prints). `baseline` counts survivors that matched an old-format `--baseline` only through their old id (regenerate the baseline). Both are `0` when nothing old matched. Old-format matching is removed in 2.0. Additive key (schema `1.4`). |
 | `unmatched_ignores` | array of string | `ignore:` ids that matched no mutant in this run's sources and operators, in file order, each id once. A dropped repeat of an edit counts as matched. An old-format id that still matches is not listed (`legacy_id_matches` counts it). Empty when every loaded entry matched, when `ignore:` is empty, or under `--only`. `--only` narrows methods before matching, so an empty list there does not mean every entry matched. `--since` does not add ids: matching happens before the diff narrows the run. A run of some files lists entries those files and operators do not match. A source that was passed and then skipped for lack of a paired test still counts, so `run` and `run --dry-run` agree. stderr says the list covers only that run. The exit code stays 0. `mutineer migrate --dry-run` over every source lists the same kind of entry and exits 1. Additive key (schema `1.10`, #377). |
@@ -566,7 +567,7 @@ completeness is the one worth retrying rather than blaming on the tests.
 
 ## Dry-run JSON (`--dry-run --format json`)
 
-Additive (schema `1.10`, #362). The dry-run document reports schema `1.11` and gained no key in it. It has no `callback_growth`.
+Additive (schema `1.10`, #362). The dry-run document reports schema `1.12` and gained no key in it. It has no `callback_growth`.
 `mutineer run … --dry-run --format json` prints a candidate list
 instead of the human breakdown. `--output` writes that document the same way a completed run's
 report does. `--format html` under `--dry-run` stays human and warns that the format is unused.

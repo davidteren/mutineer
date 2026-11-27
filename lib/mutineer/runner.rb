@@ -162,7 +162,9 @@ module Mutineer
           since_extras[:callback_growth] = callback_growth(growth_log, checks_growth, config.project_root)
           return [AggregateResult.new(since_ignored), since_source_map, since_extras]
         end
-        config = JobPlan.narrow_tests_for_since(config, since_jobs)
+        narrowed = JobPlan.narrow_tests_for_since(config, since_jobs)
+        since_extras[:tests_narrowed] = !narrowed.equal?(config)
+        config = narrowed
         since_scope = [since_jobs, since_ignored, since_source_map, since_extras]
       end
 

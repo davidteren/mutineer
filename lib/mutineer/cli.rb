@@ -1130,7 +1130,8 @@ module Mutineer
                       declined: extras.fetch(:declined, {}), subjects: extras.fetch(:subjects, 0),
                       unmutated_subjects: extras.fetch(:unmutated_subjects, []),
                       copies: extras.fetch(:copies, {}), timing: timing,
-                      callback_growth: growth_rows, verbose: config.verbose)
+                      callback_growth: growth_rows, verbose: config.verbose,
+                      tests_narrowed: extras.fetch(:tests_narrowed, false))
       warn_empty_run(config, extras, unpaired) if aggregate.total.zero?
       # nil: the run could not create its log, and a stderr line said so.
       warn_callback_growth(growth_rows || [])

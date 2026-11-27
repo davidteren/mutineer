@@ -416,7 +416,7 @@ class JsonReporterTest < Minitest::Test
 
   def test_valid_json_with_summary_and_score
     doc = render([killed_mutant, survivor])
-    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
+    assert_equal Mutineer::Reporter::SCHEMA_VERSION, doc["schema_version"] # 1.12 = tests_narrowed; 1.11 = diff on killed, unplaceable, ran_at_load, timing, seconds; 1.10 = unmutated_subjects, killed[], no_verdict operator/token; 1.9 = declined
     assert_equal 1, doc["summary"]["killed"]
     assert_equal 1, doc["summary"]["survived"]
     assert_equal 50.0, doc["summary"]["score"]
@@ -645,6 +645,17 @@ class JsonReporterTest < Minitest::Test
 
   # A --since run's report must say so, so a consumer (or a later --baseline
   # load) knows its score covers only the changed-line mutants.
+  # #552: a run that since_paired_tests narrowed says so; any other run reports false.
+  def test_tests_narrowed_is_false_by_default_and_true_when_passed
+    reports = [{}, { tests_narrowed: true }].map do |extra|
+      out = StringIO.new
+      Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })
+                        .report(out: out, err: StringIO.new, format: "json", **extra)
+      JSON.parse(out.string)["summary"]["tests_narrowed"]
+    end
+    assert_equal [false, true], reports
+  end
+
   def test_scoped_run_records_scoped_true
     out = StringIO.new
     Mutineer::Reporter.new(Mutineer::AggregateResult.new([killed_mutant]), { FILE => SRC })

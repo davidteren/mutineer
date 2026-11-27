@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format is based on
   An entry that `--test-command` cannot use (not a directory, or a path with the path separator in it) is skipped with a warning, and the run goes on. Mutineer 2.0 exits 2 there (#581).
   When the clean run cannot load a file, the smoke error now names the file first, then the generic hint. With a `load_path`, or a `RUBYLIB` or `RUBYOPT -I` of yours, it also names the likely cause: a wrapper that unsets `RUBYLIB`, or a `RUBYLIB` or `RUBYOPT -I` of yours that the command does not get. A Ruby started in a container, or a wrapper that unsets `RUBYLIB`, does not get the directories (#580).
 
+- **The JSON report marks a run that `since_paired_tests` narrowed (#552).**
+  `summary.tests_narrowed` is `true` when `since_paired_tests` gave the run fewer test files than pairing found.
+  A saved report can now tell a narrowed `--since` run from a full one, so a tool does not compare its score with a full run's.
+  It is `false` in every other run, also when the setting is on and has no effect, and for `--test-command`. The dry-run document does not have it.
+  `schema_version` is now `1.12`.
+
 ### Changed
 
 - **A failed coverage capture names its error without `--verbose` (#537).**

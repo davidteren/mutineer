@@ -342,7 +342,11 @@ class DaemonBackendContractTest < Minitest::Test
       boots = []
       narrowed_flags = []
       real_prepare = Mutineer::DaemonBackend.method(:prepare_run)
-      keep_a = ->(jobs, ignored, *_rest, **_kw) { [jobs.select { |s,| s.file.end_with?("a.rb") }, ignored, jobs.size] }
+      seen_extras = nil
+      keep_a = lambda { |jobs, ignored, *_rest, extras:, **_kw|
+        seen_extras = extras
+        [jobs.select { |s,| s.file.end_with?("a.rb") }, ignored, jobs.size]
+      }
       _out, err = capture_io do
         Mutineer::JobPlan.stub(:scope_since, keep_a) do
           Mutineer::DaemonClient.stub(:new, lambda { |boot:, **|
@@ -365,10 +369,12 @@ class DaemonBackendContractTest < Minitest::Test
         assert_equal tests.map { |t| File.join(root, t) }, boots.first[:tests]
         refute_includes err, "--since: running"
         assert_equal [false], narrowed_flags
+        assert_equal false, seen_extras[:tests_narrowed], "the JSON report gets tests_narrowed false (#552)"
       else
         assert_equal [File.join(root, "test/a_test.rb")], boots.first[:tests]
         assert_includes err, "running 1 of 2 test files"
         assert_equal [true], narrowed_flags, "the map build is told the list was narrowed"
+        assert_equal true, seen_extras[:tests_narrowed], "the JSON report gets tests_narrowed true (#552)"
       end
     end
   end

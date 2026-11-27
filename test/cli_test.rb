@@ -3543,7 +3543,8 @@ class CliTest < Minitest::Test
       assert_equal 0, status.exitstatus, err
       refute_includes err, "--since: running"
       full = JSON.parse(out)
-      assert_equal full["summary"].except("seconds"), narrowed["summary"].except("seconds")
+      assert_equal [true, false], [narrowed, full].map { |doc| doc["summary"]["tests_narrowed"] }
+      assert_equal full["summary"].except("seconds", "tests_narrowed"), narrowed["summary"].except("seconds", "tests_narrowed")
       assert_equal full["per_source"].map { |r| r["file"] }, narrowed["per_source"].map { |r| r["file"] }
     end
   end
@@ -3698,6 +3699,7 @@ class CliTest < Minitest::Test
       refute_includes err, "--since: running"
       assert_path_exists cart_loaded, "the guarded run captures cart_test.rb"
       guarded = JSON.parse(out)
+      assert_equal [true, false], [hidden, guarded].map { |doc| doc["summary"]["tests_narrowed"] }
       assert_empty guarded["no_coverage"]
       ids = hidden["no_coverage"].map { |m| m["id"] }.sort
       assert_equal ids, guarded["survivors"].map { |m| m["id"] }.sort, "the hidden mutants now survive"
