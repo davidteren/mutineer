@@ -298,7 +298,7 @@ module Mutineer
         unless left_out.empty?
           noun = left_out.size == 1 ? "file" : "files"
           warn "[mutineer] folder sources: left out #{left_out.size} #{noun}, such as #{left_out.first} " \
-               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source; type it to keep it)"
+               "(a file in a test or spec folder beside app or lib, or in the --test list, is not a source; type a test folder to keep its files)"
         end
         # Direct writes from the app, a fork, or a subprocess inherit these
         # pipes (#341). Dotenv files are merged with any URLs the caller
