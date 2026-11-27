@@ -50,7 +50,7 @@ All notable changes to this project are documented here. The format is based on
   A run whose folder sources held only such files now exits 2 with `run requires at least one source file`; before, it exited 0 with a wrong report.
   An `ignore:` entry for a mutant of such a test file now shows as unmatched; delete it.
   With `--test`, the test-file guard now also refuses a typed `test_*.rb` file inside such a test folder, such as `packs/catalog/test/models/test_item.rb`.
-  A test in another place, such as `tests/` or a test folder inside `lib/`, is still read as a source, and so is a file of a `--test` folder under `--test-command` (#599).
+  A test in another place, such as `tests/` or a test folder inside `lib/`, is still read as a source, and so is a file of a `--test` folder under `--test-command`. A folder outside the project root, such as `../other/lib`, is not filtered (#599).
 
 - **Reload no longer scores a method `survived` when a second load skips its definition (#529).**
   A constant set with `||=` (`Cell ||= Struct.new(:x) do ... end`), or defined under `unless defined?(Cell)` or `if !defined?(Cell)`, does not run again when `--strategy reload` or `--daemon` loads the mutant file.
