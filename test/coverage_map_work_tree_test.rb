@@ -326,6 +326,36 @@ class CoverageMapWorkTreeTest < Minitest::Test
                   "project to see why); capturing every test."], lines(run)
   end
 
+  # A listing that failed when the map was saved leaves a record with no
+  # commit. While git still has one, the line blames the listing.
+  def test_a_record_with_no_commit_while_git_has_one_says_git_could_not_list
+    write_app
+    Mutineer::WorkTree.stub(:changed_since, nil) { build }
+    run = Mutineer::WorkTree.stub(:changed_since, nil) { build }
+    assert_equal :full, kind(run)
+    assert_equal ["[mutineer] coverage cache: git could not list the changed files (run git status in the " \
+                  "project to see why); capturing every test."], lines(run)
+  end
+
+  # A name that is not UTF-8, after HEAD moved, beside a UTF-8 name that is
+  # not ASCII: the run captures every test, and the line can join the two.
+  def test_a_name_that_is_not_utf8_after_head_moved_cannot_be_fingerprinted
+    write_app
+    build
+    write("README.md", "moved\n")
+    write("café.yml", "x\n")
+    commit_all
+    listing = Mutineer::WorkTree.method(:changed_since)
+    bad = lambda do |commit, root|
+      paths = listing.call(commit, root)
+      paths && paths + ["bad\xFF.yml".b]
+    end
+    run = Mutineer::WorkTree.stub(:changed_since, bad) { build }
+    assert_equal :full, kind(run)
+    assert_includes run.err, "bad?.yml"
+    assert_includes run.err, "capturing every test."
+  end
+
   def test_a_map_saved_with_no_git_and_a_project_with_a_commit_now_captures_every_test
     write_app(git_repo: false)
     build

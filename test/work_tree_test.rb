@@ -195,8 +195,21 @@ class WorkTreeTest < Minitest::Test
       refute_equal edited, WT.fingerprint(dir, rel)
       assert_equal "absent", WT.fingerprint(dir, "gone.yml")
       File.symlink("app/views/show.html.erb", File.join(dir, "link.erb"))
-      assert_equal "link\0app/views/show.html.erb", WT.fingerprint(dir, "link.erb")
+      assert_equal "link\0#{Digest::SHA256.hexdigest('app/views/show.html.erb')}", WT.fingerprint(dir, "link.erb")
       assert_nil WT.fingerprint(dir, "app/views"), "a folder never matches"
+    end
+  end
+
+  # The link target is hashed, so the record is JSON whatever the target's
+  # encoding (a US-ASCII file system encoding with LANG unset, #346).
+  def test_a_symlink_with_a_non_ascii_target_gives_a_record_json_can_hold
+    with_repo do |dir, _|
+      File.symlink("café.erb", File.join(dir, "link.erb"))
+      target = "caf\xC3\xA9.erb".dup.force_encoding(Encoding::US_ASCII)
+      File.stub(:readlink, target) do
+        JSON.generate(WT.record(dir))
+        assert_match(/\Alink\0\h{64}\z/, WT.fingerprint(dir, "link.erb"))
+      end
     end
   end
 

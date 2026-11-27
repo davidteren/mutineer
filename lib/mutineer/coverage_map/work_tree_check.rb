@@ -62,6 +62,9 @@ module Mutineer
             return [nil, format(NO_GIT_NOTE, remedy: remedy)]
           end
 
+          # A record with no commit while git has one: the listing failed.
+          return [GIT_FAILED, nil] if WorkTree.head(@project_root)
+
           return ["git gives no commit for this project (it has no commit yet, or git failed), so the changed files cannot be listed", nil]
         end
         return [GIT_FAILED, nil] unless mine
@@ -117,9 +120,14 @@ module Mutineer
         saved_own = Array(cached["work_tree"]["own"])
         scoped = source_rels.to_set + test_fingerprints.keys
         scoped.merge(cached["dependencies"].keys) if cached["dependencies"].is_a?(Hash)
-        (now | saved.keys).sort.each_with_object({}) do |rel, changes|
+        (now | saved.keys).sort.each_with_object({}) do |raw, changes|
+          rel = WorkTree.json_name(raw)
           mine = @work_tree["dirty"]
-          current = mine.key?(rel) ? mine[rel] : WorkTree.fingerprint(@project_root, rel)
+          # A name that is not UTF-8 never matches (KTD9).
+          current = if !rel.equal?(raw) then nil
+                    elsif mine.key?(rel) then mine[rel]
+                    else WorkTree.fingerprint(@project_root, rel)
+                    end
           next if (saved[rel] && saved[rel] == current) || own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)
 
           if scoped.include?(rel)

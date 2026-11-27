@@ -14,8 +14,11 @@ module Mutineer
     # Variables that point git at another repository, work tree or index.
     # Every git command here runs without them, so the answer is about the
     # project root and nothing else.
+    # GIT_OPTIONAL_LOCKS=0 keeps `git diff` from taking the index lock, so a
+    # git command the user runs at the same time does not fail.
     GIT_ENV = %w[GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
-                 GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE].to_h { |name| [name, nil] }.freeze
+                 GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE].to_h { |name| [name, nil] }
+                                                               .merge("GIT_OPTIONAL_LOCKS" => "0").freeze
 
     # A full commit id (SHA-1 or SHA-256). A saved record is read from a file
     # a person can edit, so any other value, such as `--output=<path>`, never
@@ -36,30 +39,43 @@ module Mutineer
       paths = commit ? changed_since(commit, root) : nil
       return { "commit" => nil, "dirty" => {} } unless paths
 
-      utf8, other = paths.partition { |rel| rel.encoding == Encoding::UTF_8 || rel.ascii_only? }
+      utf8, other = paths.partition { |rel| json_name(rel).equal?(rel) }
       dirty = utf8.to_h { |rel| [rel, fingerprint(root, rel)] }
       # JSON cannot hold a path that is not UTF-8. Its entry never matches.
-      other.each { |rel| dirty[rel.dup.force_encoding(Encoding::UTF_8).scrub("?")] = nil }
+      other.each { |rel| dirty[json_name(rel)] = nil }
       { "commit" => commit, "dirty" => dirty }
     end
 
+    # `rel` in a form JSON can hold: `rel` itself when it is UTF-8 or ASCII,
+    # else a UTF-8 copy with each invalid byte as `?`. A caller that gets a
+    # copy back treats the path as one that cannot be fingerprinted.
+    # (`rel.b.scrub` would do nothing: every byte is valid in binary.)
+    #
+    # @param rel [String] a path as {changed_since} gives it.
+    # @return [String]
+    def json_name(rel)
+      rel.encoding == Encoding::UTF_8 || rel.ascii_only? ? rel : rel.dup.force_encoding(Encoding::UTF_8).scrub("?")
+    end
+
     # Fingerprint of a work-tree path: its mode and content. It is not the
-    # value of `CoverageMap#file_fingerprint`: never compare the two. Nil never
-    # matches: a folder (a submodule or a nested repository) or a file that
-    # cannot be read.
+    # value of `CoverageMap#file_fingerprint`: never compare the two. A
+    # symlink is a hash of its target, so the value is ASCII whatever the
+    # target's encoding. Nil never matches: a folder (a submodule or a nested
+    # repository), a file that cannot be read, or a name that cannot be
+    # joined to the root.
     #
     # @param root [String] project root.
     # @param rel [String] path relative to `root`.
     # @return [String, nil]
     def fingerprint(root, rel)
       abs = File.join(File.expand_path(root), rel)
-      return "link\0#{File.readlink(abs)}" if File.symlink?(abs)
+      return "link\0#{Digest::SHA256.hexdigest(File.readlink(abs).b)}" if File.symlink?(abs)
       return "absent" unless File.exist?(abs)
       return nil unless File.file?(abs)
 
       # The mode too: git lists a mode change, and a test can depend on it.
       "#{File.stat(abs).mode.to_s(8)}\0#{Digest::SHA256.file(abs).hexdigest}"
-    rescue SystemCallError
+    rescue SystemCallError, EncodingError
       nil
     end
 
@@ -116,8 +132,8 @@ module Mutineer
       return nil unless commit.is_a?(String) && commit.match?(COMMIT_ID)
 
       # --end-of-options (git 2.24) is a second guard. An older git reads it
-      # as a revision and fails, so the run captures every test, with a line
-      # that blames the clone (commit? fails the same way).
+      # as a revision and fails: every run then captures every test, with the
+      # "git could not list the changed files" line.
       tracked = list(root, "diff", "--name-only", "--no-renames", "--ignore-submodules=none", "--relative", "-z",
                      "--end-of-options", commit, "--")
       untracked = list(root, "ls-files", "--others", "--exclude-standard", "-z")
