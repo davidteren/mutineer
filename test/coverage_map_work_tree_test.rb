@@ -629,19 +629,43 @@ class CoverageMapWorkTreeTest < Minitest::Test
     File.delete(log) if log
   end
 
-  # A report whose name is not UTF-8 is saved as JSON can hold it. A listed
-  # name that is not UTF-8 never matches an own file, as another name can
-  # convert to the same text, so it cannot be fingerprinted.
-  def test_a_report_whose_name_is_not_utf8_is_saved_and_never_matches
+  # A report whose name is not UTF-8 is not an own file: the save leaves it
+  # out, and a listed name that is not UTF-8 cannot be fingerprinted.
+  def test_a_report_whose_name_is_not_utf8_is_left_out_and_never_matches
     write_app
     raw = path("report-\xFF.json").b
     build(own_paths: [raw])
-    assert_includes JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["own"], "report-?.json"
+    assert_equal %w[.mutineer/coverage.json .mutineer/coverage.json.tmp], JSON.parse(File.read(path(".mutineer/coverage.json")))["work_tree"]["own"]
     listing = Mutineer::WorkTree.method(:changed_since)
     with_report = ->(commit, root) { listing.call(commit, root)&.push("report-\xFF.json".b) }
     run = Mutineer::WorkTree.stub(:changed_since, with_report) { build(own_paths: [raw]) }
     assert_equal :full, kind(run)
     assert_includes run.err, "report-?.json cannot be fingerprinted"
+  end
+
+  # An own path that is not UTF-8 converts to the text of another name. The
+  # other file is still a project file, and a non-UTF-8 name that converts to
+  # an own-file pattern is not an own file.
+  def test_a_file_whose_name_equals_a_converted_own_name_or_pattern_is_still_seen
+    write_app
+    write("x?", "a\n")
+    commit_all
+    ENV["MUTINEER_READS"] = "x?"
+    own = { own_paths: [path("x\xFF").b] }
+    build(**own)
+    write("x?", "b\n")
+    run = build(**own)
+    assert_equal :full, kind(run)
+    assert_equal [format(CHANGED, "x?")], lines(run)
+
+    build
+    listing = Mutineer::WorkTree.method(:changed_since)
+    fake = ->(commit, root) { listing.call(commit, root)&.push("tmp2/mutineer-callback-growth20261127-1-\xFF.log".b) }
+    run = Mutineer::WorkTree.stub(:changed_since, fake) { build }
+    assert_equal :full, kind(run)
+    assert_includes run.err, "mutineer-callback-growth20261127-1-?.log cannot be fingerprinted"
+  ensure
+    ENV.delete("MUTINEER_READS")
   end
 
   # The report does not exist yet when the first run saves its map. Through a

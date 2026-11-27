@@ -20,7 +20,7 @@ Builder changes to this plan (the code and `docs/cli.md` win where this plan dif
 - The saved record also holds `"during_run"`: the sources and tests that changed between the start of the run (the record, taken before the boot) and the save (#604).
 - A record with no commit while git has one now gives the `git could not list the changed files` line. When git fails at every command, that line replaces the shallow-clone advice.
 - The check compares the saved record with the work tree now and with the record of this run, so a file edited during the app boot counts as changed in that run.
-- A path that is not UTF-8, including an `--output` report name, is kept in the form `WorkTree.json_name` gives, because the cache file is JSON.
+- A listed path that is not UTF-8 is saved in the form `WorkTree.json_name` gives, because the cache file is JSON, and it never matches. An own path that is not UTF-8 (such as an `--output` report name) is not an own file: a converted copy could match another file.
 - The callback-growth log of a reload or daemon run is one of Mutineer's own files.
 
 - **What:** Mutineer keeps a saved coverage map after an edit to a view, a fixture, a lock file or any other file that is not a source, a test or a Ruby file the tests load. This plan makes such an edit capture every test again, with one stderr line that names the file.

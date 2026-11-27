@@ -146,7 +146,7 @@ module Mutineer
           current = rel.equal?(raw) ? WorkTree.fingerprint(@project_root, rel) : nil
           # A converted name (not UTF-8) is never an own file: two names can convert alike.
           next if (saved[rel] && saved[rel] == current && !moved.include?(rel)) ||
-                  (rel.equal?(raw) && (own_rels.include?(rel) || saved_own.include?(rel))) || own_path?(rel)
+                  (rel.equal?(raw) && (own_rels.include?(rel) || saved_own.include?(rel) || own_path?(rel)))
 
           if scoped.include?(rel)
             changes[rel] = :during_run unless cache_sees_change?(cached, rel)
@@ -259,15 +259,17 @@ module Mutineer
       # A file that does not exist yet, such as the report before the run
       # writes it, is placed by the real path of its folder, so a folder
       # reached through a symlink still gives the path git lists. A name that
-      # is not UTF-8 is kept as {WorkTree.json_name} gives it, so the cache
-      # file (JSON) can hold it; {#unscoped_changes} never matches it.
+      # is not UTF-8 is left out: JSON cannot hold it, and a converted copy
+      # could match another file (`x\xFF` and `x?`). git then lists it as a
+      # path that cannot be fingerprinted.
       #
       # @api private
       # @return [Array<String>]
       def own_rels
-        @own_rels ||= ([cache_path, "#{cache_path}.tmp", @coverage_from] + @own_paths).compact.map do |path|
+        @own_rels ||= ([cache_path, "#{cache_path}.tmp", @coverage_from] + @own_paths).compact.filter_map do |path|
           abs = absolute(path)
-          WorkTree.json_name(relativize(File.join(ProjectPath.root_real(File.dirname(abs)), File.basename(abs))))
+          rel = FsPath.read(relativize(File.join(ProjectPath.root_real(File.dirname(abs)), File.basename(abs))))
+          rel if WorkTree.json_name(rel).equal?(rel)
         end
       end
     end

@@ -180,10 +180,11 @@ class DaemonBackendContractTest < Minitest::Test
     assert_equal [File.expand_path("out/report.json"), "/abs/baseline.json"],
                  Mutineer::DaemonBackend.boot_config(config, [])[:own_paths]
 
-    # A name that is not UTF-8 goes as JSON can hold it, so the boot line is written.
+    # A name that is not UTF-8 is left out, so the boot line is written and no
+    # converted copy (report-?.json) can match another file.
     config.output = (+"/abs/report-\xFF.json").force_encoding(Encoding::UTF_8)
     boot = Mutineer::DaemonBackend.boot_config(config, [])
-    assert_equal "/abs/report-?.json", boot[:own_paths].first
+    assert_equal ["/abs/baseline.json"], boot[:own_paths]
     JSON.generate(boot)
   end
 
