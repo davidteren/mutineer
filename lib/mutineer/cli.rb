@@ -289,7 +289,11 @@ module Mutineer
         left_out = []
         config.sources = Pairing.expand_sources(argv[1..], project_root: config.project_root, left_out: left_out)
         if config.explicit?(:tests)
-          abs = ->(path) { File.expand_path(path, config.project_root) }
+          # Real paths, so a symlink or another spelling of a test file still matches.
+          abs = lambda do |path|
+            full = File.expand_path(path, config.project_root)
+            File.exist?(full) ? File.realpath(full) : full
+          end
           tests = config.tests.to_set(&abs)
           typed = argv[1..].to_set(&abs)
           dropped, config.sources = config.sources.partition { |s| tests.include?(abs.call(s)) && !typed.include?(abs.call(s)) }

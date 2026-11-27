@@ -3913,6 +3913,14 @@ class CliTest < Minitest::Test
       assert_equal ["lib/calc.rb"], files
       assert_equal 1, err.scan("[mutineer] folder sources: left out 1 file, such as lib/calc_test.rb").size, err
     end
+    # Another spelling of the test, and a symlink to its folder, still match (Devin on #601).
+    with_calc_gem("lib", "lib/calc_test.rb") do |proj|
+      File.symlink(File.join(proj, "lib"), File.join(proj, "link"))
+      ["./lib/calc_test.rb", "link/calc_test.rb"].each do |test|
+        files, = json_sources("run", "lib", "--test", test, chdir: proj)
+        assert_equal ["lib/calc.rb"], files, test
+      end
+    end
     with_calc_gem("lib", "test/calc_test.rb") do |proj|
       _files, err = json_sources("run", "lib", chdir: proj)
       refute_includes err, "left out"
